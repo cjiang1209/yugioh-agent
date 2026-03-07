@@ -165,6 +165,13 @@ class Duel:
         # Start duel
         self._lib.OCG_StartDuel(self._duel_handle)
 
+        # Initialize game state counts from the engine (MSG_START may not be
+        # emitted by the edo9300 fork, so query the engine directly).
+        for p in range(2):
+            self._game_state.deck_count[p] = self.query_count(p, LOCATION_DECK)
+            self._game_state.extra_count[p] = self.query_count(p, LOCATION_EXTRA)
+        self._game_state.lp = [starting_lp, starting_lp]
+
     def _add_deck_cards(self, team: int, deck: dict[str, list[int]]) -> None:
         """Add all cards from a deck to the duel."""
         # Main deck
