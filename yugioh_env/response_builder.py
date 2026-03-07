@@ -27,8 +27,13 @@ def build_select_battlecmd_response(action_type: int, index: int) -> bytes:
 
 
 def build_select_card_response(indices: list[int]) -> bytes:
-    """Build response for MSG_SELECT_CARD / MSG_SELECT_TRIBUTE."""
-    return struct.pack("<I", len(indices)) + bytes(indices)
+    """Build response for MSG_SELECT_CARD / MSG_SELECT_TRIBUTE.
+
+    Response format (edo9300): type(int32) + size(uint32) + indices...
+    type=0 uses uint32 indices at positions [2..], type=1 uses uint16, type=2 uses uint8.
+    We use type=0 (uint32 indices).
+    """
+    return struct.pack("<iI", 0, len(indices)) + b"".join(struct.pack("<I", i) for i in indices)
 
 
 def build_select_chain_response(index: int) -> bytes:
@@ -62,8 +67,11 @@ def build_sort_card_response(order: list[int]) -> bytes:
 
 
 def build_select_sum_response(indices: list[int]) -> bytes:
-    """Build response for MSG_SELECT_SUM."""
-    return struct.pack("<I", len(indices)) + bytes(indices)
+    """Build response for MSG_SELECT_SUM.
+
+    Uses the same type-discriminated format as MSG_SELECT_CARD.
+    """
+    return struct.pack("<iI", 0, len(indices)) + b"".join(struct.pack("<I", i) for i in indices)
 
 
 def build_select_unselect_card_response(index: int) -> bytes:

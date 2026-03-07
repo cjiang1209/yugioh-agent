@@ -1,10 +1,16 @@
 """Test action space mapping."""
 
+import struct
+
 import numpy as np
 import pytest
 
 from yugioh_env.action_space import ActionMapper, MAX_ACTIONS, ACTION_FEATURES
 from yugioh_env.constants import (
+    LOCATION_MZONE,
+    LOCATION_SZONE,
+    MSG_SELECT_CARD,
+    MSG_SELECT_PLACE,
     MSG_SELECT_YESNO,
     MSG_SELECT_CHAIN,
     MSG_SELECT_POSITION,
@@ -12,6 +18,7 @@ from yugioh_env.constants import (
     POS_FACEUP_ATTACK,
     POS_FACEUP_DEFENSE,
 )
+from yugioh_env import response_builder as rb
 
 
 def test_yesno_actions():
@@ -95,3 +102,101 @@ def test_invalid_action_index():
     mapper.update({"msg_type": MSG_SELECT_YESNO, "player": 0, "desc": 0})
     with pytest.raises(ValueError):
         mapper.action_to_response(5)
+
+
+# --- Place action tests (field_mask is from selecting player's perspective) ---
+
+def test_place_actions_player0():
+    """Player 0 selecting: bits 0-15 = player 0's zones."""
+    mapper = ActionMapper()
+    # Only SZONE seq 0 available for player 0 (bit 8 = 0, rest = 1)
+    mask = 0xFFFFFFFF ^ (1 << 8)
+    mapper.update({"msg_type": MSG_SELECT_PLACE, "player": 0, "count": 1, "field_mask": mask})
+    assert mapper.num_actions == 1
+    resp = mapper.action_to_response(0)
+    player, loc, seq = struct.unpack("<BBB", resp)
+    assert player == 0
+    assert loc == LOCATION_SZONE
+    assert seq == 0
+
+
+def test_place_actions_player1():
+    """Player 1 selecting: bits 0-15 = player 1's own zones (absolute player 1)."""
+    mapper = ActionMapper()
+    # Only SZONE seq 2 available for player 1 (bit 10 = 0, rest = 1)
+    mask = 0xFFFFFFFF ^ (1 << 10)
+    mapper.update({"msg_type": MSG_SELECT_PLACE, "player": 1, "count": 1, "field_mask": mask})
+    assert mapper.num_actions == 1
+    resp = mapper.action_to_response(0)
+    player, loc, seq = struct.unpack("<BBB", resp)
+    assert player == 1
+    assert loc == LOCATION_SZONE
+    assert seq == 2
+
+
+def test_place_actions_opponent_zones():
+    """Player 1 selecting from opponent (player 0) zones: bits 16-31."""
+    mapper = ActionMapper()
+    # Only MZONE seq 0 of opponent available (bit 16 = 0, rest = 1)
+    mask = 0xFFFFFFFF ^ (1 << 16)
+    mapper.update({"msg_type": MSG_SELECT_PLACE, "player": 1, "count": 1, "field_mask": mask})
+    assert mapper.num_actions == 1
+    resp = mapper.action_to_response(0)
+    player, loc, seq = struct.unpack("<BBB", resp)
+    assert player == 0  # opponent of player 1
+    assert loc == LOCATION_MZONE
+    assert seq == 0
+
+
+# --- Card selection response format tests ---
+
+def test_select_card_response_format():
+    """Card response must have type(int32=0) + count(uint32) + uint32 indices."""
+    resp = rb.build_select_card_response([3])
+    assert len(resp) == 12  # 4 + 4 + 4
+    typ, count, idx = struct.unpack("<iII", resp)
+    assert typ == 0
+    assert count == 1
+    assert idx == 3
+
+
+def test_select_card_response_multi():
+    """Multi-card selection response."""
+    resp = rb.build_select_card_response([0, 2, 5])
+    assert len(resp) == 20  # 4 + 4 + 3*4
+    typ, count = struct.unpack_from("<iI", resp, 0)
+    assert typ == 0
+    assert count == 3
+    indices = [struct.unpack_from("<I", resp, 8 + i * 4)[0] for i in range(3)]
+    assert indices == [0, 2, 5]
+
+
+def test_select_sum_response_format():
+    """Sum response uses same type-discriminated format as card selection."""
+    resp = rb.build_select_sum_response([1, 4])
+    assert len(resp) == 16  # 4 + 4 + 2*4
+    typ, count = struct.unpack_from("<iI", resp, 0)
+    assert typ == 0
+    assert count == 2
+
+
+def test_select_card_actions_response():
+    """Full round-trip: MSG_SELECT_CARD -> ActionMapper -> response bytes."""
+    mapper = ActionMapper()
+    mapper.update({
+        "msg_type": MSG_SELECT_CARD,
+        "player": 0,
+        "cancelable": 0,
+        "min": 1,
+        "max": 1,
+        "cards": [
+            {"code": 100, "controller": 0, "location": 2, "sequence": 0, "subsequence": 0},
+            {"code": 200, "controller": 0, "location": 2, "sequence": 1, "subsequence": 0},
+        ],
+    })
+    assert mapper.num_actions == 2
+    resp = mapper.action_to_response(1)
+    typ, count, idx = struct.unpack("<iII", resp)
+    assert typ == 0
+    assert count == 1
+    assert idx == 1  # selected second card

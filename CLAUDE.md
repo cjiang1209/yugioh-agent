@@ -32,6 +32,11 @@ python -m pytest tests/test_duel.py::test_name -v
 
 # Run the server
 uvicorn yugioh_env.server.app:app --host 0.0.0.0 --port 8000
+
+# Run the interactive play client (server must be running)
+scripts/play_client.sh                        # interactive mode
+scripts/play_client.sh --mode random --seed 42
+scripts/play_client.sh --mode greedy --episodes 10 --quiet
 ```
 
 ## Prerequisites & Setup

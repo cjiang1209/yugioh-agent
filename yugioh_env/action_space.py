@@ -222,24 +222,27 @@ def _extract_chain_actions(msg: dict) -> list[dict]:
 
 
 def _extract_place_actions(msg: dict) -> list[dict]:
-    """Extract place selections from field mask."""
+    """Extract place selections from field mask.
+
+    The field_mask is from the selecting player's perspective:
+    bits 0-15 = selector's own zones, bits 16-31 = opponent's zones.
+    The response must use absolute player numbers.
+    """
     field_mask = msg.get("field_mask", 0)
-    # field_mask bits: inverted (0 = available)
+    selecting_player = msg.get("player", 0)
+    # Map relative position (0=self, 1=opponent) to absolute player number
+    abs_player = [selecting_player, 1 - selecting_player]
     actions = []
-    # Player 0 monster zones: bits 0-4 (main), 5-6 (extra)
-    # Player 0 spell zones: bits 8-12, 13 (field)
-    # Player 1 monster zones: bits 16-20, 21-22
-    # Player 1 spell zones: bits 24-28, 29
-    for player in range(2):
-        base_m = player * 16
-        base_s = player * 16 + 8
+    for rel_player in range(2):
+        base_m = rel_player * 16
+        base_s = rel_player * 16 + 8
         for seq in range(7):
             bit = base_m + seq
             if bit < 32 and not (field_mask & (1 << bit)):
                 actions.append({
                     "category": 0, "index": len(actions),
                     "code": 0, "location": LOCATION_MZONE, "sequence": seq,
-                    "build_response": lambda p=player, s=seq: rb.build_select_place_response(
+                    "build_response": lambda p=abs_player[rel_player], s=seq: rb.build_select_place_response(
                         p, LOCATION_MZONE, s
                     ),
                 })
@@ -249,7 +252,7 @@ def _extract_place_actions(msg: dict) -> list[dict]:
                 actions.append({
                     "category": 1, "index": len(actions),
                     "code": 0, "location": LOCATION_SZONE, "sequence": seq,
-                    "build_response": lambda p=player, s=seq: rb.build_select_place_response(
+                    "build_response": lambda p=abs_player[rel_player], s=seq: rb.build_select_place_response(
                         p, LOCATION_SZONE, s
                     ),
                 })

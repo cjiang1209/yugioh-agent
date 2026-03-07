@@ -15,11 +15,14 @@ class YuGiOhEnv(EnvClient[YuGiOhAction, YuGiOhObservation, YuGiOhState]):
         return action.model_dump()
 
     def _parse_result(self, payload: dict) -> StepResult[YuGiOhObservation]:
-        obs = YuGiOhObservation(**payload)
+        obs_data = payload.get("observation", payload)
+        reward = payload.get("reward")
+        done = payload.get("done", False)
+        obs = YuGiOhObservation(**obs_data, reward=reward, done=done)
         return StepResult(
             observation=obs,
-            reward=obs.reward,
-            done=obs.done,
+            reward=reward,
+            done=done,
         )
 
     def _parse_state(self, payload: dict) -> YuGiOhState:
