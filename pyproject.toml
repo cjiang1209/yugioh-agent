@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "yugioh-env"
+version = "0.1.0"
+description = "Yu-Gi-Oh! RL environment powered by ygopro-core"
+requires-python = ">=3.10"
+dependencies = [
+    "openenv-core[core]>=0.2.1",
+    "numpy>=1.24",
+    "pydantic>=2.0",
+    "fastapi>=0.100",
+    "uvicorn>=0.23",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-timeout>=2.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["yugioh_env*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
