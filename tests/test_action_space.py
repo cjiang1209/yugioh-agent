@@ -96,6 +96,32 @@ def test_action_features_shape():
     assert features.dtype == np.uint8
 
 
+def test_action_features_card_code_encoding():
+    """Card code should be encoded as 4-byte uint32 LE in feat[2:6]."""
+    mapper = ActionMapper()
+    mapper.update({
+        "msg_type": MSG_SELECT_CARD,
+        "player": 0,
+        "cancelable": 0,
+        "min": 1,
+        "max": 1,
+        "cards": [
+            {"code": 89631139, "controller": 0, "location": 2, "sequence": 3, "subsequence": 0},
+        ],
+    })
+    features = mapper.get_action_features()
+    feat = features[0]
+    # feat[0] = msg_type
+    assert feat[0] == MSG_SELECT_CARD
+    # feat[2:6] = code as uint32 LE (89631139 = 0x0557B1A3)
+    code = int(feat[2]) | (int(feat[3]) << 8) | (int(feat[4]) << 16) | (int(feat[5]) << 24)
+    assert code == 89631139
+    # feat[6] = location, feat[7] = sequence, feat[8] = index
+    assert feat[6] == 2   # location
+    assert feat[7] == 3   # sequence
+    assert feat[8] == 0   # index
+
+
 def test_invalid_action_index():
     """Invalid action index should raise ValueError."""
     mapper = ActionMapper()

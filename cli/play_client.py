@@ -16,9 +16,12 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
 import random
+import sqlite3
 import sys
 import time
+from pathlib import Path
 
 from yugioh_env.client import YuGiOhEnv
 from yugioh_env.models import YuGiOhAction, YuGiOhObservation
@@ -76,6 +79,32 @@ BATTLE_CATEGORIES = {
 }
 
 
+class CardNames:
+    """Card name lookup from cards.cdb, preloaded at startup."""
+
+    def __init__(self):
+        self._names: dict[int, str] = {}
+
+    def load(self) -> None:
+        """Preload all card names from cards.cdb."""
+        db_path = os.environ.get("YUGIOH_DB_PATH")
+        if not db_path:
+            db_path = str(Path(__file__).resolve().parent.parent / "assets" / "cards.cdb")
+        if not os.path.isfile(db_path):
+            return
+        conn = sqlite3.connect(db_path)
+        try:
+            self._names = {row[0]: row[1] for row in conn.execute("SELECT id, name FROM texts")}
+        finally:
+            conn.close()
+
+    def get(self, code: int) -> str | None:
+        return self._names.get(code)
+
+
+card_names = CardNames()
+
+
 def decode_u16_le(lo: int, hi: int) -> int:
     """Decode two uint8 bytes (little-endian) into a uint16."""
     return lo | (hi << 8)
@@ -105,14 +134,19 @@ def parse_global_state(gs: list[int]) -> dict:
     }
 
 
+def decode_u32_le(b0: int, b1: int, b2: int, b3: int) -> int:
+    """Decode four uint8 bytes (little-endian) into a uint32."""
+    return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
+
+
 def parse_action_features(action_feats: list[int]) -> dict:
     """Parse a single action's feature vector."""
     msg_type = action_feats[0]
     category = action_feats[1]
-    code = decode_u16_le(action_feats[2], action_feats[3])
-    location = action_feats[4]
-    sequence = action_feats[5]
-    index = action_feats[6]
+    code = decode_u32_le(action_feats[2], action_feats[3], action_feats[4], action_feats[5])
+    location = action_feats[6]
+    sequence = action_feats[7]
+    index = action_feats[8]
     return {
         "msg_type": msg_type,
         "category": category,
@@ -150,7 +184,11 @@ def describe_action(action_feats: list[int]) -> str:
         parts.append(f"{sel_name} #{info['index']}")
 
     if code > 0:
-        parts.append(f"(card {code})")
+        name = card_names.get(code)
+        if name:
+            parts.append(f"({code}: {name})")
+        else:
+            parts.append(f"({code})")
 
     return " ".join(parts)
 
@@ -320,6 +358,8 @@ def main():
     pick_action = pickers[args.mode]
     verbose = not args.quiet
 
+    card_names.load()
+    print(f"Loaded {len(card_names._names)} card names.")
     print(f"Connecting to {args.url} ...")
 
     try:

@@ -414,14 +414,26 @@ _ACTION_EXTRACTORS = {
 
 
 def _encode_action(action: dict, msg_type: int) -> np.ndarray:
-    """Encode a single action as a feature vector."""
+    """Encode a single action as a feature vector.
+
+    Layout (12 bytes):
+        [0]    msg_type   (uint8)
+        [1]    category   (uint8)
+        [2:6]  code       (uint32 LE - card passcode)
+        [6]    location   (uint8)
+        [7]    sequence   (uint8)
+        [8]    index      (uint8)
+        [9:12] reserved
+    """
     feat = np.zeros(ACTION_FEATURES, dtype=np.uint8)
     feat[0] = msg_type & 0xFF
     feat[1] = action.get("category", 0)
     code = action.get("code", 0)
     feat[2] = code & 0xFF
     feat[3] = (code >> 8) & 0xFF
-    feat[4] = action.get("location", 0) & 0xFF
-    feat[5] = min(action.get("sequence", 0), 255)
-    feat[6] = action.get("index", 0) & 0xFF
+    feat[4] = (code >> 16) & 0xFF
+    feat[5] = (code >> 24) & 0xFF
+    feat[6] = action.get("location", 0) & 0xFF
+    feat[7] = min(action.get("sequence", 0), 255)
+    feat[8] = action.get("index", 0) & 0xFF
     return feat
