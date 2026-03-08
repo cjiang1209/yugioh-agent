@@ -7,7 +7,7 @@ clean:
 	rm -rf build/
 
 test:
-	python -m pytest tests/ -v
+	. .venv/bin/activate && python -m pytest tests/ -v
 
 install:
 	pip install -e ".[dev]"

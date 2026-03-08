@@ -16,7 +16,7 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-Note: The Makefile uses `python` (not `python3`). Always activate the venv first, or run commands directly with the venv Python.
+Note: `make test` activates the venv automatically. For other Makefile targets and manual Python commands, activate the venv first.
 
 ```bash
 make build      # Compile libocgcore shared library (runs scripts/build_core.sh)
@@ -30,8 +30,8 @@ python -m pytest tests/test_message_parser.py -v
 # Run a specific test
 python -m pytest tests/test_duel.py::test_name -v
 
-# Run the server
-uvicorn yugioh_env.server.app:app --host 0.0.0.0 --port 8000
+# Run the server (activates venv automatically)
+scripts/start_server.sh
 
 # Run the interactive play client (server must be running)
 scripts/play_client.sh                        # interactive mode
