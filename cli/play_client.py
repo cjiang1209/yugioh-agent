@@ -193,6 +193,11 @@ def describe_action(action_feats: list[int]) -> str:
     elif msg_type == 19:  # POSITION
         pos_names = {0x1: "FU-ATK", 0x2: "FD-ATK", 0x4: "FU-DEF", 0x8: "FD-DEF"}
         parts.append(f"Position: {pos_names.get(info['index'], info['index'])}")
+    elif msg_type in (18, 24):  # SELECT_PLACE / SELECT_DISFIELD
+        sel_name = MSG_SELECT_NAMES.get(msg_type, f"msg={msg_type}")
+        loc = info["location"]
+        zone_name = "Monster" if loc == 0x04 else "Spell/Trap" if loc == 0x08 else f"loc=0x{loc:02x}"
+        parts.append(f"{sel_name} — {zone_name} Zone {info['sequence']}")
     else:
         sel_name = MSG_SELECT_NAMES.get(msg_type, f"msg={msg_type}")
         parts.append(f"{sel_name} #{info['index']}")
