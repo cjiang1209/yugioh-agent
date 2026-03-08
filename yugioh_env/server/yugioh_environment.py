@@ -153,6 +153,9 @@ class YuGiOhEnvironment(Environment):
         self._step_count = 0
         duel_seed = seed if seed is not None else self._episode_count
 
+        # Re-seed opponent for reproducibility
+        self._opponent.reseed(duel_seed)
+
         # Resolve decks: use provided inline dicts or fall back to configured paths
         if deck0 is not None:
             self._validate_deck(deck0, "deck0")

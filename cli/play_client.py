@@ -382,6 +382,10 @@ def main():
     )
     args = parser.parse_args()
 
+    # Seed client-side RNG for reproducible random-mode play
+    if args.seed is not None:
+        random.seed(args.seed)
+
     pickers = {
         "interactive": pick_action_interactive,
         "random": pick_action_random,

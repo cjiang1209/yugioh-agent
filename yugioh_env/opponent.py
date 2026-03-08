@@ -21,11 +21,17 @@ class Opponent(ABC):
         """Select an action index given the current message and mapper."""
         ...
 
+    def reseed(self, seed: int) -> None:
+        """Re-seed the opponent's RNG. Override in stochastic subclasses."""
+
 
 class RandomOpponent(Opponent):
     """Select uniformly random legal actions."""
 
     def __init__(self, seed: int | None = None):
+        self._rng = random.Random(seed)
+
+    def reseed(self, seed: int) -> None:
         self._rng = random.Random(seed)
 
     def select_action(self, msg: dict, mapper: ActionMapper) -> int:
