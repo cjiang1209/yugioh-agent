@@ -154,6 +154,12 @@ class Duel:
         self._duel_handle = duel_ptr.value
         self._duel_ptr_holder[0] = self._duel_handle
 
+        # Load core Lua scripts (constants, utility functions, procs) that
+        # card scripts depend on.  The engine only requests individual card
+        # scripts via the script_reader callback; the host must pre-load
+        # the shared runtime scripts itself.
+        self._load_startup_scripts()
+
         # Add cards (shuffle main decks using the seed for determinism)
         rng = random.Random(seed)
         self._add_deck_cards(0, deck0, rng)
@@ -168,6 +174,58 @@ class Duel:
             self._game_state.deck_count[p] = self.query_count(p, LOCATION_DECK)
             self._game_state.extra_count[p] = self.query_count(p, LOCATION_EXTRA)
         self._game_state.lp = [starting_lp, starting_lp]
+
+    # Scripts that must be loaded (in order) before any card scripts run.
+    # constant.lua defines numeric constants; utility.lua defines GetID()
+    # and the Auxiliary table; the remaining files extend Auxiliary.
+    _STARTUP_SCRIPTS: list[str] = [
+        "constant.lua",
+        "utility.lua",
+        "archetype_setcode_constants.lua",
+        "card_counter_constants.lua",
+        "proc_normal.lua",
+        "proc_fusion.lua",
+        "proc_fusion_spell.lua",
+        "proc_ritual.lua",
+        "proc_synchro.lua",
+        "proc_xyz.lua",
+        "proc_pendulum.lua",
+        "proc_link.lua",
+        "proc_equip.lua",
+        "proc_gemini.lua",
+        "proc_spirit.lua",
+        "proc_union.lua",
+        "proc_maximum.lua",
+        "proc_rush.lua",
+        "proc_skill.lua",
+        "proc_persistent.lua",
+        "proc_workaround.lua",
+        "cards_specific_functions.lua",
+        "deprecated_functions.lua",
+    ]
+
+    def _load_startup_scripts(self) -> None:
+        """Load core Lua runtime scripts into the duel engine.
+
+        These define constants and helper functions (e.g. ``GetID()``) that
+        every individual card script relies on.
+        """
+        for name in self._STARTUP_SCRIPTS:
+            for script_dir in self._script_dirs:
+                path = script_dir / name
+                if path.exists():
+                    content = path.read_bytes()
+                    ok = self._lib.OCG_LoadScript(
+                        self._duel_handle,
+                        content,
+                        len(content),
+                        name.encode("utf-8"),
+                    )
+                    if not ok:
+                        logger.warning("Failed to load startup script: %s", name)
+                    break
+            else:
+                logger.debug("Startup script not found: %s", name)
 
     def _add_deck_cards(
         self, team: int, deck: dict[str, list[int]], rng: random.Random

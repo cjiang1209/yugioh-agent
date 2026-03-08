@@ -1,3 +1,6 @@
 [submodule "third_party/ygopro-core"]
 	path = third_party/ygopro-core
 	url = https://github.com/edo9300/ygopro-core.git
+[submodule "third_party/CardScripts"]
+	path = third_party/CardScripts
+	url = https://github.com/ProjectIgnis/CardScripts.git
