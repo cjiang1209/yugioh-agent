@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from itertools import combinations
 import numpy as np
 
 from yugioh_env.constants import *  # noqa: F401,F403
@@ -190,17 +191,27 @@ def _extract_option_actions(msg: dict) -> list[dict]:
 
 
 def _extract_card_actions(msg: dict) -> list[dict]:
-    """For MSG_SELECT_CARD: each card is an action (select min cards)."""
+    """For MSG_SELECT_CARD: generate valid card selection combinations.
+
+    When min=1, each individual card is an action.
+    When min>1, generate combinations of exactly min cards.
+    """
     cards = msg.get("cards", [])
     min_sel = msg.get("min", 1)
-    # For simplicity: each individual card is an action for single-select
-    # For multi-select (min>1): we use single card selections iteratively
-    return [
-        {"category": 0, "index": i, "code": card.get("code", 0),
-         "location": card.get("location", 0), "sequence": card.get("sequence", 0),
-         "build_response": lambda idx=i, ms=min_sel: rb.build_select_card_response([idx])}
-        for i, card in enumerate(cards)
-    ]
+    if not cards:
+        return []
+    actions = []
+    for combo in combinations(range(len(cards)), min_sel):
+        indices = list(combo)
+        card = cards[indices[0]]
+        actions.append({
+            "category": 0, "index": indices[0], "code": card.get("code", 0),
+            "location": card.get("location", 0), "sequence": card.get("sequence", 0),
+            "build_response": lambda idxs=indices: rb.build_select_card_response(idxs),
+        })
+        if len(actions) >= MAX_ACTIONS:
+            break
+    return actions
 
 
 def _extract_chain_actions(msg: dict) -> list[dict]:
@@ -273,13 +284,30 @@ def _extract_position_actions(msg: dict) -> list[dict]:
 
 
 def _extract_tribute_actions(msg: dict) -> list[dict]:
+    """For MSG_SELECT_TRIBUTE: generate valid tribute combinations.
+
+    The engine requires sum(release_param) >= min for selected cards.
+    """
     cards = msg.get("cards", [])
-    return [
-        {"category": 0, "index": i, "code": card.get("code", 0),
-         "location": card.get("location", 0), "sequence": card.get("sequence", 0),
-         "build_response": lambda idx=i: rb.build_select_card_response([idx])}
-        for i, card in enumerate(cards)
-    ]
+    min_sel = msg.get("min", 1)
+    max_sel = msg.get("max", min_sel)
+    if not cards:
+        return []
+    actions = []
+    for size in range(1, min(max_sel, len(cards)) + 1):
+        for combo in combinations(range(len(cards)), size):
+            total_release = sum(cards[i].get("release_param", 1) for i in combo)
+            if total_release >= min_sel:
+                indices = list(combo)
+                card = cards[indices[0]]
+                actions.append({
+                    "category": 0, "index": indices[0], "code": card.get("code", 0),
+                    "location": card.get("location", 0), "sequence": card.get("sequence", 0),
+                    "build_response": lambda idxs=indices: rb.build_select_card_response(idxs),
+                })
+                if len(actions) >= MAX_ACTIONS:
+                    return actions
+    return actions
 
 
 def _extract_sum_actions(msg: dict) -> list[dict]:

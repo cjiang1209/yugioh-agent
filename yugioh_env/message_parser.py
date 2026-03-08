@@ -106,6 +106,7 @@ def _parse_select_battlecmd(r: BinaryReader) -> dict:
             "location": r.u8(),
             "sequence": r.u32(),
             "desc": r.u64(),
+            "client_mode": r.u8(),
         }
         activatable.append(card)
     # Attackable cards
@@ -151,7 +152,7 @@ def _parse_select_idlecmd(r: BinaryReader) -> dict:
     repos_count = r.u32()
     repositionable = []
     for _ in range(repos_count):
-        repositionable.append({"code": r.u32(), "controller": r.u8(), "location": r.u8(), "sequence": r.u32()})
+        repositionable.append({"code": r.u32(), "controller": r.u8(), "location": r.u8(), "sequence": r.u8()})
     # Set-able monsters
     mset_count = r.u32()
     mset = []
@@ -168,7 +169,7 @@ def _parse_select_idlecmd(r: BinaryReader) -> dict:
     for _ in range(act_count):
         activatable.append({
             "code": r.u32(), "controller": r.u8(), "location": r.u8(),
-            "sequence": r.u32(), "desc": r.u64(),
+            "sequence": r.u32(), "desc": r.u64(), "client_mode": r.u8(),
         })
     # Can enter battle phase?
     to_bp = r.u8()

@@ -11,6 +11,8 @@ from yugioh_env.constants import (
     LOCATION_SZONE,
     MSG_SELECT_CARD,
     MSG_SELECT_PLACE,
+    MSG_SELECT_TRIBUTE,
+    MSG_SELECT_UNSELECT_CARD,
     MSG_SELECT_YESNO,
     MSG_SELECT_CHAIN,
     MSG_SELECT_POSITION,
@@ -226,3 +228,125 @@ def test_select_card_actions_response():
     assert typ == 0
     assert count == 1
     assert idx == 1  # selected second card
+
+
+# --- MSG_SELECT_UNSELECT_CARD response format ---
+
+def test_unselect_card_response_select():
+    """Unselect card response sends returns[0]=1 and returns[1]=index."""
+    resp = rb.build_select_unselect_card_response(2)
+    assert len(resp) == 8
+    val0, val1 = struct.unpack("<iI", resp)
+    assert val0 == 1
+    assert val1 == 2
+
+
+def test_unselect_card_response_finish():
+    """Unselect card finish sends returns[0]=-1."""
+    resp = rb.build_select_unselect_card_response(-1)
+    assert len(resp) == 4
+    val = struct.unpack("<i", resp)[0]
+    assert val == -1
+
+
+def test_unselect_card_actions():
+    """MSG_SELECT_UNSELECT_CARD actions produce correct response format."""
+    mapper = ActionMapper()
+    mapper.update({
+        "msg_type": MSG_SELECT_UNSELECT_CARD,
+        "player": 0,
+        "finishable": 1,
+        "cancelable": 0,
+        "min": 1,
+        "max": 3,
+        "selectable": [
+            {"code": 100, "controller": 0, "location": 2, "sequence": 0, "subsequence": 0},
+            {"code": 200, "controller": 0, "location": 2, "sequence": 1, "subsequence": 0},
+            {"code": 300, "controller": 0, "location": 2, "sequence": 2, "subsequence": 0},
+        ],
+        "unselectable": [],
+    })
+    # 3 selectable + 1 finish = 4 actions
+    assert mapper.num_actions == 4
+
+    # Selecting card at index 2
+    resp = mapper.action_to_response(2)
+    val0, val1 = struct.unpack("<iI", resp)
+    assert val0 == 1
+    assert val1 == 2
+
+    # Finish action (last)
+    resp = mapper.action_to_response(3)
+    val = struct.unpack("<i", resp)[0]
+    assert val == -1
+
+
+# --- Multi-select card tests ---
+
+def test_select_card_multi_select():
+    """MSG_SELECT_CARD with min=2 generates pair combinations."""
+    mapper = ActionMapper()
+    mapper.update({
+        "msg_type": MSG_SELECT_CARD,
+        "player": 0,
+        "cancelable": 0,
+        "min": 2,
+        "max": 2,
+        "cards": [
+            {"code": 100, "controller": 0, "location": 2, "sequence": 0, "subsequence": 0},
+            {"code": 200, "controller": 0, "location": 2, "sequence": 1, "subsequence": 0},
+            {"code": 300, "controller": 0, "location": 2, "sequence": 2, "subsequence": 0},
+        ],
+    })
+    # C(3,2) = 3 combinations
+    assert mapper.num_actions == 3
+    # Each response should contain 2 card indices
+    resp = mapper.action_to_response(0)
+    typ, count = struct.unpack_from("<iI", resp, 0)
+    assert typ == 0
+    assert count == 2
+
+
+# --- Tribute tests ---
+
+def test_tribute_two_tributes():
+    """MSG_SELECT_TRIBUTE with min=2 generates valid pair combos."""
+    mapper = ActionMapper()
+    mapper.update({
+        "msg_type": MSG_SELECT_TRIBUTE,
+        "player": 0,
+        "cancelable": 0,
+        "min": 2,
+        "max": 2,
+        "cards": [
+            {"code": 100, "controller": 0, "location": 4, "sequence": 0, "release_param": 1},
+            {"code": 200, "controller": 0, "location": 4, "sequence": 1, "release_param": 1},
+            {"code": 300, "controller": 0, "location": 4, "sequence": 2, "release_param": 1},
+        ],
+    })
+    # C(3,2) = 3 pairs, all valid since each release_param=1 and 1+1 >= 2
+    assert mapper.num_actions == 3
+    resp = mapper.action_to_response(0)
+    typ, count = struct.unpack_from("<iI", resp, 0)
+    assert typ == 0
+    assert count == 2
+
+
+def test_tribute_double_release():
+    """A card with release_param=2 can tribute-summon alone for min=2."""
+    mapper = ActionMapper()
+    mapper.update({
+        "msg_type": MSG_SELECT_TRIBUTE,
+        "player": 0,
+        "cancelable": 0,
+        "min": 2,
+        "max": 2,
+        "cards": [
+            {"code": 100, "controller": 0, "location": 4, "sequence": 0, "release_param": 2},
+            {"code": 200, "controller": 0, "location": 4, "sequence": 1, "release_param": 1},
+        ],
+    })
+    # Card 0 alone (release_param=2 >= min=2): 1 action
+    # Pair (0,1) with total 3 >= 2: 1 action
+    # Card 1 alone (release_param=1 < min=2): not valid
+    assert mapper.num_actions == 2

@@ -75,8 +75,14 @@ def build_select_sum_response(indices: list[int]) -> bytes:
 
 
 def build_select_unselect_card_response(index: int) -> bytes:
-    """Build response for MSG_SELECT_UNSELECT_CARD. -1 to finish."""
-    return struct.pack("<i", index)
+    """Build response for MSG_SELECT_UNSELECT_CARD.
+
+    The engine expects returns[0] = 1 (exactly one selection) and returns[1] = card index.
+    Or returns[0] = -1 to cancel/finish.
+    """
+    if index == -1:
+        return struct.pack("<i", -1)
+    return struct.pack("<iI", 1, index)
 
 
 def build_announce_race_response(race_mask: int) -> bytes:
