@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from openenv.core.env_client import EnvClient
 from openenv.core.client_types import StepResult
 
@@ -10,6 +12,31 @@ from yugioh_env.models import YuGiOhAction, YuGiOhObservation, YuGiOhState
 
 class YuGiOhEnv(EnvClient[YuGiOhAction, YuGiOhObservation, YuGiOhState]):
     """Client for connecting to a Yu-Gi-Oh! environment server."""
+
+    def reset(
+        self,
+        *,
+        seed: int | None = None,
+        deck0: dict[str, list[int]] | None = None,
+        deck1: dict[str, list[int]] | None = None,
+        **kwargs: Any,
+    ) -> StepResult[YuGiOhObservation]:
+        """Reset the environment and start a new duel.
+
+        Args:
+            seed: RNG seed for this episode.
+            deck0: Inline deck for player 0 ({"main": [...], "extra": [...]}).
+            deck1: Inline deck for player 1, same format.
+        """
+        reset_kwargs: dict[str, Any] = {}
+        if seed is not None:
+            reset_kwargs["seed"] = seed
+        if deck0 is not None:
+            reset_kwargs["deck0"] = deck0
+        if deck1 is not None:
+            reset_kwargs["deck1"] = deck1
+        reset_kwargs.update(kwargs)
+        return super().reset(**reset_kwargs)
 
     def _step_payload(self, action: YuGiOhAction) -> dict:
         return action.model_dump()

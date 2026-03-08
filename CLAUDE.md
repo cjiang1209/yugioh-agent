@@ -37,6 +37,8 @@ uvicorn yugioh_env.server.app:app --host 0.0.0.0 --port 8000
 scripts/play_client.sh                        # interactive mode
 scripts/play_client.sh --mode random --seed 42
 scripts/play_client.sh --mode greedy --episodes 10 --quiet
+scripts/play_client.sh --deck assets/decks/blue_eyes.ydk --mode greedy
+scripts/play_client.sh --deck0 assets/decks/blue_eyes.ydk --deck1 assets/decks/starter.ydk
 ```
 
 ## Prerequisites & Setup
@@ -93,6 +95,10 @@ YuGiOhEnvironment (server/yugioh_environment.py)
 ### Action Space
 
 Fixed 32 actions (`MAX_ACTIONS`). `ActionMapper` handles 21+ `MSG_SELECT_*` types (idle cmd, battle cmd, card selection, tribute, chain, place, position, sum, yes/no, etc.).
+
+### Client-Specified Decks
+
+`reset()` accepts optional `deck0`/`deck1` inline deck dicts (`{"main": [int, ...], "extra": [int, ...]}`). When omitted, the server-configured default deck paths are used. Validation enforces 40-60 main cards, 0-15 extra cards, all positive ints. The play client supports `--deck`, `--deck0`, `--deck1` flags (paths to `.ydk` files parsed client-side).
 
 ## Critical Implementation Details
 

@@ -2,6 +2,7 @@
 
 import pytest
 
+from yugioh_env.deck_parser import parse_ydk
 from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
 from yugioh_env.models import YuGiOhAction
 
@@ -83,3 +84,49 @@ def test_multiple_episodes(env):
                     obs = env.step(YuGiOhAction(action_index=i))
                     break
             steps += 1
+
+
+# --- Deck-at-reset tests ---
+
+
+@pytest.fixture
+def inline_deck(deck_path):
+    """Parse the starter deck file into an inline dict."""
+    return parse_ydk(deck_path)
+
+
+def test_reset_with_inline_decks(env, inline_deck):
+    """Reset with inline deck dicts for both players."""
+    obs = env.reset(seed=100, deck0=inline_deck, deck1=inline_deck)
+    assert obs is not None
+    assert not obs.done
+    assert any(a == 1 for a in obs.action_mask)
+
+
+def test_reset_with_one_inline_deck(env, inline_deck):
+    """Reset with one inline deck; other uses server default."""
+    obs = env.reset(seed=101, deck0=inline_deck)
+    assert obs is not None
+    assert not obs.done
+    assert any(a == 1 for a in obs.action_mask)
+
+
+def test_reset_deck_validation_rejects_empty_main(env):
+    """Empty main deck should raise ValueError."""
+    bad_deck = {"main": [], "extra": []}
+    with pytest.raises(ValueError, match="40-60 cards"):
+        env.reset(seed=200, deck0=bad_deck)
+
+
+def test_reset_deck_validation_rejects_bad_codes(env):
+    """Negative card codes should raise ValueError."""
+    bad_deck = {"main": [-1] * 40}
+    with pytest.raises(ValueError, match="positive integers"):
+        env.reset(seed=201, deck0=bad_deck)
+
+
+def test_reset_deck_validation_rejects_oversized_extra(env):
+    """>15 extra deck cards should raise ValueError."""
+    bad_deck = {"main": [89631139] * 40, "extra": [89631139] * 16}
+    with pytest.raises(ValueError, match="0-15 cards"):
+        env.reset(seed=202, deck0=bad_deck)

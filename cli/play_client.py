@@ -24,6 +24,7 @@ import time
 from pathlib import Path
 
 from yugioh_env.client import YuGiOhEnv
+from yugioh_env.deck_parser import parse_ydk
 from yugioh_env.models import YuGiOhAction, YuGiOhObservation
 
 # Phase ID -> human-readable name
@@ -85,8 +86,13 @@ class CardNames:
     def __init__(self):
         self._names: dict[int, str] = {}
 
-    def load(self) -> None:
-        """Preload all card names from cards.cdb."""
+    def load(self, card_codes: set[int] | None = None) -> None:
+        """Load card names from cards.cdb.
+
+        Args:
+            card_codes: If provided, only load names for these codes.
+                        If None, load all card names.
+        """
         db_path = os.environ.get("YUGIOH_DB_PATH")
         if not db_path:
             db_path = str(Path(__file__).resolve().parent.parent / "assets" / "cards.cdb")
@@ -94,7 +100,15 @@ class CardNames:
             return
         conn = sqlite3.connect(db_path)
         try:
-            self._names = {row[0]: row[1] for row in conn.execute("SELECT id, name FROM texts")}
+            if card_codes is not None:
+                placeholders = ",".join("?" for _ in card_codes)
+                rows = conn.execute(
+                    f"SELECT id, name FROM texts WHERE id IN ({placeholders})",
+                    list(card_codes),
+                )
+            else:
+                rows = conn.execute("SELECT id, name FROM texts")
+            self._names = {row[0]: row[1] for row in rows}
         finally:
             conn.close()
 
@@ -267,11 +281,17 @@ def run_episode(
     pick_action,
     seed: int | None = None,
     verbose: bool = True,
+    deck0: dict | None = None,
+    deck1: dict | None = None,
 ) -> dict:
     """Run a single duel episode. Returns stats dict."""
     reset_kwargs = {}
     if seed is not None:
         reset_kwargs["seed"] = seed
+    if deck0 is not None:
+        reset_kwargs["deck0"] = deck0
+    if deck1 is not None:
+        reset_kwargs["deck1"] = deck1
 
     result = env.reset(**reset_kwargs)
     step_num = 0
@@ -341,6 +361,18 @@ def main():
         help="Random seed for the first episode (incremented per episode)",
     )
     parser.add_argument(
+        "--deck", type=str, default=None,
+        help="Path to .ydk deck file (used for both players)",
+    )
+    parser.add_argument(
+        "--deck0", type=str, default=None,
+        help="Path to .ydk deck file for player 0 (overrides --deck)",
+    )
+    parser.add_argument(
+        "--deck1", type=str, default=None,
+        help="Path to .ydk deck file for player 1 (overrides --deck)",
+    )
+    parser.add_argument(
         "--quiet", action="store_true",
         help="Suppress per-step output (show only episode summaries)",
     )
@@ -358,7 +390,28 @@ def main():
     pick_action = pickers[args.mode]
     verbose = not args.quiet
 
-    card_names.load()
+    # Parse deck files into inline card-code dicts
+    deck0 = None
+    deck1 = None
+    if args.deck:
+        shared_deck = parse_ydk(args.deck)
+        deck0 = shared_deck
+        deck1 = shared_deck
+    if args.deck0:
+        deck0 = parse_ydk(args.deck0)
+    if args.deck1:
+        deck1 = parse_ydk(args.deck1)
+
+    # Collect card codes from specified decks to limit DB loading
+    deck_codes: set[int] | None = None
+    if deck0 is not None or deck1 is not None:
+        deck_codes = set()
+        for d in (deck0, deck1):
+            if d is not None:
+                deck_codes.update(d.get("main", []))
+                deck_codes.update(d.get("extra", []))
+
+    card_names.load(deck_codes)
     print(f"Loaded {len(card_names._names)} card names.")
     print(f"Connecting to {args.url} ...")
 
@@ -376,7 +429,8 @@ def main():
                     print(f"--- Episode {ep + 1}/{args.episodes} (seed={seed}) ---")
 
                 t0 = time.time()
-                stats = run_episode(env, pick_action, seed=seed, verbose=verbose)
+                stats = run_episode(env, pick_action, seed=seed, verbose=verbose,
+                                    deck0=deck0, deck1=deck1)
                 elapsed = time.time() - t0
                 stats["time"] = elapsed
                 all_stats.append(stats)

@@ -106,13 +106,45 @@ class YuGiOhEnvironment(Environment):
         self._episode_count = 0
         self._step_count = 0
 
+    @staticmethod
+    def _validate_deck(deck: dict, label: str) -> None:
+        """Validate an inline deck dict.
+
+        Raises ValueError if the deck is malformed.
+        """
+        if "main" not in deck:
+            raise ValueError(f"{label}: missing 'main' key")
+        main = deck["main"]
+        if not isinstance(main, list) or len(main) < 40 or len(main) > 60:
+            raise ValueError(
+                f"{label}: main deck must have 40-60 cards, got {len(main) if isinstance(main, list) else type(main)}"
+            )
+        extra = deck.get("extra", [])
+        if not isinstance(extra, list) or len(extra) > 15:
+            raise ValueError(
+                f"{label}: extra deck must have 0-15 cards, got {len(extra) if isinstance(extra, list) else type(extra)}"
+            )
+        for card in main + extra:
+            if not isinstance(card, int) or card <= 0:
+                raise ValueError(f"{label}: card codes must be positive integers, got {card!r}")
+
     def reset(
         self,
         seed: Optional[int] = None,
         episode_id: Optional[str] = None,
+        deck0: Optional[dict[str, list[int]]] = None,
+        deck1: Optional[dict[str, list[int]]] = None,
         **kwargs: Any,
     ) -> YuGiOhObservation:
-        """Start a new duel and return the initial observation."""
+        """Start a new duel and return the initial observation.
+
+        Args:
+            seed: RNG seed for this episode.
+            episode_id: Optional episode identifier.
+            deck0: Inline deck for player 0 ({"main": [...], "extra": [...]}).
+                   Falls back to server-configured default if None.
+            deck1: Inline deck for player 1, same format as deck0.
+        """
         # Clean up previous duel
         if self._duel is not None:
             self._duel.destroy()
@@ -121,11 +153,20 @@ class YuGiOhEnvironment(Environment):
         self._step_count = 0
         duel_seed = seed if seed is not None else self._episode_count
 
+        # Resolve decks: use provided inline dicts or fall back to configured paths
+        if deck0 is not None:
+            self._validate_deck(deck0, "deck0")
+        if deck1 is not None:
+            self._validate_deck(deck1, "deck1")
+
+        effective_deck0 = deck0 if deck0 is not None else self._deck0_path
+        effective_deck1 = deck1 if deck1 is not None else self._deck1_path
+
         # Create duel
         self._duel = Duel(self._lib, self._card_db, self._script_dirs)
         self._duel.create(
-            deck0=self._deck0_path,
-            deck1=self._deck1_path,
+            deck0=effective_deck0,
+            deck1=effective_deck1,
             seed=duel_seed,
             starting_lp=self._starting_lp,
         )
