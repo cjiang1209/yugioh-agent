@@ -18,6 +18,12 @@ class ActionMapper:
 
     Extracts available actions from a SELECT message, provides action masks
     and feature vectors, and converts action indices to binary responses.
+
+    Stateless: all multi-step orchestration (e.g. accumulating card picks)
+    is handled by the caller.  ``action_to_response`` returns ``None`` for
+    intermediate picks whose ``build_response`` is ``None``; the caller
+    re-presents updated choices by calling ``update`` with an augmented
+    message.
     """
 
     def __init__(self):
@@ -59,12 +65,26 @@ class ActionMapper:
             features[i] = _encode_action(action, self._msg_type)
         return features
 
-    def action_to_response(self, idx: int) -> bytes:
-        """Convert an action index to the binary response buffer."""
+    def get_action_index(self, idx: int) -> int:
+        """Return the card/item index for action *idx*."""
+        if idx < 0 or idx >= len(self._actions):
+            raise ValueError(f"Action index {idx} out of range [0, {len(self._actions)})")
+        return self._actions[idx].get("index", 0)
+
+    def action_to_response(self, idx: int) -> bytes | None:
+        """Convert an action index to the binary response buffer.
+
+        Returns ``None`` when the action's ``build_response`` is ``None``
+        (intermediate multi-step pick).  The caller should accumulate the
+        pick, call ``update`` with an augmented message, and re-present.
+        """
         if idx < 0 or idx >= len(self._actions):
             raise ValueError(f"Action index {idx} out of range [0, {len(self._actions)})")
         action = self._actions[idx]
-        return action["build_response"]()
+        br = action.get("build_response")
+        if br is None:
+            return None
+        return br()
 
 
 # ─── Action extraction per message type ──────────────────────────────────────
@@ -191,26 +211,49 @@ def _extract_option_actions(msg: dict) -> list[dict]:
 
 
 def _extract_card_actions(msg: dict) -> list[dict]:
-    """For MSG_SELECT_CARD: generate valid card selection combinations.
+    """For MSG_SELECT_CARD: present individual card picks per step.
 
-    When min=1, each individual card is an action.
-    When min>1, generate combinations of exactly min cards.
+    The caller drives multi-step selection by injecting ``_selected``
+    (list of already-chosen card indices) into the message before each
+    ``update`` call.  On each step this extractor presents the remaining
+    cards; picks that complete the selection get a real ``build_response``,
+    intermediate picks get ``None``.  A "finish" action (category=1)
+    appears when ``min < max`` and enough cards are already selected.
     """
     cards = msg.get("cards", [])
+    selected: list[int] = msg.get("_selected", [])
     min_sel = msg.get("min", 1)
+    max_sel = msg.get("max", min_sel)
+    selected_set = set(selected)
     if not cards:
         return []
-    actions = []
-    for combo in combinations(range(len(cards)), min_sel):
-        indices = list(combo)
-        card = cards[indices[0]]
+
+    actions: list[dict] = []
+    for i, card in enumerate(cards):
+        if i in selected_set:
+            continue
+        new_selected = selected + [i]
+        completes = len(new_selected) >= max_sel
         actions.append({
-            "category": 0, "index": indices[0], "code": card.get("code", 0),
+            "category": 0, "index": i, "code": card.get("code", 0),
             "location": card.get("location", 0), "sequence": card.get("sequence", 0),
-            "build_response": lambda idxs=indices: rb.build_select_card_response(idxs),
+            "num_selected": len(new_selected),
+            "build_response": (
+                (lambda idxs=new_selected: rb.build_select_card_response(idxs))
+                if completes else None
+            ),
         })
         if len(actions) >= MAX_ACTIONS:
-            break
+            return actions
+
+    # "Finish" when min < max and enough cards are already selected
+    if min_sel < max_sel and len(selected) >= min_sel:
+        actions.append({
+            "category": 1, "index": 0, "code": 0, "location": 0, "sequence": 0,
+            "num_selected": len(selected),
+            "build_response": lambda idxs=list(selected): rb.build_select_card_response(idxs),
+        })
+
     return actions
 
 
@@ -445,13 +488,15 @@ def _encode_action(action: dict, msg_type: int) -> np.ndarray:
     """Encode a single action as a feature vector.
 
     Layout (12 bytes):
-        [0]    msg_type   (uint8)
-        [1]    category   (uint8)
-        [2:6]  code       (uint32 LE - card passcode)
-        [6]    location   (uint8)
-        [7]    sequence   (uint8)
-        [8]    index      (uint8)
-        [9:12] reserved
+        [0]    msg_type      (uint8)
+        [1]    category      (uint8)
+        [2:6]  code          (uint32 LE - card passcode)
+        [6]    location      (uint8)
+        [7]    sequence      (uint8)
+        [8]    index         (uint8)
+        [9]    num_selected  (uint8 - number of cards in combo, default 1)
+        [10]   extra_idx_0   (uint8 - index of 2nd selected card)
+        [11]   extra_idx_1   (uint8 - index of 3rd selected card)
     """
     feat = np.zeros(ACTION_FEATURES, dtype=np.uint8)
     feat[0] = msg_type & 0xFF
@@ -464,4 +509,10 @@ def _encode_action(action: dict, msg_type: int) -> np.ndarray:
     feat[6] = action.get("location", 0) & 0xFF
     feat[7] = min(action.get("sequence", 0), 255)
     feat[8] = action.get("index", 0) & 0xFF
+    feat[9] = action.get("num_selected", 1)
+    extra = action.get("extra_indices", [])
+    if len(extra) >= 1:
+        feat[10] = extra[0] & 0xFF
+    if len(extra) >= 2:
+        feat[11] = extra[1] & 0xFF
     return feat

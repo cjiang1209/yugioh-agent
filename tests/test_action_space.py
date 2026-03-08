@@ -284,9 +284,9 @@ def test_unselect_card_actions():
 # --- Multi-select card tests ---
 
 def test_select_card_multi_select():
-    """MSG_SELECT_CARD with min=2 generates pair combinations."""
+    """MSG_SELECT_CARD with min=2, max=2 uses two-step selection."""
     mapper = ActionMapper()
-    mapper.update({
+    msg = {
         "msg_type": MSG_SELECT_CARD,
         "player": 0,
         "cancelable": 0,
@@ -297,11 +297,22 @@ def test_select_card_multi_select():
             {"code": 200, "controller": 0, "location": 2, "sequence": 1, "subsequence": 0},
             {"code": 300, "controller": 0, "location": 2, "sequence": 2, "subsequence": 0},
         ],
-    })
-    # C(3,2) = 3 combinations
+    }
+    mapper.update(msg)
+    # Step 1: 3 individual cards (no finish since min=max=2)
     assert mapper.num_actions == 3
-    # Each response should contain 2 card indices
+
+    # Pick card 0 — not done yet (1 < max=2), returns None
     resp = mapper.action_to_response(0)
+    assert resp is None
+
+    # Step 2: caller injects _selected and re-calls update
+    mapper.update({**msg, "_selected": [0]})
+    assert mapper.num_actions == 2  # 2 remaining cards (no finish since min=max)
+
+    # Pick card 2 — hits max=2, auto-completes
+    resp = mapper.action_to_response(1)  # remaining card at index 1 = original card 2
+    assert resp is not None
     typ, count = struct.unpack_from("<iI", resp, 0)
     assert typ == 0
     assert count == 2
@@ -330,6 +341,95 @@ def test_tribute_two_tributes():
     typ, count = struct.unpack_from("<iI", resp, 0)
     assert typ == 0
     assert count == 2
+
+
+def test_select_card_min_max_multi_step():
+    """MSG_SELECT_CARD with min=1, max=2 uses multi-step selection."""
+    mapper = ActionMapper()
+    msg = {
+        "msg_type": MSG_SELECT_CARD,
+        "player": 0,
+        "cancelable": 0,
+        "min": 1,
+        "max": 2,
+        "cards": [
+            {"code": 100, "controller": 0, "location": 2, "sequence": 0, "subsequence": 0},
+            {"code": 200, "controller": 0, "location": 2, "sequence": 1, "subsequence": 0},
+            {"code": 300, "controller": 0, "location": 2, "sequence": 2, "subsequence": 0},
+            {"code": 400, "controller": 0, "location": 2, "sequence": 3, "subsequence": 0},
+        ],
+    }
+    mapper.update(msg)
+    # Step 1: 4 individual cards, no finish yet (0 < min=1)
+    assert mapper.num_actions == 4
+
+    features = mapper.get_action_features()
+    # Each card action has num_selected = 1 (will be 1 after pick)
+    for i in range(4):
+        assert features[i][9] == 1
+        assert features[i][1] == 0  # category = 0 (card pick)
+
+    # Pick card 0 — returns None (multi-step in progress)
+    resp = mapper.action_to_response(0)
+    assert resp is None
+
+    # Step 2: caller injects _selected
+    mapper.update({**msg, "_selected": [0]})
+    # 3 remaining cards + 1 finish option (1 >= min=1)
+    assert mapper.num_actions == 4  # 3 cards + 1 finish
+    features2 = mapper.get_action_features()
+    # Last action is "finish" (category=1)
+    assert features2[3][1] == 1  # category = 1
+    assert features2[3][9] == 1  # num_selected = 1 (accumulated so far)
+    # Card actions have num_selected = 2 (will be 2 after this pick)
+    for i in range(3):
+        assert features2[i][9] == 2
+        assert features2[i][1] == 0  # category = 0
+
+    # Pick card 2 — hits max=2, returns final response
+    resp = mapper.action_to_response(1)  # index 1 in remaining = card 2 (original index)
+    assert resp is not None
+    typ, count = struct.unpack_from("<iI", resp, 0)
+    assert typ == 0
+    assert count == 2
+
+
+def test_select_card_min_max_finish_early():
+    """Multi-step: picking 'finish' after min selections."""
+    mapper = ActionMapper()
+    msg = {
+        "msg_type": MSG_SELECT_CARD,
+        "player": 0,
+        "cancelable": 0,
+        "min": 1,
+        "max": 3,
+        "cards": [
+            {"code": 100, "controller": 0, "location": 2, "sequence": 0, "subsequence": 0},
+            {"code": 200, "controller": 0, "location": 2, "sequence": 1, "subsequence": 0},
+            {"code": 300, "controller": 0, "location": 2, "sequence": 2, "subsequence": 0},
+        ],
+    }
+    mapper.update(msg)
+    # Step 1: 3 cards, no finish
+    assert mapper.num_actions == 3
+
+    # Pick card 1
+    resp = mapper.action_to_response(1)
+    assert resp is None
+
+    # Step 2: caller injects _selected
+    mapper.update({**msg, "_selected": [1]})
+    # 2 remaining cards + finish (1 >= min=1)
+    assert mapper.num_actions == 3  # 2 cards + 1 finish
+
+    # Pick "finish" (last action)
+    resp = mapper.action_to_response(2)
+    assert resp is not None
+    typ, count = struct.unpack_from("<iI", resp, 0)
+    assert typ == 0
+    assert count == 1  # Only 1 card selected
+    idx = struct.unpack_from("<I", resp, 8)[0]
+    assert idx == 1  # Original card index 1
 
 
 def test_tribute_double_release():

@@ -105,6 +105,8 @@ class YuGiOhEnvironment(Environment):
         self._current_msg: dict | None = None
         self._episode_count = 0
         self._step_count = 0
+        # Multi-step card selection accumulator (managed by environment)
+        self._card_sel: list[int] = []
 
     @staticmethod
     def _validate_deck(deck: dict, label: str) -> None:
@@ -200,6 +202,15 @@ class YuGiOhEnvironment(Environment):
             else:
                 return self._make_terminal_observation()
 
+        if response is None:
+            # Multi-step: accumulate picked card, re-present with updated msg
+            card_idx = self._mapper.get_action_index(action.action_index)
+            self._card_sel.append(card_idx)
+            updated_msg = {**self._current_msg, "_selected": list(self._card_sel)}
+            self._mapper.update(updated_msg)
+            return self._make_observation()
+
+        self._card_sel.clear()
         self._duel.send_response(response)
 
         # Process until agent's next choice or game end
@@ -239,18 +250,26 @@ class YuGiOhEnvironment(Environment):
             if player == self._agent_player and msg_type in SELECT_MSGS:
                 # Agent's turn to decide
                 self._current_msg = msg
+                self._card_sel.clear()
                 self._mapper.update(msg)
                 return self._make_observation()
 
             elif player != self._agent_player and msg_type in SELECT_MSGS:
-                # Opponent's turn - auto-play
+                # Opponent's turn - auto-play (loop for multi-step selections)
                 opp_mapper = ActionMapper()
                 opp_mapper.update(msg)
+                opp_sel: list[int] = []
                 if opp_mapper.num_actions > 0:
-                    opp_action = self._opponent.select_action(msg, opp_mapper)
-                    opp_action = min(opp_action, opp_mapper.num_actions - 1)
-                    response = opp_mapper.action_to_response(opp_action)
-                    self._duel.send_response(response)
+                    response = None
+                    while response is None and opp_mapper.num_actions > 0:
+                        opp_action = self._opponent.select_action(msg, opp_mapper)
+                        opp_action = min(opp_action, opp_mapper.num_actions - 1)
+                        response = opp_mapper.action_to_response(opp_action)
+                        if response is None:
+                            opp_sel.append(opp_mapper.get_action_index(opp_action))
+                            opp_mapper.update({**msg, "_selected": list(opp_sel)})
+                    if response is not None:
+                        self._duel.send_response(response)
                 else:
                     logger.warning("Opponent has no actions for msg_type=%d", msg_type)
                     return self._make_terminal_observation()

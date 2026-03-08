@@ -161,6 +161,12 @@ def parse_action_features(action_feats: list[int]) -> dict:
     location = action_feats[6]
     sequence = action_feats[7]
     index = action_feats[8]
+    num_selected = action_feats[9] if action_feats[9] > 0 else 1
+    extra_indices = []
+    if num_selected >= 2:
+        extra_indices.append(action_feats[10])
+    if num_selected >= 3:
+        extra_indices.append(action_feats[11])
     return {
         "msg_type": msg_type,
         "category": category,
@@ -168,6 +174,8 @@ def parse_action_features(action_feats: list[int]) -> dict:
         "location": location,
         "sequence": sequence,
         "index": index,
+        "num_selected": num_selected,
+        "extra_indices": extra_indices,
     }
 
 
@@ -198,9 +206,17 @@ def describe_action(action_feats: list[int]) -> str:
         loc = info["location"]
         zone_name = "Monster" if loc == 0x04 else "Spell/Trap" if loc == 0x08 else f"loc=0x{loc:02x}"
         parts.append(f"{sel_name} — {zone_name} Zone {info['sequence']}")
+    elif msg_type == 15 and cat == 1:  # SELECT_CARD finish
+        num_sel = info.get("num_selected", 0)
+        parts.append(f"Finish selecting ({num_sel} card{'s' if num_sel != 1 else ''})")
     else:
         sel_name = MSG_SELECT_NAMES.get(msg_type, f"msg={msg_type}")
-        parts.append(f"{sel_name} #{info['index']}")
+        num_sel = info.get("num_selected", 1)
+        if num_sel > 1:
+            idx_strs = [f"#{info['index']}"] + [f"#{ei}" for ei in info.get("extra_indices", [])]
+            parts.append(f"{sel_name} {'+'.join(idx_strs)}")
+        else:
+            parts.append(f"{sel_name} #{info['index']}")
 
     if code > 0:
         name = card_names.get(code)
