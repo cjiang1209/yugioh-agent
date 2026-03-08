@@ -2,7 +2,7 @@
 
 import pytest
 
-from yugioh_env.constants import SELECT_MSGS, MSG_WIN
+from yugioh_env.constants import LOCATION_HAND, SELECT_MSGS, MSG_WIN
 from yugioh_env.duel import Duel
 
 
@@ -56,3 +56,20 @@ def test_query_count(duel, deck_path):
     hand1 = duel.query_count(1, LOCATION_HAND)
     assert hand0 >= 0
     assert hand1 >= 0
+
+
+def _get_opening_hand(lib, card_db, script_dirs, deck_path, seed):
+    """Helper: return player-0's opening hand card codes for *seed*."""
+    with Duel(lib, card_db, script_dirs) as d:
+        d.create(deck0=deck_path, deck1=deck_path, seed=seed)
+        d.process_until_choice()
+        cards = d.query_location(0, LOCATION_HAND)
+        return [c.get("code", 0) for c in cards]
+
+
+
+def test_shuffle_deterministic_same_seed(lib, card_db, script_dirs, deck_path):
+    """Same seed must always produce the same opening hand."""
+    hand_a = _get_opening_hand(lib, card_db, script_dirs, deck_path, seed=42)
+    hand_b = _get_opening_hand(lib, card_db, script_dirs, deck_path, seed=42)
+    assert hand_a == hand_b

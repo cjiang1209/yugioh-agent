@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ctypes
 import logging
+import random
 import struct
 from pathlib import Path
 from typing import Any
@@ -27,10 +28,6 @@ from yugioh_env.constants import (
     MSG_WIN,
     MSG_RETRY,
     QUERY_BASIC,
-    TYPE_FUSION,
-    TYPE_SYNCHRO,
-    TYPE_XYZ,
-    TYPE_LINK,
 )
 from yugioh_env.core_types import (
     OCG_DuelOptions,
@@ -51,7 +48,6 @@ from yugioh_env.observation import _parse_query_buffer
 
 logger = logging.getLogger(__name__)
 
-EXTRA_DECK_TYPES = TYPE_FUSION | TYPE_SYNCHRO | TYPE_XYZ | TYPE_LINK
 
 
 class Duel:
@@ -158,9 +154,10 @@ class Duel:
         self._duel_handle = duel_ptr.value
         self._duel_ptr_holder[0] = self._duel_handle
 
-        # Add cards
-        self._add_deck_cards(0, deck0)
-        self._add_deck_cards(1, deck1)
+        # Add cards (shuffle main decks using the seed for determinism)
+        rng = random.Random(seed)
+        self._add_deck_cards(0, deck0, rng)
+        self._add_deck_cards(1, deck1, rng)
 
         # Start duel
         self._lib.OCG_StartDuel(self._duel_handle)
@@ -172,17 +169,19 @@ class Duel:
             self._game_state.extra_count[p] = self.query_count(p, LOCATION_EXTRA)
         self._game_state.lp = [starting_lp, starting_lp]
 
-    def _add_deck_cards(self, team: int, deck: dict[str, list[int]]) -> None:
-        """Add all cards from a deck to the duel."""
-        # Main deck
-        for seq, code in enumerate(deck.get("main", [])):
-            card = self._card_db.get_card(code)
-            card_type = card["type"] if card else 0
-            # Check if card belongs in extra deck
-            if card_type & EXTRA_DECK_TYPES:
-                self._add_card(team, code, LOCATION_EXTRA, 0)
-            else:
-                self._add_card(team, code, LOCATION_DECK, seq)
+    def _add_deck_cards(
+        self, team: int, deck: dict[str, list[int]], rng: random.Random
+    ) -> None:
+        """Add all cards from a deck to the duel.
+
+        The main deck is shuffled using *rng* before insertion because the
+        engine's Startup processor clears shuffle flags before the opening draw.
+        """
+        # Shuffle main deck, then add cards
+        main_codes = list(deck.get("main", []))
+        rng.shuffle(main_codes)
+        for seq, code in enumerate(main_codes):
+            self._add_card(team, code, LOCATION_DECK, seq)
 
         # Extra deck
         for seq, code in enumerate(deck.get("extra", [])):
