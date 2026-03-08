@@ -259,13 +259,13 @@ def _parse_select_chain(r: BinaryReader) -> dict:
     chains = []
     for _ in range(count):
         chains.append({
-            "flag": r.u8(),
             "code": r.u32(),
             "controller": r.u8(),
             "location": r.u8(),
             "sequence": r.u32(),
-            "subsequence": r.u32(),
+            "position": r.u32(),
             "desc": r.u64(),
+            "client_mode": r.u8(),
         })
     return {
         "msg_type": MSG_SELECT_CHAIN,

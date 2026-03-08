@@ -58,8 +58,8 @@ def test_chain_no_forced():
         "hint_timing": 0,
         "other_timing": 0,
         "chains": [
-            {"flag": 0, "code": 100, "controller": 0, "location": 2,
-             "sequence": 0, "subsequence": 0, "desc": 0},
+            {"code": 100, "controller": 0, "location": 2,
+             "sequence": 0, "position": 0, "desc": 0, "client_mode": 0},
         ],
     })
     # 1 chain + 1 "no chain" = 2 actions

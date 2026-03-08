@@ -206,6 +206,11 @@ def describe_action(action_feats: list[int]) -> str:
         loc = info["location"]
         zone_name = "Monster" if loc == 0x04 else "Spell/Trap" if loc == 0x08 else f"loc=0x{loc:02x}"
         parts.append(f"{sel_name} — {zone_name} Zone {info['sequence']}")
+    elif msg_type == 16:  # SELECT_CHAIN
+        if cat == 1:
+            parts.append("Pass")
+        else:
+            parts.append(f"Chain #{info['index']}")
     elif msg_type == 15 and cat == 1:  # SELECT_CARD finish
         num_sel = info.get("num_selected", 0)
         parts.append(f"Finish selecting ({num_sel} card{'s' if num_sel != 1 else ''})")
