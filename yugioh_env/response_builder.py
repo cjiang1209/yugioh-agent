@@ -111,8 +111,8 @@ def build_rock_paper_scissors_response(choice: int) -> bytes:
 
 
 def build_select_counter_response(counters: list[int]) -> bytes:
-    """Build response for MSG_SELECT_COUNTER. List of counter counts per card."""
-    data = struct.pack("<H", len(counters))
-    for c in counters:
-        data += struct.pack("<H", c)
-    return data
+    """Build response for MSG_SELECT_COUNTER. List of counter counts per card.
+
+    The engine reads returns.at<int16_t>(i) directly for each card — no length prefix.
+    """
+    return b"".join(struct.pack("<H", c) for c in counters)

@@ -8,7 +8,23 @@ from yugioh_env.message_parser import BinaryReader, parse_messages
 from yugioh_env.constants import (
     MSG_NEW_TURN, MSG_WIN, MSG_SELECT_YESNO,
     MSG_SELECT_IDLECMD, MSG_SELECT_BATTLECMD,
+    MSG_SELECT_SUM, MSG_SORT_CHAIN,
+    MSG_ATTACK, MSG_BATTLE, MSG_CARD_HINT,
+    MSG_EQUIP, MSG_CARD_TARGET, MSG_CANCEL_TARGET,
+    MSG_BECOME_TARGET, MSG_RANDOM_SELECTED, MSG_CARD_SELECTED,
+    MSG_SELECT_COUNTER,
 )
+
+
+def _pack_loc_info(controller, location, sequence, position):
+    """Pack a loc_info struct: u8(con) + u8(loc) + u32(seq) + u32(pos)."""
+    return struct.pack("<BBII", controller, location, sequence, position)
+
+
+def _wrap_message(msg_type, body):
+    """Wrap a message body with framing: u32(length) + u8(msg_type) + body."""
+    payload = bytes([msg_type]) + body
+    return struct.pack("<I", len(payload)) + payload
 
 
 def test_binary_reader_u8():
@@ -224,3 +240,239 @@ def test_parse_select_battlecmd_client_mode():
     assert msg["attackable"][0]["code"] == 77777
     assert msg["to_m2"] == 1
     assert msg["to_ep"] == 0
+
+
+# --- MSG_SELECT_SUM: loc_info includes position field ---
+
+def test_parse_select_sum_loc_info():
+    """MSG_SELECT_SUM card entries use full loc_info (with position)."""
+    body = bytes([0])  # player
+    body += bytes([0])  # select_type
+    body += struct.pack("<I", 1000)  # target_sum
+    body += struct.pack("<I", 1)  # min
+    body += struct.pack("<I", 2)  # max
+    # 1 must card: code + loc_info(con, loc, seq, pos) + param
+    body += struct.pack("<I", 1)  # must_count
+    body += struct.pack("<I", 89631139)  # code
+    body += _pack_loc_info(0, 0x02, 3, 0x1)
+    body += struct.pack("<I", 500)  # param
+    # 1 optional card
+    body += struct.pack("<I", 1)  # opt_count
+    body += struct.pack("<I", 46986414)
+    body += _pack_loc_info(1, 0x04, 2, 0x4)
+    body += struct.pack("<I", 600)
+
+    messages = parse_messages(_wrap_message(MSG_SELECT_SUM, body))
+    assert len(messages) == 1
+    msg = messages[0]
+    assert msg["msg_type"] == MSG_SELECT_SUM
+    # Must card
+    mc = msg["must_cards"][0]
+    assert mc["code"] == 89631139
+    assert mc["controller"] == 0
+    assert mc["location"] == 0x02
+    assert mc["sequence"] == 3
+    assert mc["position"] == 0x1
+    assert mc["param"] == 500
+    # Optional card
+    oc = msg["optional_cards"][0]
+    assert oc["code"] == 46986414
+    assert oc["controller"] == 1
+    assert oc["location"] == 0x04
+    assert oc["sequence"] == 2
+    assert oc["position"] == 0x4
+    assert oc["param"] == 600
+
+
+# --- MSG_SORT_CHAIN: location is u32, not u8 ---
+
+def test_parse_sort_chain_location_u32():
+    """MSG_SORT_CHAIN uses u32 for location (same as MSG_SORT_CARD)."""
+    body = bytes([0])  # player
+    body += struct.pack("<I", 2)  # count
+    # Card 0: code(u32) + controller(u8) + location(u32) + sequence(u32)
+    body += struct.pack("<I", 100)
+    body += bytes([0])
+    body += struct.pack("<I", 0x04)  # LOCATION_MZONE
+    body += struct.pack("<I", 1)
+    # Card 1
+    body += struct.pack("<I", 200)
+    body += bytes([1])
+    body += struct.pack("<I", 0x08)  # LOCATION_SZONE
+    body += struct.pack("<I", 3)
+
+    messages = parse_messages(_wrap_message(MSG_SORT_CHAIN, body))
+    assert len(messages) == 1
+    msg = messages[0]
+    assert msg["msg_type"] == MSG_SORT_CHAIN
+    assert len(msg["cards"]) == 2
+    assert msg["cards"][0]["code"] == 100
+    assert msg["cards"][0]["location"] == 0x04
+    assert msg["cards"][0]["sequence"] == 1
+    assert msg["cards"][1]["code"] == 200
+    assert msg["cards"][1]["controller"] == 1
+    assert msg["cards"][1]["location"] == 0x08
+    assert msg["cards"][1]["sequence"] == 3
+
+
+# --- MSG_ATTACK: uses full loc_info (10 bytes) per card ---
+
+def test_parse_attack_loc_info():
+    """MSG_ATTACK uses loc_info (u8,u8,u32,u32) for attacker and target."""
+    body = _pack_loc_info(0, 0x04, 2, 0x1)  # attacker
+    body += _pack_loc_info(1, 0x04, 3, 0x4)  # target
+
+    messages = parse_messages(_wrap_message(MSG_ATTACK, body))
+    assert len(messages) == 1
+    msg = messages[0]
+    assert msg["attacker_controller"] == 0
+    assert msg["attacker_location"] == 0x04
+    assert msg["attacker_sequence"] == 2
+    assert msg["target_controller"] == 1
+    assert msg["target_location"] == 0x04
+    assert msg["target_sequence"] == 3
+
+
+# --- MSG_BATTLE: uses full loc_info ---
+
+def test_parse_battle_loc_info():
+    """MSG_BATTLE uses loc_info for attacker and target locations."""
+    body = _pack_loc_info(0, 0x04, 1, 0x1)  # attacker loc
+    body += struct.pack("<I", 2500)  # attacker_atk
+    body += struct.pack("<I", 2000)  # attacker_def
+    body += bytes([0])  # destroyed flag
+    body += _pack_loc_info(1, 0x04, 0, 0x4)  # target loc
+    body += struct.pack("<I", 1800)  # target_atk
+    body += struct.pack("<I", 1500)  # target_def
+    body += bytes([1])  # destroyed flag
+
+    messages = parse_messages(_wrap_message(MSG_BATTLE, body))
+    assert len(messages) == 1
+    msg = messages[0]
+    assert msg["attacker_controller"] == 0
+    assert msg["attacker_sequence"] == 1
+    assert msg["attacker_atk"] == 2500
+    assert msg["attacker_def"] == 2000
+    assert msg["target_controller"] == 1
+    assert msg["target_sequence"] == 0
+    assert msg["target_atk"] == 1800
+    assert msg["target_def"] == 1500
+
+
+# --- MSG_CARD_HINT: uses full loc_info ---
+
+def test_parse_card_hint_loc_info():
+    """MSG_CARD_HINT uses loc_info (10 bytes), then u8 hint_type + u64 value."""
+    body = _pack_loc_info(0, 0x04, 2, 0x1)  # loc_info
+    body += bytes([5])  # hint_type
+    body += struct.pack("<Q", 12345678)  # value
+
+    messages = parse_messages(_wrap_message(MSG_CARD_HINT, body))
+    assert len(messages) == 1
+    msg = messages[0]
+    assert msg["controller"] == 0
+    assert msg["location"] == 0x04
+    assert msg["sequence"] == 2
+    assert msg["hint_type"] == 5
+    assert msg["value"] == 12345678
+
+
+# --- MSG_EQUIP: uses full loc_info × 2 ---
+
+def test_parse_equip_loc_info():
+    """MSG_EQUIP uses loc_info for equip card and target."""
+    body = _pack_loc_info(0, 0x08, 1, 0x1)  # equip card
+    body += _pack_loc_info(0, 0x04, 0, 0x1)  # target
+
+    messages = parse_messages(_wrap_message(MSG_EQUIP, body))
+    assert len(messages) == 1
+    msg = messages[0]
+    assert msg["equip_controller"] == 0
+    assert msg["equip_location"] == 0x08
+    assert msg["equip_sequence"] == 1
+    assert msg["target_controller"] == 0
+    assert msg["target_location"] == 0x04
+    assert msg["target_sequence"] == 0
+
+
+# --- MSG_CARD_TARGET / MSG_CANCEL_TARGET: use full loc_info × 2 ---
+
+def test_parse_card_target_loc_info():
+    """MSG_CARD_TARGET uses loc_info for source and target."""
+    body = _pack_loc_info(0, 0x08, 2, 0x1)
+    body += _pack_loc_info(1, 0x04, 3, 0x4)
+
+    messages = parse_messages(_wrap_message(MSG_CARD_TARGET, body))
+    assert len(messages) == 1
+    msg = messages[0]
+    assert msg["equip_controller"] == 0
+    assert msg["equip_sequence"] == 2
+    assert msg["target_controller"] == 1
+    assert msg["target_sequence"] == 3
+
+
+def test_parse_cancel_target_loc_info():
+    """MSG_CANCEL_TARGET uses loc_info for source and target."""
+    body = _pack_loc_info(1, 0x04, 0, 0x1)
+    body += _pack_loc_info(0, 0x08, 4, 0x8)
+
+    messages = parse_messages(_wrap_message(MSG_CANCEL_TARGET, body))
+    assert len(messages) == 1
+    msg = messages[0]
+    assert msg["equip_controller"] == 1
+    assert msg["target_controller"] == 0
+    assert msg["target_sequence"] == 4
+
+
+# --- MSG_BECOME_TARGET: uses full loc_info per card ---
+
+def test_parse_become_target_loc_info():
+    """MSG_BECOME_TARGET uses full loc_info (with position) per card."""
+    body = struct.pack("<I", 2)  # count
+    body += _pack_loc_info(0, 0x04, 1, 0x1)
+    body += _pack_loc_info(1, 0x04, 3, 0x4)
+
+    messages = parse_messages(_wrap_message(MSG_BECOME_TARGET, body))
+    assert len(messages) == 1
+    msg = messages[0]
+    assert len(msg["cards"]) == 2
+    assert msg["cards"][0]["controller"] == 0
+    assert msg["cards"][0]["sequence"] == 1
+    assert msg["cards"][0]["position"] == 0x1
+    assert msg["cards"][1]["controller"] == 1
+    assert msg["cards"][1]["sequence"] == 3
+
+
+# --- MSG_RANDOM_SELECTED: has u8(player) prefix + loc_info per card ---
+
+def test_parse_random_selected_player_and_loc_info():
+    """MSG_RANDOM_SELECTED has a u8 player prefix then loc_info per card."""
+    body = bytes([1])  # player
+    body += struct.pack("<I", 1)  # count
+    body += _pack_loc_info(0, 0x01, 5, 0)
+
+    messages = parse_messages(_wrap_message(MSG_RANDOM_SELECTED, body))
+    assert len(messages) == 1
+    msg = messages[0]
+    assert msg["msg_type"] == MSG_RANDOM_SELECTED
+    assert msg["player"] == 1
+    assert len(msg["cards"]) == 1
+    assert msg["cards"][0]["controller"] == 0
+    assert msg["cards"][0]["location"] == 0x01
+    assert msg["cards"][0]["sequence"] == 5
+
+
+# --- MSG_CARD_SELECTED: uses full loc_info per card ---
+
+def test_parse_card_selected_loc_info():
+    """MSG_CARD_SELECTED uses full loc_info (position field present)."""
+    body = struct.pack("<I", 1)  # count
+    body += _pack_loc_info(0, 0x04, 2, 0x1)
+
+    messages = parse_messages(_wrap_message(MSG_CARD_SELECTED, body))
+    assert len(messages) == 1
+    msg = messages[0]
+    assert len(msg["cards"]) == 1
+    assert msg["cards"][0]["controller"] == 0
+    assert msg["cards"][0]["sequence"] == 2
+    assert msg["cards"][0]["position"] == 0x1

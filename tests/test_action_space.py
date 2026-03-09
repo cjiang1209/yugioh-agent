@@ -10,6 +10,7 @@ from yugioh_env.constants import (
     LOCATION_MZONE,
     LOCATION_SZONE,
     MSG_SELECT_CARD,
+    MSG_SELECT_COUNTER,
     MSG_SELECT_PLACE,
     MSG_SELECT_TRIBUTE,
     MSG_SELECT_UNSELECT_CARD,
@@ -450,3 +451,46 @@ def test_tribute_double_release():
     # Pair (0,1) with total 3 >= 2: 1 action
     # Card 1 alone (release_param=1 < min=2): not valid
     assert mapper.num_actions == 2
+
+
+# --- MSG_SELECT_COUNTER response format ---
+
+def test_select_counter_response_no_length_prefix():
+    """Counter response is just int16 values — no length prefix."""
+    resp = rb.build_select_counter_response([3, 0, 2])
+    # Should be exactly 3 * 2 = 6 bytes (no length prefix)
+    assert len(resp) == 6
+    c0, c1, c2 = struct.unpack("<HHH", resp)
+    assert c0 == 3
+    assert c1 == 0
+    assert c2 == 2
+
+
+def test_select_counter_response_single():
+    """Counter response for single card."""
+    resp = rb.build_select_counter_response([5])
+    assert len(resp) == 2
+    val = struct.unpack("<H", resp)[0]
+    assert val == 5
+
+
+def test_select_counter_actions_response():
+    """Full round-trip: MSG_SELECT_COUNTER -> ActionMapper -> response bytes."""
+    mapper = ActionMapper()
+    mapper.update({
+        "msg_type": MSG_SELECT_COUNTER,
+        "player": 0,
+        "counter_type": 0x01,
+        "count": 3,
+        "cards": [
+            {"code": 100, "controller": 0, "location": 4, "sequence": 0, "counter_count": 2},
+            {"code": 200, "controller": 0, "location": 4, "sequence": 1, "counter_count": 5},
+        ],
+    })
+    assert mapper.num_actions >= 1
+    resp = mapper.action_to_response(0)
+    # Response should be raw int16 values, no length prefix
+    assert len(resp) == 4  # 2 cards * 2 bytes each
+    c0, c1 = struct.unpack("<HH", resp)
+    # First action: remove min(counter_count, count) from card 0
+    assert c0 + c1 > 0

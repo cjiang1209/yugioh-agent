@@ -341,22 +341,22 @@ def _parse_select_sum(r: BinaryReader) -> dict:
     must_count = r.u32()
     must_cards = []
     for _ in range(must_count):
+        code = r.u32()
+        loc = r.read_card_loc()
         must_cards.append({
-            "code": r.u32(),
-            "controller": r.u8(),
-            "location": r.u8(),
-            "sequence": r.u32(),
+            "code": code,
+            **loc,
             "param": r.u32(),
         })
     # Optional cards
     opt_count = r.u32()
     optional_cards = []
     for _ in range(opt_count):
+        code = r.u32()
+        loc = r.read_card_loc()
         optional_cards.append({
-            "code": r.u32(),
-            "controller": r.u8(),
-            "location": r.u8(),
-            "sequence": r.u32(),
+            "code": code,
+            **loc,
             "param": r.u32(),
         })
     return {
@@ -498,7 +498,10 @@ def _parse_select_counter(r: BinaryReader) -> dict:
 
 
 def _parse_sort_chain(r: BinaryReader) -> dict:
-    """MSG_SORT_CHAIN: arrange chain order."""
+    """MSG_SORT_CHAIN: arrange chain order.
+
+    Uses the same SortCard processor as MSG_SORT_CARD: location is u32.
+    """
     player = r.u8()
     count = r.u32()
     cards = []
@@ -506,7 +509,7 @@ def _parse_sort_chain(r: BinaryReader) -> dict:
         cards.append({
             "code": r.u32(),
             "controller": r.u8(),
-            "location": r.u8(),
+            "location": r.u32(),
             "sequence": r.u32(),
         })
     return {"msg_type": MSG_SORT_CHAIN, "player": player, "cards": cards}
@@ -662,48 +665,38 @@ def _parse_chaining(r: BinaryReader) -> dict:
 
 
 def _parse_attack(r: BinaryReader) -> dict:
-    attacker_con = r.u8()
-    attacker_loc = r.u8()
-    attacker_seq = r.u8()
-    r.u8()  # padding
-    target_con = r.u8()
-    target_loc = r.u8()
-    target_seq = r.u8()
-    r.u8()  # padding
+    attacker = r.read_card_loc()
+    target = r.read_card_loc()
     return {
         "msg_type": MSG_ATTACK,
-        "attacker_controller": attacker_con,
-        "attacker_location": attacker_loc,
-        "attacker_sequence": attacker_seq,
-        "target_controller": target_con,
-        "target_location": target_loc,
-        "target_sequence": target_seq,
+        "attacker_controller": attacker["controller"],
+        "attacker_location": attacker["location"],
+        "attacker_sequence": attacker["sequence"],
+        "target_controller": target["controller"],
+        "target_location": target["location"],
+        "target_sequence": target["sequence"],
     }
 
 
 def _parse_battle(r: BinaryReader) -> dict:
-    attacker_con = r.u8()
-    attacker_loc = r.u8()
-    attacker_seq = r.u8()
+    attacker = r.read_card_loc()
     attacker_atk = r.u32()
     attacker_def = r.u32()
     r.u8()  # destroyed flag
-    target_con = r.u8()
-    target_loc = r.u8()
-    target_seq = r.u8()
+    target = r.read_card_loc()
     target_atk = r.u32()
     target_def = r.u32()
     r.u8()  # destroyed flag
     return {
         "msg_type": MSG_BATTLE,
-        "attacker_controller": attacker_con,
-        "attacker_location": attacker_loc,
-        "attacker_sequence": attacker_seq,
+        "attacker_controller": attacker["controller"],
+        "attacker_location": attacker["location"],
+        "attacker_sequence": attacker["sequence"],
         "attacker_atk": attacker_atk,
         "attacker_def": attacker_def,
-        "target_controller": target_con,
-        "target_location": target_loc,
-        "target_sequence": target_seq,
+        "target_controller": target["controller"],
+        "target_location": target["location"],
+        "target_sequence": target["sequence"],
         "target_atk": target_atk,
         "target_def": target_def,
     }
@@ -737,7 +730,7 @@ def _parse_card_selected(r: BinaryReader) -> dict:
     count = r.u32()
     cards = []
     for _ in range(count):
-        cards.append({"controller": r.u8(), "location": r.u8(), "sequence": r.u32(), "subsequence": r.u32()})
+        cards.append(r.read_card_loc())
     return {"msg_type": MSG_CARD_SELECTED, "cards": cards}
 
 
@@ -745,8 +738,17 @@ def _parse_become_target(r: BinaryReader) -> dict:
     count = r.u32()
     cards = []
     for _ in range(count):
-        cards.append({"controller": r.u8(), "location": r.u8(), "sequence": r.u32()})
+        cards.append(r.read_card_loc())
     return {"msg_type": MSG_BECOME_TARGET, "cards": cards}
+
+
+def _parse_random_selected(r: BinaryReader) -> dict:
+    player = r.u8()
+    count = r.u32()
+    cards = []
+    for _ in range(count):
+        cards.append(r.read_card_loc())
+    return {"msg_type": MSG_RANDOM_SELECTED, "player": player, "cards": cards}
 
 
 def _parse_toss_coin(r: BinaryReader) -> dict:
@@ -770,22 +772,16 @@ def _parse_hand_res(r: BinaryReader) -> dict:
 
 
 def _parse_equip(r: BinaryReader) -> dict:
-    ec = r.u8()
-    el = r.u8()
-    es = r.u8()
-    r.u8()  # padding
-    tc = r.u8()
-    tl = r.u8()
-    ts = r.u8()
-    r.u8()  # padding
+    equip = r.read_card_loc()
+    target = r.read_card_loc()
     return {
         "msg_type": MSG_EQUIP,
-        "equip_controller": ec,
-        "equip_location": el,
-        "equip_sequence": es,
-        "target_controller": tc,
-        "target_location": tl,
-        "target_sequence": ts,
+        "equip_controller": equip["controller"],
+        "equip_location": equip["location"],
+        "equip_sequence": equip["sequence"],
+        "target_controller": target["controller"],
+        "target_location": target["location"],
+        "target_sequence": target["sequence"],
     }
 
 
@@ -795,13 +791,10 @@ def _parse_field_disabled(r: BinaryReader) -> dict:
 
 
 def _parse_card_hint(r: BinaryReader) -> dict:
-    r.u8()  # controller
-    r.u8()  # location
-    r.u8()  # sequence
-    r.u8()  # padding
+    loc = r.read_card_loc()  # loc_info: u8,u8,u32,u32
     hint_type = r.u8()
     value = r.u64()
-    return {"msg_type": MSG_CARD_HINT, "hint_type": hint_type, "value": value}
+    return {"msg_type": MSG_CARD_HINT, **loc, "hint_type": hint_type, "value": value}
 
 
 def _parse_shuffle_deck(r: BinaryReader) -> dict:
@@ -887,34 +880,26 @@ def _parse_remove_counter(r: BinaryReader) -> dict:
 
 
 def _parse_card_target(r: BinaryReader) -> dict:
-    ec = r.u8()
-    el = r.u8()
-    es = r.u8()
-    r.u8()
-    tc = r.u8()
-    tl = r.u8()
-    ts = r.u8()
-    r.u8()
+    source = r.read_card_loc()
+    target = r.read_card_loc()
     return {
         "msg_type": MSG_CARD_TARGET,
-        "equip_controller": ec, "equip_location": el, "equip_sequence": es,
-        "target_controller": tc, "target_location": tl, "target_sequence": ts,
+        "equip_controller": source["controller"], "equip_location": source["location"],
+        "equip_sequence": source["sequence"],
+        "target_controller": target["controller"], "target_location": target["location"],
+        "target_sequence": target["sequence"],
     }
 
 
 def _parse_cancel_target(r: BinaryReader) -> dict:
-    ec = r.u8()
-    el = r.u8()
-    es = r.u8()
-    r.u8()
-    tc = r.u8()
-    tl = r.u8()
-    ts = r.u8()
-    r.u8()
+    source = r.read_card_loc()
+    target = r.read_card_loc()
     return {
         "msg_type": MSG_CANCEL_TARGET,
-        "equip_controller": ec, "equip_location": el, "equip_sequence": es,
-        "target_controller": tc, "target_location": tl, "target_sequence": ts,
+        "equip_controller": source["controller"], "equip_location": source["location"],
+        "equip_sequence": source["sequence"],
+        "target_controller": target["controller"], "target_location": target["location"],
+        "target_sequence": target["sequence"],
     }
 
 
@@ -1017,7 +1002,7 @@ MSG_PARSERS: dict[int, Any] = {
     MSG_REFRESH_DECK: _parse_noop,
     MSG_SWAP_GRAVE_DECK: _parse_noop,
     MSG_REVERSE_DECK: _parse_noop,
-    MSG_RANDOM_SELECTED: _parse_become_target,  # same format
+    MSG_RANDOM_SELECTED: _parse_random_selected,
     MSG_BE_CHAIN_TARGET: _parse_noop,
     MSG_CREATE_RELATION: _parse_noop,
     MSG_RELEASE_RELATION: _parse_noop,
