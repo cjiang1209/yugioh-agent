@@ -12,7 +12,7 @@ from yugioh_env.constants import (
     LOCATION_MZONE,
     LOCATION_SZONE,
     LOCATION_GRAVE,
-    LOCATION_REMOVED,
+    LOCATION_BANISHED,
     LOCATION_EXTRA,
     POS_FACEUP,
     QUERY_END,
@@ -32,7 +32,7 @@ ZONE_SLOTS = {
     "mzone": 7,
     "szone": 6,
     "grave": 30,
-    "removed": 20,
+    "banished": 20,
     "extra": 15,
 }
 # Total per player = 15+7+6+30+20+15 = 93, times 2 = 186, leaves room for overflow
@@ -314,7 +314,7 @@ def build_observation(
         idx += 1
         global_state[idx] = min(game_state.grave_count[p], 255)
         idx += 1
-        global_state[idx] = min(game_state.removed_count[p], 255)
+        global_state[idx] = min(game_state.banished_count[p], 255)
         idx += 1
         global_state[idx] = min(game_state.extra_count[p], 255)
         idx += 1
@@ -333,7 +333,7 @@ def build_observation(
                 (LOCATION_MZONE, "mzone"),
                 (LOCATION_SZONE, "szone"),
                 (LOCATION_GRAVE, "grave"),
-                (LOCATION_REMOVED, "removed"),
+                (LOCATION_BANISHED, "banished"),
                 (LOCATION_EXTRA, "extra"),
             ]:
                 max_slots = ZONE_SLOTS[slot_name]

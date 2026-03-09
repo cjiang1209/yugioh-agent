@@ -19,7 +19,7 @@ from yugioh_env.constants import (
     LOCATION_MZONE,
     LOCATION_SZONE,
     LOCATION_GRAVE,
-    LOCATION_REMOVED,
+    LOCATION_BANISHED,
     LOCATION_EXTRA,
     LOCATION_DECK,
 )
@@ -42,7 +42,7 @@ class GameState:
     mzone_count: list[int] = field(default_factory=lambda: [0, 0])
     szone_count: list[int] = field(default_factory=lambda: [0, 0])
     grave_count: list[int] = field(default_factory=lambda: [0, 0])
-    removed_count: list[int] = field(default_factory=lambda: [0, 0])
+    banished_count: list[int] = field(default_factory=lambda: [0, 0])
     extra_count: list[int] = field(default_factory=lambda: [0, 0])
 
     # Current chain count
@@ -62,7 +62,7 @@ class GameState:
             self.mzone_count = [0, 0]
             self.szone_count = [0, 0]
             self.grave_count = [0, 0]
-            self.removed_count = [0, 0]
+            self.banished_count = [0, 0]
 
         elif msg_type == MSG_NEW_TURN:
             self.current_player = msg["player"]
@@ -112,7 +112,7 @@ class GameState:
             LOCATION_MZONE: "mzone_count",
             LOCATION_SZONE: "szone_count",
             LOCATION_GRAVE: "grave_count",
-            LOCATION_REMOVED: "removed_count",
+            LOCATION_BANISHED: "banished_count",
             LOCATION_EXTRA: "extra_count",
         }
 
@@ -141,6 +141,6 @@ class GameState:
         self.mzone_count = [0, 0]
         self.szone_count = [0, 0]
         self.grave_count = [0, 0]
-        self.removed_count = [0, 0]
+        self.banished_count = [0, 0]
         self.extra_count = [0, 0]
         self.chain_count = 0

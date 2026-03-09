@@ -17,7 +17,7 @@ from yugioh_env.constants import (
     LOCATION_MZONE,
     LOCATION_SZONE,
     LOCATION_GRAVE,
-    LOCATION_REMOVED,
+    LOCATION_BANISHED,
     LOCATION_EXTRA,
     SELECT_MSGS,
     MSG_WIN,
