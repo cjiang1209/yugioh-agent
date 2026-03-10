@@ -12,6 +12,7 @@ from openenv.core.env_server.types import Observation
 
 from yugioh_env.action_space import ActionMapper
 from yugioh_env.card_database import CardDatabase
+from yugioh_env.event_logger import FieldTracker, format_events
 from yugioh_env.constants import (
     LOCATION_HAND,
     LOCATION_MZONE,
@@ -107,6 +108,8 @@ class YuGiOhEnvironment(Environment):
         self._step_count = 0
         # Multi-step card selection accumulator (managed by environment)
         self._card_sel: list[int] = []
+        # Persistent field tracker for event log card-code resolution
+        self._field_tracker = FieldTracker()
 
     @staticmethod
     def _validate_deck(deck: dict, label: str) -> None:
@@ -153,6 +156,7 @@ class YuGiOhEnvironment(Environment):
 
         self._episode_count += 1
         self._step_count = 0
+        self._field_tracker.reset()
         duel_seed = seed if seed is not None else self._episode_count
 
         # Re-seed opponent for reproducibility
@@ -237,12 +241,15 @@ class YuGiOhEnvironment(Environment):
 
     def _process_to_agent_choice(self) -> YuGiOhObservation:
         """Process the duel, auto-play opponent turns, until agent must decide."""
+        all_events: list[dict] = []
         while True:
-            msg, gs = self._duel.process_until_choice()
+            msg, gs, events = self._duel.process_until_choice()
+            all_events.extend(events)
 
             if msg is None:
                 # Game ended or error
-                return self._make_terminal_observation()
+                event_log = format_events(all_events, self._agent_player, self._card_db.get_card_name, self._field_tracker)
+                return self._make_terminal_observation(event_log=event_log)
 
             msg_type = msg.get("msg_type")
             player = msg.get("player", -1)
@@ -252,7 +259,8 @@ class YuGiOhEnvironment(Environment):
                 self._current_msg = msg
                 self._card_sel.clear()
                 self._mapper.update(msg)
-                return self._make_observation()
+                event_log = format_events(all_events, self._agent_player, self._card_db.get_card_name, self._field_tracker)
+                return self._make_observation(event_log=event_log)
 
             elif player != self._agent_player and msg_type in SELECT_MSGS:
                 # Opponent's turn - auto-play (loop for multi-step selections)
@@ -272,12 +280,14 @@ class YuGiOhEnvironment(Environment):
                         self._duel.send_response(response)
                 else:
                     logger.warning("Opponent has no actions for msg_type=%d", msg_type)
-                    return self._make_terminal_observation()
+                    event_log = format_events(all_events, self._agent_player, self._card_db.get_card_name, self._field_tracker)
+                    return self._make_terminal_observation(event_log=event_log)
             else:
                 # Unknown message, try continuing
-                return self._make_terminal_observation()
+                event_log = format_events(all_events, self._agent_player, self._card_db.get_card_name, self._field_tracker)
+                return self._make_terminal_observation(event_log=event_log)
 
-    def _make_observation(self) -> YuGiOhObservation:
+    def _make_observation(self, event_log: list[str] | None = None) -> YuGiOhObservation:
         """Build observation from current state."""
 
         def query_fn(player: int, location: int) -> list[dict]:
@@ -298,11 +308,12 @@ class YuGiOhEnvironment(Environment):
             global_state=obs_data["global_state"].tolist(),
             actions=action_features.tolist(),
             action_mask=action_mask.tolist(),
+            event_log=event_log or [],
             done=False,
             reward=0.0,
         )
 
-    def _make_terminal_observation(self) -> YuGiOhObservation:
+    def _make_terminal_observation(self, event_log: list[str] | None = None) -> YuGiOhObservation:
         """Build terminal observation with reward."""
         reward = 0.0
         if self._duel and self._duel.game_state.is_finished:
@@ -328,6 +339,7 @@ class YuGiOhEnvironment(Environment):
             global_state=global_state,
             actions=[],
             action_mask=[0] * 32,
+            event_log=event_log or [],
             done=True,
             reward=reward,
         )

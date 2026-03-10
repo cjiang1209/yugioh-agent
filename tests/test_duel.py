@@ -9,7 +9,7 @@ from yugioh_env.duel import Duel
 def test_create_and_start(duel, deck_path):
     """Should create a duel, start, and process to first SELECT message."""
     duel.create(deck0=deck_path, deck1=deck_path, seed=42)
-    msg, state = duel.process_until_choice()
+    msg, state, _events = duel.process_until_choice()
     assert msg is not None or state.is_finished
     if msg is not None:
         assert msg["msg_type"] in SELECT_MSGS
@@ -28,7 +28,7 @@ def test_context_manager(lib, card_db, script_dirs, deck_path):
     """Context manager should clean up properly."""
     with Duel(lib, card_db, script_dirs) as d:
         d.create(deck0=deck_path, deck1=deck_path, seed=2)
-        msg, state = d.process_until_choice()
+        msg, state, _events = d.process_until_choice()
 
 
 def test_determinism(lib, card_db, script_dirs, deck_path):
@@ -37,7 +37,7 @@ def test_determinism(lib, card_db, script_dirs, deck_path):
     for _ in range(2):
         with Duel(lib, card_db, script_dirs) as d:
             d.create(deck0=deck_path, deck1=deck_path, seed=12345)
-            msg, state = d.process_until_choice()
+            msg, state, _events = d.process_until_choice()
             results.append(msg)
 
     if results[0] is not None and results[1] is not None:

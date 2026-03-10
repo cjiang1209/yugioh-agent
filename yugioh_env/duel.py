@@ -57,7 +57,7 @@ class Duel:
         with Duel(lib, card_db, script_dirs) as duel:
             duel.create(deck0, deck1, seed=42)
             while not duel.is_finished:
-                msg, state = duel.process_until_choice()
+                msg, state, events = duel.process_until_choice()
                 if msg is not None:
                     response = build_response(msg)
                     duel.send_response(response)
@@ -257,12 +257,15 @@ class Duel:
         info.pos = POS_FACEDOWN_DEFENSE if location == LOCATION_EXTRA else POS_FACEDOWN_DEFENSE
         self._lib.OCG_DuelNewCard(self._duel_handle, ctypes.byref(info))
 
-    def process_until_choice(self) -> tuple[dict | None, GameState]:
+    def process_until_choice(self) -> tuple[dict | None, GameState, list[dict]]:
         """Process the duel until a player-choice message or game end.
 
         Returns:
-            (select_msg, game_state) where select_msg is None if game ended.
+            (select_msg, game_state, info_msgs) where select_msg is None if
+            game ended, and info_msgs is a list of informational message dicts
+            encountered before the choice point.
         """
+        info_msgs: list[dict] = []
         while True:
             status = self._lib.OCG_DuelProcess(self._duel_handle)
 
@@ -281,25 +284,27 @@ class Duel:
                         self._is_finished = True
                         self._game_state.is_finished = True
                         self._game_state.winner = msg.get("player", -1)
-                        return None, self._game_state
+                        return None, self._game_state, info_msgs
 
                     if msg_type == MSG_RETRY:
                         logger.error("Got MSG_RETRY - last response was invalid!")
-                        return None, self._game_state
+                        return None, self._game_state, info_msgs
 
                     if msg_type in SELECT_MSGS:
-                        return msg, self._game_state
+                        return msg, self._game_state, info_msgs
+
+                    info_msgs.append(msg)
 
             if status == OCG_DUEL_STATUS_END:
                 self._is_finished = True
                 self._game_state.is_finished = True
-                return None, self._game_state
+                return None, self._game_state, info_msgs
 
             if status == OCG_DUEL_STATUS_AWAITING:
                 # Should have gotten a SELECT message above
                 # If we didn't, something went wrong
                 logger.warning("AWAITING status but no SELECT message found")
-                return None, self._game_state
+                return None, self._game_state, info_msgs
 
     def send_response(self, response: bytes) -> None:
         """Send a response buffer to the engine."""

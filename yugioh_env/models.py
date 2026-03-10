@@ -36,6 +36,10 @@ class YuGiOhObservation(Observation):
         default_factory=list,
         description="Binary action mask (32,): 1 = legal, 0 = illegal",
     )
+    event_log: list[str] = Field(
+        default_factory=list,
+        description="Human-readable descriptions of events since last action",
+    )
 
 
 class YuGiOhState(State):

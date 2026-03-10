@@ -233,6 +233,16 @@ def describe_action(action_feats: list[int]) -> str:
     return " ".join(parts)
 
 
+def display_events(event_log: list[str]) -> None:
+    """Print event log with prominent formatting."""
+    if not event_log:
+        return
+    print()
+    for event in event_log:
+        print(f"\033[36m  >> {event}\033[0m")
+    print()
+
+
 def display_state(obs: YuGiOhObservation, step_num: int) -> None:
     """Print a summary of the current observation."""
     gs = parse_global_state(obs.global_state)
@@ -323,6 +333,7 @@ def run_episode(
     step_num = 0
 
     if verbose:
+        display_events(result.observation.event_log)
         display_state(result.observation, step_num)
 
     while not result.done:
@@ -335,6 +346,7 @@ def run_episode(
         step_num += 1
 
         if verbose and not result.done:
+            display_events(result.observation.event_log)
             display_state(result.observation, step_num)
 
     # Final summary
