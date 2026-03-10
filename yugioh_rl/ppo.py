@@ -205,6 +205,7 @@ class PPOTrainer:
             shaping_lp_weight=config.shaping_lp_weight,
             shaping_card_weight=config.shaping_card_weight,
             seed=config.seed,
+            agent_player=config.agent_player,
         )
 
         try:
@@ -369,6 +370,7 @@ class PPOTrainer:
                 opponent_type=opp_type,
                 reward_shaping=False,
                 seed=self.config.seed + 999999,
+                agent_player=self.config.agent_player,
             )
             try:
                 for ep in range(num_episodes):

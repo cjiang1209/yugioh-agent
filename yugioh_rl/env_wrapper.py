@@ -34,12 +34,18 @@ class TrainingEnv:
         shaping_lp_weight: float = 0.01,
         shaping_card_weight: float = 0.005,
         seed: int = 42,
+        agent_player: str = "random",
     ) -> None:
         from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+
+        # Map config strings to environment values
+        agent_player_map = {"first": 0, "second": 1, "random": "random"}
+        self._agent_player_setting = agent_player_map.get(agent_player, agent_player)
 
         self._env = YuGiOhEnvironment(config={
             "deck_path": deck_path,
             "opponent_type": opponent_type,
+            "agent_player": self._agent_player_setting,
         })
         self._reward_shaping = reward_shaping
         self._lp_weight = shaping_lp_weight
@@ -55,7 +61,10 @@ class TrainingEnv:
     def reset(self) -> dict[str, np.ndarray]:
         """Reset the environment and return initial observation."""
         self._episode_count += 1
-        obs = self._env.reset(seed=self._seed + self._episode_count)
+        obs = self._env.reset(
+            seed=self._seed + self._episode_count,
+            agent_player=self._agent_player_setting,
+        )
         np_obs = _obs_to_numpy(obs)
 
         # Initialize shaping state
@@ -172,6 +181,7 @@ class SubprocVecEnv:
         shaping_lp_weight: float = 0.01,
         shaping_card_weight: float = 0.005,
         seed: int = 42,
+        agent_player: str = "random",
     ) -> None:
         self.num_envs = num_envs
         self._closed = False
@@ -189,6 +199,7 @@ class SubprocVecEnv:
                 "shaping_lp_weight": shaping_lp_weight,
                 "shaping_card_weight": shaping_card_weight,
                 "seed": seed + i * 10000,
+                "agent_player": agent_player,
             }
             p = ctx.Process(target=_worker, args=(child_conn, env_kwargs), daemon=True)
             p.start()

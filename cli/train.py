@@ -26,6 +26,10 @@ def parse_args() -> argparse.Namespace:
                      help="Weight for LP-delta shaping term (default: 0.01)")
     env.add_argument("--shaping-card-weight", type=float, default=0.005,
                      help="Weight for card-advantage shaping term (default: 0.005)")
+    env.add_argument("--agent-player", type=str, default="random",
+                     choices=["first", "second", "random"],
+                     help="Agent turn order: 'first' (player 0), 'second' (player 1), "
+                          "or 'random' (coin flip per episode, default: random)")
 
     ppo = parser.add_argument_group("PPO algorithm")
     ppo.add_argument("--total-timesteps", type=int, default=1_000_000,
@@ -98,6 +102,7 @@ def main() -> None:
         num_envs=args.num_envs,
         deck_path=args.deck_path,
         opponent_type=args.opponent,
+        agent_player=args.agent_player,
         reward_shaping=not args.no_reward_shaping,
         shaping_lp_weight=args.shaping_lp_weight,
         shaping_card_weight=args.shaping_card_weight,

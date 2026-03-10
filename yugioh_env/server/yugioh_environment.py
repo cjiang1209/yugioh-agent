@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import random as stdlib_random
 from pathlib import Path
 from typing import Any, Optional
 
@@ -62,6 +63,8 @@ class YuGiOhEnvironment(Environment):
         opponent_type: "random" or "greedy"
         opponent_seed: Random seed for opponent
         starting_lp: Starting life points (default 8000)
+        agent_player: Which player the agent controls (0, 1, or "random").
+                      Player 0 always goes first. Default 0.
     """
 
     SUPPORTS_CONCURRENT_SESSIONS = False
@@ -89,7 +92,13 @@ class YuGiOhEnvironment(Environment):
         self._lib = load_library(lib_path)
         self._card_db = CardDatabase(db_path)
         self._script_dirs = [Path(d) for d in script_dirs]
-        self._agent_player = 0
+
+        # Agent player: 0 = go first, 1 = go second, "random" = coin flip per episode
+        agent_player_cfg = config.get("agent_player", 0)
+        if agent_player_cfg not in (0, 1, "random"):
+            raise ValueError(f"agent_player must be 0, 1, or 'random', got {agent_player_cfg!r}")
+        self._agent_player_setting = agent_player_cfg
+        self._agent_player = agent_player_cfg if isinstance(agent_player_cfg, int) else 0
 
         # Opponent
         opponent_type = config.get("opponent_type", "random")
@@ -139,6 +148,7 @@ class YuGiOhEnvironment(Environment):
         episode_id: Optional[str] = None,
         deck0: Optional[dict[str, list[int]]] = None,
         deck1: Optional[dict[str, list[int]]] = None,
+        agent_player: Optional[int | str] = None,
         **kwargs: Any,
     ) -> YuGiOhObservation:
         """Start a new duel and return the initial observation.
@@ -146,9 +156,14 @@ class YuGiOhEnvironment(Environment):
         Args:
             seed: RNG seed for this episode.
             episode_id: Optional episode identifier.
-            deck0: Inline deck for player 0 ({"main": [...], "extra": [...]}).
+            deck0: Inline deck for engine player 0 ({"main": [...], "extra": [...]}).
                    Falls back to server-configured default if None.
-            deck1: Inline deck for player 1, same format as deck0.
+                   Note: deck0/deck1 always map to engine player 0/1 (turn order),
+                   not agent/opponent.
+            deck1: Inline deck for engine player 1, same format as deck0.
+            agent_player: Override which player the agent controls for this episode.
+                          0 = go first, 1 = go second, "random" = coin flip.
+                          If None, uses the value from config.
         """
         # Clean up previous duel
         if self._duel is not None:
@@ -158,6 +173,13 @@ class YuGiOhEnvironment(Environment):
         self._step_count = 0
         self._field_tracker.reset()
         duel_seed = seed if seed is not None else self._episode_count
+
+        # Resolve agent player for this episode
+        setting = agent_player if agent_player is not None else self._agent_player_setting
+        if setting == "random":
+            self._agent_player = stdlib_random.Random(duel_seed).randint(0, 1)
+        else:
+            self._agent_player = int(setting)
 
         # Re-seed opponent for reproducibility
         self._opponent.reseed(duel_seed)

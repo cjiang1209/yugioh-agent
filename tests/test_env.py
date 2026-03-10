@@ -130,3 +130,100 @@ def test_reset_deck_validation_rejects_oversized_extra(env):
     bad_deck = {"main": [89631139] * 40, "extra": [89631139] * 16}
     with pytest.raises(ValueError, match="0-15 cards"):
         env.reset(seed=202, deck0=bad_deck)
+
+
+# --- Agent player order tests ---
+
+
+def test_agent_player_invalid_config(lib, db_path, script_dirs, deck_path):
+    """Invalid agent_player config value should raise ValueError."""
+    config = {
+        "db_path": str(db_path),
+        "script_dirs": [str(d) for d in script_dirs],
+        "deck_path": str(deck_path),
+        "agent_player": 2,
+    }
+    with pytest.raises(ValueError, match="agent_player"):
+        YuGiOhEnvironment(config)
+
+
+def test_reset_agent_player_go_second(env):
+    """Agent goes second when agent_player=1 is passed to reset."""
+    obs = env.reset(seed=42, agent_player=1)
+    assert obs is not None
+    assert not obs.done
+    assert env._agent_player == 1
+    assert any(a == 1 for a in obs.action_mask)
+
+
+def test_reset_agent_player_explicit_zero(env):
+    """Explicit agent_player=0 behaves like default (go first)."""
+    obs = env.reset(seed=42, agent_player=0)
+    assert obs is not None
+    assert env._agent_player == 0
+
+
+def test_reset_agent_player_random_deterministic(env):
+    """Random agent_player with same seed produces same choice."""
+    env.reset(seed=42, agent_player="random")
+    choice1 = env._agent_player
+    env.reset(seed=42, agent_player="random")
+    choice2 = env._agent_player
+    assert choice1 == choice2
+
+
+def test_reset_agent_player_config_default(lib, db_path, script_dirs, deck_path):
+    """Config-level agent_player is used when reset doesn't override."""
+    config = {
+        "db_path": str(db_path),
+        "script_dirs": [str(d) for d in script_dirs],
+        "deck_path": str(deck_path),
+        "opponent_type": "random",
+        "agent_player": 1,
+    }
+    e = YuGiOhEnvironment(config)
+    try:
+        obs = e.reset(seed=42)
+        assert e._agent_player == 1
+        assert not obs.done
+    finally:
+        e.close()
+
+
+def test_reset_agent_player_override(lib, db_path, script_dirs, deck_path):
+    """Per-reset agent_player overrides config default."""
+    config = {
+        "db_path": str(db_path),
+        "script_dirs": [str(d) for d in script_dirs],
+        "deck_path": str(deck_path),
+        "opponent_type": "random",
+        "agent_player": 0,
+    }
+    e = YuGiOhEnvironment(config)
+    try:
+        e.reset(seed=42, agent_player=1)
+        assert e._agent_player == 1
+        # Next reset without override goes back to config default
+        e.reset(seed=43)
+        assert e._agent_player == 0
+    finally:
+        e.close()
+
+
+def test_full_episode_go_second(env):
+    """Play a full episode with agent as player 1 (going second)."""
+    obs = env.reset(seed=42, agent_player=1)
+    steps = 0
+    max_steps = 500
+
+    while not obs.done and steps < max_steps:
+        action_idx = 0
+        for i, mask in enumerate(obs.action_mask):
+            if mask == 1:
+                action_idx = i
+                break
+        obs = env.step(YuGiOhAction(action_index=action_idx))
+        steps += 1
+
+    if obs.done:
+        assert obs.reward in (1.0, -1.0, 0.0)

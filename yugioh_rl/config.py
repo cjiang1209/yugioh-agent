@@ -13,6 +13,7 @@ class TrainingConfig:
     num_envs: int = 8
     deck_path: str = "assets/decks/starter.ydk"
     opponent_type: str = "greedy"
+    agent_player: str = "random"  # "first" (player 0), "second" (player 1), or "random"
     reward_shaping: bool = True
     shaping_lp_weight: float = 0.01
     shaping_card_weight: float = 0.005

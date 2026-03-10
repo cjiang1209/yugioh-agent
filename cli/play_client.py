@@ -319,6 +319,7 @@ def run_episode(
     verbose: bool = True,
     deck0: dict | None = None,
     deck1: dict | None = None,
+    agent_player: int | None = None,
 ) -> dict:
     """Run a single duel episode. Returns stats dict."""
     reset_kwargs = {}
@@ -328,6 +329,8 @@ def run_episode(
         reset_kwargs["deck0"] = deck0
     if deck1 is not None:
         reset_kwargs["deck1"] = deck1
+    if agent_player is not None:
+        reset_kwargs["agent_player"] = agent_player
 
     result = env.reset(**reset_kwargs)
     step_num = 0
@@ -410,6 +413,15 @@ def main():
         "--deck1", type=str, default=None,
         help="Path to .ydk deck file for player 1 (overrides --deck)",
     )
+    player_order = parser.add_mutually_exclusive_group()
+    player_order.add_argument(
+        "--go-first", action="store_true", default=True,
+        help="Agent goes first (player 0, default)",
+    )
+    player_order.add_argument(
+        "--go-second", action="store_true",
+        help="Agent goes second (player 1)",
+    )
     parser.add_argument(
         "--quiet", action="store_true",
         help="Suppress per-step output (show only episode summaries)",
@@ -453,8 +465,11 @@ def main():
                 deck_codes.update(d.get("main", []))
                 deck_codes.update(d.get("extra", []))
 
+    agent_player = 1 if args.go_second else 0
+
     card_names.load(deck_codes)
     print(f"Loaded {len(card_names._names)} card names.")
+    print(f"Agent player: {agent_player} ({'goes second' if agent_player == 1 else 'goes first'})")
     print(f"Connecting to {args.url} ...")
 
     try:
@@ -472,7 +487,8 @@ def main():
 
                 t0 = time.time()
                 stats = run_episode(env, pick_action, seed=seed, verbose=verbose,
-                                    deck0=deck0, deck1=deck1)
+                                    deck0=deck0, deck1=deck1,
+                                    agent_player=agent_player)
                 elapsed = time.time() - t0
                 stats["time"] = elapsed
                 all_stats.append(stats)

@@ -39,6 +39,7 @@ scripts/play_client.sh --mode random --seed 42
 scripts/play_client.sh --mode greedy --episodes 10 --quiet
 scripts/play_client.sh --deck assets/decks/blue_eyes.ydk --mode greedy
 scripts/play_client.sh --deck0 assets/decks/blue_eyes.ydk --deck1 assets/decks/starter.ydk
+scripts/play_client.sh --go-second --mode greedy          # agent goes second (player 1)
 ```
 
 ## Prerequisites & Setup
@@ -168,6 +169,9 @@ scripts/train.sh                                           # default: 8 envs, 1M
 scripts/train.sh --num-envs 4 --total-timesteps 500000     # fewer envs, shorter run
 scripts/train.sh --opponent random --no-reward-shaping      # sparse rewards only
 scripts/train.sh --device cuda --save-dir runs/exp1         # GPU + custom checkpoint dir
+scripts/train.sh --agent-player random                     # coin flip per episode (default)
+scripts/train.sh --agent-player first                      # always go first
+scripts/train.sh --agent-player second                     # always go second
 ```
 
 See all options: `scripts/train.sh --help`
@@ -205,6 +209,7 @@ Disable with `--no-reward-shaping`.
 2. **Subprocess vectorization**: `SubprocVecEnv` spawns N worker processes (one `TrainingEnv` each) using `multiprocessing.spawn` context, respecting the single-session constraint.
 3. **Shared card embedding**: The same `nn.Embedding` encodes board card IDs and action card codes so the network learns a single card representation.
 4. **Auto-reset**: `TrainingEnv.step()` auto-resets on episode end, returning the first obs of a new episode and storing terminal info.
+5. **Player order randomization**: By default (`--agent-player random`), the agent randomly goes first or second each episode (coin flip seeded by the episode seed). This prevents training bias from always playing first. The observation/network architecture is already player-agnostic (relativized by `agent_player`), so no model changes are needed.
 
 ## Environment Variables
 

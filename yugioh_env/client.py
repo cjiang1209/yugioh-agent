@@ -19,6 +19,7 @@ class YuGiOhEnv(EnvClient[YuGiOhAction, YuGiOhObservation, YuGiOhState]):
         seed: int | None = None,
         deck0: dict[str, list[int]] | None = None,
         deck1: dict[str, list[int]] | None = None,
+        agent_player: int | str | None = None,
         **kwargs: Any,
     ) -> StepResult[YuGiOhObservation]:
         """Reset the environment and start a new duel.
@@ -27,6 +28,7 @@ class YuGiOhEnv(EnvClient[YuGiOhAction, YuGiOhObservation, YuGiOhState]):
             seed: RNG seed for this episode.
             deck0: Inline deck for player 0 ({"main": [...], "extra": [...]}).
             deck1: Inline deck for player 1, same format.
+            agent_player: Which player the agent controls (0, 1, or "random").
         """
         reset_kwargs: dict[str, Any] = {}
         if seed is not None:
@@ -35,6 +37,8 @@ class YuGiOhEnv(EnvClient[YuGiOhAction, YuGiOhObservation, YuGiOhState]):
             reset_kwargs["deck0"] = deck0
         if deck1 is not None:
             reset_kwargs["deck1"] = deck1
+        if agent_player is not None:
+            reset_kwargs["agent_player"] = agent_player
         reset_kwargs.update(kwargs)
         return super().reset(**reset_kwargs)
 
