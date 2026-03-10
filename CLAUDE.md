@@ -151,6 +151,61 @@ Messages that write `loc_info`: `MSG_MOVE`, `MSG_SET`, `MSG_SUMMONING`, `MSG_SPS
 - [ ] For response builders, check `returns.at<T>(pos)` access patterns in the C++ `step == 1` branch
 - [ ] Run `make test` and a short random-play session to verify no MSG_RETRY
 
+## RL Training System (`yugioh_rl/`)
+
+PPO-based training that calls `YuGiOhEnvironment` directly in-process (no HTTP).
+
+### Installation
+
+```bash
+pip install -e ".[train]"   # adds torch + tensorboard
+```
+
+### Running Training
+
+```bash
+scripts/train.sh                                           # default: 8 envs, 1M steps, greedy opponent
+scripts/train.sh --num-envs 4 --total-timesteps 500000     # fewer envs, shorter run
+scripts/train.sh --opponent random --no-reward-shaping      # sparse rewards only
+scripts/train.sh --device cuda --save-dir runs/exp1         # GPU + custom checkpoint dir
+```
+
+See all options: `scripts/train.sh --help`
+
+### Module Layout
+
+```
+yugioh_rl/
+├── config.py        — TrainingConfig dataclass (all hyperparameters)
+├── features.py      — Decode uint8 observations → float tensors for neural net
+├── network.py       — YuGiOhNet: card encoder + zone pooling + dot-product policy head + value head
+├── env_wrapper.py   — TrainingEnv (single, in-process) + SubprocVecEnv (multiprocessing)
+├── ppo.py           — RolloutBuffer + PPOTrainer (GAE, clipped surrogate, eval, checkpoints)
+cli/train.py         — CLI entry point (argparse → TrainingConfig → PPOTrainer.train())
+scripts/train.sh     — Shell wrapper (activates venv, forwards args)
+```
+
+### Network Architecture
+
+- **Card encoder**: shared embedding (vocab 65536) + MLP per card → zone-pooled board representation
+- **Policy head**: dot-product scoring of action embeddings against board projection, masked by `action_mask`
+- **Value head**: MLP on board representation → scalar
+
+### Reward Shaping
+
+Enabled by default. Adds per-step shaping to the sparse terminal reward (+1 win, −1 loss):
+- LP delta: `w_lp * (delta_my_lp - delta_opp_lp) / 8000`
+- Card advantage delta: `w_card * delta_hand_advantage`
+
+Disable with `--no-reward-shaping`.
+
+### Key Design Decisions
+
+1. **In-process environment**: `TrainingEnv` wraps `YuGiOhEnvironment` directly, bypassing HTTP serialization overhead. Observations are kept as numpy arrays.
+2. **Subprocess vectorization**: `SubprocVecEnv` spawns N worker processes (one `TrainingEnv` each) using `multiprocessing.spawn` context, respecting the single-session constraint.
+3. **Shared card embedding**: The same `nn.Embedding` encodes board card IDs and action card codes so the network learns a single card representation.
+4. **Auto-reset**: `TrainingEnv.step()` auto-resets on episode end, returning the first obs of a new episode and storing terminal info.
+
 ## Environment Variables
 
 - `YUGIOH_LIB_PATH` — path to `libocgcore.dylib/.so` (auto-detected from `build/` if unset)

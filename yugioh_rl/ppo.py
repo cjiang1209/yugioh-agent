@@ -1,0 +1,417 @@
+"""PPO algorithm with rollout buffer for Yu-Gi-Oh! training."""
+
+from __future__ import annotations
+
+import logging
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Iterator
+
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.distributions import Categorical
+
+from yugioh_rl.config import TrainingConfig
+from yugioh_rl.env_wrapper import SubprocVecEnv, TrainingEnv
+from yugioh_rl.network import YuGiOhNet
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Rollout buffer
+# ---------------------------------------------------------------------------
+
+@dataclass
+class MiniBatch:
+    """A single minibatch of training data."""
+
+    obs_cards: torch.Tensor      # (M, 200, 42)
+    obs_global: torch.Tensor     # (M, 20)
+    obs_actions: torch.Tensor    # (M, 32, 12)
+    action_mask: torch.Tensor    # (M, 32)
+    actions: torch.Tensor        # (M,)
+    old_log_probs: torch.Tensor  # (M,)
+    advantages: torch.Tensor     # (M,)
+    returns: torch.Tensor        # (M,)
+
+
+class RolloutBuffer:
+    """Stores trajectory data for PPO rollouts."""
+
+    def __init__(self, rollout_steps: int, num_envs: int) -> None:
+        self.rollout_steps = rollout_steps
+        self.num_envs = num_envs
+        self._ptr = 0
+
+        T, N = rollout_steps, num_envs
+        self.obs_cards = np.zeros((T, N, 200, 42), dtype=np.uint8)
+        self.obs_global = np.zeros((T, N, 20), dtype=np.uint8)
+        self.obs_actions = np.zeros((T, N, 32, 12), dtype=np.uint8)
+        self.obs_mask = np.zeros((T, N, 32), dtype=np.int8)
+        self.actions = np.zeros((T, N), dtype=np.int64)
+        self.log_probs = np.zeros((T, N), dtype=np.float32)
+        self.rewards = np.zeros((T, N), dtype=np.float32)
+        self.dones = np.zeros((T, N), dtype=np.float32)
+        self.values = np.zeros((T, N), dtype=np.float32)
+
+        # Computed after rollout
+        self.advantages = np.zeros((T, N), dtype=np.float32)
+        self.returns = np.zeros((T, N), dtype=np.float32)
+
+    def reset(self) -> None:
+        self._ptr = 0
+
+    def add(
+        self,
+        obs: dict[str, np.ndarray],
+        actions: np.ndarray,
+        log_probs: np.ndarray,
+        rewards: np.ndarray,
+        dones: np.ndarray,
+        values: np.ndarray,
+    ) -> None:
+        """Store one timestep of data."""
+        t = self._ptr
+        self.obs_cards[t] = obs["cards"]
+        self.obs_global[t] = obs["global_state"]
+        self.obs_actions[t] = obs["actions"]
+        self.obs_mask[t] = obs["action_mask"]
+        self.actions[t] = actions
+        self.log_probs[t] = log_probs
+        self.rewards[t] = rewards
+        self.dones[t] = dones
+        self.values[t] = values
+        self._ptr += 1
+
+    def compute_advantages(
+        self,
+        last_values: np.ndarray,
+        gamma: float,
+        gae_lambda: float,
+    ) -> None:
+        """Compute GAE-lambda advantages and returns."""
+        T = self.rollout_steps
+        gae = np.zeros(self.num_envs, dtype=np.float32)
+
+        for t in reversed(range(T)):
+            if t == T - 1:
+                next_values = last_values
+            else:
+                next_values = self.values[t + 1]
+
+            next_non_terminal = 1.0 - self.dones[t]
+            delta = self.rewards[t] + gamma * next_values * next_non_terminal - self.values[t]
+            gae = delta + gamma * gae_lambda * next_non_terminal * gae
+            self.advantages[t] = gae
+
+        self.returns = self.advantages + self.values
+
+    def get_batches(self, minibatch_size: int, device: torch.device) -> Iterator[MiniBatch]:
+        """Yield shuffled minibatches as tensors on the given device."""
+        T, N = self.rollout_steps, self.num_envs
+        total = T * N
+
+        # Flatten time and env dims
+        flat_cards = self.obs_cards.reshape(total, 200, 42)
+        flat_global = self.obs_global.reshape(total, 20)
+        flat_actions_obs = self.obs_actions.reshape(total, 32, 12)
+        flat_mask = self.obs_mask.reshape(total, 32)
+        flat_actions = self.actions.reshape(total)
+        flat_log_probs = self.log_probs.reshape(total)
+        flat_advantages = self.advantages.reshape(total)
+        flat_returns = self.returns.reshape(total)
+
+        # Normalize advantages
+        adv_mean = flat_advantages.mean()
+        adv_std = flat_advantages.std() + 1e-8
+        flat_advantages = (flat_advantages - adv_mean) / adv_std
+
+        indices = np.arange(total)
+        np.random.shuffle(indices)
+
+        for start in range(0, total, minibatch_size):
+            end = min(start + minibatch_size, total)
+            idx = indices[start:end]
+
+            yield MiniBatch(
+                obs_cards=torch.from_numpy(flat_cards[idx]).to(device),
+                obs_global=torch.from_numpy(flat_global[idx]).to(device),
+                obs_actions=torch.from_numpy(flat_actions_obs[idx]).to(device),
+                action_mask=torch.from_numpy(flat_mask[idx]).to(device),
+                actions=torch.from_numpy(flat_actions[idx]).long().to(device),
+                old_log_probs=torch.from_numpy(flat_log_probs[idx]).to(device),
+                advantages=torch.from_numpy(flat_advantages[idx]).to(device),
+                returns=torch.from_numpy(flat_returns[idx]).to(device),
+            )
+
+
+# ---------------------------------------------------------------------------
+# PPO trainer
+# ---------------------------------------------------------------------------
+
+class PPOTrainer:
+    """PPO training loop for Yu-Gi-Oh! agent."""
+
+    def __init__(self, config: TrainingConfig) -> None:
+        self.config = config
+
+        # Resolve device
+        if config.device == "auto":
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        else:
+            self.device = torch.device(config.device)
+
+        logger.info("Using device: %s", self.device)
+
+        # Network and optimizer
+        self.network = YuGiOhNet(config).to(self.device)
+        self.optimizer = torch.optim.Adam(self.network.parameters(), lr=config.learning_rate)
+
+        # Rollout buffer
+        self.buffer = RolloutBuffer(config.rollout_steps, config.num_envs)
+
+        # Tracking
+        self._episode_rewards: list[float] = []
+        self._episode_lengths: list[int] = []
+        self._episode_wins: list[float] = []
+
+        # TensorBoard writer (optional)
+        self._writer = None
+        try:
+            from torch.utils.tensorboard import SummaryWriter
+            self._writer = SummaryWriter(log_dir=str(Path(config.save_dir) / "logs"))
+        except ImportError:
+            logger.info("TensorBoard not available, skipping logging")
+
+    def train(self) -> None:
+        """Run the full PPO training loop."""
+        config = self.config
+        num_updates = config.total_timesteps // (config.rollout_steps * config.num_envs)
+
+        logger.info(
+            "Starting training: %d timesteps, %d updates, %d envs",
+            config.total_timesteps, num_updates, config.num_envs,
+        )
+
+        vec_env = SubprocVecEnv(
+            num_envs=config.num_envs,
+            deck_path=config.deck_path,
+            opponent_type=config.opponent_type,
+            reward_shaping=config.reward_shaping,
+            shaping_lp_weight=config.shaping_lp_weight,
+            shaping_card_weight=config.shaping_card_weight,
+            seed=config.seed,
+        )
+
+        try:
+            obs = vec_env.reset()
+            global_step = 0
+            start_time = time.time()
+
+            for update in range(1, num_updates + 1):
+                update_start = time.time()
+                self.buffer.reset()
+
+                # --- Collect rollout ---
+                for step in range(config.rollout_steps):
+                    with torch.no_grad():
+                        t_cards = torch.from_numpy(obs["cards"]).to(self.device)
+                        t_global = torch.from_numpy(obs["global_state"]).to(self.device)
+                        t_actions = torch.from_numpy(obs["actions"]).to(self.device)
+                        t_mask = torch.from_numpy(obs["action_mask"]).to(self.device)
+
+                        logits, values = self.network(t_cards, t_global, t_actions, t_mask)
+                        dist = Categorical(logits=logits)
+                        actions = dist.sample()
+                        log_probs = dist.log_prob(actions)
+
+                    actions_np = actions.cpu().numpy()
+                    log_probs_np = log_probs.cpu().numpy()
+                    values_np = values.cpu().numpy()
+
+                    next_obs, rewards, dones, infos = vec_env.step(actions_np)
+
+                    self.buffer.add(obs, actions_np, log_probs_np, rewards, dones.astype(np.float32), values_np)
+
+                    # Track completed episodes
+                    for info in infos:
+                        if "terminal_reward" in info:
+                            self._episode_rewards.append(info["terminal_reward"])
+                            self._episode_lengths.append(info.get("episode_length", 0))
+                            self._episode_wins.append(1.0 if info["terminal_reward"] > 0 else 0.0)
+
+                    obs = next_obs
+                    global_step += config.num_envs
+
+                # --- Compute advantages ---
+                with torch.no_grad():
+                    t_cards = torch.from_numpy(obs["cards"]).to(self.device)
+                    t_global = torch.from_numpy(obs["global_state"]).to(self.device)
+                    t_actions = torch.from_numpy(obs["actions"]).to(self.device)
+                    t_mask = torch.from_numpy(obs["action_mask"]).to(self.device)
+                    _, last_values = self.network(t_cards, t_global, t_actions, t_mask)
+                    last_values_np = last_values.cpu().numpy()
+
+                self.buffer.compute_advantages(last_values_np, config.gamma, config.gae_lambda)
+
+                # --- PPO update ---
+                total_policy_loss = 0.0
+                total_value_loss = 0.0
+                total_entropy = 0.0
+                num_batches = 0
+
+                for epoch in range(config.num_epochs):
+                    for batch in self.buffer.get_batches(config.minibatch_size, self.device):
+                        logits, values = self.network(
+                            batch.obs_cards, batch.obs_global,
+                            batch.obs_actions, batch.action_mask,
+                        )
+                        dist = Categorical(logits=logits)
+                        log_probs = dist.log_prob(batch.actions)
+                        entropy = dist.entropy()
+
+                        # Clipped surrogate objective
+                        ratio = (log_probs - batch.old_log_probs).exp()
+                        surr1 = ratio * batch.advantages
+                        surr2 = ratio.clamp(1.0 - config.clip_range, 1.0 + config.clip_range) * batch.advantages
+                        policy_loss = -torch.min(surr1, surr2).mean()
+
+                        # Value loss
+                        value_loss = F.mse_loss(values, batch.returns)
+
+                        # Entropy bonus
+                        entropy_loss = -entropy.mean()
+
+                        loss = (
+                            policy_loss
+                            + config.value_loss_coef * value_loss
+                            + config.entropy_coef * entropy_loss
+                        )
+
+                        self.optimizer.zero_grad()
+                        loss.backward()
+                        nn.utils.clip_grad_norm_(self.network.parameters(), config.max_grad_norm)
+                        self.optimizer.step()
+
+                        total_policy_loss += policy_loss.item()
+                        total_value_loss += value_loss.item()
+                        total_entropy += entropy.mean().item()
+                        num_batches += 1
+
+                # --- Logging ---
+                if update % config.log_interval == 0 and num_batches > 0:
+                    elapsed = time.time() - start_time
+                    fps = global_step / elapsed
+
+                    avg_policy_loss = total_policy_loss / num_batches
+                    avg_value_loss = total_value_loss / num_batches
+                    avg_entropy = total_entropy / num_batches
+
+                    log_parts = [
+                        f"Update {update}/{num_updates}",
+                        f"steps={global_step}",
+                        f"FPS={fps:.0f}",
+                        f"policy_loss={avg_policy_loss:.4f}",
+                        f"value_loss={avg_value_loss:.4f}",
+                        f"entropy={avg_entropy:.4f}",
+                    ]
+
+                    if self._episode_rewards:
+                        recent = self._episode_rewards[-100:]
+                        recent_wins = self._episode_wins[-100:]
+                        recent_lens = self._episode_lengths[-100:]
+                        log_parts.extend([
+                            f"ep_reward={np.mean(recent):.3f}",
+                            f"win_rate={np.mean(recent_wins):.3f}",
+                            f"ep_len={np.mean(recent_lens):.0f}",
+                            f"episodes={len(self._episode_rewards)}",
+                        ])
+
+                    logger.info(" | ".join(log_parts))
+
+                    if self._writer is not None:
+                        self._writer.add_scalar("loss/policy", avg_policy_loss, global_step)
+                        self._writer.add_scalar("loss/value", avg_value_loss, global_step)
+                        self._writer.add_scalar("loss/entropy", avg_entropy, global_step)
+                        self._writer.add_scalar("perf/fps", fps, global_step)
+                        if self._episode_rewards:
+                            self._writer.add_scalar("episode/reward", np.mean(recent), global_step)
+                            self._writer.add_scalar("episode/win_rate", np.mean(recent_wins), global_step)
+                            self._writer.add_scalar("episode/length", np.mean(recent_lens), global_step)
+
+                # --- Evaluation ---
+                if update % config.eval_interval == 0:
+                    self._evaluate(config.eval_episodes)
+
+                # --- Checkpointing ---
+                if update % config.save_interval == 0:
+                    self._save_checkpoint(update, global_step)
+
+        finally:
+            vec_env.close()
+            if self._writer is not None:
+                self._writer.close()
+
+        logger.info("Training complete. Total steps: %d", global_step)
+
+    def _evaluate(self, num_episodes: int) -> None:
+        """Evaluate the agent against greedy and random opponents."""
+        self.network.eval()
+
+        for opp_type in ("greedy", "random"):
+            wins = 0
+            env = TrainingEnv(
+                deck_path=self.config.deck_path,
+                opponent_type=opp_type,
+                reward_shaping=False,
+                seed=self.config.seed + 999999,
+            )
+            try:
+                for ep in range(num_episodes):
+                    obs = env.reset()
+                    done = False
+                    while not done:
+                        with torch.no_grad():
+                            t_cards = torch.from_numpy(obs["cards"]).unsqueeze(0).to(self.device)
+                            t_global = torch.from_numpy(obs["global_state"]).unsqueeze(0).to(self.device)
+                            t_actions = torch.from_numpy(obs["actions"]).unsqueeze(0).to(self.device)
+                            t_mask = torch.from_numpy(obs["action_mask"]).unsqueeze(0).to(self.device)
+
+                            logits, _ = self.network(t_cards, t_global, t_actions, t_mask)
+                            action = logits.argmax(dim=-1).item()
+
+                        obs, reward, done, info = env.step(action)
+                        if done and info.get("terminal_reward", 0) > 0:
+                            wins += 1
+            finally:
+                env.close()
+
+            win_rate = wins / max(num_episodes, 1)
+            logger.info("Eval vs %s: %d/%d wins (%.1f%%)", opp_type, wins, num_episodes, win_rate * 100)
+
+            if self._writer is not None:
+                step = len(self._episode_rewards)
+                self._writer.add_scalar(f"eval/win_rate_vs_{opp_type}", win_rate, step)
+
+        self.network.train()
+
+    def _save_checkpoint(self, update: int, global_step: int) -> None:
+        """Save model checkpoint."""
+        save_dir = Path(self.config.save_dir)
+        save_dir.mkdir(parents=True, exist_ok=True)
+        path = save_dir / f"checkpoint_{update}.pt"
+
+        torch.save({
+            "update": update,
+            "global_step": global_step,
+            "model_state_dict": self.network.state_dict(),
+            "optimizer_state_dict": self.optimizer.state_dict(),
+            "config": self.config,
+            "episode_rewards": self._episode_rewards[-1000:],
+        }, path)
+
+        logger.info("Saved checkpoint to %s", path)

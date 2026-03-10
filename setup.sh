@@ -17,6 +17,9 @@ pip install --upgrade pip setuptools wheel
 echo "==> Installing package with dev dependencies..."
 pip install -e ".[dev]"
 
+echo "==> Installing training dependencies (torch, tensorboard)..."
+pip install -e ".[train]"
+
 echo "==> Building libocgcore..."
 make build
 

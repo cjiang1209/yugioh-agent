@@ -20,9 +20,13 @@ dev = [
     "pytest>=7.0",
     "pytest-timeout>=2.0",
 ]
+train = [
+    "torch>=2.0",
+    "tensorboard>=2.0",
+]
 
 [tool.setuptools.packages.find]
-include = ["yugioh_env*"]
+include = ["yugioh_env*", "yugioh_rl*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
