@@ -20,6 +20,9 @@ pip install -e ".[dev]"
 echo "==> Installing training dependencies (torch, tensorboard)..."
 pip install -e ".[train]"
 
+echo "==> Installing embedding dependencies (sentence-transformers)..."
+pip install -e ".[embed]"
+
 echo "==> Building libocgcore..."
 make build
 

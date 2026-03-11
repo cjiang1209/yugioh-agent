@@ -61,6 +61,7 @@ Tests auto-skip when prerequisites are missing:
 - `script_dirs` fixture: skips if `third_party/CardScripts/` absent
 - Pure unit tests (`test_message_parser`, `test_observation`, `test_action_space`, `test_deck_parser`) require no external deps
 - `test_opponent.py` ModelOpponent tests: skips if `torch` not installed
+- `test_card_embeddings.py`: TextEmbeddingLookup/network tests skip if `torch` not installed; `test_build_embeddings_output_structure` skips if `sentence-transformers` not installed
 
 ## Architecture
 
@@ -162,6 +163,7 @@ PPO-based training that calls `YuGiOhEnvironment` directly in-process (no HTTP).
 
 ```bash
 pip install -e ".[train]"   # adds torch + tensorboard
+pip install -e ".[embed]"  # adds sentence-transformers (for building card text embeddings)
 ```
 
 ### Running Training
@@ -175,6 +177,11 @@ scripts/train.sh --device cuda --save-dir runs/exp1         # GPU + custom check
 scripts/train.sh --agent-player random                     # coin flip per episode (default)
 scripts/train.sh --agent-player first                      # always go first
 scripts/train.sh --agent-player second                     # always go second
+scripts/train.sh --card-embeddings assets/card_text_embeddings.pt  # text-aware card encoding
+
+# Build card text embeddings (requires sentence-transformers)
+scripts/build_card_embeddings.sh                           # default: assets/cards.cdb → assets/card_text_embeddings.pt
+scripts/build_card_embeddings.sh --db path/to/cards.cdb --output path/to/embeddings.pt
 ```
 
 See all options: `scripts/train.sh --help`
@@ -194,7 +201,7 @@ scripts/train.sh     — Shell wrapper (activates venv, forwards args)
 
 ### Network Architecture
 
-- **Card encoder**: shared embedding (vocab 131072, mod-hashed uint32 card codes) + MLP per card → zone-pooled board representation
+- **Card encoder**: two modes — **symbolic** (default: modulo-hashed learned embedding, cards are arbitrary tokens) or **semantic** (`--card-embeddings`: frozen text embeddings + collision-free learned embedding, cards carry meaning from effect text). Followed by MLP per card → zone-pooled board representation.
 - **Policy head**: dot-product scoring of action embeddings against board projection, masked by `action_mask`
 - **Value head**: MLP on board representation → scalar
 
@@ -214,6 +221,7 @@ Disable with `--no-reward-shaping`.
 4. **Auto-reset**: `TrainingEnv.step()` auto-resets on episode end, returning the first obs of a new episode and storing terminal info.
 5. **Player order randomization**: By default (`--agent-player random`), the agent randomly goes first or second each episode (coin flip seeded by the episode seed). This prevents training bias from always playing first. The observation/network architecture is already player-agnostic (relativized by `agent_player`), so no model changes are needed.
 6. **Model opponent (self-play)**: `ModelOpponent` loads a trained checkpoint and runs greedy argmax inference to select actions. When `needs_observation` is True, the environment builds a full observation from the opponent's perspective before each decision. The server supports `--opponent model --opponent-checkpoint PATH` flags (also configurable via `YUGIOH_OPPONENT_TYPE`/`YUGIOH_OPPONENT_CHECKPOINT` env vars).
+7. **Semantic card embeddings (optional)**: The network supports two card embedding modes — **symbolic** (default: cards are arbitrary tokens, modulo-hashed into a learned embedding) and **semantic** (`--card-embeddings`: cards carry meaning from effect text). In semantic mode, `TextEmbeddingLookup` loads pre-computed sentence-transformer embeddings and uses `torch.searchsorted` for vectorized lookup by passcode. Frozen text vectors are projected via trainable `nn.Linear` and concatenated with a collision-free learned embedding. The embeddings file lives only in the trainer process — `SubprocVecEnv` workers never load it.
 
 ## Environment Variables
 

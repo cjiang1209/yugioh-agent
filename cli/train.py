@@ -67,6 +67,12 @@ def parse_args() -> argparse.Namespace:
                      help="Board representation hidden dimension (default: 256)")
     net.add_argument("--action-embed-dim", type=int, default=64,
                      help="Action encoder output dimension (default: 64)")
+    net.add_argument("--card-embeddings", type=str, default="",
+                     help="Path to pre-computed card text embeddings .pt file (enables text-aware mode)")
+    net.add_argument("--text-embed-dim", type=int, default=64,
+                     help="Projected text embedding dimension (default: 64)")
+    net.add_argument("--learned-embed-dim", type=int, default=8,
+                     help="Collision-free learned embedding dimension in text mode (default: 8)")
 
     infra = parser.add_argument_group("infrastructure")
     infra.add_argument("--seed", type=int, default=42,
@@ -125,6 +131,9 @@ def main() -> None:
         global_embed_dim=args.global_embed_dim,
         board_hidden_dim=args.board_hidden_dim,
         action_embed_dim=args.action_embed_dim,
+        card_embeddings_path=args.card_embeddings,
+        text_embed_dim=args.text_embed_dim,
+        learned_embed_dim=args.learned_embed_dim,
         seed=args.seed,
         log_interval=args.log_interval,
         eval_interval=args.eval_interval,

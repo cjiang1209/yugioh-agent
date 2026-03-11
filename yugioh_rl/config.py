@@ -37,6 +37,9 @@ class TrainingConfig:
     global_embed_dim: int = 64
     board_hidden_dim: int = 256
     action_embed_dim: int = 64
+    card_embeddings_path: str = ""  # path to pre-computed text embeddings (empty = disabled)
+    text_embed_dim: int = 64  # frozen text embedding projection dim (only when enabled)
+    learned_embed_dim: int = 8  # trainable per-card embedding dim (Mode B only)
 
     # Infrastructure
     seed: int = 42

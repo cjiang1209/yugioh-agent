@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import torch
 import torch.nn as nn
 
@@ -14,6 +16,8 @@ from yugioh_rl.features import (
     decode_global,
     decode_actions,
 )
+
+logger = logging.getLogger(__name__)
 
 # Location bits used for zone pooling (same order as features.py _LOC_BITS)
 # hand=0x02, mzone=0x04, szone=0x08, grave=0x10, banished=0x20, extra=0x40
@@ -34,6 +38,73 @@ def _mlp(in_dim: int, hidden_dim: int, out_dim: int) -> nn.Sequential:
     )
 
 
+class TextEmbeddingLookup(nn.Module):
+    """Frozen sentence-transformer embeddings with trainable projection.
+
+    Loads pre-computed card text embeddings from a .pt file and provides
+    vectorized lookup by card passcode using torch.searchsorted.
+
+    The frozen embeddings are projected through a trainable Linear layer
+    to produce the final text representation.
+    """
+
+    def __init__(self, embeddings_path: str, text_embed_dim: int) -> None:
+        super().__init__()
+
+        data = torch.load(embeddings_path, map_location="cpu", weights_only=True)
+        codes = data["codes"]  # (N,) int64
+        embeddings = data["embeddings"]  # (N, raw_dim) float32
+
+        # Sort by code for searchsorted
+        sorted_indices = codes.argsort()
+        sorted_codes = codes[sorted_indices]
+        sorted_embeddings = embeddings[sorted_indices]
+
+        # Prepend zero row at index 0 (for unknown/padding cards)
+        raw_dim = sorted_embeddings.shape[1]
+        padded_embeddings = torch.cat(
+            [torch.zeros(1, raw_dim), sorted_embeddings], dim=0
+        )  # (N+1, raw_dim)
+
+        self.register_buffer("_sorted_codes", sorted_codes)
+
+        self._frozen_embed = nn.Embedding.from_pretrained(
+            padded_embeddings, freeze=True, padding_idx=0
+        )
+
+        self._proj = nn.Linear(raw_dim, text_embed_dim)
+
+        logger.info(
+            "TextEmbeddingLookup: %d cards, raw_dim=%d, proj_dim=%d",
+            len(sorted_codes), raw_dim, text_embed_dim,
+        )
+
+    @property
+    def num_cards(self) -> int:
+        """Number of known cards (excluding padding)."""
+        return len(self._sorted_codes)
+
+    def forward(self, codes: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """Look up text embeddings for card codes.
+
+        Args:
+            codes: (...) long tensor of card passcodes
+
+        Returns:
+            text_embed: (..., text_embed_dim) float — projected text embeddings
+            embed_idx: (...) long — indices into the (N+1)-row embedding table
+                       (0 = unknown/padding, 1..N = known cards)
+        """
+        idx = torch.searchsorted(self._sorted_codes, codes)
+        idx = idx.clamp(0, len(self._sorted_codes) - 1)
+        valid = self._sorted_codes[idx] == codes
+        # Shift by 1 because row 0 is padding; unknown codes map to 0
+        embed_idx = torch.where(valid, idx + 1, torch.zeros_like(idx))
+
+        frozen = self._frozen_embed(embed_idx)
+        return self._proj(frozen), embed_idx
+
+
 class YuGiOhNet(nn.Module):
     """Combined policy + value network for Yu-Gi-Oh! RL.
 
@@ -44,16 +115,39 @@ class YuGiOhNet(nn.Module):
         4. Board representation: MLP on concat(zone_pool_flat, global)
         5. Policy head: dot-product scoring of action embeddings vs board projection
         6. Value head: MLP on board representation → scalar
+
+    Two card embedding modes:
+        Symbolic (default): cards are arbitrary tokens — modulo-hashed into a
+            fixed-size learned embedding with no built-in knowledge of card effects.
+        Semantic (--card-embeddings): cards carry meaning — frozen sentence-transformer
+            text embeddings (projected) + collision-free learned embedding.
     """
 
     def __init__(self, config: TrainingConfig) -> None:
         super().__init__()
 
-        # Shared card embedding (used for both board cards and action cards)
-        self.card_embedding = nn.Embedding(_CARD_VOCAB, _CARD_EMBED_DIM, padding_idx=0)
+        self._use_text_embeddings = bool(config.card_embeddings_path)
+
+        if self._use_text_embeddings:
+            # Semantic mode
+            self.text_lookup = TextEmbeddingLookup(
+                config.card_embeddings_path, config.text_embed_dim
+            )
+            num_entries = self.text_lookup.num_cards + 1  # +1 for padding at 0
+            self.card_embedding = nn.Embedding(
+                num_entries, config.learned_embed_dim, padding_idx=0
+            )
+            embed_dim = config.text_embed_dim + config.learned_embed_dim
+        else:
+            # Symbolic mode
+            self.text_lookup = None
+            self.card_embedding = nn.Embedding(
+                _CARD_VOCAB, _CARD_EMBED_DIM, padding_idx=0
+            )
+            embed_dim = _CARD_EMBED_DIM
 
         # Card encoder
-        card_input_dim = _CARD_EMBED_DIM + CARD_FEAT_DIM
+        card_input_dim = embed_dim + CARD_FEAT_DIM
         self.card_encoder = _mlp(card_input_dim, 128, config.card_embed_dim)
 
         # Global encoder
@@ -64,7 +158,7 @@ class YuGiOhNet(nn.Module):
         self.board_mlp = _mlp(board_input_dim, config.board_hidden_dim, config.board_hidden_dim)
 
         # Action encoder
-        action_input_dim = _CARD_EMBED_DIM + ACTION_FEAT_DIM
+        action_input_dim = embed_dim + ACTION_FEAT_DIM
         self.action_encoder = _mlp(action_input_dim, config.action_embed_dim, config.action_embed_dim)
 
         # Policy head: project board → action_embed_dim for dot product
@@ -76,6 +170,22 @@ class YuGiOhNet(nn.Module):
             nn.ReLU(),
             nn.Linear(64, 1),
         )
+
+    def _embed_codes(self, codes: torch.Tensor) -> torch.Tensor:
+        """Embed card codes using symbolic or semantic mode.
+
+        Args:
+            codes: (...) long tensor of card passcodes
+
+        Returns:
+            (..., embed_dim) float tensor
+        """
+        if self.text_lookup is not None:
+            text_embed, embed_idx = self.text_lookup(codes)
+            learned_embed = self.card_embedding(embed_idx)
+            return torch.cat([text_embed, learned_embed], dim=-1)
+        else:
+            return self.card_embedding(codes % _CARD_VOCAB)
 
     def forward(
         self,
@@ -102,9 +212,9 @@ class YuGiOhNet(nn.Module):
         action_codes, action_feats = decode_actions(obs_actions)  # (B,32), (B,32,F_act)
 
         # --- Card encoding ---
-        card_embed = self.card_embedding(card_ids % _CARD_VOCAB)  # (B,200,16)
-        card_input = torch.cat([card_embed, card_feats], dim=-1)  # (B,200,16+F_card)
-        card_enc = self.card_encoder(card_input)  # (B,200,card_embed_dim)
+        card_embed = self._embed_codes(card_ids)  # (B, 200, embed_dim)
+        card_input = torch.cat([card_embed, card_feats], dim=-1)
+        card_enc = self.card_encoder(card_input)  # (B, 200, card_embed_dim)
 
         # --- Zone pooling ---
         # Extract raw location byte and controller byte for zone assignment
@@ -133,8 +243,8 @@ class YuGiOhNet(nn.Module):
         board = self.board_mlp(board_input)  # (B, board_hidden_dim)
 
         # --- Action encoding ---
-        act_embed = self.card_embedding(action_codes % _CARD_VOCAB)  # (B,32,16)
-        act_input = torch.cat([act_embed, action_feats], dim=-1)  # (B,32,16+F_act)
+        act_embed = self._embed_codes(action_codes)  # (B, 32, embed_dim)
+        act_input = torch.cat([act_embed, action_feats], dim=-1)
         act_enc = self.action_encoder(act_input)  # (B, 32, action_embed_dim)
 
         # --- Policy head: dot product ---
