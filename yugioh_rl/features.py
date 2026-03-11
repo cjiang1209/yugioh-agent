@@ -36,14 +36,22 @@ _TYPE_BITS = [
 # Attribute bits (byte 12)
 _ATTR_BITS = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40]  # earth,water,fire,wind,light,dark,divine
 
+# Race bits (bytes 13-14 as uint16)
+_RACE_BITS = [
+    0x0001, 0x0002, 0x0004, 0x0008,  # warrior, spellcaster, fairy, fiend
+    0x0010, 0x0020, 0x0040, 0x0080,  # zombie, machine, aqua, pyro
+    0x0100, 0x0200, 0x0400, 0x0800,  # rock, winged_beast, plant, insect
+    0x1000, 0x2000, 0x4000, 0x8000,  # thunder, dragon, beast, beast-warrior
+]
+
 # Link marker bits (bytes 21-22 as uint16)
 _LINK_BITS = [0x01, 0x02, 0x04, 0x08, 0x20, 0x40, 0x80, 0x100]  # 8 arrows
 
 # Number of output float features per card (excluding card_id)
-CARD_FEAT_DIM = 7 + 1 + 4 + 1 + 1 + 8 + 1 + 7 + 1 + 1 + 1 + 1 + 8 + 1 + 1 + 1  # = 45
+CARD_FEAT_DIM = 7 + 1 + 4 + 1 + 1 + 8 + 1 + 7 + 16 + 1 + 1 + 1 + 1 + 8 + 1 + 1 + 1  # = 61
 # location(7) + sequence(1) + position(4) + controller(1) + is_public(1)
-# + card_type(8) + level(1) + attribute(7) + atk(1) + def(1) + lscale(1) + rscale(1)
-# + link_marker(8) + counter(1) + negated(1) + is_overlay(1) = 45
+# + card_type(8) + level(1) + attribute(7) + race(16) + atk(1) + def(1) + lscale(1) + rscale(1)
+# + link_marker(8) + counter(1) + negated(1) + is_overlay(1) = 61
 
 
 def _uint16_le(raw: torch.Tensor, byte0: int) -> torch.Tensor:
@@ -120,6 +128,10 @@ def decode_cards(raw: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     # attribute: byte 12 → 7 binary features
     attr = raw[..., 12]
     feats.append(_extract_bits(attr, _ATTR_BITS))  # (B,200,7)
+
+    # race: bytes 13-14 → uint16 → 16 binary features
+    race = _uint16_le(raw, 13)
+    feats.append(_extract_bits(race, _RACE_BITS))  # (B,200,16)
 
     # ATK: bytes 15-16 → uint16
     atk = _uint16_le(raw, 15)
