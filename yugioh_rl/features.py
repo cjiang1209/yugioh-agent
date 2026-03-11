@@ -15,43 +15,89 @@ import torch.nn.functional as F
 # Card features: (B, 200, 42) uint8 → card_ids (B,200) int, card_feats (B,200,F)
 # ---------------------------------------------------------------------------
 
-# Location bits (byte 2)
+# Location bits (byte 4)
 _LOC_BITS = [0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x01]  # hand,mzone,szone,grave,banished,extra,deck
 
-# Position bits (byte 4)
+# Position bits (byte 6)
 _POS_BITS = [0x01, 0x02, 0x04, 0x08]  # FU-Atk, FD-Atk, FU-Def, FD-Def
 
-# Card type bits (bytes 7-10 as uint32)
+# Card type bits (bytes 9-12 as uint32)
 _TYPE_BITS = [
     0x1,        # monster
     0x2,        # spell
     0x4,        # trap
-    0x40,       # fusion
-    0x2000,     # synchro
-    0x800000,   # xyz
-    0x4000000,  # link
+    0x10,       # normal
     0x20,       # effect
+    0x40,       # fusion
+    0x80,       # ritual
+    0x100,      # trapmonster
+    0x200,      # spirit
+    0x400,      # union
+    0x800,      # gemini
+    0x1000,     # tuner
+    0x2000,     # synchro
+    0x4000,     # token
+    0x8000,     # maximum
+    0x10000,    # quickplay
+    0x20000,    # continuous
+    0x40000,    # equip
+    0x80000,    # field
+    0x100000,   # counter
+    0x200000,   # flip
+    0x400000,   # toon
+    0x800000,   # xyz
+    0x1000000,  # pendulum
+    0x2000000,  # spsummon
+    0x4000000,  # link
 ]
 
-# Attribute bits (byte 12)
+# Attribute bits (byte 14)
 _ATTR_BITS = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40]  # earth,water,fire,wind,light,dark,divine
 
-# Race bits (bytes 13-14 as uint16)
+# Race bits (bytes 15-18 as uint32)
 _RACE_BITS = [
-    0x0001, 0x0002, 0x0004, 0x0008,  # warrior, spellcaster, fairy, fiend
-    0x0010, 0x0020, 0x0040, 0x0080,  # zombie, machine, aqua, pyro
-    0x0100, 0x0200, 0x0400, 0x0800,  # rock, winged_beast, plant, insect
-    0x1000, 0x2000, 0x4000, 0x8000,  # thunder, dragon, beast, beast-warrior
+    0x0001,     # warrior
+    0x0002,     # spellcaster
+    0x0004,     # fairy
+    0x0008,     # fiend
+    0x0010,     # zombie
+    0x0020,     # machine
+    0x0040,     # aqua
+    0x0080,     # pyro
+    0x0100,     # rock
+    0x0200,     # winged_beast
+    0x0400,     # plant
+    0x0800,     # insect
+    0x1000,     # thunder
+    0x2000,     # dragon
+    0x4000,     # beast
+    0x8000,     # beast-warrior
+    0x10000,    # dinosaur
+    0x20000,    # fish
+    0x40000,    # sea_serpent
+    0x80000,    # reptile
+    0x100000,   # psychic
+    0x200000,   # divine
+    0x400000,   # creator_god
+    0x800000,   # wyrm
+    0x1000000,  # cyberse
+    0x2000000,  # illusion
+    0x4000000,  # cyborg
+    0x8000000,  # magical_knight
+    0x10000000, # high_dragon
+    0x20000000, # omega_psychic
+    0x40000000, # celestial_warrior
+    0x80000000, # galaxy
 ]
 
-# Link marker bits (bytes 21-22 as uint16)
+# Link marker bits (bytes 25-26 as uint16)
 _LINK_BITS = [0x01, 0x02, 0x04, 0x08, 0x20, 0x40, 0x80, 0x100]  # 8 arrows
 
 # Number of output float features per card (excluding card_id)
-CARD_FEAT_DIM = 7 + 1 + 4 + 1 + 1 + 8 + 1 + 7 + 16 + 1 + 1 + 1 + 1 + 8 + 1 + 1 + 1  # = 61
+CARD_FEAT_DIM = 7 + 1 + 4 + 1 + 1 + 26 + 1 + 7 + 32 + 1 + 1 + 1 + 1 + 8 + 1 + 1 + 1  # = 95
 # location(7) + sequence(1) + position(4) + controller(1) + is_public(1)
-# + card_type(8) + level(1) + attribute(7) + race(16) + atk(1) + def(1) + lscale(1) + rscale(1)
-# + link_marker(8) + counter(1) + negated(1) + is_overlay(1) = 61
+# + card_type(26) + level(1) + attribute(7) + race(32) + atk(1) + def(1) + lscale(1) + rscale(1)
+# + link_marker(8) + counter(1) + negated(1) + is_overlay(1) = 95
 
 
 def _uint16_le(raw: torch.Tensor, byte0: int) -> torch.Tensor:
@@ -97,68 +143,68 @@ def decode_cards(raw: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     B = raw.shape[0]
     raw = raw.long()
 
-    card_ids = _uint16_le(raw, 0)  # (B, 200)
+    card_ids = _uint32_le(raw, 0)  # (B, 200) — full uint32 card codes
 
     feats = []
 
-    # location: byte 2 → 7 binary features
-    loc = raw[..., 2]
+    # location: byte 4 → 7 binary features
+    loc = raw[..., 4]
     feats.append(_extract_bits(loc, _LOC_BITS))  # (B,200,7)
 
-    # sequence: byte 3 → normalized
-    feats.append((raw[..., 3].float() / 15.0).unsqueeze(-1))  # (B,200,1)
+    # sequence: byte 5 → normalized
+    feats.append((raw[..., 5].float() / 15.0).unsqueeze(-1))  # (B,200,1)
 
-    # position: byte 4 → 4 binary features
-    pos = raw[..., 4]
+    # position: byte 6 → 4 binary features
+    pos = raw[..., 6]
     feats.append(_extract_bits(pos, _POS_BITS))  # (B,200,4)
 
-    # controller: byte 5
-    feats.append(raw[..., 5].float().unsqueeze(-1))  # (B,200,1)
+    # controller: byte 7
+    feats.append(raw[..., 7].float().unsqueeze(-1))  # (B,200,1)
 
-    # is_public: byte 6
-    feats.append(raw[..., 6].float().unsqueeze(-1))  # (B,200,1)
+    # is_public: byte 8
+    feats.append(raw[..., 8].float().unsqueeze(-1))  # (B,200,1)
 
-    # card_type: bytes 7-10 → uint32 → 8 binary features
-    ctype = _uint32_le(raw, 7)
-    feats.append(_extract_bits(ctype, _TYPE_BITS))  # (B,200,8)
+    # card_type: bytes 9-12 → uint32 → 26 binary features
+    ctype = _uint32_le(raw, 9)
+    feats.append(_extract_bits(ctype, _TYPE_BITS))  # (B,200,26)
 
-    # level: byte 11
-    feats.append((raw[..., 11].float() / 12.0).unsqueeze(-1))  # (B,200,1)
+    # level: byte 13
+    feats.append((raw[..., 13].float() / 12.0).unsqueeze(-1))  # (B,200,1)
 
-    # attribute: byte 12 → 7 binary features
-    attr = raw[..., 12]
+    # attribute: byte 14 → 7 binary features
+    attr = raw[..., 14]
     feats.append(_extract_bits(attr, _ATTR_BITS))  # (B,200,7)
 
-    # race: bytes 13-14 → uint16 → 16 binary features
-    race = _uint16_le(raw, 13)
-    feats.append(_extract_bits(race, _RACE_BITS))  # (B,200,16)
+    # race: bytes 15-18 → uint32 → 32 binary features
+    race = _uint32_le(raw, 15)
+    feats.append(_extract_bits(race, _RACE_BITS))  # (B,200,32)
 
-    # ATK: bytes 15-16 → uint16
-    atk = _uint16_le(raw, 15)
+    # ATK: bytes 19-20 → uint16
+    atk = _uint16_le(raw, 19)
     feats.append((atk.float() / 5000.0).unsqueeze(-1))  # (B,200,1)
 
-    # DEF: bytes 17-18 → uint16
-    dfn = _uint16_le(raw, 17)
+    # DEF: bytes 21-22 → uint16
+    dfn = _uint16_le(raw, 21)
     feats.append((dfn.float() / 5000.0).unsqueeze(-1))  # (B,200,1)
 
-    # lscale: byte 19
-    feats.append((raw[..., 19].float() / 12.0).unsqueeze(-1))  # (B,200,1)
+    # lscale: byte 23
+    feats.append((raw[..., 23].float() / 12.0).unsqueeze(-1))  # (B,200,1)
 
-    # rscale: byte 20
-    feats.append((raw[..., 20].float() / 12.0).unsqueeze(-1))  # (B,200,1)
+    # rscale: byte 24
+    feats.append((raw[..., 24].float() / 12.0).unsqueeze(-1))  # (B,200,1)
 
-    # link_marker: bytes 21-22 → uint16 → 8 binary features
-    lmark = _uint16_le(raw, 21)
+    # link_marker: bytes 25-26 → uint16 → 8 binary features
+    lmark = _uint16_le(raw, 25)
     feats.append(_extract_bits(lmark, _LINK_BITS))  # (B,200,8)
 
-    # counter_count: byte 23
-    feats.append((raw[..., 23].float() / 10.0).unsqueeze(-1))  # (B,200,1)
+    # counter_count: byte 27
+    feats.append((raw[..., 27].float() / 10.0).unsqueeze(-1))  # (B,200,1)
 
-    # negated: byte 24
-    feats.append(raw[..., 24].float().unsqueeze(-1))  # (B,200,1)
+    # negated: byte 28
+    feats.append(raw[..., 28].float().unsqueeze(-1))  # (B,200,1)
 
-    # is_overlay: byte 25
-    feats.append(raw[..., 25].float().unsqueeze(-1))  # (B,200,1)
+    # is_overlay: byte 29
+    feats.append(raw[..., 29].float().unsqueeze(-1))  # (B,200,1)
 
     card_feats = torch.cat(feats, dim=-1)  # (B, 200, CARD_FEAT_DIM)
     return card_ids, card_feats

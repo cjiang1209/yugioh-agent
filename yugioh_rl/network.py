@@ -20,8 +20,8 @@ from yugioh_rl.features import (
 _ZONE_LOC_BITS = [0x02, 0x04, 0x08, 0x10, 0x20, 0x40]
 _NUM_ZONES = len(_ZONE_LOC_BITS) * 2  # 6 zones × 2 players = 12
 
-# Card embedding vocabulary (uint16 card codes)
-_CARD_VOCAB = 65536
+# Card embedding vocabulary (card codes mod-hashed from uint32)
+_CARD_VOCAB = 131072
 _CARD_EMBED_DIM = 16
 
 
@@ -102,14 +102,14 @@ class YuGiOhNet(nn.Module):
         action_codes, action_feats = decode_actions(obs_actions)  # (B,32), (B,32,F_act)
 
         # --- Card encoding ---
-        card_embed = self.card_embedding(card_ids.clamp(0, _CARD_VOCAB - 1))  # (B,200,16)
+        card_embed = self.card_embedding(card_ids % _CARD_VOCAB)  # (B,200,16)
         card_input = torch.cat([card_embed, card_feats], dim=-1)  # (B,200,16+F_card)
         card_enc = self.card_encoder(card_input)  # (B,200,card_embed_dim)
 
         # --- Zone pooling ---
         # Extract raw location byte and controller byte for zone assignment
-        raw_loc = obs_cards[..., 2].long()   # (B, 200)
-        raw_ctrl = obs_cards[..., 5].long()  # (B, 200)
+        raw_loc = obs_cards[..., 4].long()   # (B, 200)
+        raw_ctrl = obs_cards[..., 7].long()  # (B, 200)
 
         zone_parts = []
         for ctrl in (0, 1):
@@ -133,7 +133,7 @@ class YuGiOhNet(nn.Module):
         board = self.board_mlp(board_input)  # (B, board_hidden_dim)
 
         # --- Action encoding ---
-        act_embed = self.card_embedding(action_codes.clamp(0, _CARD_VOCAB - 1))  # (B,32,16)
+        act_embed = self.card_embedding(action_codes % _CARD_VOCAB)  # (B,32,16)
         act_input = torch.cat([act_embed, action_feats], dim=-1)  # (B,32,16+F_act)
         act_enc = self.action_encoder(act_input)  # (B, 32, action_embed_dim)
 

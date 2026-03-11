@@ -90,7 +90,7 @@ YuGiOhEnvironment (server/yugioh_environment.py)
 
 ### Observation Space
 
-- `cards`: `(200, 42)` uint8 — up to 200 cards, 42 features each
+- `cards`: `(200, 42)` uint8 — up to 200 cards, 42 bytes each (30 used, 12 padding); decoded to 95 float features + card_id
 - `global_state`: `(20,)` uint8 — LP, phase, turn, zone counts
 - `actions`: `(32, 12)` uint8 — per-action feature vectors
 - `action_mask`: `(32,)` int8 — 1=legal, 0=illegal
@@ -194,7 +194,7 @@ scripts/train.sh     — Shell wrapper (activates venv, forwards args)
 
 ### Network Architecture
 
-- **Card encoder**: shared embedding (vocab 65536) + MLP per card → zone-pooled board representation
+- **Card encoder**: shared embedding (vocab 131072, mod-hashed uint32 card codes) + MLP per card → zone-pooled board representation
 - **Policy head**: dot-product scoring of action embeddings against board projection, masked by `action_mask`
 - **Value head**: MLP on board representation → scalar
 

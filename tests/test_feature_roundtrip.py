@@ -88,7 +88,17 @@ class TestCardRoundtrip:
             controller=0, is_public=True,
         )
         ids, _ = decode_cards(_card_tensor(card))
-        assert ids[0, 0].item() == 46986414 & 0xFFFF
+        assert ids[0, 0].item() == 46986414
+
+    def test_card_id_large(self):
+        """Card IDs > 65535 survive the uint32 roundtrip."""
+        code = 100000123
+        card = encode_card(
+            code=code, location=0x02, sequence=0, position=0x01,
+            controller=0, is_public=True,
+        )
+        ids, _ = decode_cards(_card_tensor(card))
+        assert ids[0, 0].item() == code
 
     def test_location(self):
         for loc, expected_bits in [
@@ -157,9 +167,10 @@ class TestCardRoundtrip:
             controller=0, is_public=False, card_type=ctype,
         )
         _, feats = decode_cards(_card_tensor(card))
-        type_feats = feats[0, 0, 14:22]
+        n_type_bits = len(_TYPE_BITS)
+        type_feats = feats[0, 0, 14:14 + n_type_bits]
         expected_set = _bit_index(_TYPE_BITS, ctype)
-        for i in range(8):
+        for i in range(n_type_bits):
             expected = 1.0 if i in expected_set else 0.0
             assert type_feats[i].item() == expected, f"type bit {i}"
 
@@ -171,11 +182,28 @@ class TestCardRoundtrip:
             controller=0, is_public=False, card_type=ctype,
         )
         _, feats = decode_cards(_card_tensor(card))
-        type_feats = feats[0, 0, 14:22]
+        n_type_bits = len(_TYPE_BITS)
+        type_feats = feats[0, 0, 14:14 + n_type_bits]
         expected_set = _bit_index(_TYPE_BITS, ctype)
-        for i in range(8):
+        for i in range(n_type_bits):
             expected = 1.0 if i in expected_set else 0.0
             assert type_feats[i].item() == expected, f"type bit {i}"
+
+    def test_card_type_all_new_flags(self):
+        """All 26 type flags decode correctly."""
+        for i, bit in enumerate(_TYPE_BITS):
+            card = encode_card(
+                code=0, location=0x04, sequence=0, position=0,
+                controller=0, is_public=False, card_type=bit,
+            )
+            _, feats = decode_cards(_card_tensor(card))
+            n_type_bits = len(_TYPE_BITS)
+            type_feats = feats[0, 0, 14:14 + n_type_bits]
+            assert type_feats[i].item() == 1.0, f"type bit {i} (0x{bit:x}) not set"
+            # All other bits should be 0
+            for j in range(n_type_bits):
+                if j != i:
+                    assert type_feats[j].item() == 0.0, f"type bit {j} should be 0 when only bit {i} set"
 
     def test_level(self):
         card = encode_card(
@@ -183,7 +211,8 @@ class TestCardRoundtrip:
             controller=0, is_public=False, level=8,
         )
         _, feats = decode_cards(_card_tensor(card))
-        assert feats[0, 0, 22].item() == pytest.approx(8 / 12.0)
+        # level is at offset 14 + 26 = 40
+        assert feats[0, 0, 40].item() == pytest.approx(8 / 12.0)
 
     def test_attribute(self):
         # DARK = 0x20
@@ -193,7 +222,8 @@ class TestCardRoundtrip:
             controller=0, is_public=False, attribute=attr,
         )
         _, feats = decode_cards(_card_tensor(card))
-        attr_feats = feats[0, 0, 23:30]
+        # attribute at offset 41-47
+        attr_feats = feats[0, 0, 41:48]
         expected_set = _bit_index(_ATTR_BITS, attr)
         for i in range(7):
             expected = 1.0 if i in expected_set else 0.0
@@ -207,9 +237,11 @@ class TestCardRoundtrip:
             controller=0, is_public=False, race=race,
         )
         _, feats = decode_cards(_card_tensor(card))
-        race_feats = feats[0, 0, 30:46]
+        n_race_bits = len(_RACE_BITS)
+        # race at offset 48-79
+        race_feats = feats[0, 0, 48:48 + n_race_bits]
         expected_set = _bit_index(_RACE_BITS, race)
-        for i in range(16):
+        for i in range(n_race_bits):
             expected = 1.0 if i in expected_set else 0.0
             assert race_feats[i].item() == expected, f"race bit {i}"
 
@@ -221,12 +253,30 @@ class TestCardRoundtrip:
             controller=0, is_public=False, race=race,
         )
         _, feats = decode_cards(_card_tensor(card))
-        race_feats = feats[0, 0, 30:46]
+        n_race_bits = len(_RACE_BITS)
+        race_feats = feats[0, 0, 48:48 + n_race_bits]
         expected_set = _bit_index(_RACE_BITS, race)
         assert len(expected_set) == 2
-        for i in range(16):
+        for i in range(n_race_bits):
             expected = 1.0 if i in expected_set else 0.0
             assert race_feats[i].item() == expected, f"race bit {i}"
+
+    def test_race_high_bits(self):
+        """Race bits 16-31 (e.g., Dinosaur=0x10000, Cyberse=0x1000000) survive roundtrip."""
+        for i, bit in enumerate(_RACE_BITS):
+            if bit <= 0x8000:
+                continue  # skip low bits, tested elsewhere
+            card = encode_card(
+                code=0, location=0x04, sequence=0, position=0,
+                controller=0, is_public=False, race=bit,
+            )
+            _, feats = decode_cards(_card_tensor(card))
+            n_race_bits = len(_RACE_BITS)
+            race_feats = feats[0, 0, 48:48 + n_race_bits]
+            assert race_feats[i].item() == 1.0, f"race bit {i} (0x{bit:x}) not set"
+            for j in range(n_race_bits):
+                if j != i:
+                    assert race_feats[j].item() == 0.0, f"race bit {j} should be 0 when only bit {i} set"
 
     def test_atk(self):
         card = encode_card(
@@ -234,7 +284,8 @@ class TestCardRoundtrip:
             controller=0, is_public=False, attack=3000,
         )
         _, feats = decode_cards(_card_tensor(card))
-        assert feats[0, 0, 46].item() == pytest.approx(3000 / 5000.0)
+        # ATK at offset 80
+        assert feats[0, 0, 80].item() == pytest.approx(3000 / 5000.0)
 
     def test_def(self):
         card = encode_card(
@@ -242,7 +293,8 @@ class TestCardRoundtrip:
             controller=0, is_public=False, defense=2500,
         )
         _, feats = decode_cards(_card_tensor(card))
-        assert feats[0, 0, 47].item() == pytest.approx(2500 / 5000.0)
+        # DEF at offset 81
+        assert feats[0, 0, 81].item() == pytest.approx(2500 / 5000.0)
 
     def test_lscale(self):
         card = encode_card(
@@ -250,7 +302,8 @@ class TestCardRoundtrip:
             controller=0, is_public=False, lscale=4,
         )
         _, feats = decode_cards(_card_tensor(card))
-        assert feats[0, 0, 48].item() == pytest.approx(4 / 12.0)
+        # lscale at offset 82
+        assert feats[0, 0, 82].item() == pytest.approx(4 / 12.0)
 
     def test_rscale(self):
         card = encode_card(
@@ -258,7 +311,8 @@ class TestCardRoundtrip:
             controller=0, is_public=False, rscale=8,
         )
         _, feats = decode_cards(_card_tensor(card))
-        assert feats[0, 0, 49].item() == pytest.approx(8 / 12.0)
+        # rscale at offset 83
+        assert feats[0, 0, 83].item() == pytest.approx(8 / 12.0)
 
     def test_link_marker(self):
         # Bottom-left(0x40) + bottom(0x80) = 0xC0
@@ -268,7 +322,8 @@ class TestCardRoundtrip:
             controller=0, is_public=False, link_marker=lmark,
         )
         _, feats = decode_cards(_card_tensor(card))
-        link_feats = feats[0, 0, 50:58]
+        # link_marker at offset 84-91
+        link_feats = feats[0, 0, 84:92]
         expected_set = _bit_index(_LINK_BITS, lmark)
         for i in range(8):
             expected = 1.0 if i in expected_set else 0.0
@@ -280,7 +335,8 @@ class TestCardRoundtrip:
             controller=0, is_public=False, counter_count=3,
         )
         _, feats = decode_cards(_card_tensor(card))
-        assert feats[0, 0, 58].item() == pytest.approx(3 / 10.0)
+        # counter at offset 92
+        assert feats[0, 0, 92].item() == pytest.approx(3 / 10.0)
 
     def test_negated(self):
         card = encode_card(
@@ -288,7 +344,8 @@ class TestCardRoundtrip:
             controller=0, is_public=False, negated=True,
         )
         _, feats = decode_cards(_card_tensor(card))
-        assert feats[0, 0, 59].item() == 1.0
+        # negated at offset 93
+        assert feats[0, 0, 93].item() == 1.0
 
     def test_is_overlay(self):
         card = encode_card(
@@ -296,7 +353,8 @@ class TestCardRoundtrip:
             controller=0, is_public=False, is_overlay=True,
         )
         _, feats = decode_cards(_card_tensor(card))
-        assert feats[0, 0, 60].item() == 1.0
+        # is_overlay at offset 94
+        assert feats[0, 0, 94].item() == 1.0
 
     def test_all_fields_combined(self):
         """Encode a fully-populated card and verify every field decodes."""
@@ -323,8 +381,8 @@ class TestCardRoundtrip:
         ids, feats = decode_cards(_card_tensor(card))
         f = feats[0, 0]
 
-        # card_id
-        assert ids[0, 0].item() == 46986414 & 0xFFFF
+        # card_id (full uint32 now)
+        assert ids[0, 0].item() == 46986414
         # location: MZONE = 0x04 → bit 1
         assert f[1].item() == 1.0
         # sequence
@@ -335,33 +393,33 @@ class TestCardRoundtrip:
         assert f[12].item() == 1.0
         # is_public
         assert f[13].item() == 1.0
-        # card_type: monster(bit0) + effect(bit7) + link(bit6)
-        assert f[14].item() == 1.0  # monster
-        assert f[20].item() == 1.0  # link
-        assert f[21].item() == 1.0  # effect
+        # card_type: monster(bit0=0x1) + effect(bit4=0x20) + link(bit25=0x4000000)
+        assert f[14].item() == 1.0   # monster (0x1)
+        assert f[18].item() == 1.0   # effect (0x20)
+        assert f[39].item() == 1.0   # link (0x4000000)
         # level
-        assert f[22].item() == pytest.approx(4 / 12.0)
+        assert f[40].item() == pytest.approx(4 / 12.0)
         # attribute: DARK → bit 5
-        assert f[28].item() == 1.0
+        assert f[46].item() == 1.0
         # race: machine = 0x20 → bit 5
-        assert f[35].item() == 1.0
+        assert f[53].item() == 1.0
         # ATK
-        assert f[46].item() == pytest.approx(2500 / 5000.0)
+        assert f[80].item() == pytest.approx(2500 / 5000.0)
         # DEF
-        assert f[47].item() == pytest.approx(2000 / 5000.0)
+        assert f[81].item() == pytest.approx(2000 / 5000.0)
         # lscale
-        assert f[48].item() == pytest.approx(3 / 12.0)
+        assert f[82].item() == pytest.approx(3 / 12.0)
         # rscale
-        assert f[49].item() == pytest.approx(7 / 12.0)
+        assert f[83].item() == pytest.approx(7 / 12.0)
         # link_marker: top-left(0x01→bit0) + bottom-left(0x40→bit5)
-        assert f[50].item() == 1.0
-        assert f[55].item() == 1.0
+        assert f[84].item() == 1.0
+        assert f[89].item() == 1.0
         # counter_count
-        assert f[58].item() == pytest.approx(2 / 10.0)
+        assert f[92].item() == pytest.approx(2 / 10.0)
         # negated
-        assert f[59].item() == 1.0
+        assert f[93].item() == 1.0
         # is_overlay
-        assert f[60].item() == 1.0
+        assert f[94].item() == 1.0
 
     def test_hidden_card_zeros(self):
         """A hidden card should decode to all-zero features (except location/controller)."""
@@ -376,7 +434,7 @@ class TestCardRoundtrip:
         assert f[2].item() == 1.0   # szone bit
         assert f[12].item() == 1.0  # controller=1
         # Everything stat-related should be zero
-        for i in [13, 22, 46, 47, 48, 49, 58, 59, 60]:
+        for i in [13, 40, 80, 81, 82, 83, 92, 93, 94]:
             assert f[i].item() == 0.0, f"feat[{i}] should be 0 for hidden card"
 
 

@@ -49,6 +49,11 @@ def _encode_i16_clamped(val: int) -> tuple[int, int]:
     return val & 0xFF, (val >> 8) & 0xFF
 
 
+def _encode_u32(val: int) -> tuple[int, int, int, int]:
+    """Encode a uint32 value as four uint8 bytes (little-endian)."""
+    return val & 0xFF, (val >> 8) & 0xFF, (val >> 16) & 0xFF, (val >> 24) & 0xFF
+
+
 def encode_card(
     code: int,
     location: int,
@@ -77,9 +82,9 @@ def encode_card(
     feat = np.zeros(CARD_FEATURES, dtype=np.uint8)
     idx = 0
 
-    # card_id (2 bytes)
-    feat[idx], feat[idx + 1] = _encode_u16(code)
-    idx += 2
+    # card_id (4 bytes, uint32 LE)
+    feat[idx], feat[idx + 1], feat[idx + 2], feat[idx + 3] = _encode_u32(code & 0xFFFFFFFF)
+    idx += 4
 
     # location, sequence, position, controller, is_public
     feat[idx] = location & 0xFF
@@ -108,9 +113,9 @@ def encode_card(
     feat[idx] = attribute & 0xFF
     idx += 1
 
-    # race (2 bytes)
-    feat[idx], feat[idx + 1] = _encode_u16(race & 0xFFFF)
-    idx += 2
+    # race (4 bytes, uint32 LE)
+    feat[idx], feat[idx + 1], feat[idx + 2], feat[idx + 3] = _encode_u32(race & 0xFFFFFFFF)
+    idx += 4
 
     # ATK (2 bytes, clamped)
     feat[idx], feat[idx + 1] = _encode_i16_clamped(attack if attack >= 0 else 0)
@@ -363,7 +368,7 @@ def build_observation(
                             card_type=cdata.get("type", 0),
                             level=cdata.get("level", 0) or cdata.get("rank", 0),
                             attribute=cdata.get("attribute", 0),
-                            race=cdata.get("race", 0) & 0xFFFF,
+                            race=cdata.get("race", 0) & 0xFFFFFFFF,
                             attack=cdata.get("attack", 0),
                             defense=cdata.get("defense", 0),
                             lscale=cdata.get("lscale", 0),
