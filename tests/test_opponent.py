@@ -1,10 +1,14 @@
 """Tests for opponent policies and seed determinism."""
 
 import random
+import tempfile
+
+import numpy as np
+import pytest
 
 from yugioh_env.action_space import ActionMapper
 from yugioh_env.constants import MSG_SELECT_YESNO
-from yugioh_env.opponent import GreedyOpponent, RandomOpponent
+from yugioh_env.opponent import GreedyOpponent, Opponent, RandomOpponent
 
 
 def _make_yesno_mapper() -> ActionMapper:
@@ -84,3 +88,138 @@ def test_pick_action_random_seeded():
         results.append(actions)
 
     assert results[0] == results[1]
+
+
+# ---------------------------------------------------------------------------
+# Base Opponent defaults
+# ---------------------------------------------------------------------------
+
+
+def test_base_opponent_needs_observation_default():
+    """Base Opponent.needs_observation returns False by default."""
+    opp = RandomOpponent(seed=0)
+    assert opp.needs_observation is False
+
+
+def test_base_opponent_set_observation_is_noop():
+    """Base Opponent.set_observation does nothing and doesn't raise."""
+    opp = GreedyOpponent()
+    opp.set_observation({"cards": np.zeros((200, 42), dtype=np.uint8)})
+
+
+# ---------------------------------------------------------------------------
+# ModelOpponent tests (require torch + yugioh_rl)
+# ---------------------------------------------------------------------------
+
+torch = pytest.importorskip("torch")
+
+
+def _make_synthetic_checkpoint(path: str) -> None:
+    """Create a minimal valid checkpoint file with default config."""
+    from yugioh_rl.config import TrainingConfig
+    from yugioh_rl.network import YuGiOhNet
+
+    config = TrainingConfig()
+    net = YuGiOhNet(config)
+    torch.save(
+        {
+            "update": 1,
+            "global_step": 100,
+            "model_state_dict": net.state_dict(),
+            "optimizer_state_dict": {},
+            "config": config,
+        },
+        path,
+    )
+
+
+def _dummy_obs() -> dict[str, np.ndarray]:
+    """Create dummy observation arrays with valid shapes."""
+    obs = {
+        "cards": np.zeros((200, 42), dtype=np.uint8),
+        "global_state": np.zeros(20, dtype=np.uint8),
+        "actions": np.zeros((32, 12), dtype=np.uint8),
+        "action_mask": np.zeros(32, dtype=np.int8),
+    }
+    # Mark first 3 actions as legal
+    obs["action_mask"][:3] = 1
+    return obs
+
+
+def test_model_opponent_construction():
+    """ModelOpponent loads a checkpoint and enters eval mode."""
+    from yugioh_env.opponent import ModelOpponent
+
+    with tempfile.NamedTemporaryFile(suffix=".pt") as f:
+        _make_synthetic_checkpoint(f.name)
+        opp = ModelOpponent(f.name, device="cpu")
+        assert opp.needs_observation is True
+        assert not opp._network.training
+
+
+def test_model_opponent_select_action():
+    """ModelOpponent returns a valid action index within bounds."""
+    from yugioh_env.opponent import ModelOpponent
+
+    with tempfile.NamedTemporaryFile(suffix=".pt") as f:
+        _make_synthetic_checkpoint(f.name)
+        opp = ModelOpponent(f.name, device="cpu")
+
+        obs = _dummy_obs()
+        opp.set_observation(obs)
+
+        msg = {"msg_type": MSG_SELECT_YESNO, "player": 1, "desc": 0}
+        mapper = _make_yesno_mapper()
+        action = opp.select_action(msg, mapper)
+        assert 0 <= action < mapper.num_actions
+
+
+def test_model_opponent_deterministic():
+    """Same checkpoint and observation should produce the same action."""
+    from yugioh_env.opponent import ModelOpponent
+
+    with tempfile.NamedTemporaryFile(suffix=".pt") as f:
+        _make_synthetic_checkpoint(f.name)
+        opp = ModelOpponent(f.name, device="cpu")
+
+        obs = _dummy_obs()
+        msg = {"msg_type": MSG_SELECT_YESNO, "player": 1, "desc": 0}
+        mapper = _make_yesno_mapper()
+
+        opp.set_observation(obs)
+        a1 = opp.select_action(msg, mapper)
+        opp.set_observation(obs)
+        a2 = opp.select_action(msg, mapper)
+        assert a1 == a2
+
+
+def test_model_opponent_reseed_noop():
+    """ModelOpponent.reseed() should not raise."""
+    from yugioh_env.opponent import ModelOpponent
+
+    with tempfile.NamedTemporaryFile(suffix=".pt") as f:
+        _make_synthetic_checkpoint(f.name)
+        opp = ModelOpponent(f.name, device="cpu")
+        opp.reseed(42)  # should be a no-op
+
+
+def test_model_opponent_no_obs_returns_zero():
+    """If set_observation was never called, select_action returns 0."""
+    from yugioh_env.opponent import ModelOpponent
+
+    with tempfile.NamedTemporaryFile(suffix=".pt") as f:
+        _make_synthetic_checkpoint(f.name)
+        opp = ModelOpponent(f.name, device="cpu")
+
+        msg = {"msg_type": MSG_SELECT_YESNO, "player": 1, "desc": 0}
+        mapper = _make_yesno_mapper()
+        action = opp.select_action(msg, mapper)
+        assert action == 0
+
+
+def test_model_opponent_env_config_missing_checkpoint():
+    """opponent_type='model' without checkpoint should raise ValueError."""
+    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+
+    with pytest.raises(ValueError, match="opponent_checkpoint"):
+        YuGiOhEnvironment(config={"opponent_type": "model"})

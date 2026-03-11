@@ -32,6 +32,7 @@ python -m pytest tests/test_duel.py::test_name -v
 
 # Run the server (activates venv automatically)
 scripts/start_server.sh
+scripts/start_server.sh --opponent model --opponent-checkpoint checkpoints/latest.pt
 
 # Run the interactive play client (server must be running)
 scripts/play_client.sh                        # interactive mode
@@ -59,6 +60,7 @@ Tests auto-skip when prerequisites are missing:
 - `db_path` fixture: skips if `assets/cards.cdb` absent
 - `script_dirs` fixture: skips if `third_party/CardScripts/` absent
 - Pure unit tests (`test_message_parser`, `test_observation`, `test_action_space`, `test_deck_parser`) require no external deps
+- `test_opponent.py` ModelOpponent tests: skips if `torch` not installed
 
 ## Architecture
 
@@ -74,7 +76,7 @@ YuGiOhEnvironment (server/yugioh_environment.py)
   │     ├── GameState            — tracks LP, zones, phase, turn from parsed messages
   │     └── libocgcore (ctypes)  — C++ engine loaded via lib_loader.py
   ├── ActionMapper               — maps SELECT messages to fixed action space (32 max)
-  ├── Opponent                   — auto-plays opponent (Random or Greedy)
+  ├── Opponent                   — auto-plays opponent (Random, Greedy, or Model)
   └── build_observation()        — encodes GameState into numpy arrays for RL
 ```
 
@@ -168,6 +170,7 @@ pip install -e ".[train]"   # adds torch + tensorboard
 scripts/train.sh                                           # default: 8 envs, 1M steps, greedy opponent
 scripts/train.sh --num-envs 4 --total-timesteps 500000     # fewer envs, shorter run
 scripts/train.sh --opponent random --no-reward-shaping      # sparse rewards only
+scripts/train.sh --opponent model --opponent-checkpoint checkpoints/latest.pt  # self-play
 scripts/train.sh --device cuda --save-dir runs/exp1         # GPU + custom checkpoint dir
 scripts/train.sh --agent-player random                     # coin flip per episode (default)
 scripts/train.sh --agent-player first                      # always go first
@@ -210,8 +213,12 @@ Disable with `--no-reward-shaping`.
 3. **Shared card embedding**: The same `nn.Embedding` encodes board card IDs and action card codes so the network learns a single card representation.
 4. **Auto-reset**: `TrainingEnv.step()` auto-resets on episode end, returning the first obs of a new episode and storing terminal info.
 5. **Player order randomization**: By default (`--agent-player random`), the agent randomly goes first or second each episode (coin flip seeded by the episode seed). This prevents training bias from always playing first. The observation/network architecture is already player-agnostic (relativized by `agent_player`), so no model changes are needed.
+6. **Model opponent (self-play)**: `ModelOpponent` loads a trained checkpoint and runs greedy argmax inference to select actions. When `needs_observation` is True, the environment builds a full observation from the opponent's perspective before each decision. The server supports `--opponent model --opponent-checkpoint PATH` flags (also configurable via `YUGIOH_OPPONENT_TYPE`/`YUGIOH_OPPONENT_CHECKPOINT` env vars).
 
 ## Environment Variables
 
 - `YUGIOH_LIB_PATH` — path to `libocgcore.dylib/.so` (auto-detected from `build/` if unset)
 - `YUGIOH_DB_PATH` — path to `cards.cdb` (default: `assets/cards.cdb`)
+- `YUGIOH_OPPONENT_TYPE` — opponent strategy: `random`, `greedy`, or `model` (default: `random`)
+- `YUGIOH_OPPONENT_CHECKPOINT` — path to `.pt` checkpoint for model opponent (required when type is `model`)
+- `YUGIOH_OPPONENT_DEVICE` — device for model opponent inference: `cpu` or `cuda` (default: `cpu`)

@@ -18,8 +18,11 @@ def parse_args() -> argparse.Namespace:
                      help="Number of parallel environments (default: 8)")
     env.add_argument("--deck-path", type=str, default="assets/decks/starter.ydk",
                      help="Path to .ydk deck file used for both players (default: assets/decks/starter.ydk)")
-    env.add_argument("--opponent", type=str, default="greedy", choices=["random", "greedy"],
-                     help="Opponent strategy: 'random' picks uniformly, 'greedy' picks highest-ATK (default: greedy)")
+    env.add_argument("--opponent", type=str, default="greedy", choices=["random", "greedy", "model"],
+                     help="Opponent strategy: 'random' picks uniformly, 'greedy' picks highest-ATK, "
+                          "'model' uses a trained checkpoint (default: greedy)")
+    env.add_argument("--opponent-checkpoint", type=str, default="",
+                     help="Path to .pt checkpoint for 'model' opponent (required when --opponent=model)")
     env.add_argument("--no-reward-shaping", action="store_true",
                      help="Disable LP/card-advantage reward shaping (use sparse win/loss only)")
     env.add_argument("--shaping-lp-weight", type=float, default=0.01,
@@ -102,6 +105,7 @@ def main() -> None:
         num_envs=args.num_envs,
         deck_path=args.deck_path,
         opponent_type=args.opponent,
+        opponent_checkpoint=args.opponent_checkpoint,
         agent_player=args.agent_player,
         reward_shaping=not args.no_reward_shaping,
         shaping_lp_weight=args.shaping_lp_weight,

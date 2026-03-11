@@ -60,11 +60,18 @@ class YuGiOhEnvironment(Environment):
         deck_path: Path to .ydk deck file (used for both players)
         deck0_path: Path to player 0 deck
         deck1_path: Path to player 1 deck
-        opponent_type: "random" or "greedy"
+        opponent_type: "random", "greedy", or "model"
         opponent_seed: Random seed for opponent
+        opponent_checkpoint: Path to .pt checkpoint for "model" opponent
+        opponent_device: Device for model opponent ("cpu" or "cuda", default "cpu")
         starting_lp: Starting life points (default 8000)
         agent_player: Which player the agent controls (0, 1, or "random").
                       Player 0 always goes first. Default 0.
+
+    Environment variables (used as fallbacks when config keys are absent):
+        YUGIOH_OPPONENT_TYPE: Opponent strategy (default "random")
+        YUGIOH_OPPONENT_CHECKPOINT: Path to model checkpoint
+        YUGIOH_OPPONENT_DEVICE: Device for model opponent (default "cpu")
     """
 
     SUPPORTS_CONCURRENT_SESSIONS = False
@@ -101,11 +108,27 @@ class YuGiOhEnvironment(Environment):
         self._agent_player = agent_player_cfg if isinstance(agent_player_cfg, int) else 0
 
         # Opponent
-        opponent_type = config.get("opponent_type", "random")
+        opponent_type = config.get("opponent_type") or os.environ.get(
+            "YUGIOH_OPPONENT_TYPE", "random"
+        )
         opponent_seed = config.get("opponent_seed")
-        if opponent_type == "greedy":
+        if opponent_type == "model":
+            from yugioh_env.opponent import ModelOpponent
+            opponent_checkpoint = config.get("opponent_checkpoint") or os.environ.get(
+                "YUGIOH_OPPONENT_CHECKPOINT", ""
+            )
+            if not opponent_checkpoint:
+                raise ValueError(
+                    "opponent_type='model' requires opponent_checkpoint config key "
+                    "or YUGIOH_OPPONENT_CHECKPOINT env var"
+                )
+            opponent_device = config.get("opponent_device") or os.environ.get(
+                "YUGIOH_OPPONENT_DEVICE", "cpu"
+            )
+            self._opponent: Opponent = ModelOpponent(opponent_checkpoint, device=opponent_device)
+        elif opponent_type == "greedy":
             from yugioh_env.opponent import GreedyOpponent
-            self._opponent: Opponent = GreedyOpponent()
+            self._opponent = GreedyOpponent()
         else:
             self._opponent = RandomOpponent(seed=opponent_seed)
 
@@ -292,6 +315,16 @@ class YuGiOhEnvironment(Environment):
                 if opp_mapper.num_actions > 0:
                     response = None
                     while response is None and opp_mapper.num_actions > 0:
+                        if self._opponent.needs_observation:
+                            opp_obs = build_observation(
+                                self._duel.game_state,
+                                msg,
+                                1 - self._agent_player,
+                                query_fn=lambda p, l: self._duel.query_location(p, l),
+                            )
+                            opp_obs["actions"] = opp_mapper.get_action_features()
+                            opp_obs["action_mask"] = opp_mapper.get_action_mask()
+                            self._opponent.set_observation(opp_obs)
                         opp_action = self._opponent.select_action(msg, opp_mapper)
                         opp_action = min(opp_action, opp_mapper.num_actions - 1)
                         response = opp_mapper.action_to_response(opp_action)

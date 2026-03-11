@@ -201,6 +201,7 @@ class PPOTrainer:
             num_envs=config.num_envs,
             deck_path=config.deck_path,
             opponent_type=config.opponent_type,
+            opponent_checkpoint=config.opponent_checkpoint,
             reward_shaping=config.reward_shaping,
             shaping_lp_weight=config.shaping_lp_weight,
             shaping_card_weight=config.shaping_card_weight,

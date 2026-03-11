@@ -30,6 +30,7 @@ class TrainingEnv:
         self,
         deck_path: str = "assets/decks/starter.ydk",
         opponent_type: str = "greedy",
+        opponent_checkpoint: str = "",
         reward_shaping: bool = True,
         shaping_lp_weight: float = 0.01,
         shaping_card_weight: float = 0.005,
@@ -42,11 +43,15 @@ class TrainingEnv:
         agent_player_map = {"first": 0, "second": 1, "random": "random"}
         self._agent_player_setting = agent_player_map.get(agent_player, agent_player)
 
-        self._env = YuGiOhEnvironment(config={
+        env_config: dict[str, Any] = {
             "deck_path": deck_path,
             "opponent_type": opponent_type,
             "agent_player": self._agent_player_setting,
-        })
+        }
+        if opponent_checkpoint:
+            env_config["opponent_checkpoint"] = opponent_checkpoint
+
+        self._env = YuGiOhEnvironment(config=env_config)
         self._reward_shaping = reward_shaping
         self._lp_weight = shaping_lp_weight
         self._card_weight = shaping_card_weight
@@ -177,6 +182,7 @@ class SubprocVecEnv:
         num_envs: int,
         deck_path: str = "assets/decks/starter.ydk",
         opponent_type: str = "greedy",
+        opponent_checkpoint: str = "",
         reward_shaping: bool = True,
         shaping_lp_weight: float = 0.01,
         shaping_card_weight: float = 0.005,
@@ -195,6 +201,7 @@ class SubprocVecEnv:
             env_kwargs = {
                 "deck_path": deck_path,
                 "opponent_type": opponent_type,
+                "opponent_checkpoint": opponent_checkpoint,
                 "reward_shaping": reward_shaping,
                 "shaping_lp_weight": shaping_lp_weight,
                 "shaping_card_weight": shaping_card_weight,

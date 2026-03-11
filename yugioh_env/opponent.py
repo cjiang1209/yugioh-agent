@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import random
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
+
+import numpy as np
 
 from yugioh_env.action_space import ActionMapper
 from yugioh_env.constants import (
@@ -11,6 +14,9 @@ from yugioh_env.constants import (
     MSG_SELECT_IDLECMD,
     POS_FACEUP_ATTACK,
 )
+
+if TYPE_CHECKING:
+    pass
 
 
 class Opponent(ABC):
@@ -20,6 +26,17 @@ class Opponent(ABC):
     def select_action(self, msg: dict, mapper: ActionMapper) -> int:
         """Select an action index given the current message and mapper."""
         ...
+
+    @property
+    def needs_observation(self) -> bool:
+        """Whether this opponent requires full observation arrays to select actions."""
+        return False
+
+    def set_observation(self, obs: dict[str, np.ndarray]) -> None:
+        """Provide the current observation arrays before calling select_action.
+
+        Only called when needs_observation returns True.
+        """
 
     def reseed(self, seed: int) -> None:
         """Re-seed the opponent's RNG. Override in stochastic subclasses."""
@@ -114,3 +131,52 @@ class GreedyOpponent(Opponent):
             return act_count  # First attack action
         # Go to M2 or EP
         return mapper.num_actions - 1
+
+
+class ModelOpponent(Opponent):
+    """Opponent that uses a trained YuGiOhNet checkpoint to select actions.
+
+    Requires torch and yugioh_rl to be installed (``pip install -e ".[train]"``).
+    """
+
+    def __init__(self, checkpoint_path: str, device: str = "cpu") -> None:
+        import torch
+        from yugioh_rl.config import TrainingConfig
+        from yugioh_rl.network import YuGiOhNet
+
+        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+        config: TrainingConfig = checkpoint["config"]
+        self._network = YuGiOhNet(config)
+        self._network.load_state_dict(checkpoint["model_state_dict"])
+        self._network.to(device)
+        self._network.eval()
+        self._device = torch.device(device)
+        self._obs: dict[str, np.ndarray] | None = None
+
+    @property
+    def needs_observation(self) -> bool:
+        return True
+
+    def set_observation(self, obs: dict[str, np.ndarray]) -> None:
+        self._obs = obs
+
+    def select_action(self, msg: dict, mapper: ActionMapper) -> int:
+        import torch
+
+        if self._obs is None:
+            return 0
+
+        obs = self._obs
+        t_cards = torch.from_numpy(obs["cards"]).unsqueeze(0).to(self._device)
+        t_global = torch.from_numpy(obs["global_state"]).unsqueeze(0).to(self._device)
+        t_actions = torch.from_numpy(obs["actions"]).unsqueeze(0).to(self._device)
+        t_mask = torch.from_numpy(obs["action_mask"]).unsqueeze(0).to(self._device)
+
+        with torch.no_grad():
+            logits, _ = self._network(t_cards, t_global, t_actions, t_mask)
+            action = logits.argmax(dim=-1).item()
+
+        return min(action, mapper.num_actions - 1)
+
+    def reseed(self, seed: int) -> None:
+        pass  # Deterministic policy
