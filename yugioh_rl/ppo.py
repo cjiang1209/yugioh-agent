@@ -353,6 +353,10 @@ class PPOTrainer:
                 if update % config.save_interval == 0:
                     self._save_checkpoint(update, global_step)
 
+            # --- Final checkpoint (if not already saved at this update) ---
+            if num_updates % config.save_interval != 0:
+                self._save_checkpoint(num_updates, global_step)
+
         finally:
             vec_env.close()
             if self._writer is not None:
@@ -403,7 +407,7 @@ class PPOTrainer:
         self.network.train()
 
     def _save_checkpoint(self, update: int, global_step: int) -> None:
-        """Save model checkpoint."""
+        """Save model checkpoint and update latest.pt symlink."""
         save_dir = Path(self.config.save_dir)
         save_dir.mkdir(parents=True, exist_ok=True)
         path = save_dir / f"checkpoint_{update}.pt"
@@ -416,5 +420,9 @@ class PPOTrainer:
             "config": self.config,
             "episode_rewards": self._episode_rewards[-1000:],
         }, path)
+
+        latest = save_dir / "checkpoint_latest.pt"
+        latest.unlink(missing_ok=True)
+        latest.symlink_to(path.name)
 
         logger.info("Saved checkpoint to %s", path)
