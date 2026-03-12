@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import random
 import sys
+from dataclasses import asdict
+from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 
@@ -85,8 +89,9 @@ def parse_args() -> argparse.Namespace:
                        help="Episodes per evaluation run (default: 100)")
     infra.add_argument("--save-interval", type=int, default=100,
                        help="Save checkpoint every N updates (default: 100)")
-    infra.add_argument("--save-dir", type=str, default="checkpoints",
-                       help="Directory for checkpoints and TensorBoard logs (default: checkpoints)")
+    infra.add_argument("--base-dir", type=str, default="checkpoints",
+                       help="Base directory for runs; each run creates a timestamped "
+                            "subdirectory (default: checkpoints)")
     infra.add_argument("--device", type=str, default="auto", choices=["auto", "cpu", "cuda"],
                        help="Compute device: 'auto' picks cuda if available (default: auto)")
 
@@ -101,6 +106,12 @@ def main() -> None:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%H:%M:%S",
     )
+    logger = logging.getLogger(__name__)
+
+    # Generate timestamped run subdirectory under --base-dir
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    run_name = f"{timestamp}_seed{args.seed}"
+    save_dir = str(Path(args.base_dir) / run_name)
 
     # Lazy import so --help is fast even without torch installed
     import torch
@@ -139,9 +150,16 @@ def main() -> None:
         eval_interval=args.eval_interval,
         eval_episodes=args.eval_episodes,
         save_interval=args.save_interval,
-        save_dir=args.save_dir,
+        save_dir=save_dir,
         device=args.device,
     )
+
+    # Create run directory and write config snapshot
+    run_dir = Path(config.save_dir)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    with open(run_dir / "config.json", "w") as f:
+        json.dump(asdict(config), f, indent=2)
+    logger.info("Run directory: %s", run_dir)
 
     # Set random seeds
     random.seed(config.seed)

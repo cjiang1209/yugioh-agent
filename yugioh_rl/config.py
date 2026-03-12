@@ -47,5 +47,5 @@ class TrainingConfig:
     eval_interval: int = 50
     eval_episodes: int = 100
     save_interval: int = 100
-    save_dir: str = "checkpoints"
+    save_dir: str = "checkpoints"  # Exact run directory (CLI builds this from --base-dir + timestamp)
     device: str = "auto"

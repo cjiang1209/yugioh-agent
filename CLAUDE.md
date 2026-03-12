@@ -173,7 +173,7 @@ scripts/train.sh                                           # default: 8 envs, 1M
 scripts/train.sh --num-envs 4 --total-timesteps 500000     # fewer envs, shorter run
 scripts/train.sh --opponent random --no-reward-shaping      # sparse rewards only
 scripts/train.sh --opponent model --opponent-checkpoint checkpoints/latest.pt  # self-play
-scripts/train.sh --device cuda --save-dir runs/exp1         # GPU + custom checkpoint dir
+scripts/train.sh --device cuda --base-dir runs/exp1         # GPU + custom base dir
 scripts/train.sh --agent-player random                     # coin flip per episode (default)
 scripts/train.sh --agent-player first                      # always go first
 scripts/train.sh --agent-player second                     # always go second
@@ -185,6 +185,8 @@ scripts/build_card_embeddings.sh --db path/to/cards.cdb --output path/to/embeddi
 ```
 
 See all options: `scripts/train.sh --help`
+
+Each run auto-creates a timestamped subdirectory under `--base-dir` (e.g. `checkpoints/20260311_143000_seed42/`) containing `config.json`, checkpoints, and TensorBoard logs. This prevents runs from overwriting each other.
 
 ### Module Layout
 
