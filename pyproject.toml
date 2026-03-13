@@ -23,6 +23,7 @@ dev = [
 train = [
     "torch>=2.0",
     "tensorboard>=2.0",
+    "setuptools<81",
 ]
 embed = [
     "sentence-transformers>=2.0",
