@@ -79,6 +79,10 @@ def parse_args() -> argparse.Namespace:
                      help="Collision-free learned embedding dimension in text mode (default: 8)")
 
     infra = parser.add_argument_group("infrastructure")
+    infra.add_argument("--init-checkpoint", type=str, default="",
+                       help="Path to .pt checkpoint to initialize model weights from (starts a new run)")
+    infra.add_argument("--resume-optimizer", action="store_true",
+                       help="Also load optimizer state from checkpoint (use with --init-checkpoint)")
     infra.add_argument("--seed", type=int, default=42,
                        help="Random seed for reproducibility (default: 42)")
     infra.add_argument("--log-interval", type=int, default=10,
@@ -145,6 +149,8 @@ def main() -> None:
         card_embeddings_path=args.card_embeddings,
         text_embed_dim=args.text_embed_dim,
         learned_embed_dim=args.learned_embed_dim,
+        init_checkpoint=args.init_checkpoint,
+        resume_optimizer=args.resume_optimizer,
         seed=args.seed,
         log_interval=args.log_interval,
         eval_interval=args.eval_interval,
@@ -153,6 +159,10 @@ def main() -> None:
         save_dir=save_dir,
         device=args.device,
     )
+
+    if config.resume_optimizer and not config.init_checkpoint:
+        print("error: --resume-optimizer requires --init-checkpoint", file=sys.stderr)
+        raise SystemExit(2)
 
     # Create run directory and write config snapshot
     run_dir = Path(config.save_dir)

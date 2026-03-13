@@ -42,6 +42,8 @@ class TrainingConfig:
     learned_embed_dim: int = 8  # trainable per-card embedding dim (Mode B only)
 
     # Infrastructure
+    init_checkpoint: str = ""       # Path to .pt checkpoint to init weights from (new run)
+    resume_optimizer: bool = False  # Also load optimizer state from checkpoint
     seed: int = 42
     log_interval: int = 10
     eval_interval: int = 50

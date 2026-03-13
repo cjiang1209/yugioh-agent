@@ -168,8 +168,24 @@ class PPOTrainer:
         logger.info("Using device: %s", self.device)
 
         # Network and optimizer
-        self.network = YuGiOhNet.from_config(config).to(self.device)
-        self.optimizer = torch.optim.Adam(self.network.parameters(), lr=config.learning_rate)
+        if config.init_checkpoint:
+            ckpt = torch.load(config.init_checkpoint, map_location=self.device, weights_only=False)
+            self._validate_checkpoint_compat(config, ckpt)
+            self.network = YuGiOhNet.from_state_dict(
+                config, ckpt["model_state_dict"]
+            ).to(self.device)
+            self.optimizer = torch.optim.Adam(
+                self.network.parameters(), lr=config.learning_rate
+            )
+            if config.resume_optimizer and "optimizer_state_dict" in ckpt:
+                self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+                # Override LR from CLI so users can change schedule across runs
+                for pg in self.optimizer.param_groups:
+                    pg["lr"] = config.learning_rate
+            logger.info("Initialized weights from checkpoint: %s", config.init_checkpoint)
+        else:
+            self.network = YuGiOhNet.from_config(config).to(self.device)
+            self.optimizer = torch.optim.Adam(self.network.parameters(), lr=config.learning_rate)
 
         # Rollout buffer
         self.buffer = RolloutBuffer(config.rollout_steps, config.num_envs)
@@ -186,6 +202,56 @@ class PPOTrainer:
             self._writer = SummaryWriter(log_dir=str(Path(config.save_dir) / "logs"))
         except ImportError:
             logger.info("TensorBoard not available, skipping logging")
+
+    @staticmethod
+    def _validate_checkpoint_compat(config: TrainingConfig, ckpt: dict) -> None:
+        """Validate architecture compatibility before loading weights."""
+        ckpt_config = ckpt.get("config")
+        if ckpt_config is None:
+            logger.warning("Checkpoint has no saved config — skipping compatibility check")
+            return
+
+        # Architecture fields that determine layer shapes — must match exactly
+        arch_fields = [
+            "card_embed_dim", "global_embed_dim", "board_hidden_dim",
+            "action_embed_dim", "text_embed_dim", "learned_embed_dim",
+        ]
+        mismatches = []
+        missing = []
+        for field in arch_fields:
+            ckpt_val = getattr(ckpt_config, field, None)
+            cli_val = getattr(config, field)
+            if ckpt_val is None:
+                missing.append(field)
+            elif ckpt_val != cli_val:
+                mismatches.append(f"  {field}: checkpoint={ckpt_val}, cli={cli_val}")
+        if missing:
+            logger.warning(
+                "Checkpoint config missing fields (older version?): %s",
+                ", ".join(missing),
+            )
+        if mismatches:
+            raise ValueError(
+                "Architecture mismatch between checkpoint and CLI config:\n"
+                + "\n".join(mismatches)
+            )
+
+        # Text embedding mode: from_state_dict auto-detects from keys,
+        # but warn if modes disagree so user is aware
+        ckpt_has_text = any(
+            k.startswith("text_lookup.") for k in ckpt["model_state_dict"]
+        )
+        cli_wants_text = bool(config.card_embeddings_path)
+        if ckpt_has_text and not cli_wants_text:
+            logger.warning(
+                "Checkpoint was trained with text embeddings but --card-embeddings "
+                "not specified. Text embedding layers will be loaded from checkpoint."
+            )
+        elif cli_wants_text and not ckpt_has_text:
+            raise ValueError(
+                "CLI specifies --card-embeddings but checkpoint has no text embedding "
+                "layers. Cannot add text embeddings to a symbolic-mode checkpoint."
+            )
 
     def train(self) -> None:
         """Run the full PPO training loop."""
