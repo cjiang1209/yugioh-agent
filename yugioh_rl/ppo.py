@@ -466,7 +466,7 @@ class PPOTrainer:
 
                 # --- Evaluation ---
                 if update % config.eval_interval == 0:
-                    self._evaluate(config.eval_episodes)
+                    self._evaluate(config.eval_episodes, global_step)
 
                 # --- Checkpointing ---
                 if update % config.save_interval == 0:
@@ -495,7 +495,7 @@ class PPOTrainer:
             return "model", spec[len("model:"):]
         return spec, ""
 
-    def _evaluate(self, num_episodes: int) -> None:
+    def _evaluate(self, num_episodes: int, global_step: int) -> None:
         """Evaluate the agent against configured opponents."""
         self.network.eval()
 
@@ -549,8 +549,7 @@ class PPOTrainer:
             logger.info("Eval vs %s: %d/%d wins (%.1f%%)", label, wins, num_episodes, win_rate * 100)
 
             if self._writer is not None:
-                step = len(self._episode_rewards)
-                self._writer.add_scalar(f"eval/win_rate_vs_{label}", win_rate, step)
+                self._writer.add_scalar(f"eval/win_rate_vs_{label}", win_rate, global_step)
 
         self.network.train()
 

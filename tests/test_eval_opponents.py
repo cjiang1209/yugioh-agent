@@ -106,7 +106,7 @@ class TestEvaluatePassesCheckpoint:
                 pass
 
         with patch("yugioh_rl.ppo.TrainingEnv", FakeEnv):
-            trainer._evaluate(config.eval_episodes)
+            trainer._evaluate(config.eval_episodes, global_step=1000)
 
         assert len(env_calls) == 3
 
@@ -149,7 +149,7 @@ class TestEvaluatePassesCheckpoint:
                 pass
 
         with patch("yugioh_rl.ppo.TrainingEnv", FakeEnv):
-            trainer._evaluate(1)
+            trainer._evaluate(1, global_step=5000)
 
         calls = trainer._writer.add_scalar.call_args_list
         keys = [c[0][0] for c in calls]
