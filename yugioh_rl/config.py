@@ -43,6 +43,7 @@ class TrainingConfig:
 
     # Infrastructure
     init_checkpoint: str = ""       # Path to .pt checkpoint to init weights from (new run)
+    resume_checkpoint: str = ""     # Path to checkpoint to resume training from
     resume_optimizer: bool = False  # Also load optimizer state from checkpoint
     seed: int = 42
     log_interval: int = 10

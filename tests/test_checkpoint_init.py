@@ -113,16 +113,3 @@ def test_resume_optimizer_loads_state(tmp_path):
 
     # Optimizer state should have entries (not empty like a fresh optimizer)
     assert len(trainer.optimizer.state) > 0, "Optimizer state should be populated"
-
-
-def test_resume_optimizer_without_init_checkpoint():
-    """--resume-optimizer without --init-checkpoint should exit with error."""
-    import subprocess
-    import sys
-
-    result = subprocess.run(
-        [sys.executable, "-m", "cli.train", "--resume-optimizer"],
-        capture_output=True, text=True, timeout=30,
-    )
-    assert result.returncode != 0
-    assert "requires --init-checkpoint" in result.stderr

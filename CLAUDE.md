@@ -64,6 +64,7 @@ Tests auto-skip when prerequisites are missing:
 - `test_card_embeddings.py`: TextEmbeddingLookup/network tests skip if `torch` not installed; `test_build_embeddings_output_structure` skips if `sentence-transformers` not installed
 - `test_checkpoint_init.py`: skips if `torch` not installed
 - `test_eval_opponents.py`: skips if `torch` not installed
+- `test_resume.py`: skips if `torch` not installed
 
 ## Architecture
 
@@ -182,6 +183,8 @@ scripts/train.sh --agent-player second                     # always go second
 scripts/train.sh --card-embeddings assets/card_text_embeddings.pt  # text-aware card encoding
 scripts/train.sh --init-checkpoint checkpoints/run1/checkpoint_100.pt  # new run from existing weights
 scripts/train.sh --init-checkpoint checkpoints/run1/checkpoint_100.pt --resume-optimizer  # also load optimizer state
+scripts/train.sh --resume checkpoints/run1/checkpoint_latest.pt                        # resume interrupted run
+scripts/train.sh --resume checkpoints/run1/checkpoint_100.pt --total-timesteps 2000000 # resume and extend training
 scripts/train.sh --eval-opponents greedy random                        # default eval opponents
 scripts/train.sh --eval-opponents greedy model:checkpoints/run1/latest.pt  # eval vs model checkpoint
 scripts/train.sh --eval-opponents greedy model:checkpoints/v1/latest.pt model:checkpoints/v2/latest.pt  # multiple models
@@ -232,6 +235,7 @@ Disable with `--no-reward-shaping`.
 6. **Model opponent (self-play)**: `ModelOpponent` loads a trained checkpoint and runs greedy argmax inference to select actions. When `needs_observation` is True, the environment builds a full observation from the opponent's perspective before each decision. The server supports `--opponent model --opponent-checkpoint PATH` flags (also configurable via `YUGIOH_OPPONENT_TYPE`/`YUGIOH_OPPONENT_CHECKPOINT` env vars).
 7. **Semantic card embeddings (optional)**: The network supports two card embedding modes — **symbolic** (default: cards are arbitrary tokens, modulo-hashed into a learned embedding) and **semantic** (`--card-embeddings`: cards carry meaning from effect text). In semantic mode, `TextEmbeddingLookup` loads pre-computed sentence-transformer embeddings and uses `torch.searchsorted` for vectorized lookup by passcode. Frozen text vectors are projected via trainable `nn.Linear` and concatenated with a collision-free learned embedding. The embeddings file lives only in the trainer process — `SubprocVecEnv` workers never load it.
 8. **Incremental training from checkpoint**: `--init-checkpoint PATH` starts a new run (fresh directory, counters at 0) with model weights initialized from an existing checkpoint instead of random init. `--resume-optimizer` additionally loads optimizer state (momentum/variance), with LR overridden from the CLI. Architecture dimensions must match between checkpoint and CLI config; `PPOTrainer._validate_checkpoint_compat` checks this at startup. Text embedding mode must also be compatible (cannot add text embeddings to a symbolic checkpoint).
+9. **Resume interrupted training**: `--resume PATH` restores full training state (model weights, optimizer, update/step counters, episode tracking) and continues in the same run directory. The `--total-timesteps` CLI value is always recomputed — pass a higher value to extend training or a lower value (triggers early return if already past). `--resume` and `--init-checkpoint` are mutually exclusive. TensorBoard logs continue seamlessly via `purge_step`. **Known limitation — episode seed divergence**: on resume, `SubprocVecEnv` is created with the original `config.seed` and `vec_env.reset()` replays the episode seed sequence from the beginning, not from where the interrupted run left off. Training is unaffected (the model still learns), but the exact episode ordering will differ from a single uninterrupted run. Saving and restoring per-env RNG state is impractical given the multi-process architecture.
 
 ## Environment Variables
 

@@ -167,8 +167,16 @@ class PPOTrainer:
 
         logger.info("Using device: %s", self.device)
 
-        # Network and optimizer
-        if config.init_checkpoint:
+        # Network, optimizer, and resume state
+        self._resume_update = 0
+        self._resume_global_step = 0
+        self._episode_rewards: list[float] = []
+        self._episode_lengths: list[int] = []
+        self._episode_wins: list[float] = []
+
+        if config.resume_checkpoint:
+            self._resume_update, self._resume_global_step = self._load_resume_checkpoint()
+        elif config.init_checkpoint:
             ckpt = torch.load(config.init_checkpoint, map_location=self.device, weights_only=False)
             self._validate_checkpoint_compat(config, ckpt)
             self.network = YuGiOhNet.from_state_dict(
@@ -190,18 +198,56 @@ class PPOTrainer:
         # Rollout buffer
         self.buffer = RolloutBuffer(config.rollout_steps, config.num_envs)
 
-        # Tracking
-        self._episode_rewards: list[float] = []
-        self._episode_lengths: list[int] = []
-        self._episode_wins: list[float] = []
-
         # TensorBoard writer (optional)
         self._writer = None
         try:
             from torch.utils.tensorboard import SummaryWriter
-            self._writer = SummaryWriter(log_dir=str(Path(config.save_dir) / "logs"))
+            purge = self._resume_global_step if self._resume_global_step > 0 else None
+            self._writer = SummaryWriter(
+                log_dir=str(Path(config.save_dir) / "logs"),
+                purge_step=purge,
+            )
         except ImportError:
             logger.info("TensorBoard not available, skipping logging")
+
+    def _load_resume_checkpoint(self) -> tuple[int, int]:
+        """Load full training state from a checkpoint for resumption.
+
+        Returns ``(update, global_step)`` so the training loop can continue
+        from the correct point.
+        """
+        config = self.config
+        ckpt = torch.load(config.resume_checkpoint, map_location=self.device, weights_only=False)
+        self._validate_checkpoint_compat(config, ckpt)
+
+        self.network = YuGiOhNet.from_state_dict(
+            config, ckpt["model_state_dict"]
+        ).to(self.device)
+        self.optimizer = torch.optim.Adam(
+            self.network.parameters(), lr=config.learning_rate
+        )
+        if "optimizer_state_dict" in ckpt:
+            self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+            for pg in self.optimizer.param_groups:
+                pg["lr"] = config.learning_rate
+
+        # Restore episode tracking (with fallback for old checkpoints).
+        # Note: env RNG state is NOT restored — SubprocVecEnv re-seeds from
+        # config.seed on creation, so the episode sequence after resume will
+        # diverge from a single uninterrupted run.  This is acceptable;
+        # saving per-worker RNG state is impractical with the multi-process
+        # architecture.
+        self._episode_rewards = list(ckpt.get("episode_rewards", []))
+        self._episode_lengths = list(ckpt.get("episode_lengths", []))
+        self._episode_wins = list(ckpt.get("episode_wins", []))
+
+        update = ckpt.get("update", 0)
+        global_step = ckpt.get("global_step", 0)
+        logger.info(
+            "Loaded checkpoint for resumption: %s (update=%d, global_step=%d)",
+            config.resume_checkpoint, update, global_step,
+        )
+        return update, global_step
 
     @staticmethod
     def _validate_checkpoint_compat(config: TrainingConfig, ckpt: dict) -> None:
@@ -258,6 +304,13 @@ class PPOTrainer:
         config = self.config
         num_updates = config.total_timesteps // (config.rollout_steps * config.num_envs)
 
+        if self._resume_update >= num_updates:
+            logger.warning(
+                "Resume update %d >= total updates %d — training already complete",
+                self._resume_update, num_updates,
+            )
+            return
+
         logger.info(
             "Starting training: %d timesteps, %d updates, %d envs",
             config.total_timesteps, num_updates, config.num_envs,
@@ -277,10 +330,10 @@ class PPOTrainer:
 
         try:
             obs = vec_env.reset()
-            global_step = 0
+            global_step = self._resume_global_step
             start_time = time.time()
 
-            for update in range(1, num_updates + 1):
+            for update in range(self._resume_update + 1, num_updates + 1):
                 update_start = time.time()
                 self.buffer.reset()
 
@@ -373,7 +426,7 @@ class PPOTrainer:
                 # --- Logging ---
                 if update % config.log_interval == 0 and num_batches > 0:
                     elapsed = time.time() - start_time
-                    fps = global_step / elapsed
+                    fps = (global_step - self._resume_global_step) / elapsed
 
                     avg_policy_loss = total_policy_loss / num_batches
                     avg_value_loss = total_value_loss / num_batches
@@ -514,6 +567,8 @@ class PPOTrainer:
             "optimizer_state_dict": self.optimizer.state_dict(),
             "config": self.config,
             "episode_rewards": self._episode_rewards[-1000:],
+            "episode_lengths": self._episode_lengths[-1000:],
+            "episode_wins": self._episode_wins[-1000:],
         }, path)
 
         latest = save_dir / "checkpoint_latest.pt"

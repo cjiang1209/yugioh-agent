@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
-import sys
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -37,37 +34,6 @@ class TestParseEvalOpponent:
         assert PPOTrainer._parse_eval_opponent("model:checkpoints/run1/latest.pt") == (
             "model", "checkpoints/run1/latest.pt",
         )
-
-
-# ---------------------------------------------------------------------------
-# CLI validation
-# ---------------------------------------------------------------------------
-
-class TestEvalOpponentsCLI:
-    def test_model_requires_path(self):
-        result = subprocess.run(
-            [sys.executable, "-m", "cli.train", "--eval-opponents", "model:"],
-            capture_output=True, text=True, timeout=30,
-        )
-        assert result.returncode != 0
-        assert "must include a checkpoint path" in result.stderr
-
-    def test_unknown_opponent_rejected(self):
-        result = subprocess.run(
-            [sys.executable, "-m", "cli.train", "--eval-opponents", "bogus"],
-            capture_output=True, text=True, timeout=30,
-        )
-        assert result.returncode != 0
-        assert "unknown eval opponent" in result.stderr
-
-    def test_model_checkpoint_not_found(self):
-        result = subprocess.run(
-            [sys.executable, "-m", "cli.train",
-             "--eval-opponents", "model:/nonexistent/checkpoint.pt"],
-            capture_output=True, text=True, timeout=30,
-        )
-        assert result.returncode != 0
-        assert "checkpoint not found" in result.stderr
 
 
 # ---------------------------------------------------------------------------

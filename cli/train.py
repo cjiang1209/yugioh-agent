@@ -79,6 +79,8 @@ def parse_args() -> argparse.Namespace:
                      help="Collision-free learned embedding dimension in text mode (default: 8)")
 
     infra = parser.add_argument_group("infrastructure")
+    infra.add_argument("--resume", type=str, default="",
+                       help="Path to .pt checkpoint to resume training from (continues in same run directory)")
     infra.add_argument("--init-checkpoint", type=str, default="",
                        help="Path to .pt checkpoint to initialize model weights from (starts a new run)")
     infra.add_argument("--resume-optimizer", action="store_true",
@@ -105,6 +107,76 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _fatal(msg: str) -> None:
+    """Print an error message to stderr and exit."""
+    print(f"error: {msg}", file=sys.stderr)
+    raise SystemExit(2)
+
+
+def _was_provided(name: str) -> bool:
+    """Check whether a CLI flag was explicitly passed by the user.
+
+    Handles both ``--flag value`` and ``--flag=value`` forms.
+    """
+    return any(arg == name or arg.startswith(name + "=") for arg in sys.argv[1:])
+
+
+def validate_args(args: argparse.Namespace) -> None:
+    """Validate CLI argument constraints that argparse cannot express.
+
+    Logs warnings for arguments that have no effect given the other
+    arguments provided.  Fatal constraint violations call ``_fatal``
+    (and never return).
+    """
+    logger = logging.getLogger(__name__)
+
+    # --resume is mutually exclusive with --init-checkpoint and --resume-optimizer
+    if args.resume:
+        if args.init_checkpoint:
+            _fatal("--resume and --init-checkpoint are mutually exclusive")
+        if args.resume_optimizer:
+            _fatal("--resume-optimizer is for use with --init-checkpoint, not --resume")
+        if not Path(args.resume).exists():
+            _fatal(f"resume checkpoint not found: {args.resume}")
+        if _was_provided("--base-dir"):
+            logger.warning(
+                "--base-dir has no effect with --resume "
+                "(save directory is inferred from checkpoint path)"
+            )
+
+    # --resume-optimizer requires --init-checkpoint (when not using --resume)
+    if args.resume_optimizer and not args.init_checkpoint:
+        _fatal("--resume-optimizer requires --init-checkpoint")
+
+    # --no-reward-shaping voids shaping weight arguments
+    if args.no_reward_shaping:
+        if _was_provided("--shaping-lp-weight"):
+            logger.warning(
+                "--shaping-lp-weight has no effect with --no-reward-shaping"
+            )
+        if _was_provided("--shaping-card-weight"):
+            logger.warning(
+                "--shaping-card-weight has no effect with --no-reward-shaping"
+            )
+
+    # --opponent-checkpoint only applies to --opponent=model
+    if args.opponent_checkpoint and args.opponent != "model":
+        logger.warning(
+            "--opponent-checkpoint has no effect without --opponent=model"
+        )
+
+    # --eval-opponents validation
+    for spec in args.eval_opponents:
+        if spec.startswith("model:"):
+            path = spec[len("model:"):]
+            if not path:
+                _fatal("--eval-opponents model: entries must include a checkpoint path")
+            if not Path(path).exists():
+                _fatal(f"eval opponent checkpoint not found: {path}")
+        elif spec not in ("greedy", "random"):
+            _fatal(f"unknown eval opponent: {spec}")
+
+
 def main() -> None:
     args = parse_args()
 
@@ -115,10 +187,15 @@ def main() -> None:
     )
     logger = logging.getLogger(__name__)
 
-    # Generate timestamped run subdirectory under --base-dir
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    run_name = f"{timestamp}_seed{args.seed}"
-    save_dir = str(Path(args.base_dir) / run_name)
+    validate_args(args)
+
+    # Derive save_dir: resume continues in the same run directory
+    if args.resume:
+        save_dir = str(Path(args.resume).resolve().parent)
+    else:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_name = f"{timestamp}_seed{args.seed}"
+        save_dir = str(Path(args.base_dir) / run_name)
 
     # Lazy import so --help is fast even without torch installed
     import torch
@@ -153,6 +230,7 @@ def main() -> None:
         text_embed_dim=args.text_embed_dim,
         learned_embed_dim=args.learned_embed_dim,
         init_checkpoint=args.init_checkpoint,
+        resume_checkpoint=args.resume,
         resume_optimizer=args.resume_optimizer,
         seed=args.seed,
         log_interval=args.log_interval,
@@ -163,25 +241,6 @@ def main() -> None:
         save_dir=save_dir,
         device=args.device,
     )
-
-    if config.resume_optimizer and not config.init_checkpoint:
-        print("error: --resume-optimizer requires --init-checkpoint", file=sys.stderr)
-        raise SystemExit(2)
-
-    for spec in config.eval_opponents:
-        if spec.startswith("model:"):
-            path = spec[len("model:"):]
-            if not path:
-                print("error: --eval-opponents model: entries must include a checkpoint path",
-                      file=sys.stderr)
-                raise SystemExit(2)
-            if not Path(path).exists():
-                print(f"error: eval opponent checkpoint not found: {path}",
-                      file=sys.stderr)
-                raise SystemExit(2)
-        elif spec not in ("greedy", "random"):
-            print(f"error: unknown eval opponent: {spec}", file=sys.stderr)
-            raise SystemExit(2)
 
     # Create run directory and write config snapshot
     run_dir = Path(config.save_dir)
