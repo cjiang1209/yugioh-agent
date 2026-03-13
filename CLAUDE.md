@@ -63,6 +63,7 @@ Tests auto-skip when prerequisites are missing:
 - `test_opponent.py` ModelOpponent tests: skips if `torch` not installed
 - `test_card_embeddings.py`: TextEmbeddingLookup/network tests skip if `torch` not installed; `test_build_embeddings_output_structure` skips if `sentence-transformers` not installed
 - `test_checkpoint_init.py`: skips if `torch` not installed
+- `test_eval_opponents.py`: skips if `torch` not installed
 
 ## Architecture
 
@@ -181,6 +182,9 @@ scripts/train.sh --agent-player second                     # always go second
 scripts/train.sh --card-embeddings assets/card_text_embeddings.pt  # text-aware card encoding
 scripts/train.sh --init-checkpoint checkpoints/run1/checkpoint_100.pt  # new run from existing weights
 scripts/train.sh --init-checkpoint checkpoints/run1/checkpoint_100.pt --resume-optimizer  # also load optimizer state
+scripts/train.sh --eval-opponents greedy random                        # default eval opponents
+scripts/train.sh --eval-opponents greedy model:checkpoints/run1/latest.pt  # eval vs model checkpoint
+scripts/train.sh --eval-opponents greedy model:checkpoints/v1/latest.pt model:checkpoints/v2/latest.pt  # multiple models
 
 # Build card text embeddings (requires sentence-transformers)
 scripts/build_card_embeddings.sh                           # default: assets/cards.cdb → assets/card_text_embeddings.pt

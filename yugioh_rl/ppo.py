@@ -430,19 +430,48 @@ class PPOTrainer:
 
         logger.info("Training complete. Total steps: %d", global_step)
 
+    @staticmethod
+    def _parse_eval_opponent(spec: str) -> tuple[str, str]:
+        """Parse an eval opponent spec string.
+
+        Returns (opponent_type, checkpoint_path).
+        ``"greedy"`` → ``("greedy", "")``,
+        ``"model:/path/to/ckpt.pt"`` → ``("model", "/path/to/ckpt.pt")``.
+        """
+        if spec.startswith("model:"):
+            return "model", spec[len("model:"):]
+        return spec, ""
+
     def _evaluate(self, num_episodes: int) -> None:
-        """Evaluate the agent against greedy and random opponents."""
+        """Evaluate the agent against configured opponents."""
         self.network.eval()
 
-        for opp_type in ("greedy", "random"):
-            wins = 0
-            env = TrainingEnv(
+        for spec in self.config.eval_opponents:
+            opp_type, opp_checkpoint = self._parse_eval_opponent(spec)
+
+            # Build a human-readable label for logging / TensorBoard.
+            # Include the parent dir to disambiguate checkpoints with the
+            # same filename in different runs (e.g. run1/ckpt_100.pt vs
+            # run2/ckpt_100.pt → model_run1_ckpt_100 vs model_run2_ckpt_100).
+            if opp_type == "model":
+                p = Path(opp_checkpoint)
+                parent = p.parent.name
+                label = f"model_{parent}_{p.stem}" if parent else f"model_{p.stem}"
+            else:
+                label = opp_type
+
+            env_kwargs: dict = dict(
                 deck_path=self.config.deck_path,
                 opponent_type=opp_type,
                 reward_shaping=False,
                 seed=self.config.seed + 999999,
                 agent_player=self.config.agent_player,
             )
+            if opp_checkpoint:
+                env_kwargs["opponent_checkpoint"] = opp_checkpoint
+
+            wins = 0
+            env = TrainingEnv(**env_kwargs)
             try:
                 for ep in range(num_episodes):
                     obs = env.reset()
@@ -464,11 +493,11 @@ class PPOTrainer:
                 env.close()
 
             win_rate = wins / max(num_episodes, 1)
-            logger.info("Eval vs %s: %d/%d wins (%.1f%%)", opp_type, wins, num_episodes, win_rate * 100)
+            logger.info("Eval vs %s: %d/%d wins (%.1f%%)", label, wins, num_episodes, win_rate * 100)
 
             if self._writer is not None:
                 step = len(self._episode_rewards)
-                self._writer.add_scalar(f"eval/win_rate_vs_{opp_type}", win_rate, step)
+                self._writer.add_scalar(f"eval/win_rate_vs_{label}", win_rate, step)
 
         self.network.train()
 

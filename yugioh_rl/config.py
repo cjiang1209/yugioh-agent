@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -48,6 +48,7 @@ class TrainingConfig:
     log_interval: int = 10
     eval_interval: int = 50
     eval_episodes: int = 100
+    eval_opponents: list[str] = field(default_factory=lambda: ["greedy", "random"])
     save_interval: int = 100
     save_dir: str = "checkpoints"  # Exact run directory (CLI builds this from --base-dir + timestamp)
     device: str = "auto"

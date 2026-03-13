@@ -88,7 +88,10 @@ def parse_args() -> argparse.Namespace:
     infra.add_argument("--log-interval", type=int, default=10,
                        help="Log metrics every N updates (default: 10)")
     infra.add_argument("--eval-interval", type=int, default=50,
-                       help="Evaluate vs random/greedy every N updates (default: 50)")
+                       help="Evaluate every N updates (default: 50)")
+    infra.add_argument("--eval-opponents", nargs="+", default=["greedy", "random"],
+                       help="Opponent specs for evaluation, e.g. 'greedy', 'random', "
+                            "'model:checkpoints/latest.pt' (default: greedy random)")
     infra.add_argument("--eval-episodes", type=int, default=100,
                        help="Episodes per evaluation run (default: 100)")
     infra.add_argument("--save-interval", type=int, default=100,
@@ -155,6 +158,7 @@ def main() -> None:
         log_interval=args.log_interval,
         eval_interval=args.eval_interval,
         eval_episodes=args.eval_episodes,
+        eval_opponents=args.eval_opponents,
         save_interval=args.save_interval,
         save_dir=save_dir,
         device=args.device,
@@ -163,6 +167,21 @@ def main() -> None:
     if config.resume_optimizer and not config.init_checkpoint:
         print("error: --resume-optimizer requires --init-checkpoint", file=sys.stderr)
         raise SystemExit(2)
+
+    for spec in config.eval_opponents:
+        if spec.startswith("model:"):
+            path = spec[len("model:"):]
+            if not path:
+                print("error: --eval-opponents model: entries must include a checkpoint path",
+                      file=sys.stderr)
+                raise SystemExit(2)
+            if not Path(path).exists():
+                print(f"error: eval opponent checkpoint not found: {path}",
+                      file=sys.stderr)
+                raise SystemExit(2)
+        elif spec not in ("greedy", "random"):
+            print(f"error: unknown eval opponent: {spec}", file=sys.stderr)
+            raise SystemExit(2)
 
     # Create run directory and write config snapshot
     run_dir = Path(config.save_dir)
