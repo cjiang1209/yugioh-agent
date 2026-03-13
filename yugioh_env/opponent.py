@@ -146,8 +146,7 @@ class ModelOpponent(Opponent):
 
         checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
         config: TrainingConfig = checkpoint["config"]
-        self._network = YuGiOhNet(config)
-        self._network.load_state_dict(checkpoint["model_state_dict"])
+        self._network = YuGiOhNet.from_state_dict(config, checkpoint["model_state_dict"])
         self._network.to(device)
         self._network.eval()
         self._device = torch.device(device)

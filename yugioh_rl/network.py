@@ -41,16 +41,33 @@ def _mlp(in_dim: int, hidden_dim: int, out_dim: int) -> nn.Sequential:
 class TextEmbeddingLookup(nn.Module):
     """Frozen sentence-transformer embeddings with trainable projection.
 
-    Loads pre-computed card text embeddings from a .pt file and provides
-    vectorized lookup by card passcode using torch.searchsorted.
-
+    Provides vectorized lookup by card passcode using torch.searchsorted.
     The frozen embeddings are projected through a trainable Linear layer
     to produce the final text representation.
+
+    Use ``from_path()`` at training time to load from a .pt file,
+    or ``from_state_dict_shapes()`` to reconstruct from a checkpoint
+    without any disk I/O.
     """
 
-    def __init__(self, embeddings_path: str, text_embed_dim: int) -> None:
+    def __init__(self, sorted_codes: torch.Tensor,
+                 padded_embeddings: torch.Tensor,
+                 text_embed_dim: int) -> None:
         super().__init__()
+        assert padded_embeddings.shape[0] == len(sorted_codes) + 1, (
+            f"padded_embeddings row count ({padded_embeddings.shape[0]}) "
+            f"must be len(sorted_codes) + 1 ({len(sorted_codes) + 1})"
+        )
+        self.register_buffer("_sorted_codes", sorted_codes)
+        self._frozen_embed = nn.Embedding.from_pretrained(
+            padded_embeddings, freeze=True, padding_idx=0
+        )
+        self._proj = nn.Linear(padded_embeddings.shape[1], text_embed_dim)
 
+    @classmethod
+    def from_path(cls, embeddings_path: str,
+                  text_embed_dim: int) -> TextEmbeddingLookup:
+        """Load card text embeddings from a .pt file (training time)."""
         data = torch.load(embeddings_path, map_location="cpu", weights_only=True)
         codes = data["codes"]  # (N,) int64
         embeddings = data["embeddings"]  # (N, raw_dim) float32
@@ -66,18 +83,30 @@ class TextEmbeddingLookup(nn.Module):
             [torch.zeros(1, raw_dim), sorted_embeddings], dim=0
         )  # (N+1, raw_dim)
 
-        self.register_buffer("_sorted_codes", sorted_codes)
-
-        self._frozen_embed = nn.Embedding.from_pretrained(
-            padded_embeddings, freeze=True, padding_idx=0
-        )
-
-        self._proj = nn.Linear(raw_dim, text_embed_dim)
+        lookup = cls(sorted_codes, padded_embeddings, text_embed_dim)
 
         logger.info(
             "TextEmbeddingLookup: %d cards, raw_dim=%d, proj_dim=%d",
             len(sorted_codes), raw_dim, text_embed_dim,
         )
+        return lookup
+
+    @classmethod
+    def from_state_dict_shapes(cls, text_embed_dim: int,
+                               state_dict: dict[str, torch.Tensor],
+                               ) -> TextEmbeddingLookup:
+        """Build a correctly-shaped skeleton from state dict keys (no disk I/O).
+
+        Creates zero-filled buffers/params matching the shapes in *state_dict*.
+        The caller is responsible for calling ``load_state_dict()`` to fill in
+        real values.
+        """
+        num_cards = state_dict["_sorted_codes"].shape[0]  # excludes padding row
+        raw_dim = state_dict["_frozen_embed.weight"].shape[1]
+        sorted_codes = torch.zeros(num_cards, dtype=torch.int64)
+        # _frozen_embed.weight has num_cards+1 rows: row 0 is padding, rows 1..N are cards
+        padded = torch.zeros(num_cards + 1, raw_dim)
+        return cls(sorted_codes, padded, text_embed_dim)
 
     @property
     def num_cards(self) -> int:
@@ -123,17 +152,16 @@ class YuGiOhNet(nn.Module):
             text embeddings (projected) + collision-free learned embedding.
     """
 
-    def __init__(self, config: TrainingConfig) -> None:
+    def __init__(self, config: TrainingConfig,
+                 text_lookup: TextEmbeddingLookup | None = None) -> None:
         super().__init__()
 
-        self._use_text_embeddings = bool(config.card_embeddings_path)
+        self._use_text_embeddings = text_lookup is not None
 
         if self._use_text_embeddings:
             # Semantic mode
-            self.text_lookup = TextEmbeddingLookup(
-                config.card_embeddings_path, config.text_embed_dim
-            )
-            num_entries = self.text_lookup.num_cards + 1  # +1 for padding at 0
+            self.text_lookup = text_lookup
+            num_entries = text_lookup.num_cards + 1  # +1 for padding at 0
             self.card_embedding = nn.Embedding(
                 num_entries, config.learned_embed_dim, padding_idx=0
             )
@@ -170,6 +198,34 @@ class YuGiOhNet(nn.Module):
             nn.ReLU(),
             nn.Linear(64, 1),
         )
+
+    @classmethod
+    def from_config(cls, config: TrainingConfig) -> YuGiOhNet:
+        """Build from config (training time, may load embeddings from file)."""
+        text_lookup = None
+        if config.card_embeddings_path:
+            text_lookup = TextEmbeddingLookup.from_path(
+                config.card_embeddings_path, config.text_embed_dim)
+        return cls(config, text_lookup)
+
+    @classmethod
+    def from_state_dict(cls, config: TrainingConfig,
+                        state_dict: dict[str, torch.Tensor]) -> YuGiOhNet:
+        """Reconstruct from saved state dict (no disk I/O)."""
+        text_prefix = "text_lookup."
+        has_text_lookup = any(k.startswith(text_prefix) for k in state_dict)
+
+        text_lookup = None
+        if has_text_lookup:
+            text_sd = {k[len(text_prefix):]: v
+                       for k, v in state_dict.items()
+                       if k.startswith(text_prefix)}
+            text_lookup = TextEmbeddingLookup.from_state_dict_shapes(
+                config.text_embed_dim, text_sd)
+
+        net = cls(config, text_lookup)
+        net.load_state_dict(state_dict)
+        return net
 
     def _embed_codes(self, codes: torch.Tensor) -> torch.Tensor:
         """Embed card codes using symbolic or semantic mode.

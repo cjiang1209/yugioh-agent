@@ -120,7 +120,7 @@ def _make_synthetic_checkpoint(path: str) -> None:
     from yugioh_rl.network import YuGiOhNet
 
     config = TrainingConfig()
-    net = YuGiOhNet(config)
+    net = YuGiOhNet.from_config(config)
     torch.save(
         {
             "update": 1,
@@ -215,6 +215,53 @@ def test_model_opponent_no_obs_returns_zero():
         mapper = _make_yesno_mapper()
         action = opp.select_action(msg, mapper)
         assert action == 0
+
+
+def test_model_opponent_semantic_checkpoint():
+    """ModelOpponent works with a semantic-mode checkpoint (no embeddings file on disk)."""
+    from yugioh_rl.config import TrainingConfig
+    from yugioh_rl.network import TextEmbeddingLookup, YuGiOhNet
+    from yugioh_env.opponent import ModelOpponent
+
+    # Build a semantic-mode network from a synthetic embeddings file
+    codes = list(range(1, 21))
+    embeddings = torch.randn(len(codes), 384)
+    codes_tensor = torch.tensor(codes, dtype=torch.int64)
+    sorted_indices = codes_tensor.argsort()
+    sorted_codes = codes_tensor[sorted_indices]
+    sorted_embeddings = embeddings[sorted_indices]
+    padded = torch.cat([torch.zeros(1, 384), sorted_embeddings], dim=0)
+
+    text_lookup = TextEmbeddingLookup(sorted_codes, padded, text_embed_dim=32)
+    config = TrainingConfig(text_embed_dim=32, learned_embed_dim=8)
+    net = YuGiOhNet(config, text_lookup)
+
+    # Save checkpoint (no embeddings file path in config)
+    with tempfile.NamedTemporaryFile(suffix=".pt", delete=False) as f:
+        torch.save({
+            "update": 1,
+            "global_step": 100,
+            "model_state_dict": net.state_dict(),
+            "optimizer_state_dict": {},
+            "config": config,
+        }, f.name)
+        ckpt_path = f.name
+
+    # Load ModelOpponent — should NOT attempt to read an embeddings file
+    opp = ModelOpponent(ckpt_path, device="cpu")
+    assert opp.needs_observation is True
+    assert opp._network.text_lookup is not None
+
+    # Verify select_action works
+    obs = _dummy_obs()
+    opp.set_observation(obs)
+    msg = {"msg_type": MSG_SELECT_YESNO, "player": 1, "desc": 0}
+    mapper = _make_yesno_mapper()
+    action = opp.select_action(msg, mapper)
+    assert 0 <= action < mapper.num_actions
+
+    import os
+    os.unlink(ckpt_path)
 
 
 def test_model_opponent_env_config_missing_checkpoint():

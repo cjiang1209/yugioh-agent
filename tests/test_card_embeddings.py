@@ -59,7 +59,7 @@ class TestTextEmbeddingLookup:
     def test_basic_lookup_shape(self, tmp_path):
         codes = [100, 200, 300]
         path = _make_embeddings_file(codes, dim=384, path=str(tmp_path / "emb.pt"))
-        lookup = TextEmbeddingLookup(path, text_embed_dim=64)
+        lookup = TextEmbeddingLookup.from_path(path, text_embed_dim=64)
 
         input_codes = torch.tensor([100, 200, 300, 999])
         text_embed, embed_idx = lookup(input_codes)
@@ -70,7 +70,7 @@ class TestTextEmbeddingLookup:
     def test_known_codes_get_nonzero_indices(self, tmp_path):
         codes = [10, 20, 30]
         path = _make_embeddings_file(codes, dim=384, path=str(tmp_path / "emb.pt"))
-        lookup = TextEmbeddingLookup(path, text_embed_dim=64)
+        lookup = TextEmbeddingLookup.from_path(path, text_embed_dim=64)
 
         input_codes = torch.tensor([10, 20, 30])
         _, embed_idx = lookup(input_codes)
@@ -81,7 +81,7 @@ class TestTextEmbeddingLookup:
     def test_unknown_codes_get_zero_index(self, tmp_path):
         codes = [10, 20, 30]
         path = _make_embeddings_file(codes, dim=384, path=str(tmp_path / "emb.pt"))
-        lookup = TextEmbeddingLookup(path, text_embed_dim=64)
+        lookup = TextEmbeddingLookup.from_path(path, text_embed_dim=64)
 
         input_codes = torch.tensor([999, 0, 5555])
         _, embed_idx = lookup(input_codes)
@@ -91,7 +91,7 @@ class TestTextEmbeddingLookup:
     def test_zero_code_maps_to_padding(self, tmp_path):
         codes = [10, 20]
         path = _make_embeddings_file(codes, dim=384, path=str(tmp_path / "emb.pt"))
-        lookup = TextEmbeddingLookup(path, text_embed_dim=64)
+        lookup = TextEmbeddingLookup.from_path(path, text_embed_dim=64)
 
         input_codes = torch.tensor([0])
         text_embed, embed_idx = lookup(input_codes)
@@ -101,7 +101,7 @@ class TestTextEmbeddingLookup:
     def test_batched_lookup(self, tmp_path):
         codes = [100, 200, 300]
         path = _make_embeddings_file(codes, dim=384, path=str(tmp_path / "emb.pt"))
-        lookup = TextEmbeddingLookup(path, text_embed_dim=32)
+        lookup = TextEmbeddingLookup.from_path(path, text_embed_dim=32)
 
         input_codes = torch.tensor([[100, 200], [300, 999]])
         text_embed, embed_idx = lookup(input_codes)
@@ -112,14 +112,14 @@ class TestTextEmbeddingLookup:
     def test_num_cards_property(self, tmp_path):
         codes = [10, 20, 30, 40]
         path = _make_embeddings_file(codes, dim=384, path=str(tmp_path / "emb.pt"))
-        lookup = TextEmbeddingLookup(path, text_embed_dim=64)
+        lookup = TextEmbeddingLookup.from_path(path, text_embed_dim=64)
 
         assert lookup.num_cards == 4
 
     def test_buffer_moves_with_device(self, tmp_path):
         codes = [10, 20]
         path = _make_embeddings_file(codes, dim=384, path=str(tmp_path / "emb.pt"))
-        lookup = TextEmbeddingLookup(path, text_embed_dim=64)
+        lookup = TextEmbeddingLookup.from_path(path, text_embed_dim=64)
 
         # Move to CPU explicitly (trivial but verifies buffer registration)
         lookup = lookup.to("cpu")
@@ -132,7 +132,7 @@ class TestTextEmbeddingLookup:
     def test_projection_is_trainable(self, tmp_path):
         codes = [10, 20]
         path = _make_embeddings_file(codes, dim=384, path=str(tmp_path / "emb.pt"))
-        lookup = TextEmbeddingLookup(path, text_embed_dim=64)
+        lookup = TextEmbeddingLookup.from_path(path, text_embed_dim=64)
 
         trainable = [n for n, p in lookup.named_parameters() if p.requires_grad]
         assert "_proj.weight" in trainable
@@ -141,7 +141,7 @@ class TestTextEmbeddingLookup:
     def test_frozen_embed_not_trainable(self, tmp_path):
         codes = [10, 20]
         path = _make_embeddings_file(codes, dim=384, path=str(tmp_path / "emb.pt"))
-        lookup = TextEmbeddingLookup(path, text_embed_dim=64)
+        lookup = TextEmbeddingLookup.from_path(path, text_embed_dim=64)
 
         frozen_params = [
             n for n, p in lookup.named_parameters()
@@ -159,7 +159,7 @@ class TestSymbolicMode:
         config = TrainingConfig()
         assert config.card_embeddings_path == ""
 
-        net = YuGiOhNet(config)
+        net = YuGiOhNet.from_config(config)
         obs_cards, obs_global, obs_actions, action_mask = _make_dummy_obs(batch_size=2)
         logits, values = net(obs_cards, obs_global, obs_actions, action_mask)
 
@@ -182,7 +182,7 @@ class TestSemanticMode:
             text_embed_dim=64,
             learned_embed_dim=8,
         )
-        net = YuGiOhNet(config)
+        net = YuGiOhNet.from_config(config)
         obs_cards, obs_global, obs_actions, action_mask = _make_dummy_obs(batch_size=2)
         logits, values = net(obs_cards, obs_global, obs_actions, action_mask)
 
@@ -195,14 +195,14 @@ class TestSemanticMode:
         path = _make_embeddings_file(codes, dim=384, path=str(tmp_path / "emb.pt"))
 
         config = TrainingConfig(card_embeddings_path=path)
-        net = YuGiOhNet(config)
+        net = YuGiOhNet.from_config(config)
 
         assert net.text_lookup is not None
         assert net._use_text_embeddings is True
 
     def test_symbolic_mode_has_no_text_lookup(self):
         config = TrainingConfig()
-        net = YuGiOhNet(config)
+        net = YuGiOhNet.from_config(config)
 
         assert net.text_lookup is None
         assert net._use_text_embeddings is False
@@ -216,7 +216,7 @@ class TestSemanticMode:
             text_embed_dim=48,
             learned_embed_dim=12,
         )
-        net = YuGiOhNet(config)
+        net = YuGiOhNet.from_config(config)
 
         # Card encoder input should be text_embed_dim + learned_embed_dim + CARD_FEAT_DIM
         from yugioh_rl.features import CARD_FEAT_DIM
@@ -228,7 +228,7 @@ class TestSemanticMode:
         path = _make_embeddings_file(codes, dim=384, path=str(tmp_path / "emb.pt"))
 
         config = TrainingConfig(card_embeddings_path=path, text_embed_dim=32, learned_embed_dim=8)
-        net = YuGiOhNet(config)
+        net = YuGiOhNet.from_config(config)
 
         obs_cards, obs_global, obs_actions, action_mask = _make_dummy_obs(batch_size=4)
         logits, values = net(obs_cards, obs_global, obs_actions, action_mask)
@@ -240,6 +240,28 @@ class TestSemanticMode:
         assert net.text_lookup._proj.weight.grad is not None
         # Learned embedding should have gradients
         assert net.card_embedding.weight.grad is not None
+
+    def test_from_state_dict_roundtrip(self, tmp_path):
+        """from_path → state_dict → from_state_dict → outputs match."""
+        codes = list(range(1, 51))
+        path = _make_embeddings_file(codes, dim=384, path=str(tmp_path / "emb.pt"))
+
+        config = TrainingConfig(card_embeddings_path=path, text_embed_dim=32, learned_embed_dim=8)
+        net_orig = YuGiOhNet.from_config(config)
+        net_orig.eval()
+
+        sd = net_orig.state_dict()
+        net_copy = YuGiOhNet.from_state_dict(
+            TrainingConfig(text_embed_dim=32, learned_embed_dim=8), sd)
+        net_copy.eval()
+
+        obs_cards, obs_global, obs_actions, action_mask = _make_dummy_obs(batch_size=2)
+        with torch.no_grad():
+            logits_orig, values_orig = net_orig(obs_cards, obs_global, obs_actions, action_mask)
+            logits_copy, values_copy = net_copy(obs_cards, obs_global, obs_actions, action_mask)
+
+        assert torch.allclose(logits_orig, logits_copy, atol=1e-6)
+        assert torch.allclose(values_orig, values_copy, atol=1e-6)
 
 
 # ---------------------------------------------------------------------------

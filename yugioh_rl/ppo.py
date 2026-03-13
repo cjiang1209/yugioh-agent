@@ -168,7 +168,7 @@ class PPOTrainer:
         logger.info("Using device: %s", self.device)
 
         # Network and optimizer
-        self.network = YuGiOhNet(config).to(self.device)
+        self.network = YuGiOhNet.from_config(config).to(self.device)
         self.optimizer = torch.optim.Adam(self.network.parameters(), lr=config.learning_rate)
 
         # Rollout buffer
