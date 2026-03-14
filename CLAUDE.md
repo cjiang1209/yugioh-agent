@@ -237,6 +237,29 @@ Disable with `--no-reward-shaping`.
 8. **Incremental training from checkpoint**: `--init-checkpoint PATH` starts a new run (fresh directory, counters at 0) with model weights initialized from an existing checkpoint instead of random init. `--resume-optimizer` additionally loads optimizer state (momentum/variance), with LR overridden from the CLI. Architecture dimensions must match between checkpoint and CLI config; `PPOTrainer._validate_checkpoint_compat` checks this at startup. Text embedding mode must also be compatible (cannot add text embeddings to a symbolic checkpoint).
 9. **Resume interrupted training**: `--resume PATH` restores full training state (model weights, optimizer, update/step counters, episode tracking) and continues in the same run directory. The `--total-timesteps` CLI value is always recomputed — pass a higher value to extend training or a lower value (triggers early return if already past). `--resume` and `--init-checkpoint` are mutually exclusive. TensorBoard logs continue seamlessly via `purge_step`. **Known limitation — episode seed divergence**: on resume, `SubprocVecEnv` is created with the original `config.seed` and `vec_env.reset()` replays the episode seed sequence from the beginning, not from where the interrupted run left off. Training is unaffected (the model still learns), but the exact episode ordering will differ from a single uninterrupted run. Saving and restoring per-env RNG state is impractical given the multi-process architecture.
 
+## MUD Server (yugioh-game)
+
+The yugioh-game MUD server (tspivey/yugioh-game) is a Twisted-based text MUD for multiplayer Yu-Gi-Oh dueling. It uses a **different** ygopro-core fork (Fluorohydride, not edo9300) with incompatible C APIs, so it has its own build pipeline.
+
+### Build & Run
+
+```bash
+scripts/build_mud_server.sh                    # Clone deps, compile Lua 5.3.5 + Fluorohydride/ygopro-core, install Python deps
+scripts/start_mud_server.sh                    # Start: telnet on 4000, WebSocket on 8080
+scripts/start_mud_server.sh --port 5000        # Custom telnet port
+WS_PORT=9090 scripts/start_mud_server.sh       # Custom WebSocket port
+scripts/clean_mud_server.sh                    # Remove third_party/yugioh-game/ entirely
+telnet localhost 4000                          # Connect via telnet
+```
+
+### Key Differences from Main Project
+
+- **ygopro-core fork**: Fluorohydride (C API: `create_duel`, `process`, `set_responsei`) vs edo9300 (`OCG_CreateDuel`, `OCG_DuelProcess`, `OCG_DuelSetResponse`). Completely incompatible APIs.
+- **Shared library**: `libygo.so` (CFFI) vs `libocgcore.dylib/.so` (ctypes). No conflict.
+- **Separate venv**: `third_party/yugioh-game/.venv` — old pinned deps (Twisted 18.4.0, SQLAlchemy 1.3.4) that conflict with the main project.
+- **Cloned on demand**: Not a git submodule. `third_party/yugioh-game/` is gitignored, treated as a build artifact.
+- **Lua 5.3.5**: Downloaded and compiled by the build script (compiled as C++ with `CC=clang++` for C++ linkage, same rationale as the main project's Lua build).
+
 ## Environment Variables
 
 - `YUGIOH_LIB_PATH` — path to `libocgcore.dylib/.so` (auto-detected from `build/` if unset)

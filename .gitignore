@@ -7,3 +7,4 @@ build/
 .pytest_cache/
 *.so
 *.dylib
+third_party/yugioh-game/
