@@ -268,5 +268,5 @@ def test_model_opponent_env_config_missing_checkpoint():
     """opponent_type='model' without checkpoint should raise ValueError."""
     from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
 
-    with pytest.raises(ValueError, match="opponent_checkpoint"):
-        YuGiOhEnvironment(config={"opponent_type": "model"})
+    with pytest.raises(ValueError, match="checkpoint path"):
+        YuGiOhEnvironment(config={"opponent": "model:"})

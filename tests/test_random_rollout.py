@@ -15,7 +15,7 @@ def env(lib, db_path, script_dirs, deck_path):
         "db_path": str(db_path),
         "script_dirs": [str(d) for d in script_dirs],
         "deck_path": str(deck_path),
-        "opponent_type": "random",
+        "opponent": "random",
         "opponent_seed": 0,
     }
     e = YuGiOhEnvironment(config)

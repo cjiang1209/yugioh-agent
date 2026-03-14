@@ -22,11 +22,9 @@ def parse_args() -> argparse.Namespace:
                      help="Number of parallel environments (default: 8)")
     env.add_argument("--deck-path", type=str, default="assets/decks/starter.ydk",
                      help="Path to .ydk deck file used for both players (default: assets/decks/starter.ydk)")
-    env.add_argument("--opponent", type=str, default="greedy", choices=["random", "greedy", "model"],
-                     help="Opponent strategy: 'random' picks uniformly, 'greedy' picks highest-ATK, "
-                          "'model' uses a trained checkpoint (default: greedy)")
-    env.add_argument("--opponent-checkpoint", type=str, default="",
-                     help="Path to .pt checkpoint for 'model' opponent (required when --opponent=model)")
+    env.add_argument("--opponent", type=str, default="greedy",
+                     help="Opponent spec: 'random', 'greedy', or 'model:path/to/checkpoint.pt' "
+                          "(default: greedy)")
     env.add_argument("--no-reward-shaping", action="store_true",
                      help="Disable LP/card-advantage reward shaping (use sparse win/loss only)")
     env.add_argument("--shaping-lp-weight", type=float, default=0.01,
@@ -121,6 +119,18 @@ def _was_provided(name: str) -> bool:
     return any(arg == name or arg.startswith(name + "=") for arg in sys.argv[1:])
 
 
+def _validate_opponent_spec(spec: str, flag: str) -> None:
+    """Validate an opponent spec string like 'greedy' or 'model:path.pt'."""
+    if spec.startswith("model:"):
+        path = spec[len("model:"):]
+        if not path:
+            _fatal(f"{flag} model: entries must include a checkpoint path")
+        if not Path(path).exists():
+            _fatal(f"{flag} opponent checkpoint not found: {path}")
+    elif spec not in ("greedy", "random"):
+        _fatal(f"unknown opponent: {spec}")
+
+
 def validate_args(args: argparse.Namespace) -> None:
     """Validate CLI argument constraints that argparse cannot express.
 
@@ -159,22 +169,12 @@ def validate_args(args: argparse.Namespace) -> None:
                 "--shaping-card-weight has no effect with --no-reward-shaping"
             )
 
-    # --opponent-checkpoint only applies to --opponent=model
-    if args.opponent_checkpoint and args.opponent != "model":
-        logger.warning(
-            "--opponent-checkpoint has no effect without --opponent=model"
-        )
+    # --opponent validation
+    _validate_opponent_spec(args.opponent, "--opponent")
 
     # --eval-opponents validation
     for spec in args.eval_opponents:
-        if spec.startswith("model:"):
-            path = spec[len("model:"):]
-            if not path:
-                _fatal("--eval-opponents model: entries must include a checkpoint path")
-            if not Path(path).exists():
-                _fatal(f"eval opponent checkpoint not found: {path}")
-        elif spec not in ("greedy", "random"):
-            _fatal(f"unknown eval opponent: {spec}")
+        _validate_opponent_spec(spec, "--eval-opponents")
 
 
 def main() -> None:
@@ -205,8 +205,7 @@ def main() -> None:
     config = TrainingConfig(
         num_envs=args.num_envs,
         deck_path=args.deck_path,
-        opponent_type=args.opponent,
-        opponent_checkpoint=args.opponent_checkpoint,
+        opponent=args.opponent,
         agent_player=args.agent_player,
         reward_shaping=not args.no_reward_shaping,
         shaping_lp_weight=args.shaping_lp_weight,

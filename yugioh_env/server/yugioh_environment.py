@@ -60,17 +60,15 @@ class YuGiOhEnvironment(Environment):
         deck_path: Path to .ydk deck file (used for both players)
         deck0_path: Path to player 0 deck
         deck1_path: Path to player 1 deck
-        opponent_type: "random", "greedy", or "model"
+        opponent: Opponent spec — "random", "greedy", or "model:path/to/ckpt.pt"
         opponent_seed: Random seed for opponent
-        opponent_checkpoint: Path to .pt checkpoint for "model" opponent
         opponent_device: Device for model opponent ("cpu" or "cuda", default "cpu")
         starting_lp: Starting life points (default 8000)
         agent_player: Which player the agent controls (0, 1, or "random").
                       Player 0 always goes first. Default 0.
 
     Environment variables (used as fallbacks when config keys are absent):
-        YUGIOH_OPPONENT_TYPE: Opponent strategy (default "random")
-        YUGIOH_OPPONENT_CHECKPOINT: Path to model checkpoint
+        YUGIOH_OPPONENT: Opponent spec (e.g. "greedy", "model:path/to/ckpt.pt")
         YUGIOH_OPPONENT_DEVICE: Device for model opponent (default "cpu")
     """
 
@@ -107,20 +105,24 @@ class YuGiOhEnvironment(Environment):
         self._agent_player_setting = agent_player_cfg
         self._agent_player = agent_player_cfg if isinstance(agent_player_cfg, int) else 0
 
-        # Opponent
-        opponent_type = config.get("opponent_type") or os.environ.get(
-            "YUGIOH_OPPONENT_TYPE", "random"
+        # Opponent — spec string: "random", "greedy", or "model:path/to/ckpt.pt"
+        opponent_spec = config.get("opponent") or os.environ.get(
+            "YUGIOH_OPPONENT", "random"
         )
+        if opponent_spec.startswith("model:"):
+            opponent_type = "model"
+            opponent_checkpoint = opponent_spec[len("model:"):]
+        else:
+            opponent_type = opponent_spec
+            opponent_checkpoint = ""
+
         opponent_seed = config.get("opponent_seed")
         if opponent_type == "model":
             from yugioh_env.opponent import ModelOpponent
-            opponent_checkpoint = config.get("opponent_checkpoint") or os.environ.get(
-                "YUGIOH_OPPONENT_CHECKPOINT", ""
-            )
             if not opponent_checkpoint:
                 raise ValueError(
-                    "opponent_type='model' requires opponent_checkpoint config key "
-                    "or YUGIOH_OPPONENT_CHECKPOINT env var"
+                    "model opponent requires a checkpoint path "
+                    "(e.g. opponent='model:path/to/ckpt.pt')"
                 )
             opponent_device = config.get("opponent_device") or os.environ.get(
                 "YUGIOH_OPPONENT_DEVICE", "cpu"

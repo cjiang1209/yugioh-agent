@@ -29,8 +29,7 @@ class TrainingEnv:
     def __init__(
         self,
         deck_path: str = "assets/decks/starter.ydk",
-        opponent_type: str = "greedy",
-        opponent_checkpoint: str = "",
+        opponent: str = "greedy",
         reward_shaping: bool = True,
         shaping_lp_weight: float = 0.01,
         shaping_card_weight: float = 0.005,
@@ -45,11 +44,9 @@ class TrainingEnv:
 
         env_config: dict[str, Any] = {
             "deck_path": deck_path,
-            "opponent_type": opponent_type,
+            "opponent": opponent,
             "agent_player": self._agent_player_setting,
         }
-        if opponent_checkpoint:
-            env_config["opponent_checkpoint"] = opponent_checkpoint
 
         self._env = YuGiOhEnvironment(config=env_config)
         self._reward_shaping = reward_shaping
@@ -181,8 +178,7 @@ class SubprocVecEnv:
         self,
         num_envs: int,
         deck_path: str = "assets/decks/starter.ydk",
-        opponent_type: str = "greedy",
-        opponent_checkpoint: str = "",
+        opponent: str = "greedy",
         reward_shaping: bool = True,
         shaping_lp_weight: float = 0.01,
         shaping_card_weight: float = 0.005,
@@ -200,8 +196,7 @@ class SubprocVecEnv:
             parent_conn, child_conn = ctx.Pipe()
             env_kwargs = {
                 "deck_path": deck_path,
-                "opponent_type": opponent_type,
-                "opponent_checkpoint": opponent_checkpoint,
+                "opponent": opponent,
                 "reward_shaping": reward_shaping,
                 "shaping_lp_weight": shaping_lp_weight,
                 "shaping_card_weight": shaping_card_weight,

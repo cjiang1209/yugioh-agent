@@ -319,8 +319,7 @@ class PPOTrainer:
         vec_env = SubprocVecEnv(
             num_envs=config.num_envs,
             deck_path=config.deck_path,
-            opponent_type=config.opponent_type,
-            opponent_checkpoint=config.opponent_checkpoint,
+            opponent=config.opponent,
             reward_shaping=config.reward_shaping,
             shaping_lp_weight=config.shaping_lp_weight,
             shaping_card_weight=config.shaping_card_weight,
@@ -484,8 +483,8 @@ class PPOTrainer:
         logger.info("Training complete. Total steps: %d", global_step)
 
     @staticmethod
-    def _parse_eval_opponent(spec: str) -> tuple[str, str]:
-        """Parse an eval opponent spec string.
+    def _parse_opponent_spec(spec: str) -> tuple[str, str]:
+        """Parse an opponent spec string.
 
         Returns (opponent_type, checkpoint_path).
         ``"greedy"`` → ``("greedy", "")``,
@@ -500,7 +499,7 @@ class PPOTrainer:
         self.network.eval()
 
         for spec in self.config.eval_opponents:
-            opp_type, opp_checkpoint = self._parse_eval_opponent(spec)
+            opp_type, opp_checkpoint = self._parse_opponent_spec(spec)
 
             # Build a human-readable label for logging / TensorBoard.
             # Include the parent dir to disambiguate checkpoints with the
@@ -515,13 +514,11 @@ class PPOTrainer:
 
             env_kwargs: dict = dict(
                 deck_path=self.config.deck_path,
-                opponent_type=opp_type,
+                opponent=spec,
                 reward_shaping=False,
                 seed=self.config.seed + 999999,
                 agent_player=self.config.agent_player,
             )
-            if opp_checkpoint:
-                env_kwargs["opponent_checkpoint"] = opp_checkpoint
 
             wins = 0
             env = TrainingEnv(**env_kwargs)

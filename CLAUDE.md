@@ -32,7 +32,7 @@ python -m pytest tests/test_duel.py::test_name -v
 
 # Run the server (activates venv automatically)
 scripts/start_server.sh
-scripts/start_server.sh --opponent model --opponent-checkpoint checkpoints/latest.pt
+scripts/start_server.sh --opponent model:checkpoints/latest.pt
 
 # Run the interactive play client (server must be running)
 scripts/play_client.sh                        # interactive mode
@@ -175,7 +175,7 @@ pip install -e ".[embed]"  # adds sentence-transformers (for building card text 
 scripts/train.sh                                           # default: 8 envs, 1M steps, greedy opponent
 scripts/train.sh --num-envs 4 --total-timesteps 500000     # fewer envs, shorter run
 scripts/train.sh --opponent random --no-reward-shaping      # sparse rewards only
-scripts/train.sh --opponent model --opponent-checkpoint checkpoints/latest.pt  # self-play
+scripts/train.sh --opponent model:checkpoints/latest.pt    # self-play
 scripts/train.sh --device cuda --base-dir runs/exp1         # GPU + custom base dir
 scripts/train.sh --agent-player random                     # coin flip per episode (default)
 scripts/train.sh --agent-player first                      # always go first
@@ -232,7 +232,7 @@ Disable with `--no-reward-shaping`.
 3. **Shared card embedding**: The same `nn.Embedding` encodes board card IDs and action card codes so the network learns a single card representation.
 4. **Auto-reset**: `TrainingEnv.step()` auto-resets on episode end, returning the first obs of a new episode and storing terminal info.
 5. **Player order randomization**: By default (`--agent-player random`), the agent randomly goes first or second each episode (coin flip seeded by the episode seed). This prevents training bias from always playing first. The observation/network architecture is already player-agnostic (relativized by `agent_player`), so no model changes are needed.
-6. **Model opponent (self-play)**: `ModelOpponent` loads a trained checkpoint and runs greedy argmax inference to select actions. When `needs_observation` is True, the environment builds a full observation from the opponent's perspective before each decision. The server supports `--opponent model --opponent-checkpoint PATH` flags (also configurable via `YUGIOH_OPPONENT_TYPE`/`YUGIOH_OPPONENT_CHECKPOINT` env vars).
+6. **Model opponent (self-play)**: `ModelOpponent` loads a trained checkpoint and runs greedy argmax inference to select actions. When `needs_observation` is True, the environment builds a full observation from the opponent's perspective before each decision. The server supports `--opponent model:PATH` (also configurable via `YUGIOH_OPPONENT` env var).
 7. **Semantic card embeddings (optional)**: The network supports two card embedding modes — **symbolic** (default: cards are arbitrary tokens, modulo-hashed into a learned embedding) and **semantic** (`--card-embeddings`: cards carry meaning from effect text). In semantic mode, `TextEmbeddingLookup` loads pre-computed sentence-transformer embeddings and uses `torch.searchsorted` for vectorized lookup by passcode. Frozen text vectors are projected via trainable `nn.Linear` and concatenated with a collision-free learned embedding. The embeddings file lives only in the trainer process — `SubprocVecEnv` workers never load it.
 8. **Incremental training from checkpoint**: `--init-checkpoint PATH` starts a new run (fresh directory, counters at 0) with model weights initialized from an existing checkpoint instead of random init. `--resume-optimizer` additionally loads optimizer state (momentum/variance), with LR overridden from the CLI. Architecture dimensions must match between checkpoint and CLI config; `PPOTrainer._validate_checkpoint_compat` checks this at startup. Text embedding mode must also be compatible (cannot add text embeddings to a symbolic checkpoint).
 9. **Resume interrupted training**: `--resume PATH` restores full training state (model weights, optimizer, update/step counters, episode tracking) and continues in the same run directory. The `--total-timesteps` CLI value is always recomputed — pass a higher value to extend training or a lower value (triggers early return if already past). `--resume` and `--init-checkpoint` are mutually exclusive. TensorBoard logs continue seamlessly via `purge_step`. **Known limitation — episode seed divergence**: on resume, `SubprocVecEnv` is created with the original `config.seed` and `vec_env.reset()` replays the episode seed sequence from the beginning, not from where the interrupted run left off. Training is unaffected (the model still learns), but the exact episode ordering will differ from a single uninterrupted run. Saving and restoring per-env RNG state is impractical given the multi-process architecture.
@@ -241,6 +241,5 @@ Disable with `--no-reward-shaping`.
 
 - `YUGIOH_LIB_PATH` — path to `libocgcore.dylib/.so` (auto-detected from `build/` if unset)
 - `YUGIOH_DB_PATH` — path to `cards.cdb` (default: `assets/cards.cdb`)
-- `YUGIOH_OPPONENT_TYPE` — opponent strategy: `random`, `greedy`, or `model` (default: `random`)
-- `YUGIOH_OPPONENT_CHECKPOINT` — path to `.pt` checkpoint for model opponent (required when type is `model`)
+- `YUGIOH_OPPONENT` — opponent spec: `random`, `greedy`, or `model:path/to/checkpoint.pt` (default: `random`)
 - `YUGIOH_OPPONENT_DEVICE` — device for model opponent inference: `cpu` or `cuda` (default: `cpu`)

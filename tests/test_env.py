@@ -15,7 +15,7 @@ def env(lib, db_path, script_dirs, deck_path):
         "db_path": str(db_path),
         "script_dirs": [str(d) for d in script_dirs],
         "deck_path": str(deck_path),
-        "opponent_type": "random",
+        "opponent": "random",
         "opponent_seed": 42,
     }
     e = YuGiOhEnvironment(config)
@@ -178,7 +178,7 @@ def test_reset_agent_player_config_default(lib, db_path, script_dirs, deck_path)
         "db_path": str(db_path),
         "script_dirs": [str(d) for d in script_dirs],
         "deck_path": str(deck_path),
-        "opponent_type": "random",
+        "opponent": "random",
         "agent_player": 1,
     }
     e = YuGiOhEnvironment(config)
@@ -196,7 +196,7 @@ def test_reset_agent_player_override(lib, db_path, script_dirs, deck_path):
         "db_path": str(db_path),
         "script_dirs": [str(d) for d in script_dirs],
         "deck_path": str(deck_path),
-        "opponent_type": "random",
+        "opponent": "random",
         "agent_player": 0,
     }
     e = YuGiOhEnvironment(config)

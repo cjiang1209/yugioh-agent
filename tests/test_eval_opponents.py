@@ -20,18 +20,18 @@ from yugioh_rl.ppo import PPOTrainer
 
 class TestParseEvalOpponent:
     def test_greedy(self):
-        assert PPOTrainer._parse_eval_opponent("greedy") == ("greedy", "")
+        assert PPOTrainer._parse_opponent_spec("greedy") == ("greedy", "")
 
     def test_random(self):
-        assert PPOTrainer._parse_eval_opponent("random") == ("random", "")
+        assert PPOTrainer._parse_opponent_spec("random") == ("random", "")
 
     def test_model_with_path(self):
-        assert PPOTrainer._parse_eval_opponent("model:/path/to/ckpt.pt") == (
+        assert PPOTrainer._parse_opponent_spec("model:/path/to/ckpt.pt") == (
             "model", "/path/to/ckpt.pt",
         )
 
     def test_model_relative_path(self):
-        assert PPOTrainer._parse_eval_opponent("model:checkpoints/run1/latest.pt") == (
+        assert PPOTrainer._parse_opponent_spec("model:checkpoints/run1/latest.pt") == (
             "model", "checkpoints/run1/latest.pt",
         )
 
@@ -110,16 +110,12 @@ class TestEvaluatePassesCheckpoint:
 
         assert len(env_calls) == 3
 
-        # greedy — no checkpoint key
-        assert env_calls[0]["opponent_type"] == "greedy"
-        assert "opponent_checkpoint" not in env_calls[0]
+        # greedy
+        assert env_calls[0]["opponent"] == "greedy"
 
-        # model entries — checkpoint present
-        assert env_calls[1]["opponent_type"] == "model"
-        assert env_calls[1]["opponent_checkpoint"] == "/fake/checkpoint_100.pt"
-
-        assert env_calls[2]["opponent_type"] == "model"
-        assert env_calls[2]["opponent_checkpoint"] == "/fake/v2/best.pt"
+        # model entries — spec includes checkpoint path
+        assert env_calls[1]["opponent"] == "model:/fake/checkpoint_100.pt"
+        assert env_calls[2]["opponent"] == "model:/fake/v2/best.pt"
 
     def test_tensorboard_label_includes_parent_and_stem(self, tmp_path):
         """TensorBoard scalar keys should include parent dir + stem to avoid collisions."""

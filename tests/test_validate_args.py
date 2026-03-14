@@ -70,7 +70,7 @@ def test_eval_opponent_unknown_rejected():
         capture_output=True, text=True, timeout=30,
     )
     assert result.returncode != 0
-    assert "unknown eval opponent" in result.stderr
+    assert "unknown opponent" in result.stderr
 
 
 def test_eval_opponent_model_checkpoint_not_found():
@@ -149,29 +149,32 @@ def test_no_reward_shaping_alone_no_warning():
     assert "shaping-card-weight has no effect" not in result.stderr
 
 
-def test_opponent_checkpoint_ignored_without_model():
-    """--opponent-checkpoint should warn when --opponent is not model."""
+def test_opponent_model_requires_path():
+    """--opponent model: must include a checkpoint path."""
     result = subprocess.run(
-        [
-            sys.executable, "-m", "cli.train",
-            "--opponent", "greedy",
-            "--opponent-checkpoint", "fake.pt",
-            "--total-timesteps", "0",
-        ],
+        [sys.executable, "-m", "cli.train", "--opponent", "model:"],
         capture_output=True, text=True, timeout=30,
     )
-    assert "--opponent-checkpoint has no effect without --opponent=model" in result.stderr
+    assert result.returncode != 0
+    assert "must include a checkpoint path" in result.stderr
 
 
-def test_opponent_checkpoint_no_warning_with_model():
-    """--opponent-checkpoint should NOT warn when --opponent=model."""
+def test_opponent_unknown_rejected():
+    """Unknown opponent type should be rejected."""
     result = subprocess.run(
-        [
-            sys.executable, "-m", "cli.train",
-            "--opponent", "model",
-            "--opponent-checkpoint", "fake.pt",
-            "--total-timesteps", "0",
-        ],
+        [sys.executable, "-m", "cli.train", "--opponent", "bogus"],
         capture_output=True, text=True, timeout=30,
     )
-    assert "--opponent-checkpoint has no effect" not in result.stderr
+    assert result.returncode != 0
+    assert "unknown opponent" in result.stderr
+
+
+def test_opponent_model_checkpoint_not_found():
+    """Nonexistent opponent checkpoint should be rejected."""
+    result = subprocess.run(
+        [sys.executable, "-m", "cli.train",
+         "--opponent", "model:/nonexistent/checkpoint.pt"],
+        capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode != 0
+    assert "checkpoint not found" in result.stderr
