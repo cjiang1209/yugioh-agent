@@ -249,6 +249,8 @@ scripts/start_mud_server.sh                    # Start: telnet on 4000, WebSocke
 scripts/start_mud_server.sh --port 5000        # Custom telnet port
 WS_PORT=9090 scripts/start_mud_server.sh       # Custom WebSocket port
 scripts/clean_mud_server.sh                    # Remove third_party/yugioh-game/ entirely
+scripts/seed_mud_accounts.sh                   # Create Player1/Player2 accounts + load decks from assets/decks/
+scripts/seed_mud_accounts.sh --deck path/to/deck.ydk  # Seed specific .ydk files only
 telnet localhost 4000                          # Connect via telnet
 ```
 
