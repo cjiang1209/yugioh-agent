@@ -1,4 +1,4 @@
-"""MUD protocol state machine: login → lobby → room → pre-duel."""
+"""MUD protocol state machine: login → lobby → room → duel → finished."""
 
 from __future__ import annotations
 
@@ -7,7 +7,10 @@ import random
 from enum import Enum, auto
 from typing import Protocol
 
+from yugioh_mud.action_translator import ActionTranslator
+from yugioh_mud.agent import Agent
 from yugioh_mud.config import MUDBotConfig
+from yugioh_mud.text_parser import MUDTextParser, is_duel_end
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +34,17 @@ class State(Enum):
 
 
 class MUDProtocol:
-    """Drives the bot through login → lobby → room → duel start."""
+    """Drives the bot through login → lobby → room → duel → finished."""
 
-    def __init__(self, conn: Connection, config: MUDBotConfig) -> None:
+    def __init__(
+        self,
+        conn: Connection,
+        config: MUDBotConfig,
+        *,
+        text_parser: MUDTextParser | None = None,
+        agent: Agent | None = None,
+        action_translator: ActionTranslator | None = None,
+    ) -> None:
         self.conn = conn
         self.config = config
         self.state = State.LOGIN_NICKNAME
@@ -41,10 +52,21 @@ class MUDProtocol:
         self._room_commands_sent = False
         self._guest_ready = False
         self._rps_winner: bool | None = None  # True=won, False=lost, None=unknown
+        # Duel-play components (optional — without these, stops at DUEL)
+        self._text_parser = text_parser
+        self._agent = agent
+        self._action_translator = action_translator
 
     async def run(self) -> None:
-        """Main loop: recv lines, dispatch by state until DUEL or FINISHED."""
-        while self.state not in (State.DUEL, State.FINISHED):
+        """Main loop: recv lines, dispatch by state until FINISHED.
+
+        If no duel-play components are configured, stops at DUEL state
+        (backward-compatible with phase 1.1 tests).
+        """
+        while self.state != State.FINISHED:
+            # Stop at DUEL if no duel-play components configured
+            if self.state == State.DUEL and self._text_parser is None:
+                break
             line = await self.conn.recv_line()
             if self.config.verbose:
                 logger.info("[%s] recv: %s", self.state.name, line)
@@ -63,6 +85,8 @@ class MUDProtocol:
             await self._handle_rps(line)
         elif self.state == State.PRE_DUEL_DECISION:
             await self._handle_decision(line)
+        elif self.state == State.DUEL:
+            await self._handle_duel(line)
 
     # -- Login --
 
@@ -175,6 +199,24 @@ class MUDProtocol:
             await self._send("1")  # Always go first for now
         elif "Duel created." in line:
             self.state = State.DUEL
+
+    # -- Duel --
+
+    async def _handle_duel(self, line: str) -> None:
+        if is_duel_end(line):
+            logger.info("Duel ended: %s", line)
+            self.state = State.FINISHED
+            return
+
+        prompt = self._text_parser.feed_line(line)  # type: ignore[union-attr]
+        if prompt is not None:
+            action = self._agent.choose(prompt)  # type: ignore[union-attr]
+            text = self._action_translator.translate(action, prompt)  # type: ignore[union-attr]
+            if self.config.verbose:
+                logger.info(
+                    "[DUEL] prompt=%s action=%d → %r",
+                    prompt.prompt_type.name, action, text)
+            await self._send(text)
 
     # -- Helpers --
 

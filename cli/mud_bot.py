@@ -9,9 +9,12 @@ import sys
 
 from copy import copy
 
+from yugioh_mud.action_translator import ActionTranslator
+from yugioh_mud.agent import PassiveAgent
 from yugioh_mud.config import GUEST_CONFIG, HOST_CONFIG, MUDBotConfig
 from yugioh_mud.connection import MUDConnection
 from yugioh_mud.protocol import MUDProtocol
+from yugioh_mud.text_parser import MUDTextParser
 
 
 def parse_args() -> argparse.Namespace:
@@ -85,7 +88,12 @@ async def run(config: MUDBotConfig) -> None:
     try:
         await conn.connect()
         logging.info("Connected to ws://%s:%d", config.server_host, config.server_port)
-        proto = MUDProtocol(conn, config)
+        parser = MUDTextParser()
+        agent = PassiveAgent()
+        translator = ActionTranslator()
+        proto = MUDProtocol(
+            conn, config,
+            text_parser=parser, agent=agent, action_translator=translator)
         await proto.run()
         logging.info("Reached state: %s", proto.state.name)
     finally:

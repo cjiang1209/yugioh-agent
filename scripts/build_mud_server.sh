@@ -136,11 +136,47 @@ if ! python -c "import twisted" 2>/dev/null; then
             "$GSB_COMMAND"
         rm -f "$GSB_COMMAND.bak"
     fi
+
+    # Patch gsb Reader for attrs>=22 attribute ordering.
+    # In newer attrs, Reader.done (overridden with a default) moves to the end
+    # of the attribute list. When code passes done as the first positional arg,
+    # it gets assigned to command_separator instead. Fix via __attrs_post_init__.
+    GSB_INTERCEPT="$GSB_DIR/intercept.py"
+    if ! grep -q '__attrs_post_init__' "$GSB_INTERCEPT" 2>/dev/null; then
+        echo "Patching gsb Reader for attrs>=22 attribute ordering ..."
+        sed -i.bak '/^    done=attrib(default=Factory(lambda: None))/a\
+\
+    def __attrs_post_init__(self):\
+        """Fix attrs ordering: if done is None but command_separator is\
+        callable, the first positional arg was misrouted."""\
+        if self.done is None and callable(self.command_separator):\
+            self.done = self.command_separator\
+            self.command_separator = '"'"' '"'"'' \
+            "$GSB_INTERCEPT"
+        rm -f "$GSB_INTERCEPT.bak"
+    fi
 else
     echo "Python dependencies already installed, skipping."
 fi
 
-# ─── 7. Patch duel_build.py for local paths ─────────────────────────────────
+# ─── 7a. Patch duel.py for Python 3.12+: find_module/load_module removed ──
+# pkgutil.iter_modules returns FileFinder objects that no longer have
+# find_module() in Python 3.12+. Replace with importlib.import_module().
+DUEL_PY="$MUD_DIR/ygo/duel.py"
+if grep -q 'importer.find_module' "$DUEL_PY" 2>/dev/null; then
+    echo "Patching duel.py for Python 3.12+ (importlib) ..."
+    sed -i.bak \
+        -e '1,/^import os/{/^import os/a\
+import importlib
+}' \
+        -e "s|m = importer.find_module(modname).load_module(modname)|m = importlib.import_module(f'.message_handlers.{modname}', package='ygo')|" \
+        "$DUEL_PY"
+    rm -f "$DUEL_PY.bak"
+else
+    echo "duel.py already patched, skipping."
+fi
+
+# ─── 7b. Patch duel_build.py for local paths ────────────────────────────────
 # The upstream duel_build.py assumes:
 #   - ygopro-core is at ../ygopro-core (parent dir), but we clone it into ./ygopro-core
 #   - Lua headers at /usr/include/lua5.3 (system Lua on Linux), but we build locally

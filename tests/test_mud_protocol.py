@@ -12,8 +12,11 @@ from dataclasses import replace
 
 import pytest
 
+from yugioh_mud.action_translator import ActionTranslator
+from yugioh_mud.agent import PassiveAgent
 from yugioh_mud.config import GUEST_CONFIG, HOST_CONFIG
 from yugioh_mud.protocol import MUDProtocol, State
+from yugioh_mud.text_parser import MUDTextParser
 
 
 class FakeConnection:
@@ -411,3 +414,102 @@ class TestRPS:
         # Two RPS choices + one decision = 3 numeric sends
         assert len(numeric_after_create) == 3
         assert numeric_after_create[-1] == "1"  # decision: go first
+
+
+# ---------------------------------------------------------------------------
+# Duel — passive play
+# ---------------------------------------------------------------------------
+
+# Minimal login → duel-created → duel prompts → duel end sequence
+LOGIN_TO_DUEL = [
+    "Nickname (or new to create a new account):",
+    "Password:",
+    "Welcome to the game.",
+    *RPS_WIN_TO_DUEL,
+]
+
+
+def _make_duel_proto(extra_lines: list[str]) -> tuple[FakeConnection, MUDProtocol]:
+    """Create a protocol wired with duel components and canned lines."""
+    conn = FakeConnection([*LOGIN_TO_DUEL, *extra_lines])
+    config = replace(HOST_CONFIG)
+    parser = MUDTextParser()
+    agent = PassiveAgent()
+    translator = ActionTranslator()
+    proto = MUDProtocol(
+        conn, config,
+        text_parser=parser, agent=agent, action_translator=translator)
+    return conn, proto
+
+
+class TestDuelPassive:
+    def test_duel_end_on_win(self):
+        """Bot reaches FINISHED after a duel-end line."""
+        conn, proto = _make_duel_proto([
+            "Your turn.",
+            "entering main1 phase.",
+            "Select a card on which to perform an action.",
+            "e: End phase.",
+            "Select a card:",
+            "entering end phase.",
+            "You won (ran out of cards to draw).",
+        ])
+        _run(proto.run())
+        assert proto.state == State.FINISHED
+        # Agent should have sent "e" to end phase
+        assert "e" in conn.sent
+
+    def test_duel_end_on_loss(self):
+        conn, proto = _make_duel_proto([
+            "You lost (LP became 0).",
+        ])
+        _run(proto.run())
+        assert proto.state == State.FINISHED
+
+    def test_passive_declines_effects(self):
+        """PassiveAgent sends 'n' for effect prompts."""
+        conn, proto = _make_duel_proto([
+            "Do you want to use the effect from Mirror Force in s1?",
+            "entering end phase.",
+            "You won (ran out of cards to draw).",
+        ])
+        _run(proto.run())
+        assert proto.state == State.FINISHED
+        # After login/room/RPS commands, the duel sends should include "n"
+        duel_sends = conn.sent[conn.sent.index("1"):]  # after decision "1"
+        assert "n" in duel_sends
+
+    def test_passive_cancels_chain(self):
+        """PassiveAgent sends 'c' for optional chains."""
+        conn, proto = _make_duel_proto([
+            "Select chain (c to cancel):",
+            "s1: Mirror Force",
+            "Select card to chain (c = cancel):",
+            "You won (ran out of cards to draw).",
+        ])
+        _run(proto.run())
+        assert proto.state == State.FINISHED
+        duel_sends = conn.sent[conn.sent.index("1"):]
+        assert "c" in duel_sends
+
+    def test_passive_ends_battle(self):
+        """PassiveAgent sends 'e' for battle menu."""
+        conn, proto = _make_duel_proto([
+            "Battle menu:",
+            "a: Attack.",
+            "e: End phase.",
+            "Select an option:",
+            "You lost (LP became 0).",
+        ])
+        _run(proto.run())
+        assert proto.state == State.FINISHED
+        duel_sends = conn.sent[conn.sent.index("1"):]
+        assert "e" in duel_sends
+
+    def test_backward_compat_no_duel_components(self):
+        """Without duel components, protocol stops at DUEL (phase 1.1)."""
+        conn = FakeConnection(LOGIN_TO_DUEL)
+        config = replace(HOST_CONFIG)
+        proto = MUDProtocol(conn, config)  # no duel components
+        _run(proto.run())
+        assert proto.state == State.DUEL

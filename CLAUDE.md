@@ -76,6 +76,7 @@ Tests auto-skip when prerequisites are missing:
 - `test_eval_opponents.py`: skips if `torch` not installed
 - `test_resume.py`: skips if `torch` not installed
 - `test_mud_protocol.py`: pure unit tests (uses FakeConnection), no external deps
+- `test_mud_text_parser.py`: pure unit tests for duel prompt parsing, no external deps
 
 ## Architecture
 
@@ -272,24 +273,34 @@ telnet localhost 4000                          # Connect via telnet
 - **Separate venv**: `third_party/yugioh-game/.venv` — old pinned deps (Twisted 18.4.0, SQLAlchemy 1.3.4) that conflict with the main project.
 - **Cloned on demand**: Not a git submodule. `third_party/yugioh-game/` is gitignored, treated as a build artifact.
 - **Lua 5.3.5**: Downloaded and compiled by the build script (compiled as C++ with `CC=clang++` for C++ linkage, same rationale as the main project's Lua build).
+- **Python 3.12+ patches** (applied automatically by `build_mud_server.sh`):
+  - `duel.py`: `pkgutil.iter_modules()` returns `FileFinder` objects that lack `find_module()` (removed in 3.12). Patched to use `importlib.import_module()`. Without this, all message handlers fail to load silently and duels hang.
+  - `gsb/command.py`: `re._pattern_type` was removed in 3.7. Patched to use `re.Pattern`.
+  - `gsb/intercept.py`: `Reader.done` attribute reordering under attrs>=22. When `done` is overridden with a default, it moves to the end of the attribute list, causing positional args to be misrouted. Patched with `__attrs_post_init__` to detect and fix the misrouted callable.
 
 ### MUD Bot Client (`yugioh_mud/`)
 
-WebSocket bot that connects to the MUD server and drives through the pre-duel lifecycle (login → lobby → room setup → RPS → go-first decision → duel start).
+WebSocket bot that connects to the MUD server and plays through complete duels (login → lobby → room setup → RPS → go-first decision → duel → finished).
 
 ```
 yugioh_mud/
-├── config.py       — MUDBotConfig dataclass, HOST_CONFIG / GUEST_CONFIG presets
-├── connection.py   — Async WebSocket client wrapper (send_line / recv_line)
-└── protocol.py     — State machine: LOGIN → LOBBY → ROOM_SETUP → RPS → DECISION → DUEL
-cli/mud_bot.py      — CLI entry point (--profile host/guest, --deck, --verbose)
-scripts/mud_bot.sh  — Shell wrapper (activates venv, forwards args)
+├── config.py              — MUDBotConfig dataclass, HOST_CONFIG / GUEST_CONFIG presets
+├── connection.py          — Async WebSocket client wrapper (send_line / recv_line)
+├── protocol.py            — State machine: LOGIN → LOBBY → ROOM_SETUP → RPS → DECISION → DUEL → FINISHED
+├── text_parser.py         — Line-oriented duel prompt classifier (PromptType enum + ParsedPrompt)
+├── agent.py               — Agent protocol + PassiveAgent (ends phases, declines effects)
+└── action_translator.py   — Converts agent int actions → MUD text commands
+cli/mud_bot.py             — CLI entry point (--profile host/guest, --deck, --verbose)
+scripts/mud_bot.sh         — Shell wrapper (activates venv, forwards args)
 ```
 
 - **Install**: `pip install -e ".[mud]"` (adds `websockets>=12.0`)
 - **Profiles**: `host` (Player1, creates room, sends `start`) vs `guest` (Player2, joins host's room). Defaults use accounts seeded by `scripts/seed_mud_accounts.sh`.
 - **State machine**: `MUDProtocol` is a line-oriented async state machine. Each state handler pattern-matches server lines and sends commands. The `Connection` protocol interface enables unit testing with a `FakeConnection`.
-- **Current scope**: Pre-duel lifecycle only. The bot reaches `State.DUEL` and stops. In-duel play (parsing duel messages, selecting actions) is not yet implemented.
+- **Text parser**: `MUDTextParser` classifies MUD server lines into 21 `PromptType` variants (idle/battle menus, card/tribute/chain selection, effect Y/N, position, place, option, sum, counter, unselect, announce, sort). It tracks idle/battle context and accumulates numbered option lines until a known terminal line arrives. Each prompt type maps to a specific MUD server mechanism (DuelReader with/without prompt, DuelMenu, yes_or_no_parser).
+- **Agent + translator**: Two-layer design separating strategy from protocol. `Agent.choose(prompt) → int` decides *what* to do; `ActionTranslator.translate(action, prompt) → str` converts to MUD text. `PassiveAgent` always ends phases, declines effects, and cancels optional chains — duels end by deck-out. Future agents (random, model-based) will share the same translator.
+- **Duel-end detection**: `is_duel_end(line)` matches "You won", "You lost", "You scooped", "was cancelled" patterns to transition from DUEL to FINISHED state.
+- **Current scope**: Passive duel play (protocol verification). Two bots can complete a full duel via deck-out. Active play (summoning, attacking, using effects) requires a different agent implementation.
 
 ## Environment Variables
 
