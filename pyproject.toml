@@ -28,9 +28,12 @@ train = [
 embed = [
     "sentence-transformers>=2.0",
 ]
+mud = [
+    "websockets>=12.0",
+]
 
 [tool.setuptools.packages.find]
-include = ["yugioh_env*", "yugioh_rl*"]
+include = ["yugioh_env*", "yugioh_rl*", "yugioh_mud*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -41,6 +41,16 @@ scripts/play_client.sh --mode greedy --episodes 10 --quiet
 scripts/play_client.sh --deck assets/decks/blue_eyes.ydk --mode greedy
 scripts/play_client.sh --deck0 assets/decks/blue_eyes.ydk --deck1 assets/decks/starter.ydk
 scripts/play_client.sh --go-second --mode greedy          # agent goes second (player 1)
+
+# Run the MUD bot client (MUD server must be running)
+pip install -e ".[mud]"                                    # adds websockets
+scripts/mud_bot.sh                                         # host bot (Player1, creates room)
+scripts/mud_bot.sh --profile guest                         # guest bot (Player2, joins room)
+scripts/mud_bot.sh --port 9090 --deck blue_eyes            # custom port and deck
+scripts/mud_bot.sh --verbose                               # log all protocol lines
+# Two-bot duel (run in separate terminals):
+#   scripts/mud_bot.sh --profile host --verbose
+#   scripts/mud_bot.sh --profile guest --verbose
 ```
 
 ## Prerequisites & Setup
@@ -65,6 +75,7 @@ Tests auto-skip when prerequisites are missing:
 - `test_checkpoint_init.py`: skips if `torch` not installed
 - `test_eval_opponents.py`: skips if `torch` not installed
 - `test_resume.py`: skips if `torch` not installed
+- `test_mud_protocol.py`: pure unit tests (uses FakeConnection), no external deps
 
 ## Architecture
 
@@ -261,6 +272,24 @@ telnet localhost 4000                          # Connect via telnet
 - **Separate venv**: `third_party/yugioh-game/.venv` — old pinned deps (Twisted 18.4.0, SQLAlchemy 1.3.4) that conflict with the main project.
 - **Cloned on demand**: Not a git submodule. `third_party/yugioh-game/` is gitignored, treated as a build artifact.
 - **Lua 5.3.5**: Downloaded and compiled by the build script (compiled as C++ with `CC=clang++` for C++ linkage, same rationale as the main project's Lua build).
+
+### MUD Bot Client (`yugioh_mud/`)
+
+WebSocket bot that connects to the MUD server and drives through the pre-duel lifecycle (login → lobby → room setup → RPS → go-first decision → duel start).
+
+```
+yugioh_mud/
+├── config.py       — MUDBotConfig dataclass, HOST_CONFIG / GUEST_CONFIG presets
+├── connection.py   — Async WebSocket client wrapper (send_line / recv_line)
+└── protocol.py     — State machine: LOGIN → LOBBY → ROOM_SETUP → RPS → DECISION → DUEL
+cli/mud_bot.py      — CLI entry point (--profile host/guest, --deck, --verbose)
+scripts/mud_bot.sh  — Shell wrapper (activates venv, forwards args)
+```
+
+- **Install**: `pip install -e ".[mud]"` (adds `websockets>=12.0`)
+- **Profiles**: `host` (Player1, creates room, sends `start`) vs `guest` (Player2, joins host's room). Defaults use accounts seeded by `scripts/seed_mud_accounts.sh`.
+- **State machine**: `MUDProtocol` is a line-oriented async state machine. Each state handler pattern-matches server lines and sends commands. The `Connection` protocol interface enables unit testing with a `FakeConnection`.
+- **Current scope**: Pre-duel lifecycle only. The bot reaches `State.DUEL` and stops. In-duel play (parsing duel messages, selecting actions) is not yet implemented.
 
 ## Environment Variables
 
