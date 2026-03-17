@@ -1,0 +1,476 @@
+"""Unit tests for the MUD game state tracker.
+
+Pure unit tests — no cards.cdb or MUD server required.
+"""
+
+from __future__ import annotations
+
+import sqlite3
+from pathlib import Path
+
+import pytest
+
+from yugioh_mud.card_lookup import CardNameLookup
+from yugioh_mud.game_state import CardEntry, MUDGameState
+from yugioh_mud.text_parser import EventType, ParsedEvent
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def tmp_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    db_path = tmp_path_factory.mktemp("cards") / "cards.cdb"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        "CREATE TABLE texts (id INTEGER PRIMARY KEY, name TEXT, desc TEXT)")
+    conn.execute(
+        "CREATE TABLE datas (id INTEGER PRIMARY KEY, alias INTEGER)")
+    conn.executemany(
+        "INSERT INTO texts (id, name, desc) VALUES (?, ?, ?)",
+        [
+            (46986414, "Dark Magician", ""),
+            (89631139, "Blue-Eyes White Dragon", ""),
+            (40640057, "Kuriboh", ""),
+            (44095762, "Mirror Force", ""),
+        ],
+    )
+    conn.executemany(
+        "INSERT INTO datas (id, alias) VALUES (?, ?)",
+        [(46986414, 0), (89631139, 0), (40640057, 0), (44095762, 0)],
+    )
+    conn.commit()
+    conn.close()
+    return db_path
+
+
+@pytest.fixture(scope="module")
+def lookup(tmp_db: Path) -> CardNameLookup:
+    return CardNameLookup(tmp_db)
+
+
+@pytest.fixture
+def gs(lookup: CardNameLookup) -> MUDGameState:
+    return MUDGameState(card_lookup=lookup)
+
+
+@pytest.fixture
+def gs_no_lookup() -> MUDGameState:
+    return MUDGameState()
+
+
+def _ev(event_type: EventType, **kwargs) -> ParsedEvent:
+    return ParsedEvent(event_type=event_type, **kwargs)
+
+
+# ---------------------------------------------------------------------------
+# Turn / Phase
+# ---------------------------------------------------------------------------
+
+class TestTurnPhase:
+    def test_new_turn_mine(self, gs: MUDGameState):
+        gs.update(_ev(EventType.NEW_TURN, player="you"))
+        assert gs.turn == 1
+        assert gs.is_my_turn is True
+
+    def test_new_turn_opponent(self, gs: MUDGameState):
+        gs.update(_ev(EventType.NEW_TURN, player="Player2", is_opponent=True))
+        assert gs.turn == 1
+        assert gs.is_my_turn is False
+
+    def test_consecutive_turns(self, gs: MUDGameState):
+        gs.update(_ev(EventType.NEW_TURN, player="you"))
+        gs.update(_ev(EventType.NEW_TURN, player="Player2", is_opponent=True))
+        gs.update(_ev(EventType.NEW_TURN, player="you"))
+        assert gs.turn == 3
+        assert gs.is_my_turn is True
+
+    def test_phase(self, gs: MUDGameState):
+        gs.update(_ev(EventType.NEW_PHASE, phase="main1 phase"))
+        assert gs.phase == "main1 phase"
+        gs.update(_ev(EventType.NEW_PHASE, phase="battle phase"))
+        assert gs.phase == "battle phase"
+
+
+# ---------------------------------------------------------------------------
+# LP
+# ---------------------------------------------------------------------------
+
+class TestLP:
+    def test_my_damage(self, gs: MUDGameState):
+        gs.update(_ev(EventType.DAMAGE, player="you", amount=1500, new_lp=6500))
+        assert gs.my_lp == 6500
+
+    def test_opp_damage(self, gs: MUDGameState):
+        gs.update(_ev(
+            EventType.DAMAGE, player="P2", is_opponent=True,
+            amount=2000, new_lp=6000))
+        assert gs.opp_lp == 6000
+
+    def test_my_recover(self, gs: MUDGameState):
+        gs.update(_ev(EventType.DAMAGE, player="you", amount=3000, new_lp=5000))
+        gs.update(_ev(EventType.RECOVER, player="you", amount=500, new_lp=5500))
+        assert gs.my_lp == 5500
+
+    def test_opp_recover(self, gs: MUDGameState):
+        gs.update(_ev(
+            EventType.RECOVER, player="P2", is_opponent=True,
+            amount=1000, new_lp=9000))
+        assert gs.opp_lp == 9000
+
+    def test_my_pay_lp(self, gs: MUDGameState):
+        gs.update(_ev(EventType.PAY_LP, player="you", amount=1000, new_lp=7000))
+        assert gs.my_lp == 7000
+
+    def test_opp_pay_lp(self, gs: MUDGameState):
+        gs.update(_ev(
+            EventType.PAY_LP, player="P2", is_opponent=True,
+            amount=800, new_lp=7200))
+        assert gs.opp_lp == 7200
+
+
+# ---------------------------------------------------------------------------
+# Draw
+# ---------------------------------------------------------------------------
+
+class TestDraw:
+    def test_my_draw(self, gs: MUDGameState):
+        gs.update(_ev(EventType.DRAW, player="you", amount=5))
+        assert len(gs.my_hand) == 5
+
+    def test_opp_draw(self, gs: MUDGameState):
+        gs.update(_ev(EventType.DRAW, player="P2", is_opponent=True, amount=5))
+        assert gs.opp_hand_count == 5
+
+    def test_multiple_draws(self, gs: MUDGameState):
+        gs.update(_ev(EventType.DRAW, player="you", amount=5))
+        gs.update(_ev(EventType.DRAW, player="you", amount=1))
+        assert len(gs.my_hand) == 6
+
+
+# ---------------------------------------------------------------------------
+# Summon / Set
+# ---------------------------------------------------------------------------
+
+class TestSummon:
+    def test_normal_summon(self, gs: MUDGameState):
+        gs.update(_ev(
+            EventType.SUMMON, player="Player1",
+            card_name="Dark Magician", position="face-up attack"))
+        assert len(gs.my_mzone) == 1
+        assert gs.my_mzone[0].name == "Dark Magician"
+        assert gs.my_mzone[0].code == 46986414
+        assert gs.my_mzone[0].position == "face-up attack"
+
+    def test_opp_summon(self, gs: MUDGameState):
+        gs.update(_ev(
+            EventType.SUMMON, player="P2", is_opponent=True,
+            card_name="Blue-Eyes White Dragon", position="face-up attack"))
+        assert len(gs.opp_mzone) == 1
+        assert gs.opp_mzone[0].name == "Blue-Eyes White Dragon"
+        assert gs.opp_mzone[0].code == 89631139
+
+    def test_special_summon(self, gs: MUDGameState):
+        gs.update(_ev(
+            EventType.SP_SUMMON, player="Player1",
+            card_name="Dark Magician", position="face-up attack"))
+        assert len(gs.my_mzone) == 1
+
+    def test_flip_summon(self, gs: MUDGameState):
+        gs.update(_ev(
+            EventType.FLIP_SUMMON, player="Player1",
+            card_name="Kuriboh", card_spec="m1"))
+        assert len(gs.my_mzone) == 1
+        assert gs.my_mzone[0].spec == "m1"
+
+    def test_set_monster(self, gs: MUDGameState):
+        gs.update(_ev(
+            EventType.SET, player="you", card_spec="m1",
+            card_name="Kuriboh", position="face-down defense"))
+        assert len(gs.my_mzone) == 1
+        assert gs.my_mzone[0].position == "face-down defense"
+
+    def test_set_spell(self, gs: MUDGameState):
+        gs.update(_ev(
+            EventType.SET, player="you", card_spec="s1",
+            card_name="Mirror Force", position="face-down"))
+        assert len(gs.my_szone) == 1
+        assert gs.my_szone[0].name == "Mirror Force"
+
+    def test_opp_set(self, gs: MUDGameState):
+        gs.update(_ev(
+            EventType.SET, player="P2", is_opponent=True,
+            card_spec="m1", position="face-down defense"))
+        assert len(gs.opp_mzone) == 1
+        # Opponent set — no card name visible
+        assert gs.opp_mzone[0].name == ""
+
+
+# ---------------------------------------------------------------------------
+# Position change
+# ---------------------------------------------------------------------------
+
+class TestPosChange:
+    def test_pos_change(self, gs: MUDGameState):
+        gs.update(_ev(
+            EventType.SUMMON, player="P1",
+            card_name="Dark Magician", card_spec="m1",
+            position="face-up attack"))
+        gs.update(_ev(
+            EventType.POS_CHANGE, card_spec="m1",
+            card_name="Dark Magician", position="face-up defense"))
+        assert gs.my_mzone[0].position == "face-up defense"
+
+
+# ---------------------------------------------------------------------------
+# Card movement
+# ---------------------------------------------------------------------------
+
+class TestMovement:
+    def _summon(self, gs: MUDGameState, name: str, spec: str,
+                opponent: bool = False) -> None:
+        gs.update(_ev(
+            EventType.SUMMON, player="P2" if opponent else "P1",
+            is_opponent=opponent,
+            card_name=name, card_spec=spec, position="face-up attack"))
+        # Set spec on the entry
+        zone = gs.opp_mzone if opponent else gs.my_mzone
+        zone[-1].spec = spec
+
+    def test_destroy(self, gs: MUDGameState):
+        self._summon(gs, "Dark Magician", "m1")
+        assert len(gs.my_mzone) == 1
+        gs.update(_ev(
+            EventType.DESTROY, card_spec="m1", card_name="Dark Magician"))
+        assert len(gs.my_mzone) == 0
+
+    def test_to_graveyard(self, gs: MUDGameState):
+        self._summon(gs, "Dark Magician", "m1")
+        gs.update(_ev(
+            EventType.TO_GRAVEYARD, player="you",
+            card_spec="m1", card_name="Dark Magician"))
+        assert len(gs.my_mzone) == 0
+        assert len(gs.my_graveyard) == 1
+        assert gs.my_graveyard[0].name == "Dark Magician"
+
+    def test_opp_to_graveyard(self, gs: MUDGameState):
+        self._summon(gs, "Blue-Eyes White Dragon", "m1", opponent=True)
+        gs.update(_ev(
+            EventType.TO_GRAVEYARD, player="P2", is_opponent=True,
+            card_spec="m1", card_name="Blue-Eyes White Dragon"))
+        assert len(gs.opp_mzone) == 0
+        assert len(gs.opp_graveyard) == 1
+
+    def test_banished(self, gs: MUDGameState):
+        self._summon(gs, "Dark Magician", "m1")
+        gs.update(_ev(
+            EventType.BANISHED, player="you",
+            card_spec="m1", card_name="Dark Magician"))
+        assert len(gs.my_mzone) == 0
+        assert len(gs.my_banished) == 1
+
+    def test_to_hand(self, gs: MUDGameState):
+        self._summon(gs, "Dark Magician", "m1")
+        gs.update(_ev(
+            EventType.TO_HAND, player="you",
+            card_spec="m1", card_name="Dark Magician"))
+        assert len(gs.my_mzone) == 0
+        assert any(c.name == "Dark Magician" for c in gs.my_hand)
+
+    def test_opp_to_hand(self, gs: MUDGameState):
+        self._summon(gs, "Blue-Eyes White Dragon", "m1", opponent=True)
+        gs.update(_ev(
+            EventType.TO_HAND, player="P2", is_opponent=True,
+            card_spec="m1", card_name="Blue-Eyes White Dragon"))
+        assert len(gs.opp_mzone) == 0
+        assert gs.opp_hand_count == 1
+
+    def test_to_deck(self, gs: MUDGameState):
+        self._summon(gs, "Dark Magician", "m1")
+        gs.update(_ev(
+            EventType.TO_DECK, player="you",
+            card_spec="m1", card_name="Dark Magician"))
+        assert len(gs.my_mzone) == 0
+
+    def test_tribute(self, gs: MUDGameState):
+        self._summon(gs, "Kuriboh", "m1")
+        gs.update(_ev(
+            EventType.TRIBUTE, player="you",
+            card_spec="m1", card_name="Kuriboh"))
+        assert len(gs.my_mzone) == 0
+
+    def test_discard_from_hand(self, gs: MUDGameState):
+        gs.my_hand.append(CardEntry(
+            name="Kuriboh", code=40640057, spec="h1"))
+        gs.update(_ev(
+            EventType.DISCARD, player="you",
+            card_spec="h1", card_name="Kuriboh"))
+        assert len(gs.my_hand) == 0
+
+    def test_opp_discard(self, gs: MUDGameState):
+        gs.opp_hand_count = 5
+        gs.update(_ev(
+            EventType.DISCARD, player="P2", is_opponent=True,
+            card_spec="h1", card_name="Kuriboh"))
+        assert gs.opp_hand_count == 4
+
+
+# ---------------------------------------------------------------------------
+# No-lookup mode
+# ---------------------------------------------------------------------------
+
+class TestNoLookup:
+    def test_summon_without_lookup(self, gs_no_lookup: MUDGameState):
+        gs_no_lookup.update(_ev(
+            EventType.SUMMON, player="P1",
+            card_name="Dark Magician", position="face-up attack"))
+        assert len(gs_no_lookup.my_mzone) == 1
+        assert gs_no_lookup.my_mzone[0].code == 0
+        assert gs_no_lookup.my_mzone[0].name == "Dark Magician"
+
+
+# ---------------------------------------------------------------------------
+# Resync — score
+# ---------------------------------------------------------------------------
+
+class TestResyncScore:
+    def test_resync_score_lp(self, gs: MUDGameState):
+        gs.my_lp = 7500  # drifted
+        gs.resync_score([
+            "Your LP: 8000 Opponent LP: 6000",
+            "Hand: You: 5 Opponent: 4",
+            "Deck: You: 35 Opponent: 36",
+            "Grave: You: 0 Opponent: 0",
+            "Removed: You: 0 Opponent: 0",
+            "It's your turn.",
+        ])
+        assert gs.my_lp == 8000
+        assert gs.opp_lp == 6000
+        assert gs.is_my_turn is True
+
+    def test_resync_score_opp_turn(self, gs: MUDGameState):
+        gs.resync_score(["It's Player2's turn."])
+        assert gs.is_my_turn is False
+
+    def test_resync_score_hand_count(self, gs: MUDGameState):
+        gs.opp_hand_count = 3  # drifted
+        gs.resync_score(["Hand: You: 5 Opponent: 5"])
+        assert gs.opp_hand_count == 5
+
+
+# ---------------------------------------------------------------------------
+# Resync — hand
+# ---------------------------------------------------------------------------
+
+class TestResyncHand:
+    def test_resync_hand(self, gs: MUDGameState):
+        gs.my_hand = [CardEntry(name="stale")]
+        gs.resync_hand([
+            "h1 Dark Magician",
+            "h2 Kuriboh",
+        ])
+        assert len(gs.my_hand) == 2
+        assert gs.my_hand[0].name == "Dark Magician"
+        assert gs.my_hand[0].code == 46986414
+        assert gs.my_hand[1].name == "Kuriboh"
+
+    def test_resync_hand_empty(self, gs: MUDGameState):
+        gs.my_hand = [CardEntry(name="stale")]
+        gs.resync_hand(["No cards."])
+        assert len(gs.my_hand) == 0
+
+
+# ---------------------------------------------------------------------------
+# Resync — tab
+# ---------------------------------------------------------------------------
+
+class TestResyncTab:
+    def test_resync_tab_own(self, gs: MUDGameState):
+        gs.resync_tab([
+            "Your table:",
+            "m1: Dark Magician (2500/2100) level 7 face-up attack",
+            "s1: Mirror Force face-down",
+        ])
+        assert len(gs.my_mzone) == 1
+        assert gs.my_mzone[0].name == "Dark Magician"
+        assert gs.my_mzone[0].code == 46986414
+        assert len(gs.my_szone) == 1
+        assert gs.my_szone[0].name == "Mirror Force"
+
+    def test_resync_tab_opponent(self, gs: MUDGameState):
+        gs.resync_tab([
+            "Opponent's table:",
+            "m1: face-down defense",
+        ], opponent=True)
+        assert len(gs.opp_mzone) == 1
+        assert gs.opp_mzone[0].name == ""
+        assert gs.opp_mzone[0].position == "face-down defense"
+
+    def test_resync_tab_empty(self, gs: MUDGameState):
+        gs.my_mzone = [CardEntry(name="stale")]
+        gs.resync_tab([
+            "Your table:",
+            "Table is empty.",
+        ])
+        assert len(gs.my_mzone) == 0
+        assert len(gs.my_szone) == 0
+
+
+# ---------------------------------------------------------------------------
+# Full event sequence (integration-style)
+# ---------------------------------------------------------------------------
+
+class TestEventSequence:
+    def test_basic_duel_flow(self, gs: MUDGameState):
+        """Simulate a short duel sequence and verify cumulative state."""
+        # Turn 1 — mine
+        gs.update(_ev(EventType.NEW_TURN, player="you"))
+        gs.update(_ev(EventType.NEW_PHASE, phase="draw phase"))
+        gs.update(_ev(EventType.DRAW, player="you", amount=1))
+        gs.update(_ev(EventType.NEW_PHASE, phase="main1 phase"))
+
+        # Summon Dark Magician
+        gs.update(_ev(
+            EventType.SUMMON, player="P1",
+            card_name="Dark Magician", card_spec="m1",
+            position="face-up attack"))
+
+        assert gs.turn == 1
+        assert gs.is_my_turn is True
+        assert len(gs.my_hand) == 1
+        assert len(gs.my_mzone) == 1
+        assert gs.my_mzone[0].name == "Dark Magician"
+
+        # Battle — attack, opponent takes damage
+        gs.update(_ev(EventType.NEW_PHASE, phase="battle phase"))
+        gs.update(_ev(
+            EventType.ATTACK, player="P1",
+            card_spec="m1", card_name="Dark Magician"))
+        gs.update(_ev(
+            EventType.DAMAGE, player="P2", is_opponent=True,
+            amount=2500, new_lp=5500))
+
+        assert gs.opp_lp == 5500
+        assert gs.phase == "battle phase"
+
+        # Turn 2 — opponent
+        gs.update(_ev(EventType.NEW_TURN, player="P2", is_opponent=True))
+        gs.update(_ev(EventType.NEW_PHASE, phase="draw phase"))
+        gs.update(_ev(
+            EventType.DRAW, player="P2", is_opponent=True, amount=1))
+
+        assert gs.turn == 2
+        assert gs.is_my_turn is False
+        assert gs.opp_hand_count == 1
+
+        # Opponent destroys Dark Magician
+        gs.update(_ev(
+            EventType.DESTROY, card_spec="m1", card_name="Dark Magician"))
+        gs.update(_ev(
+            EventType.TO_GRAVEYARD, player="you",
+            card_spec="m1", card_name="Dark Magician"))
+
+        assert len(gs.my_mzone) == 0
+        assert len(gs.my_graveyard) == 1
+        assert gs.my_graveyard[0].name == "Dark Magician"

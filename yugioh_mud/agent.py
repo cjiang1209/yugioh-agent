@@ -7,9 +7,12 @@ return value into the MUD text command.
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from yugioh_mud.text_parser import ParsedPrompt, PromptType
+
+if TYPE_CHECKING:
+    from yugioh_mud.game_state import MUDGameState
 
 # ---------------------------------------------------------------------------
 # Special action constants (negative = meta-commands)
@@ -34,7 +37,11 @@ class Agent(Protocol):
     * negative — one of the special constants above
     """
 
-    def choose(self, prompt: ParsedPrompt) -> int: ...
+    def choose(
+        self,
+        prompt: ParsedPrompt,
+        game_state: MUDGameState | None = None,
+    ) -> int: ...
 
 
 # ---------------------------------------------------------------------------
@@ -49,7 +56,11 @@ class PassiveAgent:
     it picks the first available option.
     """
 
-    def choose(self, prompt: ParsedPrompt) -> int:
+    def choose(
+        self,
+        prompt: ParsedPrompt,
+        game_state: MUDGameState | None = None,
+    ) -> int:
         pt = prompt.prompt_type
 
         if pt == PromptType.IDLE_CMD:

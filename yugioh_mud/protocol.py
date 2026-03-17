@@ -10,7 +10,10 @@ from typing import Protocol
 from yugioh_mud.action_translator import ActionTranslator
 from yugioh_mud.agent import Agent
 from yugioh_mud.config import MUDBotConfig
-from yugioh_mud.text_parser import MUDTextParser, ParsedPrompt, is_duel_end
+from yugioh_mud.game_state import MUDGameState
+from yugioh_mud.text_parser import (
+    EventType, MUDTextParser, ParsedEvent, ParsedPrompt, is_duel_end,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +47,7 @@ class MUDProtocol:
         text_parser: MUDTextParser | None = None,
         agent: Agent | None = None,
         action_translator: ActionTranslator | None = None,
+        game_state: MUDGameState | None = None,
     ) -> None:
         self.conn = conn
         self.config = config
@@ -56,6 +60,8 @@ class MUDProtocol:
         self._text_parser = text_parser
         self._agent = agent
         self._action_translator = action_translator
+        self._game_state = game_state
+        self._resync_pending = False
 
     async def run(self) -> None:
         """Main loop: recv lines, dispatch by state until FINISHED.
@@ -204,20 +210,97 @@ class MUDProtocol:
 
     async def _handle_duel(self, line: str) -> None:
         if is_duel_end(line):
+            # Feed the win/lose event to game state before finishing
+            if self._game_state is not None:
+                end_result = self._text_parser.feed_line(line)  # type: ignore[union-attr]
+                if isinstance(end_result, ParsedEvent):
+                    self._game_state.update(end_result)
             logger.info("Duel ended: %s", line)
             self.state = State.FINISHED
             return
 
         result = self._text_parser.feed_line(line)  # type: ignore[union-attr]
-        if isinstance(result, ParsedPrompt):
-            prompt = result
-            action = self._agent.choose(prompt)  # type: ignore[union-attr]
-            text = self._action_translator.translate(action, prompt)  # type: ignore[union-attr]
+
+        # Feed events to game state
+        if isinstance(result, ParsedEvent) and self._game_state is not None:
+            self._game_state.update(result)
             if self.config.verbose:
                 logger.info(
-                    "[DUEL] prompt=%s action=%d → %r",
-                    prompt.prompt_type.name, action, text)
-            await self._send(text)
+                    "[DUEL] event=%s", result.event_type.name)
+            # Trigger resync at start of our turn
+            if (result.event_type == EventType.NEW_TURN
+                    and not result.is_opponent):
+                self._resync_pending = True
+
+        if isinstance(result, ParsedPrompt):
+            prompt = result
+            # Send resync commands before the first prompt of our turn
+            if self._resync_pending and self._game_state is not None:
+                self._resync_pending = False
+                await self._send_resync()
+                if self.state != State.DUEL:
+                    return
+            await self._act_on_prompt(prompt)
+
+    async def _act_on_prompt(self, prompt: ParsedPrompt) -> None:
+        """Choose an action for *prompt* and send the translated command."""
+        action = self._agent.choose(  # type: ignore[union-attr]
+            prompt, game_state=self._game_state)
+        text = self._action_translator.translate(action, prompt)  # type: ignore[union-attr]
+        if self.config.verbose:
+            logger.info(
+                "[DUEL] prompt=%s action=%d → %r",
+                prompt.prompt_type.name, action, text)
+        await self._send(text)
+
+    async def _send_resync(self) -> None:
+        """Send resync commands and collect responses.
+
+        Sends ``score``, ``h`` (hand), ``tab``, ``tab2`` commands.
+        The responses arrive as regular lines that are *not* duel prompts
+        or events — they are informational text that the parser returns
+        as ``None``.  We collect them and feed to the game state resync
+        methods.
+        """
+        for cmd, parser_method, kwargs in [
+            ("score", "resync_score", {}),
+            ("h", "resync_hand", {}),
+            ("tab", "resync_tab", {"opponent": False}),
+            ("tab2", "resync_tab", {"opponent": True}),
+        ]:
+            await self._send(cmd)
+            lines: list[str] = []
+            # Collect response lines until we get a prompt, event, or
+            # empty line that signals end of the command response.
+            # The MUD server sends command responses immediately, so
+            # we read lines until we see something the parser recognises
+            # or a known response terminator.
+            while True:
+                resp = await self.conn.recv_line()
+                if self.config.verbose:
+                    logger.info("[RESYNC:%s] recv: %s", cmd, resp)
+                # Check if this line is a duel prompt/event — if so,
+                # we've overshot.  Process it as a duel line and stop.
+                check = self._text_parser.feed_line(resp)  # type: ignore[union-attr]
+                if check is not None:
+                    # Put the parsed result back through _handle_duel
+                    if isinstance(check, ParsedEvent) and self._game_state is not None:
+                        self._game_state.update(check)
+                    elif isinstance(check, ParsedPrompt):
+                        await self._act_on_prompt(check)
+                    break
+                if is_duel_end(resp):
+                    logger.info("Duel ended during resync: %s", resp)
+                    self.state = State.FINISHED
+                    return
+                lines.append(resp)
+                # Score response ends with "You can type 'room'..."
+                # Hand ends after card list (no explicit terminator)
+                # Tab ends after card list
+                # Use heuristic: empty line or known terminator
+                if not resp or resp.startswith("You can type"):
+                    break
+            getattr(self._game_state, parser_method)(lines, **kwargs)
 
     # -- Helpers --
 
