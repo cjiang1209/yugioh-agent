@@ -24,6 +24,9 @@ class MUDBotConfig:
     mode: str = "random"
     seed: int = 42
 
+    # Database
+    db_path: str = "assets/cards.cdb"
+
     # Debug
     verbose: bool = False
 

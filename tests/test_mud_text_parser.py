@@ -40,6 +40,20 @@ class TestIdleCmd:
         assert prompt is not None
         assert prompt.prompt_type == PromptType.IDLE_CMD
 
+    def test_idle_cmd_extracts_letter_options(self, parser: MUDTextParser):
+        """IDLE_CMD extracts b and e letter commands into options."""
+        parser.feed_line("Select a card on which to perform an action.")
+        parser.feed_line(
+            "h shows your hand, tab and tab2 shows your or the "
+            "opponent's table, ? shows usable cards.")
+        parser.feed_line("b: Enter the battle phase.")
+        parser.feed_line("e: End phase.")
+        prompt = parser.feed_line("Select a card:")
+        assert prompt is not None
+        assert prompt.prompt_type == PromptType.IDLE_CMD
+        assert "b" in prompt.options
+        assert "e" in prompt.options
+
     def test_idle_cmd_no_battle_phase(self, parser: MUDTextParser):
         """When to_bp is false, only 'e:' is present."""
         assert parser.feed_line(
@@ -52,10 +66,53 @@ class TestIdleCmd:
         assert prompt is not None
         assert prompt.prompt_type == PromptType.IDLE_CMD
 
+    def test_idle_cmd_no_bp_only_e(self, parser: MUDTextParser):
+        """When no battle phase, options has only 'e'."""
+        parser.feed_line("Select a card on which to perform an action.")
+        parser.feed_line("e: End phase.")
+        prompt = parser.feed_line("Select a card:")
+        assert prompt is not None
+        assert prompt.options == ["e"]
+
     def test_idle_submenu(self, parser: MUDTextParser):
         prompt = parser.feed_line("Select action for Dark Magician")
         assert prompt is not None
         assert prompt.prompt_type == PromptType.IDLE_SUBMENU
+
+    def test_idle_submenu_accumulates_actions(self, parser: MUDTextParser):
+        """IDLE_SUBMENU accumulates letter options when in idle context."""
+        parser.feed_line("Select a card on which to perform an action.")
+        parser.feed_line("b: Enter the battle phase.")
+        parser.feed_line("e: End phase.")
+        prompt = parser.feed_line("Select a card:")
+        assert prompt is not None  # consume IDLE_CMD
+
+        # Now simulate selecting a card — submenu letters arrive
+        assert parser.feed_line("s: Summon.") is None
+        assert parser.feed_line("t: Set.") is None
+        assert parser.feed_line("z: back.") is None
+        prompt = parser.feed_line("Select action for Dark Magician")
+        assert prompt is not None
+        assert prompt.prompt_type == PromptType.IDLE_SUBMENU
+        assert "s" in prompt.options
+        assert "t" in prompt.options
+        assert "z" in prompt.options
+
+    def test_idle_submenu_multi_effect(self, parser: MUDTextParser):
+        """IDLE_SUBMENU handles multi-effect va, vb options."""
+        parser.feed_line("Select a card on which to perform an action.")
+        parser.feed_line("e: End phase.")
+        parser.feed_line("Select a card:")  # consume IDLE_CMD
+
+        assert parser.feed_line("va: Activate effect 1.") is None
+        assert parser.feed_line("vb: Activate effect 2.") is None
+        assert parser.feed_line("z: back.") is None
+        prompt = parser.feed_line("Select action for Blue-Eyes White Dragon")
+        assert prompt is not None
+        assert prompt.prompt_type == PromptType.IDLE_SUBMENU
+        assert "va" in prompt.options
+        assert "vb" in prompt.options
+        assert "z" in prompt.options
 
 
 # ---------------------------------------------------------------------------
@@ -73,12 +130,31 @@ class TestBattleMenu:
         assert prompt is not None
         assert prompt.prompt_type == PromptType.BATTLE_MENU
 
+    def test_battle_menu_extracts_options(self, parser: MUDTextParser):
+        """BATTLE_MENU extracts letter commands into options."""
+        parser.feed_line("Battle menu:")
+        parser.feed_line("a: Attack.")
+        parser.feed_line("c: activate.")
+        parser.feed_line("m: Main phase 2.")
+        parser.feed_line("e: End phase.")
+        prompt = parser.feed_line("Select an option:")
+        assert prompt is not None
+        assert prompt.prompt_type == PromptType.BATTLE_MENU
+        assert prompt.options == ["a", "c", "m", "e"]
+
     def test_battle_menu_only_end(self, parser: MUDTextParser):
         assert parser.feed_line("Battle menu:") is None
         assert parser.feed_line("e: End phase.") is None
         prompt = parser.feed_line("Select an option:")
         assert prompt is not None
         assert prompt.prompt_type == PromptType.BATTLE_MENU
+
+    def test_battle_menu_only_end_options(self, parser: MUDTextParser):
+        parser.feed_line("Battle menu:")
+        parser.feed_line("e: End phase.")
+        prompt = parser.feed_line("Select an option:")
+        assert prompt is not None
+        assert prompt.options == ["e"]
 
     def test_battle_attack_submenu(self, parser: MUDTextParser):
         assert parser.feed_line("Select card to attack with:") is None
@@ -87,6 +163,19 @@ class TestBattleMenu:
         prompt = parser.feed_line("Select a card:")
         assert prompt is not None
         assert prompt.prompt_type == PromptType.BATTLE_SELECT
+
+    def test_battle_attack_submenu_extracts_cardspecs(self, parser: MUDTextParser):
+        """BATTLE_SELECT extracts cardspec and z options."""
+        parser.feed_line("Select card to attack with:")
+        parser.feed_line("m1: Dark Magician (2500/2100)")
+        parser.feed_line("m2: Blue-Eyes White Dragon (3000/2500)")
+        parser.feed_line("z: back.")
+        prompt = parser.feed_line("Select a card:")
+        assert prompt is not None
+        assert prompt.prompt_type == PromptType.BATTLE_SELECT
+        assert "m1" in prompt.options
+        assert "m2" in prompt.options
+        assert "z" in prompt.options
 
     def test_battle_activate_submenu(self, parser: MUDTextParser):
         assert parser.feed_line("Select card to activate:") is None

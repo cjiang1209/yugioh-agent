@@ -30,6 +30,20 @@ class ActionTranslator:
         # -- Index-based responses -------------------------------------------
         pt = prompt.prompt_type
 
+        # Yes/No prompts: server expects "y" or "n".
+        # DECLINE (-3) is already handled above as a meta-command → "n".
+        # The only remaining action is 0 (accept) → "y".
+        if pt in (PromptType.SELECT_EFFECTYN, PromptType.SELECT_YESNO):
+            assert action == 0, f"unexpected action {action} for {pt.name}"
+            return "y"
+
+        # Idle/battle prompts: options are the literal command strings
+        if pt in (PromptType.IDLE_CMD, PromptType.IDLE_SUBMENU,
+                  PromptType.BATTLE_MENU, PromptType.BATTLE_SELECT):
+            if action < len(prompt.options):
+                return prompt.options[action]
+            return prompt.options[0] if prompt.options else "e"
+
         # DuelMenu prompts: 1-indexed number
         if pt in (PromptType.SELECT_POSITION, PromptType.SELECT_OPTION):
             return str(action + 1)

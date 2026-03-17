@@ -7,6 +7,7 @@ return value into the MUD text command.
 
 from __future__ import annotations
 
+import random
 from typing import TYPE_CHECKING, Protocol
 
 from yugioh_mud.text_parser import ParsedPrompt, PromptType
@@ -107,3 +108,71 @@ class PassiveAgent:
 
         # UNKNOWN or unhandled
         return CANCEL
+
+
+# ---------------------------------------------------------------------------
+# RandomAgent — picks uniformly from legal actions
+# ---------------------------------------------------------------------------
+
+class RandomAgent:
+    """Random bot: picks uniformly from legal actions.
+
+    Uses an instance-level ``random.Random`` for reproducibility.
+    """
+
+    def __init__(self, seed: int | None = None) -> None:
+        self._rng = random.Random(seed)
+
+    def choose(
+        self,
+        prompt: ParsedPrompt,
+        game_state: MUDGameState | None = None,
+    ) -> int:
+        pt = prompt.prompt_type
+        n = len(prompt.options)
+
+        # Menus with END_PHASE option
+        if pt in (PromptType.IDLE_CMD, PromptType.BATTLE_MENU):
+            if n == 0:
+                return END_PHASE
+            choices = list(range(n)) + [END_PHASE]
+            return self._rng.choice(choices)
+
+        # Submenus with BACK option
+        if pt in (PromptType.IDLE_SUBMENU, PromptType.BATTLE_SELECT):
+            if n == 0:
+                return BACK
+            choices = list(range(n)) + [BACK]
+            return self._rng.choice(choices)
+
+        # Chain with optional cancel
+        if pt == PromptType.SELECT_CHAIN:
+            if n == 0:
+                return CANCEL
+            if prompt.cancelable:
+                choices = list(range(n)) + [CANCEL]
+                return self._rng.choice(choices)
+            return self._rng.randrange(n)
+
+        # Effect Y/N and Yes/No
+        if pt in (PromptType.SELECT_EFFECTYN, PromptType.SELECT_YESNO):
+            return self._rng.choice([0, DECLINE])
+
+        # Unselect with finish
+        if pt == PromptType.SELECT_UNSELECT:
+            if n == 0:
+                return FINISH
+            if prompt.finishable:
+                choices = list(range(n)) + [FINISH]
+                return self._rng.choice(choices)
+            return self._rng.randrange(n)
+
+        # Sort/announce card — always cancel
+        if pt in (PromptType.SORT_CARD, PromptType.ANNOUNCE_CARD,
+                  PromptType.UNKNOWN):
+            return CANCEL
+
+        # Standard selections: random index
+        if n > 0:
+            return self._rng.randrange(n)
+        return 0

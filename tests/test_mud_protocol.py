@@ -13,7 +13,7 @@ from dataclasses import replace
 import pytest
 
 from yugioh_mud.action_translator import ActionTranslator
-from yugioh_mud.agent import PassiveAgent
+from yugioh_mud.agent import PassiveAgent, RandomAgent
 from yugioh_mud.config import GUEST_CONFIG, HOST_CONFIG
 from yugioh_mud.protocol import MUDProtocol, State
 from yugioh_mud.text_parser import MUDTextParser
@@ -451,13 +451,19 @@ class TestDuelPassive:
             "Select a card on which to perform an action.",
             "e: End phase.",
             "Select a card:",
+            # Server response to "?" (no usable cards)
+            "Select a card on which to perform an action.",
+            "e: End phase.",
+            "Select a card:",
             "entering end phase.",
             "You won (ran out of cards to draw).",
         ])
         _run(proto.run())
         assert proto.state == State.FINISHED
-        # Agent should have sent "e" to end phase
-        assert "e" in conn.sent
+        # Protocol sends "?" then agent sends "e" to end phase
+        duel_sends = conn.sent[conn.sent.index("1"):]
+        assert "?" in duel_sends
+        assert "e" in duel_sends
 
     def test_duel_end_on_loss(self):
         conn, proto = _make_duel_proto([
@@ -513,3 +519,89 @@ class TestDuelPassive:
         proto = MUDProtocol(conn, config)  # no duel components
         _run(proto.run())
         assert proto.state == State.DUEL
+
+
+# ---------------------------------------------------------------------------
+# Duel — idle enrichment via "?" command
+# ---------------------------------------------------------------------------
+
+def _make_random_duel_proto(
+    extra_lines: list[str],
+    seed: int = 0,
+) -> tuple[FakeConnection, MUDProtocol]:
+    """Create protocol with RandomAgent for active play tests."""
+    conn = FakeConnection([*LOGIN_TO_DUEL, *extra_lines])
+    config = replace(HOST_CONFIG)
+    parser = MUDTextParser()
+    agent = RandomAgent(seed=seed)
+    translator = ActionTranslator()
+    proto = MUDProtocol(
+        conn, config,
+        text_parser=parser, agent=agent, action_translator=translator)
+    return conn, proto
+
+
+class TestIdleEnrichment:
+    def test_idle_cmd_sends_question_mark(self):
+        """Protocol sends '?' when receiving IDLE_CMD to get usable cards."""
+        conn, proto = _make_duel_proto([
+            "Your turn.",
+            "entering main1 phase.",
+            # IDLE_CMD prompt
+            "Select a card on which to perform an action.",
+            "b: Enter the battle phase.",
+            "e: End phase.",
+            "Select a card:",
+            # Server response to "?"
+            "Summonable in attack position: h1, h3",
+            "Activatable: h2",
+            # Re-sent idle prompt after "?"
+            "Select a card on which to perform an action.",
+            "b: Enter the battle phase.",
+            "e: End phase.",
+            "Select a card:",
+            # End duel
+            "You won (ran out of cards to draw).",
+        ])
+        _run(proto.run())
+        assert proto.state == State.FINISHED
+        duel_sends = conn.sent[conn.sent.index("1"):]  # after decision "1"
+        assert "?" in duel_sends
+
+    def test_idle_enrichment_cardspecs_available(self):
+        """RandomAgent can pick cardspecs from enriched idle prompt."""
+        # Use a seed that will pick an index action (not END_PHASE)
+        # We try many seeds to find one that picks a cardspec
+        for seed in range(20):
+            conn, proto = _make_random_duel_proto([
+                "Your turn.",
+                "entering main1 phase.",
+                # IDLE_CMD prompt
+                "Select a card on which to perform an action.",
+                "b: Enter the battle phase.",
+                "e: End phase.",
+                "Select a card:",
+                # Server response to "?"
+                "Summonable in attack position: h1, h3",
+                "Settable: h2, h4",
+                # Re-sent idle prompt after "?"
+                "Select a card on which to perform an action.",
+                "b: Enter the battle phase.",
+                "e: End phase.",
+                "Select a card:",
+                # Idle submenu after card selection
+                "s: Summon.",
+                "t: Set.",
+                "z: back.",
+                "Select action for Dark Magician",
+                # End duel
+                "You won (ran out of cards to draw).",
+            ], seed=seed)
+            _run(proto.run())
+            duel_sends = conn.sent[conn.sent.index("1"):]
+            # Check if any cardspec was sent
+            cardspecs_sent = [s for s in duel_sends
+                              if s in ("h1", "h2", "h3", "h4")]
+            if cardspecs_sent:
+                return  # success — at least one seed picked a cardspec
+        pytest.fail("No seed out of 20 picked a cardspec")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import random
 from enum import Enum, auto
 from typing import Protocol
@@ -12,7 +13,24 @@ from yugioh_mud.agent import Agent
 from yugioh_mud.config import MUDBotConfig
 from yugioh_mud.game_state import MUDGameState
 from yugioh_mud.text_parser import (
-    EventType, MUDTextParser, ParsedEvent, ParsedPrompt, is_duel_end,
+    EventType, MUDTextParser, ParsedEvent, ParsedPrompt, PromptType,
+    is_duel_end,
+)
+
+# Known DuelReader/DuelMenu re-prompt lines.  The MUD server re-sends these
+# after informational commands (h, tab, tab2, score).  Used in _send_resync
+# to detect end of command response.
+_DUELREADER_REPROMPTS = frozenset({
+    "Select a card:",       # idle DuelReader
+    "Select an option:",    # battle DuelMenu
+    "Enter a line of text.",  # various DuelReader prompts
+})
+
+# Regex for parsing "?" command response lines listing usable cards.
+# e.g. "Summonable in attack position: h1, h3"
+_USABLE_CARDS_RE = re.compile(
+    r"^(?:Summonable|Special summonable|Activatable|Repositionable|Settable)"
+    r".*?:\s*(.+)$"
 )
 
 logger = logging.getLogger(__name__)
@@ -234,8 +252,13 @@ class MUDProtocol:
 
         if isinstance(result, ParsedPrompt):
             prompt = result
-            # Send resync commands before the first prompt of our turn
-            if self._resync_pending and self._game_state is not None:
+            # Send resync commands before the IDLE_CMD prompt of our turn.
+            # Only resync on IDLE_CMD because informational commands (score,
+            # h, tab, tab2) cause the server to re-send the active
+            # DuelReader prompt — and only the idle re-prompt ("Select a
+            # card:") is guaranteed to be in _DUELREADER_REPROMPTS.
+            if (self._resync_pending and self._game_state is not None
+                    and prompt.prompt_type == PromptType.IDLE_CMD):
                 self._resync_pending = False
                 await self._send_resync()
                 if self.state != State.DUEL:
@@ -244,6 +267,12 @@ class MUDProtocol:
 
     async def _act_on_prompt(self, prompt: ParsedPrompt) -> None:
         """Choose an action for *prompt* and send the translated command."""
+        # Enrich IDLE_CMD with usable card specs from "?" command
+        if prompt.prompt_type == PromptType.IDLE_CMD:
+            await self._enrich_idle_cmd(prompt)
+            if self.state != State.DUEL:
+                return
+
         action = self._agent.choose(  # type: ignore[union-attr]
             prompt, game_state=self._game_state)
         text = self._action_translator.translate(action, prompt)  # type: ignore[union-attr]
@@ -252,6 +281,55 @@ class MUDProtocol:
                 "[DUEL] prompt=%s action=%d → %r",
                 prompt.prompt_type.name, action, text)
         await self._send(text)
+
+    async def _enrich_idle_cmd(self, prompt: ParsedPrompt) -> None:
+        """Send ``?`` to the server and enrich *prompt* with usable cards.
+
+        The server responds with lines listing usable card categories, then
+        re-sends the ``"Select a card:"`` DuelReader prompt.  We parse the
+        usable card specs and prepend them to ``prompt.options`` so the
+        agent can choose cardspecs in addition to ``b``/``e``.
+        """
+        await self._send("?")
+        cardspecs: list[str] = []
+        seen: set[str] = set()
+        while True:
+            resp = await self.conn.recv_line()
+            if self.config.verbose:
+                logger.info("[IDLE_ENRICH] recv: %s", resp)
+
+            if is_duel_end(resp):
+                logger.info("Duel ended during idle enrich: %s", resp)
+                self.state = State.FINISHED
+                return
+
+            # Parse usable card lines
+            m = _USABLE_CARDS_RE.match(resp)
+            if m:
+                for spec in m.group(1).split(","):
+                    spec = spec.strip()
+                    if spec and spec not in seen:
+                        cardspecs.append(spec)
+                        seen.add(spec)
+                continue
+
+            # The server re-sends "Select a card:" after "?" output.
+            # This is the response terminator.
+            if resp in _DUELREADER_REPROMPTS:
+                prompt.options = cardspecs + prompt.options
+                return
+
+            # Feed through the parser for events
+            check = self._text_parser.feed_line(resp)  # type: ignore[union-attr]
+            if isinstance(check, ParsedEvent):
+                if self._game_state is not None:
+                    self._game_state.update(check)
+                continue
+            if isinstance(check, ParsedPrompt):
+                phase_opts = [o for o in check.options if o not in seen]
+                prompt.options = cardspecs + phase_opts
+                prompt.raw_lines = check.raw_lines
+                return
 
     async def _send_resync(self) -> None:
         """Send resync commands and collect responses.
@@ -279,26 +357,27 @@ class MUDProtocol:
                 resp = await self.conn.recv_line()
                 if self.config.verbose:
                     logger.info("[RESYNC:%s] recv: %s", cmd, resp)
-                # Check if this line is a duel prompt/event — if so,
-                # we've overshot.  Process it as a duel line and stop.
+                # Feed through the parser.  Events can appear in
+                # informational responses (e.g. shuffle notifications)
+                # — update game state but keep reading.  Only break
+                # when the parser produces a prompt (we've overshot).
                 check = self._text_parser.feed_line(resp)  # type: ignore[union-attr]
-                if check is not None:
-                    # Put the parsed result back through _handle_duel
-                    if isinstance(check, ParsedEvent) and self._game_state is not None:
+                if isinstance(check, ParsedEvent):
+                    if self._game_state is not None:
                         self._game_state.update(check)
-                    elif isinstance(check, ParsedPrompt):
-                        await self._act_on_prompt(check)
+                    # Don't break — continue reading the response
+                elif isinstance(check, ParsedPrompt):
+                    await self._act_on_prompt(check)
                     break
                 if is_duel_end(resp):
                     logger.info("Duel ended during resync: %s", resp)
                     self.state = State.FINISHED
                     return
                 lines.append(resp)
-                # Score response ends with "You can type 'room'..."
-                # Hand ends after card list (no explicit terminator)
-                # Tab ends after card list
-                # Use heuristic: empty line or known terminator
-                if not resp or resp.startswith("You can type"):
+                # All informational commands end when the server re-sends
+                # the active DuelReader prompt ("Select a card:",
+                # "Select an option:", "Enter a line of text.").
+                if resp in _DUELREADER_REPROMPTS:
                     break
             getattr(self._game_state, parser_method)(lines, **kwargs)
 

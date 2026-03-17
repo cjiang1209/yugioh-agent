@@ -5,12 +5,13 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os.path
 import sys
 
 from copy import copy
 
 from yugioh_mud.action_translator import ActionTranslator
-from yugioh_mud.agent import PassiveAgent
+from yugioh_mud.agent import PassiveAgent, RandomAgent
 from yugioh_mud.config import GUEST_CONFIG, HOST_CONFIG, MUDBotConfig
 from yugioh_mud.connection import MUDConnection
 from yugioh_mud.protocol import MUDProtocol
@@ -41,7 +42,7 @@ def parse_args() -> argparse.Namespace:
 
     play = parser.add_argument_group("play")
     play.add_argument("--mode", type=str, default=None,
-                      choices=["random"],
+                      choices=["passive", "random"],
                       help="Play mode (default: random)")
     play.add_argument("--seed", type=int, default=None,
                       help="RNG seed (default: host=42, guest=137)")
@@ -89,11 +90,29 @@ async def run(config: MUDBotConfig) -> None:
         await conn.connect()
         logging.info("Connected to ws://%s:%d", config.server_host, config.server_port)
         parser = MUDTextParser()
-        agent = PassiveAgent()
+        if config.mode == "random":
+            agent = RandomAgent(seed=config.seed)
+        else:
+            agent = PassiveAgent()
         translator = ActionTranslator()
+
+        # Wire game state if cards.cdb is available
+        game_state = None
+        if os.path.exists(config.db_path):
+            from yugioh_mud.card_lookup import CardNameLookup
+            from yugioh_mud.game_state import MUDGameState
+            lookup = CardNameLookup(config.db_path)
+            game_state = MUDGameState(card_lookup=lookup)
+            logging.info("Game state tracking enabled (db: %s)", config.db_path)
+        else:
+            logging.warning(
+                "cards.cdb not found at %s — game state tracking disabled",
+                config.db_path)
+
         proto = MUDProtocol(
             conn, config,
-            text_parser=parser, agent=agent, action_translator=translator)
+            text_parser=parser, agent=agent, action_translator=translator,
+            game_state=game_state)
         await proto.run()
         logging.info("Reached state: %s", proto.state.name)
     finally:

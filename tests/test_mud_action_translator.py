@@ -6,7 +6,53 @@ No MUD server required.
 from __future__ import annotations
 
 from yugioh_mud.action_translator import ActionTranslator
+from yugioh_mud.agent import BACK, END_PHASE
 from yugioh_mud.text_parser import ParsedPrompt, PromptType
+
+
+class TestIdleBattleTranslation:
+    """Idle/battle prompts send the option string directly."""
+
+    def test_idle_cmd_sends_option(self):
+        tr = ActionTranslator()
+        prompt = ParsedPrompt(
+            PromptType.IDLE_CMD, options=["h1", "h3", "b", "e"])
+        assert tr.translate(0, prompt) == "h1"
+        assert tr.translate(1, prompt) == "h3"
+        assert tr.translate(2, prompt) == "b"
+        assert tr.translate(3, prompt) == "e"
+
+    def test_idle_cmd_end_phase(self):
+        tr = ActionTranslator()
+        prompt = ParsedPrompt(PromptType.IDLE_CMD, options=["b", "e"])
+        assert tr.translate(END_PHASE, prompt) == "e"
+
+    def test_idle_submenu_sends_letter(self):
+        tr = ActionTranslator()
+        prompt = ParsedPrompt(
+            PromptType.IDLE_SUBMENU, options=["s", "t", "z"])
+        assert tr.translate(0, prompt) == "s"
+        assert tr.translate(1, prompt) == "t"
+        assert tr.translate(BACK, prompt) == "z"
+
+    def test_battle_menu_sends_option(self):
+        tr = ActionTranslator()
+        prompt = ParsedPrompt(
+            PromptType.BATTLE_MENU, options=["a", "c", "m", "e"])
+        assert tr.translate(0, prompt) == "a"
+        assert tr.translate(2, prompt) == "m"
+
+    def test_battle_select_sends_cardspec(self):
+        tr = ActionTranslator()
+        prompt = ParsedPrompt(
+            PromptType.BATTLE_SELECT, options=["m1", "m2", "z"])
+        assert tr.translate(0, prompt) == "m1"
+        assert tr.translate(1, prompt) == "m2"
+
+    def test_idle_cmd_fallback_on_empty_options(self):
+        tr = ActionTranslator()
+        prompt = ParsedPrompt(PromptType.IDLE_CMD, options=[])
+        assert tr.translate(0, prompt) == "e"
 
 
 class TestTranslatorBounds:

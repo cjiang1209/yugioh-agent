@@ -138,6 +138,10 @@ _ANNOUNCE_NUM_RE = re.compile(r"^Select a number, one of: (.+)")
 _OPTION_LINE_RE = re.compile(r"^(\d+): (.+)")
 _MENU_LINE_RE = re.compile(r"^\[(\d+)\] (.+)")
 
+# Idle/battle letter command and cardspec patterns
+_LETTER_CMD_RE = re.compile(r"^([a-z]{1,2}): (.+)")
+_CARDSPEC_LINE_RE = re.compile(r"^([a-z]+\d+): (.+)")
+
 # Known DuelReader terminal (Reader.explain with prompt=None, no_abort set)
 _ENTER_TEXT = "Enter a line of text."
 # Default DuelMenu terminal
@@ -297,6 +301,7 @@ class MUDTextParser:
         self._cancelable = False
         self._finishable = False
         self._terminal: str | None = None
+        self._terminal_is_prefix: bool = False
         # Context flags
         self._idle_context = False
         self._battle_context = False
@@ -345,10 +350,12 @@ class MUDTextParser:
         max_sel: int = 1,
         cancelable: bool = False,
         finishable: bool = False,
+        terminal_is_prefix: bool = False,
     ) -> None:
         self._mode = _Mode.ACCUMULATING
         self._pending_type = ptype
         self._terminal = terminal
+        self._terminal_is_prefix = terminal_is_prefix
         self._min_select = min_sel
         self._max_select = max_sel
         self._cancelable = cancelable
@@ -375,6 +382,7 @@ class MUDTextParser:
         self._cancelable = False
         self._finishable = False
         self._terminal = None
+        self._terminal_is_prefix = False
         return prompt
 
     # -- Scanning mode ------------------------------------------------------
@@ -407,7 +415,26 @@ class MUDTextParser:
             return ParsedPrompt(
                 PromptType.ANNOUNCE_NUMBER, options=nums, raw_lines=[line])
 
-        # Idle submenu terminal (DuelReader prompt for act_on_card)
+        # Idle submenu: action letters arrive *before* the terminal line
+        # "Select action for {name}".  When we're in idle context and see
+        # a known submenu letter command, start accumulation.
+        if self._idle_context:
+            m = _LETTER_CMD_RE.match(line)
+            if m:
+                letter = m.group(1)
+                _SUBMENU_LETTERS = {"s", "t", "m", "r", "c", "v", "z"}
+                if letter in _SUBMENU_LETTERS or letter.startswith("v"):
+                    self._idle_context = False
+                    self._start_accum(
+                        PromptType.IDLE_SUBMENU,
+                        "Select action for ",
+                        terminal_is_prefix=True)
+                    self._raw_lines.append(line)
+                    self._options.append(letter)
+                    return None
+
+        # Idle submenu terminal (DuelReader prompt for act_on_card) —
+        # if we reach here without accumulation, return immediately.
         if line.startswith("Select action for "):
             self._idle_context = False
             return ParsedPrompt(PromptType.IDLE_SUBMENU, raw_lines=[line])
@@ -830,9 +857,13 @@ class MUDTextParser:
     def _accumulate(self, line: str) -> ParsedPrompt | None:
         self._raw_lines.append(line)
 
-        # Terminal check
-        if self._terminal is not None and line == self._terminal:
-            return self._finalize()
+        # Terminal check (exact or prefix)
+        if self._terminal is not None:
+            if self._terminal_is_prefix:
+                if line.startswith(self._terminal):
+                    return self._finalize()
+            elif line == self._terminal:
+                return self._finalize()
 
         # For SELECT_OPTION accumulated via missed title, also accept
         # "Select option:" as an alternative terminal.
@@ -868,7 +899,30 @@ class MUDTextParser:
             self._cancelable = True
             return None
 
-        # Idle/battle option lines ("letter: description")
-        # Just accumulate as raw lines (no options extraction needed for
-        # passive agent — it uses fixed letter commands).
+        # IDLE_CMD / BATTLE_MENU: extract letter commands into options
+        if self._pending_type in (PromptType.IDLE_CMD,
+                                  PromptType.BATTLE_MENU):
+            m = _LETTER_CMD_RE.match(line)
+            if m:
+                self._options.append(m.group(1))
+                return None
+
+        # IDLE_SUBMENU: extract letter commands (skip 'i' for info)
+        if self._pending_type == PromptType.IDLE_SUBMENU:
+            m = _LETTER_CMD_RE.match(line)
+            if m and m.group(1) != "i":
+                self._options.append(m.group(1))
+                return None
+
+        # BATTLE_SELECT: extract cardspecs and 'z' back
+        if self._pending_type == PromptType.BATTLE_SELECT:
+            m = _CARDSPEC_LINE_RE.match(line)
+            if m:
+                self._options.append(m.group(1))
+                return None
+            m = _LETTER_CMD_RE.match(line)
+            if m:
+                self._options.append(m.group(1))
+                return None
+
         return None
