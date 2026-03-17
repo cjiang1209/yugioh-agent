@@ -9,7 +9,9 @@ from __future__ import annotations
 import pytest
 
 from yugioh_mud.text_parser import (
+    EventType,
     MUDTextParser,
+    ParsedEvent,
     ParsedPrompt,
     PromptType,
     is_duel_end,
@@ -404,21 +406,362 @@ class TestSortCard:
 
 
 # ---------------------------------------------------------------------------
-# Informational lines — should return None
+# Event parsing (informational lines → ParsedEvent)
 # ---------------------------------------------------------------------------
 
-class TestInformational:
+class TestEventTurn:
+    def test_your_turn(self, parser: MUDTextParser):
+        ev = parser.feed_line("Your turn.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.NEW_TURN
+        assert ev.player == "you"
+        assert ev.is_opponent is False
+
+    def test_opponent_turn(self, parser: MUDTextParser):
+        ev = parser.feed_line("Player2's turn.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.NEW_TURN
+        assert ev.player == "Player2"
+        assert ev.is_opponent is True
+
+
+class TestEventPhase:
+    @pytest.mark.parametrize("phase_str", [
+        "draw phase", "standby phase", "main1 phase",
+        "battle start phase", "battle phase", "main2 phase",
+        "end phase",
+    ])
+    def test_phase(self, parser: MUDTextParser, phase_str: str):
+        ev = parser.feed_line(f"entering {phase_str}.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.NEW_PHASE
+        assert ev.phase == phase_str
+
+
+class TestEventLP:
+    def test_your_damage(self, parser: MUDTextParser):
+        ev = parser.feed_line("Your lp decreased by 1500, now 6500")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.DAMAGE
+        assert ev.player == "you"
+        assert ev.amount == 1500
+        assert ev.new_lp == 6500
+
+    def test_opp_damage(self, parser: MUDTextParser):
+        ev = parser.feed_line("Player2's lp decreased by 2000, now 6000")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.DAMAGE
+        assert ev.player == "Player2"
+        assert ev.is_opponent is True
+        assert ev.amount == 2000
+        assert ev.new_lp == 6000
+
+    def test_your_recover(self, parser: MUDTextParser):
+        ev = parser.feed_line("Your lp increased by 500, now 8500")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.RECOVER
+        assert ev.amount == 500
+        assert ev.new_lp == 8500
+
+    def test_opp_recover(self, parser: MUDTextParser):
+        ev = parser.feed_line("Player2's lp increased by 500, now 8500")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.RECOVER
+        assert ev.is_opponent is True
+
+    def test_your_pay_lp(self, parser: MUDTextParser):
+        ev = parser.feed_line("You pay 1000 LP. Your LP is now 7000.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.PAY_LP
+        assert ev.amount == 1000
+        assert ev.new_lp == 7000
+
+    def test_opp_pay_lp(self, parser: MUDTextParser):
+        ev = parser.feed_line("Player2 pays 800 LP. Their LP is now 7200.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.PAY_LP
+        assert ev.player == "Player2"
+        assert ev.is_opponent is True
+        assert ev.amount == 800
+        assert ev.new_lp == 7200
+
+
+class TestEventDraw:
+    def test_your_draw(self, parser: MUDTextParser):
+        ev = parser.feed_line("Drew 1 cards:")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.DRAW
+        assert ev.player == "you"
+        assert ev.amount == 1
+
+    def test_opp_draw(self, parser: MUDTextParser):
+        ev = parser.feed_line("Opponent drew 1 cards.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.DRAW
+        assert ev.is_opponent is True
+        assert ev.amount == 1
+
+    def test_opp_draw_with_name(self, parser: MUDTextParser):
+        ev = parser.feed_line("Player2 drew 2 cards.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.DRAW
+        assert ev.player == "Player2"
+        assert ev.is_opponent is True
+        assert ev.amount == 2
+
+
+class TestEventSummon:
+    def test_normal_summon(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "Player1 summoning Dark Magician (2500/2100) "
+            "in face-up attack position.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.SUMMON
+        assert ev.player == "Player1"
+        assert ev.card_name == "Dark Magician"
+        assert ev.position == "face-up attack"
+
+    def test_special_summon(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "Player1 special summoning Blue-Eyes White Dragon (3000/2500) "
+            "in face-up attack position.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.SP_SUMMON
+        assert ev.card_name == "Blue-Eyes White Dragon"
+
+    def test_special_summon_link(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "Player1 special summoning Decode Talker (2300) "
+            "in face-up attack position.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.SP_SUMMON
+        assert ev.card_name == "Decode Talker"
+
+    def test_flip_summon(self, parser: MUDTextParser):
+        ev = parser.feed_line("Player1 flip summons Man-Eater Bug (m2).")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.FLIP_SUMMON
+        assert ev.card_name == "Man-Eater Bug"
+        assert ev.card_spec == "m2"
+
+    def test_set_self(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "You set m1 (Kuriboh) in face-down defense position.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.SET
+        assert ev.player == "you"
+        assert ev.card_spec == "m1"
+        assert ev.card_name == "Kuriboh"
+        assert ev.position == "face-down defense"
+
+    def test_set_opp(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "Player2 sets m1 in face-down defense position.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.SET
+        assert ev.is_opponent is True
+        assert ev.card_spec == "m1"
+
+
+class TestEventPosChange:
+    def test_pos_change(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "The position of card m1 (Dark Magician) "
+            "was changed to face-up defense.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.POS_CHANGE
+        assert ev.card_spec == "m1"
+        assert ev.card_name == "Dark Magician"
+        assert ev.position == "face-up defense"
+
+
+class TestEventAttack:
+    def test_attack_targeted(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "Player1 prepares to attack om1 (Kuriboh) "
+            "with m1 (Dark Magician)")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.ATTACK
+        assert ev.player == "Player1"
+        assert ev.card_spec == "m1"
+        assert ev.card_name == "Dark Magician"
+        assert ev.target_spec == "om1"
+        assert ev.target_name == "Kuriboh"
+
+    def test_attack_direct(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "Player1 prepares to attack with m1 (Dark Magician)")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.ATTACK
+        assert ev.card_spec == "m1"
+        assert ev.card_name == "Dark Magician"
+        assert ev.target_spec == ""
+
+
+class TestEventChaining:
+    def test_your_chaining(self, parser: MUDTextParser):
+        ev = parser.feed_line("Activating s1 (Mirror Force)")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.CHAINING
+        assert ev.player == "you"
+        assert ev.card_spec == "s1"
+        assert ev.card_name == "Mirror Force"
+
+    def test_opp_chaining(self, parser: MUDTextParser):
+        ev = parser.feed_line("Player2 activating s1 (Trap Hole)")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.CHAINING
+        assert ev.is_opponent is True
+        assert ev.card_name == "Trap Hole"
+
+
+class TestEventMovement:
+    def test_destroy(self, parser: MUDTextParser):
+        ev = parser.feed_line("Card m1 (Dark Magician) destroyed.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.DESTROY
+        assert ev.card_spec == "m1"
+        assert ev.card_name == "Dark Magician"
+
+    def test_your_to_gy(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "your card m1 (Dark Magician) was sent to the graveyard.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.TO_GRAVEYARD
+        assert ev.player == "you"
+        assert ev.card_name == "Dark Magician"
+
+    def test_opp_to_gy(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "Player2's card m1 (Kuriboh) was sent to the graveyard.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.TO_GRAVEYARD
+        assert ev.is_opponent is True
+
+    def test_your_banished(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "your card m1 (Dark Magician) was banished.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.BANISHED
+
+    def test_opp_banished(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "Player2's card m1 (Kuriboh) was banished.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.BANISHED
+        assert ev.is_opponent is True
+
+    def test_your_to_hand(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "Card m1 (Dark Magician) returned to hand.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.TO_HAND
+        assert ev.player == "you"
+
+    def test_opp_to_hand(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "Player2's card m1 (Kuriboh) returned to their hand.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.TO_HAND
+        assert ev.is_opponent is True
+
+    def test_your_to_deck(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "your card m1 (Dark Magician) returned to your deck.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.TO_DECK
+
+    def test_opp_to_deck(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "Player2's card m1 (Kuriboh) returned to their deck.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.TO_DECK
+        assert ev.is_opponent is True
+
+    def test_your_to_extra_deck(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "your card m1 (Decode Talker) returned to your extra deck.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.TO_EXTRA_DECK
+
+    def test_opp_to_extra_deck(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "Player2's card m1 (Decode Talker) "
+            "returned to their extra deck.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.TO_EXTRA_DECK
+        assert ev.is_opponent is True
+
+    def test_your_tribute(self, parser: MUDTextParser):
+        ev = parser.feed_line("You tribute m1 (Kuriboh).")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.TRIBUTE
+        assert ev.player == "you"
+
+    def test_opp_tribute(self, parser: MUDTextParser):
+        ev = parser.feed_line("Player2 tributes m1 (Kuriboh).")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.TRIBUTE
+        assert ev.is_opponent is True
+
+    def test_your_discard(self, parser: MUDTextParser):
+        ev = parser.feed_line("you discarded h1 (Kuriboh).")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.DISCARD
+        assert ev.player == "you"
+
+    def test_opp_discard(self, parser: MUDTextParser):
+        ev = parser.feed_line("Player2 discarded h1 (Kuriboh).")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.DISCARD
+        assert ev.is_opponent is True
+
+
+class TestEventMisc:
+    def test_equip(self, parser: MUDTextParser):
+        ev = parser.feed_line("Axe of Despair equipped to Dark Magician.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.EQUIP
+        assert ev.card_name == "Axe of Despair"
+        assert ev.target_name == "Dark Magician"
+
+    def test_your_shuffle(self, parser: MUDTextParser):
+        ev = parser.feed_line("you shuffled your deck.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.SHUFFLE
+        assert ev.player == "you"
+
+    def test_opp_shuffle(self, parser: MUDTextParser):
+        ev = parser.feed_line("Player2 shuffled their deck.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.SHUFFLE
+        assert ev.is_opponent is True
+
+
+class TestEventWinLose:
+    def test_win(self, parser: MUDTextParser):
+        ev = parser.feed_line("You won (LP became 0).")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.WIN
+
+    def test_lose(self, parser: MUDTextParser):
+        ev = parser.feed_line("You lost (ran out of cards to draw).")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.LOSE
+
+
+# ---------------------------------------------------------------------------
+# Unrecognised lines — should still return None
+# ---------------------------------------------------------------------------
+
+class TestUnrecognised:
     @pytest.mark.parametrize("line", [
-        "Your turn.",
-        "entering main1 phase.",
-        "entering battle phase.",
-        "Player2 drew.",
-        "Player1 normal summoned Dark Magician.",
-        "Player1's LP: 8000 -> 7500",
         "",
         "Waiting for opponent.",
+        "begin damage",
+        "end damage",
     ])
-    def test_info_lines_return_none(self, parser: MUDTextParser, line: str):
+    def test_unrecognised_returns_none(self, parser: MUDTextParser, line: str):
         assert parser.feed_line(line) is None
 
 

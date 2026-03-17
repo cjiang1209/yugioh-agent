@@ -1,9 +1,10 @@
-"""MUD duel line classifier and prompt parser.
+"""MUD duel line classifier, prompt parser, and event parser.
 
-Classifies incoming MUD server lines into prompt types and extracts enough
-structure for automated play.  The parser is a line-oriented state machine
-with two modes: scanning (looking for prompt headers) and accumulating
-(collecting numbered options until a known terminal line arrives).
+Classifies incoming MUD server lines into prompt types (requiring a
+response) or events (informational state changes).  The parser is a
+line-oriented state machine with two modes: scanning (looking for prompt
+headers) and accumulating (collecting numbered options until a known
+terminal line arrives).
 """
 
 from __future__ import annotations
@@ -14,7 +15,56 @@ from enum import Enum, auto
 
 
 # ---------------------------------------------------------------------------
-# Public types
+# Public types — events (informational lines)
+# ---------------------------------------------------------------------------
+
+class EventType(Enum):
+    NEW_TURN = auto()
+    NEW_PHASE = auto()
+    DAMAGE = auto()
+    RECOVER = auto()
+    PAY_LP = auto()
+    DRAW = auto()
+    SUMMON = auto()
+    SP_SUMMON = auto()
+    FLIP_SUMMON = auto()
+    SET = auto()
+    POS_CHANGE = auto()
+    ATTACK = auto()
+    CHAINING = auto()
+    DESTROY = auto()
+    TO_GRAVEYARD = auto()
+    BANISHED = auto()
+    TO_HAND = auto()
+    TO_DECK = auto()
+    TO_EXTRA_DECK = auto()
+    TRIBUTE = auto()
+    DISCARD = auto()
+    EQUIP = auto()
+    SHUFFLE = auto()
+    WIN = auto()
+    LOSE = auto()
+
+
+@dataclass
+class ParsedEvent:
+    """Structured informational event from a MUD server line."""
+    event_type: EventType
+    player: str = ""        # "you" or opponent nickname
+    is_opponent: bool = False
+    card_name: str = ""
+    card_spec: str = ""     # zone spec e.g. "m1", "s2", "oh3"
+    target_spec: str = ""
+    target_name: str = ""
+    amount: int = 0         # LP change, draw count, etc.
+    new_lp: int = 0
+    position: str = ""      # "face-up attack", "face-down defense", etc.
+    phase: str = ""         # phase string for NEW_PHASE
+    raw: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Public types — prompts (require a response)
 # ---------------------------------------------------------------------------
 
 class PromptType(Enum):
@@ -93,6 +143,137 @@ _ENTER_TEXT = "Enter a line of text."
 # Default DuelMenu terminal
 _TYPE_NUMBER = "Type a number or @abort to abort."
 
+# ---------------------------------------------------------------------------
+# Event regexes (informational lines → ParsedEvent)
+# ---------------------------------------------------------------------------
+
+# Turn: "Your turn." / "{nick}'s turn."
+_YOUR_TURN_RE = re.compile(r"^Your turn\.$")
+_OPP_TURN_RE = re.compile(r"^(.+?)'s turn\.$")
+
+# Phase: "entering {phase}."
+_PHASE_RE = re.compile(r"^entering (.+?)\.$")
+
+# LP — damage: "Your lp decreased by {n}, now {n}" /
+#               "{nick}'s lp decreased by {n}, now {n}"
+_YOUR_DAMAGE_RE = re.compile(
+    r"^Your lp decreased by (\d+), now (\d+)$")
+_OPP_DAMAGE_RE = re.compile(
+    r"^(.+?)'s lp decreased by (\d+), now (\d+)$")
+
+# LP — recover: "Your lp increased by {n}, now {n}" /
+#               "{nick}'s lp increased by {n}, now {n}"
+_YOUR_RECOVER_RE = re.compile(
+    r"^Your lp increased by (\d+), now (\d+)$")
+_OPP_RECOVER_RE = re.compile(
+    r"^(.+?)'s lp increased by (\d+), now (\d+)$")
+
+# LP — pay cost: "You pay {n} LP. Your LP is now {n}." /
+#                "{nick} pays {n} LP. Their LP is now {n}."
+_YOUR_PAY_LP_RE = re.compile(
+    r"^You pay (\d+) LP\. Your LP is now (\d+)\.$")
+_OPP_PAY_LP_RE = re.compile(
+    r"^(.+?) pays (\d+) LP\. Their LP is now (\d+)\.$")
+
+# Draw: "Drew {n} cards:" / "Opponent drew {n} cards." /
+#        "{nick} drew {n} cards."
+_YOUR_DRAW_RE = re.compile(r"^Drew (\d+) cards?:")
+_OPP_DRAW_RE = re.compile(r"^(?:Opponent|(.+?)) drew (\d+) cards?\.$")
+
+# Summon: "{nick} summoning {card} ({atk}/{def}) in {pos} position."
+_SUMMON_RE = re.compile(
+    r"^(.+?) summoning (.+?) \((\d+)/(\d+)\) in (.+?) position\.$")
+
+# Special summon: "{nick} special summoning {card} ({atk}/{def}) in {pos} position."
+#   or link: "{nick} special summoning {card} ({atk}) in {pos} position."
+_SP_SUMMON_RE = re.compile(
+    r"^(.+?) special summoning (.+?) \((\d+)(?:/\d+)?\) in (.+?) position\.$")
+
+# Flip summon: "{player} flip summons {card} ({spec})."
+_FLIP_SUMMON_RE = re.compile(
+    r"^(.+?) flip summons (.+?) \((.+?)\)\.$")
+
+# Set (self): "You set {spec} ({card}) in {pos} position."
+# Set (opp):  "{nick} sets {spec} in {pos} position."
+_YOUR_SET_RE = re.compile(
+    r"^You set (.+?) \((.+?)\) in (.+?) position\.$")
+_OPP_SET_RE = re.compile(
+    r"^(.+?) sets (.+?) in (.+?) position\.$")
+
+# Position change: "The position of card {spec} ({card}) was changed to {pos}."
+_POS_CHANGE_RE = re.compile(
+    r"^The position of card (.+?) \((.+?)\) was changed to (.+?)\.$")
+
+# Attack (targeted): "{nick} prepares to attack {tspec} ({tname}) with {spec} ({name})"
+# Attack (direct):   "{nick} prepares to attack with {spec} ({name})"
+_ATTACK_TARGET_RE = re.compile(
+    r"^(.+?) prepares to attack (.+?) \((.+?)\) with (.+?) \((.+?)\)$")
+_ATTACK_DIRECT_RE = re.compile(
+    r"^(.+?) prepares to attack with (.+?) \((.+?)\)$")
+
+# Chaining: "Activating {spec} ({card})" / "{nick} activating {spec} ({card})"
+_YOUR_CHAIN_RE = re.compile(r"^Activating (.+?) \((.+?)\)$")
+_OPP_CHAIN_RE = re.compile(r"^(.+?) activating (.+?) \((.+?)\)$")
+
+# Destroy: "Card {spec} ({name}) destroyed."
+_DESTROY_RE = re.compile(r"^Card (.+?) \((.+?)\) destroyed\.$")
+
+# To graveyard (self): "your card {spec} ({name}) was sent to the graveyard."
+# To graveyard (opp):  "{nick}'s card {spec} ({name}) was sent to the graveyard."
+_YOUR_TO_GY_RE = re.compile(
+    r"^your card (.+?) \((.+?)\) was sent to the graveyard\.$")
+_OPP_TO_GY_RE = re.compile(
+    r"^(.+?)'s card (.+?) \((.+?)\) was sent to the graveyard\.$")
+
+# Banished (self): "your card {spec} ({name}) was banished."
+# Banished (opp):  "{nick}'s card {spec} ({name}) was banished."
+_YOUR_BANISHED_RE = re.compile(
+    r"^your card (.+?) \((.+?)\) was banished\.$")
+_OPP_BANISHED_RE = re.compile(
+    r"^(.+?)'s card (.+?) \((.+?)\) was banished\.$")
+
+# Return to hand: "Card {spec} ({name}) returned to hand." (self)
+#                 "{nick}'s card {spec} ({name}) returned to their hand." (opp)
+_YOUR_TO_HAND_RE = re.compile(
+    r"^Card (.+?) \((.+?)\) returned to hand\.$")
+_OPP_TO_HAND_RE = re.compile(
+    r"^(.+?)'s card (.+?) \((.+?)\) returned to their hand\.$")
+
+# Return to deck (self): "your card {spec} ({name}) returned to your deck."
+# Return to deck (opp):  "{nick}'s card {spec} ({name}) returned to their deck."
+_YOUR_TO_DECK_RE = re.compile(
+    r"^your card (.+?) \((.+?)\) returned to your deck\.$")
+_OPP_TO_DECK_RE = re.compile(
+    r"^(.+?)'s card (.+?) \((.+?)\) returned to their deck\.$")
+
+# Return to extra deck (self): "your card {spec} ({name}) returned to your extra deck."
+# Return to extra deck (opp):  "{nick}'s card {spec} ({name}) returned to their extra deck."
+_YOUR_TO_EXTRA_RE = re.compile(
+    r"^your card (.+?) \((.+?)\) returned to your extra deck\.$")
+_OPP_TO_EXTRA_RE = re.compile(
+    r"^(.+?)'s card (.+?) \((.+?)\) returned to their extra deck\.$")
+
+# Tribute (self): "You tribute {spec} ({name})."
+# Tribute (opp):  "{nick} tributes {spec} ({name})."
+_YOUR_TRIBUTE_RE = re.compile(r"^You tribute (.+?) \((.+?)\)\.$")
+_OPP_TRIBUTE_RE = re.compile(r"^(.+?) tributes (.+?) \((.+?)\)\.$")
+
+# Discard (self): "you discarded {spec} ({name})."
+# Discard (opp):  "{nick} discarded {spec} ({name})."
+_YOUR_DISCARD_RE = re.compile(r"^you discarded (.+?) \((.+?)\)\.$")
+_OPP_DISCARD_RE = re.compile(r"^(.+?) discarded (.+?) \((.+?)\)\.$")
+
+# Equip: "{card} equipped to {target}."
+_EQUIP_RE = re.compile(r"^(.+?) equipped to (.+?)\.$")
+
+# Shuffle: "you shuffled your deck." / "{nick} shuffled their deck."
+_YOUR_SHUFFLE_RE = re.compile(r"^you shuffled your deck\.$")
+_OPP_SHUFFLE_RE = re.compile(r"^(.+?) shuffled their deck\.$")
+
+# Win/Lose: "You won ({reason})." / "You lost ({reason})."
+_WIN_RE = re.compile(r"^You won \((.+?)\)\.$")
+_LOSE_RE = re.compile(r"^You lost \((.+?)\)\.$")
+
 
 # ---------------------------------------------------------------------------
 # Parser state machine
@@ -124,20 +305,21 @@ class MUDTextParser:
         """Reset all parser state."""
         self.__init__()  # type: ignore[misc]
 
-    def feed_line(self, line: str) -> ParsedPrompt | None:
+    def feed_line(self, line: str) -> ParsedPrompt | ParsedEvent | None:
         """Feed a single line from the server.
 
         Returns a ``ParsedPrompt`` when a complete prompt has been detected,
-        or ``None`` for informational / non-terminal lines.
+        a ``ParsedEvent`` for informational state-change lines, or ``None``
+        for unrecognised / non-terminal lines.
 
         Lines containing embedded newlines (some MUD server messages pack
         multiple logical lines into one WebSocket frame) are split and
-        processed individually; the first resulting prompt (if any) is
-        returned.
+        processed individually; the first resulting prompt or event (if any)
+        is returned.
         """
         # Handle embedded newlines from single WebSocket frames
         if "\n" in line:
-            result: ParsedPrompt | None = None
+            result: ParsedPrompt | ParsedEvent | None = None
             for sub in line.split("\n"):
                 sub = sub.strip()
                 if sub:
@@ -147,7 +329,7 @@ class MUDTextParser:
             return result
         return self._feed_single(line)
 
-    def _feed_single(self, line: str) -> ParsedPrompt | None:
+    def _feed_single(self, line: str) -> ParsedPrompt | ParsedEvent | None:
         if self._mode == _Mode.ACCUMULATING:
             return self._accumulate(line)
         return self._scan(line)
@@ -387,7 +569,260 @@ class MUDTextParser:
         if line.endswith("?"):
             return ParsedPrompt(PromptType.SELECT_YESNO, raw_lines=[line])
 
-        # Nothing matched — informational line
+        # --- Event parsing (informational lines) ---
+        return self._scan_event(line)
+
+    # -- Event parsing (informational lines) ---------------------------------
+
+    def _scan_event(self, line: str) -> ParsedEvent | None:  # noqa: C901
+        """Try to parse *line* as an informational event."""
+
+        # -- Turn --
+        if _YOUR_TURN_RE.match(line):
+            return ParsedEvent(EventType.NEW_TURN, player="you", raw=line)
+        m = _OPP_TURN_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.NEW_TURN, player=m.group(1),
+                is_opponent=True, raw=line)
+
+        # -- Phase --
+        m = _PHASE_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.NEW_PHASE, phase=m.group(1), raw=line)
+
+        # -- LP: damage --
+        m = _YOUR_DAMAGE_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.DAMAGE, player="you",
+                amount=int(m.group(1)), new_lp=int(m.group(2)), raw=line)
+        m = _OPP_DAMAGE_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.DAMAGE, player=m.group(1), is_opponent=True,
+                amount=int(m.group(2)), new_lp=int(m.group(3)), raw=line)
+
+        # -- LP: recover --
+        m = _YOUR_RECOVER_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.RECOVER, player="you",
+                amount=int(m.group(1)), new_lp=int(m.group(2)), raw=line)
+        m = _OPP_RECOVER_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.RECOVER, player=m.group(1), is_opponent=True,
+                amount=int(m.group(2)), new_lp=int(m.group(3)), raw=line)
+
+        # -- LP: pay cost --
+        m = _YOUR_PAY_LP_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.PAY_LP, player="you",
+                amount=int(m.group(1)), new_lp=int(m.group(2)), raw=line)
+        m = _OPP_PAY_LP_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.PAY_LP, player=m.group(1), is_opponent=True,
+                amount=int(m.group(2)), new_lp=int(m.group(3)), raw=line)
+
+        # -- Draw --
+        m = _YOUR_DRAW_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.DRAW, player="you",
+                amount=int(m.group(1)), raw=line)
+        m = _OPP_DRAW_RE.match(line)
+        if m:
+            nick = m.group(1) or "Opponent"
+            return ParsedEvent(
+                EventType.DRAW, player=nick, is_opponent=True,
+                amount=int(m.group(2)), raw=line)
+
+        # -- Special summon (check before normal summon) --
+        m = _SP_SUMMON_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.SP_SUMMON, player=m.group(1),
+                card_name=m.group(2), position=m.group(4), raw=line)
+
+        # -- Summon (normal) --
+        m = _SUMMON_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.SUMMON, player=m.group(1),
+                card_name=m.group(2), position=m.group(5), raw=line)
+
+        # -- Flip summon --
+        m = _FLIP_SUMMON_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.FLIP_SUMMON, player=m.group(1),
+                card_name=m.group(2), card_spec=m.group(3), raw=line)
+
+        # -- Set --
+        m = _YOUR_SET_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.SET, player="you", card_spec=m.group(1),
+                card_name=m.group(2), position=m.group(3), raw=line)
+        m = _OPP_SET_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.SET, player=m.group(1), is_opponent=True,
+                card_spec=m.group(2), position=m.group(3), raw=line)
+
+        # -- Position change --
+        m = _POS_CHANGE_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.POS_CHANGE, card_spec=m.group(1),
+                card_name=m.group(2), position=m.group(3), raw=line)
+
+        # -- Attack --
+        m = _ATTACK_TARGET_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.ATTACK, player=m.group(1),
+                card_spec=m.group(4), card_name=m.group(5),
+                target_spec=m.group(2), target_name=m.group(3), raw=line)
+        m = _ATTACK_DIRECT_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.ATTACK, player=m.group(1),
+                card_spec=m.group(2), card_name=m.group(3), raw=line)
+
+        # -- Chaining --
+        m = _YOUR_CHAIN_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.CHAINING, player="you",
+                card_spec=m.group(1), card_name=m.group(2), raw=line)
+        m = _OPP_CHAIN_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.CHAINING, player=m.group(1), is_opponent=True,
+                card_spec=m.group(2), card_name=m.group(3), raw=line)
+
+        # -- Destroy --
+        m = _DESTROY_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.DESTROY, card_spec=m.group(1),
+                card_name=m.group(2), raw=line)
+
+        # -- To graveyard --
+        m = _YOUR_TO_GY_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.TO_GRAVEYARD, player="you",
+                card_spec=m.group(1), card_name=m.group(2), raw=line)
+        m = _OPP_TO_GY_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.TO_GRAVEYARD, player=m.group(1), is_opponent=True,
+                card_spec=m.group(2), card_name=m.group(3), raw=line)
+
+        # -- Banished --
+        m = _YOUR_BANISHED_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.BANISHED, player="you",
+                card_spec=m.group(1), card_name=m.group(2), raw=line)
+        m = _OPP_BANISHED_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.BANISHED, player=m.group(1), is_opponent=True,
+                card_spec=m.group(2), card_name=m.group(3), raw=line)
+
+        # -- To hand --
+        m = _YOUR_TO_HAND_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.TO_HAND, player="you",
+                card_spec=m.group(1), card_name=m.group(2), raw=line)
+        m = _OPP_TO_HAND_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.TO_HAND, player=m.group(1), is_opponent=True,
+                card_spec=m.group(2), card_name=m.group(3), raw=line)
+
+        # -- To deck --
+        m = _YOUR_TO_DECK_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.TO_DECK, player="you",
+                card_spec=m.group(1), card_name=m.group(2), raw=line)
+        m = _OPP_TO_DECK_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.TO_DECK, player=m.group(1), is_opponent=True,
+                card_spec=m.group(2), card_name=m.group(3), raw=line)
+
+        # -- To extra deck --
+        m = _YOUR_TO_EXTRA_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.TO_EXTRA_DECK, player="you",
+                card_spec=m.group(1), card_name=m.group(2), raw=line)
+        m = _OPP_TO_EXTRA_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.TO_EXTRA_DECK, player=m.group(1), is_opponent=True,
+                card_spec=m.group(2), card_name=m.group(3), raw=line)
+
+        # -- Tribute --
+        m = _YOUR_TRIBUTE_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.TRIBUTE, player="you",
+                card_spec=m.group(1), card_name=m.group(2), raw=line)
+        m = _OPP_TRIBUTE_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.TRIBUTE, player=m.group(1), is_opponent=True,
+                card_spec=m.group(2), card_name=m.group(3), raw=line)
+
+        # -- Discard --
+        m = _YOUR_DISCARD_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.DISCARD, player="you",
+                card_spec=m.group(1), card_name=m.group(2), raw=line)
+        m = _OPP_DISCARD_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.DISCARD, player=m.group(1), is_opponent=True,
+                card_spec=m.group(2), card_name=m.group(3), raw=line)
+
+        # -- Equip --
+        m = _EQUIP_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.EQUIP, card_name=m.group(1),
+                target_name=m.group(2), raw=line)
+
+        # -- Shuffle --
+        if _YOUR_SHUFFLE_RE.match(line):
+            return ParsedEvent(
+                EventType.SHUFFLE, player="you", raw=line)
+        m = _OPP_SHUFFLE_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.SHUFFLE, player=m.group(1),
+                is_opponent=True, raw=line)
+
+        # -- Win / Lose --
+        m = _WIN_RE.match(line)
+        if m:
+            return ParsedEvent(EventType.WIN, player="you", raw=line)
+        m = _LOSE_RE.match(line)
+        if m:
+            return ParsedEvent(EventType.LOSE, player="you", raw=line)
+
+        # Truly unrecognised
         return None
 
     # -- Accumulation mode --------------------------------------------------

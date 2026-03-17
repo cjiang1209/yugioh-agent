@@ -10,7 +10,7 @@ from typing import Protocol
 from yugioh_mud.action_translator import ActionTranslator
 from yugioh_mud.agent import Agent
 from yugioh_mud.config import MUDBotConfig
-from yugioh_mud.text_parser import MUDTextParser, is_duel_end
+from yugioh_mud.text_parser import MUDTextParser, ParsedPrompt, is_duel_end
 
 logger = logging.getLogger(__name__)
 
@@ -208,8 +208,9 @@ class MUDProtocol:
             self.state = State.FINISHED
             return
 
-        prompt = self._text_parser.feed_line(line)  # type: ignore[union-attr]
-        if prompt is not None:
+        result = self._text_parser.feed_line(line)  # type: ignore[union-attr]
+        if isinstance(result, ParsedPrompt):
+            prompt = result
             action = self._agent.choose(prompt)  # type: ignore[union-attr]
             text = self._action_translator.translate(action, prompt)  # type: ignore[union-attr]
             if self.config.verbose:
