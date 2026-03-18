@@ -505,6 +505,16 @@ class TestDuelPassive:
             "a: Attack.",
             "e: End phase.",
             "Select an option:",
+            # BattleCmdHandler probes "a" → attack card list → back
+            "m1: Blue-Eyes White Dragon",
+            "z: back.",
+            "Select a card:",
+            # Re-sent battle menu after "z" (discarded by handler)
+            "Battle menu:",
+            "a: Attack.",
+            "e: End phase.",
+            "Select an option:",
+            # PassiveAgent picks END_PHASE → handler sends "e"
             "You lost (LP became 0).",
         ])
         _run(proto.run())

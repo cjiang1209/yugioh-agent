@@ -293,7 +293,8 @@ yugioh_mud/
 │                            + event parser (EventType enum + ParsedEvent) for informational lines
 ├── card_lookup.py         — Name-to-passcode reverse index from cards.cdb texts table
 ├── game_state.py          — Zone tracking (MUDGameState) consuming ParsedEvent + CardNameLookup
-├── agent.py               — Agent protocol + PassiveAgent (ends phases, declines effects)
+├── cmd_handler.py         — Atomic idle/battle handlers (probe→build→decide→execute)
+├── agent.py               — Agent protocol + PassiveAgent + RandomAgent
 └── action_translator.py   — Converts agent int actions → MUD text commands
 cli/mud_bot.py             — CLI entry point (--profile host/guest, --deck, --verbose)
 scripts/mud_bot.sh         — Shell wrapper (activates venv, forwards args)
@@ -305,9 +306,10 @@ scripts/mud_bot.sh         — Shell wrapper (activates venv, forwards args)
 - **Text parser**: `MUDTextParser` classifies MUD server lines into 21 `PromptType` variants (idle/battle menus, card/tribute/chain selection, effect Y/N, position, place, option, sum, counter, unselect, announce, sort). It tracks idle/battle context and accumulates numbered option lines until a known terminal line arrives. Each prompt type maps to a specific MUD server mechanism (DuelReader with/without prompt, DuelMenu, yes_or_no_parser). Additionally parses 25 `EventType` variants (turns, phases, LP changes, draws, summons, attacks, card movement, chains, win/lose) into `ParsedEvent` objects for game state tracking.
 - **Card lookup**: `CardNameLookup` builds a name→passcode reverse index from `cards.cdb` texts table. Prefers canonical cards (`alias=0`) over alternate artwork variants when multiple rows share the same name.
 - **Game state**: `MUDGameState` tracks zone contents (hand, monster, spell/trap, graveyard, banished) for both players, plus LP, turn number, and current phase. Updated from `ParsedEvent` objects. Opponent hand tracked as count only (hidden information). Supports periodic resync from `score`/`h`/`tab`/`tab2` command responses to detect and correct tracking drift.
-- **Agent + translator**: Two-layer design separating strategy from protocol. `Agent.choose(prompt, game_state=None) → int` decides *what* to do; `ActionTranslator.translate(action, prompt) → str` converts to MUD text. `PassiveAgent` always ends phases, declines effects, and cancels optional chains — duels end by deck-out. Future agents (random, model-based) will share the same translator and can use `game_state` for informed decisions.
+- **Atomic handlers**: `IdleCmdHandler` and `BattleCmdHandler` implement probe→build→decide→execute: they probe the MUD server for available actions, build a `StructuredAction` list (matching the RL flat action space), call `agent.choose()` exactly once, then execute the multi-step MUD conversation. `StructuredAction` encodes `(category, cardspec, card_code, location, sequence, sub_action)` — the same `(card, action_type)` pairs the RL model was trained on.
+- **Agent + translator**: Two-layer design separating strategy from protocol. `Agent.choose(prompt, game_state=None) → int` decides *what* to do; `ActionTranslator.translate(action, prompt) → str` converts to MUD text. `PassiveAgent` always ends phases; `RandomAgent` picks uniformly from `structured_actions`. For IDLE_CMD/BATTLE_MENU prompts, agents use `prompt.structured_actions` (populated by handlers). The translator is bypassed for idle/battle — handlers send MUD commands directly.
 - **Duel-end detection**: `is_duel_end(line)` matches "You won", "You lost", "You scooped", "was cancelled" patterns to transition from DUEL to FINISHED state.
-- **Current scope**: Passive duel play with game state tracking. Two bots can complete a full duel via deck-out with LP/zone state tracked throughout. Active play (summoning, attacking, using effects) requires a different agent implementation.
+- **Known limitation — multi-effect cards**: Cards with multiple activatable effects (va/vb) get a single `StructuredAction` with `sub_action="v"`; the handler always picks the first effect. Future model agents needing per-effect choice will require one `StructuredAction` per effect.
 
 ## Environment Variables
 

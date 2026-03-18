@@ -12,6 +12,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from enum import Enum, auto
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from yugioh_mud.cmd_handler import StructuredAction
 
 
 # ---------------------------------------------------------------------------
@@ -100,6 +104,7 @@ class ParsedPrompt:
     cancelable: bool = False
     finishable: bool = False
     raw_lines: list[str] = field(default_factory=list)
+    structured_actions: list[StructuredAction] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------

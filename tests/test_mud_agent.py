@@ -13,6 +13,7 @@ from yugioh_mud.agent import (
     PassiveAgent,
     RandomAgent,
 )
+from yugioh_mud.cmd_handler import StructuredAction
 from yugioh_mud.text_parser import ParsedPrompt, PromptType
 
 
@@ -29,7 +30,7 @@ def _prompt(
     max_select: int = 1,
 ) -> ParsedPrompt:
     options = [f"opt{i}" for i in range(n_options)]
-    return ParsedPrompt(
+    p = ParsedPrompt(
         prompt_type=ptype,
         options=options,
         min_select=min_select,
@@ -37,6 +38,12 @@ def _prompt(
         cancelable=cancelable,
         finishable=finishable,
     )
+    # For IDLE_CMD/BATTLE_MENU, agents use structured_actions
+    if ptype in (PromptType.IDLE_CMD, PromptType.BATTLE_MENU):
+        p.structured_actions = [
+            StructuredAction(category=i) for i in range(n_options)
+        ]
+    return p
 
 
 # ---------------------------------------------------------------------------

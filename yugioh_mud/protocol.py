@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import logging
-import re
 import random
 from enum import Enum, auto
 from typing import Protocol
 
 from yugioh_mud.action_translator import ActionTranslator
 from yugioh_mud.agent import Agent
+from yugioh_mud.cmd_handler import BattleCmdHandler, IdleCmdHandler
 from yugioh_mud.config import MUDBotConfig
 from yugioh_mud.game_state import MUDGameState
 from yugioh_mud.text_parser import (
@@ -25,13 +25,6 @@ _DUELREADER_REPROMPTS = frozenset({
     "Select an option:",    # battle DuelMenu
     "Enter a line of text.",  # various DuelReader prompts
 })
-
-# Regex for parsing "?" command response lines listing usable cards.
-# e.g. "Summonable in attack position: h1, h3"
-_USABLE_CARDS_RE = re.compile(
-    r"^(?:Summonable|Special summonable|Activatable|Repositionable|Settable)"
-    r".*?:\s*(.+)$"
-)
 
 logger = logging.getLogger(__name__)
 
@@ -267,11 +260,28 @@ class MUDProtocol:
 
     async def _act_on_prompt(self, prompt: ParsedPrompt) -> None:
         """Choose an action for *prompt* and send the translated command."""
-        # Enrich IDLE_CMD with usable card specs from "?" command
+        # Delegate idle/battle to atomic handlers
         if prompt.prompt_type == PromptType.IDLE_CMD:
-            await self._enrich_idle_cmd(prompt)
-            if self.state != State.DUEL:
-                return
+            ended = await IdleCmdHandler.handle(
+                self.conn, prompt,
+                self._agent,  # type: ignore[arg-type]
+                self._game_state,
+                self._text_parser,  # type: ignore[arg-type]
+                self.config.verbose)
+            if ended:
+                self.state = State.FINISHED
+            return
+
+        if prompt.prompt_type == PromptType.BATTLE_MENU:
+            ended = await BattleCmdHandler.handle(
+                self.conn, prompt,
+                self._agent,  # type: ignore[arg-type]
+                self._game_state,
+                self._text_parser,  # type: ignore[arg-type]
+                self.config.verbose)
+            if ended:
+                self.state = State.FINISHED
+            return
 
         action = self._agent.choose(  # type: ignore[union-attr]
             prompt, game_state=self._game_state)
@@ -281,55 +291,6 @@ class MUDProtocol:
                 "[DUEL] prompt=%s action=%d → %r",
                 prompt.prompt_type.name, action, text)
         await self._send(text)
-
-    async def _enrich_idle_cmd(self, prompt: ParsedPrompt) -> None:
-        """Send ``?`` to the server and enrich *prompt* with usable cards.
-
-        The server responds with lines listing usable card categories, then
-        re-sends the ``"Select a card:"`` DuelReader prompt.  We parse the
-        usable card specs and prepend them to ``prompt.options`` so the
-        agent can choose cardspecs in addition to ``b``/``e``.
-        """
-        await self._send("?")
-        cardspecs: list[str] = []
-        seen: set[str] = set()
-        while True:
-            resp = await self.conn.recv_line()
-            if self.config.verbose:
-                logger.info("[IDLE_ENRICH] recv: %s", resp)
-
-            if is_duel_end(resp):
-                logger.info("Duel ended during idle enrich: %s", resp)
-                self.state = State.FINISHED
-                return
-
-            # Parse usable card lines
-            m = _USABLE_CARDS_RE.match(resp)
-            if m:
-                for spec in m.group(1).split(","):
-                    spec = spec.strip()
-                    if spec and spec not in seen:
-                        cardspecs.append(spec)
-                        seen.add(spec)
-                continue
-
-            # The server re-sends "Select a card:" after "?" output.
-            # This is the response terminator.
-            if resp in _DUELREADER_REPROMPTS:
-                prompt.options = cardspecs + prompt.options
-                return
-
-            # Feed through the parser for events
-            check = self._text_parser.feed_line(resp)  # type: ignore[union-attr]
-            if isinstance(check, ParsedEvent):
-                if self._game_state is not None:
-                    self._game_state.update(check)
-                continue
-            if isinstance(check, ParsedPrompt):
-                phase_opts = [o for o in check.options if o not in seen]
-                prompt.options = cardspecs + phase_opts
-                prompt.raw_lines = check.raw_lines
-                return
 
     async def _send_resync(self) -> None:
         """Send resync commands and collect responses.

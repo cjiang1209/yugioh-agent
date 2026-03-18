@@ -7,6 +7,7 @@ return value into the MUD text command.
 
 from __future__ import annotations
 
+import logging
 import random
 from typing import TYPE_CHECKING, Protocol
 
@@ -64,14 +65,8 @@ class PassiveAgent:
     ) -> int:
         pt = prompt.prompt_type
 
-        if pt == PromptType.IDLE_CMD:
+        if pt in (PromptType.IDLE_CMD, PromptType.BATTLE_MENU):
             return END_PHASE
-        if pt == PromptType.IDLE_SUBMENU:
-            return BACK
-        if pt == PromptType.BATTLE_MENU:
-            return END_PHASE
-        if pt == PromptType.BATTLE_SELECT:
-            return BACK
 
         if pt == PromptType.SELECT_CHAIN:
             return CANCEL if prompt.cancelable else 0
@@ -122,6 +117,7 @@ class RandomAgent:
 
     def __init__(self, seed: int | None = None) -> None:
         self._rng = random.Random(seed)
+        self._log = logging.getLogger(__name__)
 
     def choose(
         self,
@@ -131,18 +127,14 @@ class RandomAgent:
         pt = prompt.prompt_type
         n = len(prompt.options)
 
-        # Menus with END_PHASE option
+        # Idle/battle: use structured_actions (populated by handlers)
         if pt in (PromptType.IDLE_CMD, PromptType.BATTLE_MENU):
-            if n == 0:
+            sa = prompt.structured_actions
+            if not sa:
                 return END_PHASE
-            choices = list(range(n)) + [END_PHASE]
-            return self._rng.choice(choices)
-
-        # Submenus with BACK option
-        if pt in (PromptType.IDLE_SUBMENU, PromptType.BATTLE_SELECT):
-            if n == 0:
-                return BACK
-            choices = list(range(n)) + [BACK]
+            choices = list(range(len(sa))) + [END_PHASE]
+            self._log.debug(
+                "[RandomAgent] %s structured_actions=%d", pt.name, len(sa))
             return self._rng.choice(choices)
 
         # Chain with optional cancel
