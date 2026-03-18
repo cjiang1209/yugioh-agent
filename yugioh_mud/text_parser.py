@@ -309,7 +309,7 @@ _YOUR_SHUFFLE_RE = re.compile(r"^you shuffled your deck\.$")
 _OPP_SHUFFLE_RE = re.compile(r"^(.+?) shuffled their deck\.$")
 
 # Draw sub-line: "1. Dark Magician" (numbered card after "Drew N cards:")
-_DRAW_SUBLINE_RE = re.compile(r"^\d+\. (.+)$")
+_DRAW_SUBLINE_RE = re.compile(r"^\d+: (.+)$")
 
 # Control change (move.py: same location, different controller)
 # Player: "your card {spec} ({name}) changed controller to {op} and is now located at {targetspec}."

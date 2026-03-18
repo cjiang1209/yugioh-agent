@@ -607,27 +607,27 @@ class TestEventDrawSublines:
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.DRAW
 
-        ev = parser.feed_line("1. Dark Magician")
+        ev = parser.feed_line("1: Dark Magician")
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.DRAW_CARD
         assert ev.card_name == "Dark Magician"
 
-        ev = parser.feed_line("2. Blue-Eyes White Dragon")
+        ev = parser.feed_line("2: Blue-Eyes White Dragon")
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.DRAW_CARD
         assert ev.card_name == "Blue-Eyes White Dragon"
 
     def test_draw_remaining_resets_on_non_match(self, parser: MUDTextParser):
         parser.feed_line("Drew 3 cards:")
-        parser.feed_line("1. Dark Magician")
+        parser.feed_line("1: Dark Magician")
         # Feed a non-draw-subline; remaining should reset
         ev = parser.feed_line("entering main1 phase.")
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.NEW_PHASE
 
     def test_no_draw_sublines_without_header(self, parser: MUDTextParser):
-        """'1. Card' without prior draw header is not a DRAW_CARD."""
-        ev = parser.feed_line("1. Dark Magician")
+        """'1: Card' without prior draw header is not a DRAW_CARD."""
+        ev = parser.feed_line("1: Dark Magician")
         assert ev is None  # no draw context
 
     def test_opp_draw_no_sublines(self, parser: MUDTextParser):
@@ -635,8 +635,15 @@ class TestEventDrawSublines:
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.DRAW
         # No sublines expected for opponent
-        ev = parser.feed_line("1. Something")
+        ev = parser.feed_line("1: Something")
         assert ev is None  # _draw_remaining not set for opp
+
+    def test_draw_subline_dot_format_rejected(self, parser: MUDTextParser):
+        """Old dot format '1. Card' should NOT match (server uses colon)."""
+        parser.feed_line("Drew 1 cards:")
+        ev = parser.feed_line("1. Dark Magician")
+        # Dot format does not match — draw remaining resets
+        assert ev is None or ev.event_type != EventType.DRAW_CARD
 
 
 class TestEventSummon:

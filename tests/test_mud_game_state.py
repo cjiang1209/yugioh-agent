@@ -631,10 +631,316 @@ class TestResyncTab:
         assert len(gs.my_mzone) == 0
         assert len(gs.my_szone) == 0
 
+    def test_resync_tab_szone_face_down_space(self, gs: MUDGameState):
+        """MUD server sends 'face down' (space) not 'face-down' (hyphen)."""
+        gs.resync_tab([
+            "Your table:",
+            "s1: face down",
+        ])
+        assert len(gs.my_szone) == 1
+        assert gs.my_szone[0].name == ""
+        assert gs.my_szone[0].position == "face down"
+
+    def test_resync_tab_mzone_face_down_space(self, gs: MUDGameState):
+        """Monster zone face-down with space separator."""
+        gs.resync_tab([
+            "Your table:",
+            "m1: face down defense",
+        ])
+        assert len(gs.my_mzone) == 1
+        assert gs.my_mzone[0].name == ""
+        assert "face" in gs.my_mzone[0].position
+
+    def test_resync_tab_szone_face_hyphen_still_works(self, gs: MUDGameState):
+        """Hyphenated 'face-down' format should still be matched."""
+        gs.resync_tab([
+            "Your table:",
+            "s1: face-down",
+        ])
+        assert len(gs.my_szone) == 1
+        assert gs.my_szone[0].position == "face-down"
+
 
 # ---------------------------------------------------------------------------
-# Full event sequence (integration-style)
+# Chaining — opponent bare spec (P0 Fix 3)
 # ---------------------------------------------------------------------------
+
+class TestChainingBareSpec:
+    def test_opp_chain_bare_spec_decrements_hand(self, gs: MUDGameState):
+        """Opponent chains a spell from hand with bare card name (no zone prefix)."""
+        gs.opp_hand_count = 5
+        gs.update(_ev(
+            EventType.CHAINING, player="P2", is_opponent=True,
+            card_spec="Mystical Space Typhoon",
+            card_name="Mystical Space Typhoon"))
+        assert gs.opp_hand_count == 4
+
+    def test_opp_chain_empty_spec_decrements_hand(self, gs: MUDGameState):
+        """Opponent chains with empty spec (from hand)."""
+        gs.opp_hand_count = 3
+        gs.update(_ev(
+            EventType.CHAINING, player="P2", is_opponent=True,
+            card_spec="", card_name="Effect Veiler"))
+        assert gs.opp_hand_count == 2
+
+    def test_opp_chain_field_spec_no_hand_decrement(self, gs: MUDGameState):
+        """Opponent chains from field (os/om prefix) should NOT decrement hand."""
+        gs.opp_hand_count = 3
+        gs.opp_szone.append(CardEntry(
+            name="Mirror Force", code=44095762, spec="os1"))
+        gs.update(_ev(
+            EventType.CHAINING, player="P2", is_opponent=True,
+            card_spec="os1", card_name="Mirror Force"))
+        assert gs.opp_hand_count == 3
+
+
+# ---------------------------------------------------------------------------
+# P1: Tribute / Destroy / Discard add to GY
+# ---------------------------------------------------------------------------
+
+class TestTributeAddsToGY:
+    def _summon(self, gs, name, spec, opponent=False):
+        gs.update(_ev(
+            EventType.SUMMON, player="P2" if opponent else "you",
+            is_opponent=opponent,
+            card_name=name, card_spec=spec, position="face-up attack"))
+
+    def test_tribute_own_adds_to_gy(self, gs: MUDGameState):
+        self._summon(gs, "Kuriboh", "m1")
+        gs.update(_ev(
+            EventType.TRIBUTE, player="you",
+            card_spec="m1", card_name="Kuriboh"))
+        assert len(gs.my_mzone) == 0
+        assert len(gs.my_graveyard) == 1
+        assert gs.my_graveyard[0].name == "Kuriboh"
+
+    def test_tribute_opp_adds_to_gy(self, gs: MUDGameState):
+        self._summon(gs, "Kuriboh", "m1", opponent=True)
+        gs.update(_ev(
+            EventType.TRIBUTE, player="P2", is_opponent=True,
+            card_spec="m1", card_name="Kuriboh"))
+        assert len(gs.opp_mzone) == 0
+        assert len(gs.opp_graveyard) == 1
+        assert gs.opp_graveyard[0].name == "Kuriboh"
+
+
+class TestDestroyAddsToGY:
+    def _summon(self, gs, name, spec, opponent=False):
+        gs.update(_ev(
+            EventType.SUMMON, player="P2" if opponent else "you",
+            is_opponent=opponent,
+            card_name=name, card_spec=spec, position="face-up attack"))
+
+    def test_destroy_own_adds_to_gy(self, gs: MUDGameState):
+        self._summon(gs, "Dark Magician", "m1")
+        gs.update(_ev(
+            EventType.DESTROY, card_spec="m1", card_name="Dark Magician"))
+        assert len(gs.my_mzone) == 0
+        assert len(gs.my_graveyard) == 1
+        assert gs.my_graveyard[0].name == "Dark Magician"
+
+    def test_destroy_opp_adds_to_gy(self, gs: MUDGameState):
+        self._summon(gs, "Dark Magician", "m1", opponent=True)
+        gs.update(_ev(
+            EventType.DESTROY, is_opponent=True,
+            card_spec="m1", card_name="Dark Magician"))
+        assert len(gs.opp_mzone) == 0
+        assert len(gs.opp_graveyard) == 1
+        assert gs.opp_graveyard[0].name == "Dark Magician"
+
+
+class TestDiscardAddsToGY:
+    def test_discard_own_adds_to_gy(self, gs: MUDGameState):
+        gs.my_hand.append(CardEntry(
+            name="Kuriboh", code=40640057, spec="h1"))
+        gs.update(_ev(
+            EventType.DISCARD, player="you",
+            card_spec="h1", card_name="Kuriboh"))
+        assert len(gs.my_hand) == 0
+        assert len(gs.my_graveyard) == 1
+        assert gs.my_graveyard[0].name == "Kuriboh"
+
+    def test_discard_opp_adds_to_gy(self, gs: MUDGameState):
+        gs.opp_hand_count = 3
+        gs.update(_ev(
+            EventType.DISCARD, player="P2", is_opponent=True,
+            card_spec="h1", card_name="Kuriboh"))
+        assert gs.opp_hand_count == 2
+        assert len(gs.opp_graveyard) == 1
+        assert gs.opp_graveyard[0].name == "Kuriboh"
+
+
+# ---------------------------------------------------------------------------
+# P1: Mill spec guard (deck → GY without false removal)
+# ---------------------------------------------------------------------------
+
+class TestMillSpecGuard:
+    def test_mill_does_not_remove_existing_gy_card(self, gs: MUDGameState):
+        """Milling a card from deck should not remove a same-named card from GY."""
+        gs.my_graveyard.append(CardEntry(
+            name="Dark Magician", code=46986414))
+        gs.update(_ev(
+            EventType.TO_GRAVEYARD, player="you",
+            card_spec="", card_name="Dark Magician"))
+        # Should have 2 copies now (existing + milled), not 1
+        assert len(gs.my_graveyard) == 2
+
+    def test_mill_opp_does_not_remove_existing(self, gs: MUDGameState):
+        """Opponent mill should not remove existing same-named card."""
+        gs.opp_graveyard.append(CardEntry(
+            name="Blue-Eyes White Dragon", code=89631139))
+        gs.update(_ev(
+            EventType.TO_GRAVEYARD, player="P2", is_opponent=True,
+            card_spec="", card_name="Blue-Eyes White Dragon"))
+        assert len(gs.opp_graveyard) == 2
+
+    def test_banish_from_deck_does_not_remove_existing(self, gs: MUDGameState):
+        """Banishing from deck should not remove existing same-named card."""
+        gs.my_banished.append(CardEntry(
+            name="Dark Magician", code=46986414))
+        gs.update(_ev(
+            EventType.BANISHED, player="you",
+            card_spec="", card_name="Dark Magician"))
+        assert len(gs.my_banished) == 2
+
+
+# ---------------------------------------------------------------------------
+# P2: Spec prefix normalization
+# ---------------------------------------------------------------------------
+
+class TestSpecPrefixNorm:
+    def _summon(self, gs, name, spec, opponent=False):
+        gs.update(_ev(
+            EventType.SUMMON, player="P2" if opponent else "you",
+            is_opponent=opponent,
+            card_name=name, card_spec=spec, position="face-up attack"))
+
+    def test_remove_from_field_oprefix_match(self, gs: MUDGameState):
+        """Card stored as 'os1' should be found by spec 's1' and vice-versa."""
+        gs.opp_szone.append(CardEntry(
+            name="Mirror Force", code=44095762, spec="os1"))
+        removed = gs._remove_from_field("s1", "Mirror Force")
+        assert removed is not None
+        assert removed.name == "Mirror Force"
+        assert len(gs.opp_szone) == 0
+
+    def test_remove_from_field_no_prefix_finds_oprefix(self, gs: MUDGameState):
+        """Card stored as 'm1' should be found by spec 'om1'."""
+        gs.opp_mzone.append(CardEntry(
+            name="Dark Magician", code=46986414, spec="m1"))
+        removed = gs._remove_from_field("om1", "Dark Magician")
+        assert removed is not None
+        assert len(gs.opp_mzone) == 0
+
+    def test_exact_match_still_works(self, gs: MUDGameState):
+        gs.my_mzone.append(CardEntry(
+            name="Dark Magician", code=46986414, spec="m1"))
+        removed = gs._remove_from_field("m1", "Dark Magician")
+        assert removed is not None
+        assert len(gs.my_mzone) == 0
+
+
+# ---------------------------------------------------------------------------
+# P2: FROM_GY / SP_SUMMON dedup
+# ---------------------------------------------------------------------------
+
+class TestFromGYDedup:
+    def test_from_gy_then_sp_summon_no_double_add(self, gs: MUDGameState):
+        """FROM_GY_TO_FIELD + SP_SUMMON for same card should not double-add."""
+        gs.my_graveyard.append(CardEntry(
+            name="Dark Magician", code=46986414))
+        # FROM_GY adds to field
+        gs.update(_ev(
+            EventType.FROM_GY_TO_FIELD, player="you",
+            card_spec="g1", card_name="Dark Magician",
+            target_spec="m1"))
+        assert len(gs.my_mzone) == 1
+        # SP_SUMMON fires immediately after for same card
+        gs.update(_ev(
+            EventType.SP_SUMMON, player="you",
+            card_name="Dark Magician", card_spec="m1",
+            position="face-up attack"))
+        # Should still be 1, not 2
+        assert len(gs.my_mzone) == 1
+
+    def test_from_gy_then_sp_summon_opp(self, gs: MUDGameState):
+        gs.opp_graveyard.append(CardEntry(
+            name="Blue-Eyes White Dragon", code=89631139))
+        gs.update(_ev(
+            EventType.FROM_GY_TO_FIELD, player="P2", is_opponent=True,
+            card_spec="og1", card_name="Blue-Eyes White Dragon",
+            target_spec="om4"))
+        assert len(gs.opp_mzone) == 1
+        gs.update(_ev(
+            EventType.SP_SUMMON, player="P2", is_opponent=True,
+            card_name="Blue-Eyes White Dragon", card_spec="om4",
+            position="face-up attack"))
+        assert len(gs.opp_mzone) == 1
+
+
+# ---------------------------------------------------------------------------
+# P2: Cross-player DESTROY → correct GY
+# ---------------------------------------------------------------------------
+
+class TestCrossPlayerDestroy:
+    def test_destroy_opp_card_goes_to_opp_gy(self, gs: MUDGameState):
+        """DESTROY with 'os1' spec should add to opp GY, not own."""
+        gs.opp_szone.append(CardEntry(
+            name="One for One", code=2295440, spec="os1"))
+        gs.update(_ev(
+            EventType.DESTROY, card_spec="os1", card_name="One for One"))
+        assert len(gs.opp_szone) == 0
+        assert len(gs.opp_graveyard) == 1
+        assert gs.opp_graveyard[0].name == "One for One"
+        assert len(gs.my_graveyard) == 0
+
+    def test_destroy_own_card_goes_to_own_gy(self, gs: MUDGameState):
+        """DESTROY with 's1' (no o prefix) should add to own GY."""
+        gs.my_szone.append(CardEntry(
+            name="Mirror Force", code=44095762, spec="s1"))
+        gs.update(_ev(
+            EventType.DESTROY, card_spec="s1", card_name="Mirror Force"))
+        assert len(gs.my_szone) == 0
+        assert len(gs.my_graveyard) == 1
+        assert len(gs.opp_graveyard) == 0
+
+
+# ---------------------------------------------------------------------------
+# P2: Spell activation from hand → GY (dedup guard refinement)
+# ---------------------------------------------------------------------------
+
+class TestSpellActivationFromHandToGY:
+    def test_spell_from_hand_then_to_gy(self, gs: MUDGameState):
+        """Spell activated from hand then sent to GY should land in GY."""
+        gs.my_hand.append(CardEntry(
+            name="Raigeki", code=12580477, spec="h1"))
+        # CHAINING removes from hand
+        gs.update(_ev(
+            EventType.CHAINING, player="you",
+            card_spec="h1", card_name="Raigeki"))
+        assert len(gs.my_hand) == 0
+        # TO_GRAVEYARD with field spec "s3" — card was never on szone
+        gs.update(_ev(
+            EventType.TO_GRAVEYARD, player="you",
+            card_spec="s3", card_name="Raigeki"))
+        # Should be in GY (not skipped by dedup guard)
+        assert len(gs.my_graveyard) == 1
+        assert gs.my_graveyard[0].name == "Raigeki"
+
+    def test_destroy_then_to_gy_still_deduped(self, gs: MUDGameState):
+        """DESTROY → TO_GRAVEYARD for same card should not double-add."""
+        gs.my_mzone.append(CardEntry(
+            name="Dark Magician", code=46986414, spec="m1"))
+        # DESTROY adds to GY
+        gs.update(_ev(
+            EventType.DESTROY, card_spec="m1", card_name="Dark Magician"))
+        assert len(gs.my_graveyard) == 1
+        # TO_GRAVEYARD fires after — should be deduped
+        gs.update(_ev(
+            EventType.TO_GRAVEYARD, player="you",
+            card_spec="m1", card_name="Dark Magician"))
+        assert len(gs.my_graveyard) == 1  # Still 1, not 2
+
 
 # ---------------------------------------------------------------------------
 # Extra deck tracking

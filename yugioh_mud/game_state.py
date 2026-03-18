@@ -51,9 +51,9 @@ _HAND_CARD_RE = re.compile(r"^(h\d+) (.+)$")
 _TAB_MONSTER_RE = re.compile(
     r"^(m\d+): (.+?) \((\d+)/(\d+)\)")
 # Tab response: spell/trap zone "s{n}: {name} {position}"
-_TAB_SPELL_RE = re.compile(r"^(s\d+): (.+?) (face-.+)$")
+_TAB_SPELL_RE = re.compile(r"^(s\d+): (.+?) (face[- ].+)$")
 # Tab response: face-down (no name) "m{n}: face-down defense" etc.
-_TAB_FACEDOWN_RE = re.compile(r"^([ms]\d+): (face-.+)$")
+_TAB_FACEDOWN_RE = re.compile(r"^([ms]\d+): (face[- ].+)$")
 
 # Grave/removed/extra response: "{spec} {name} {position} [level N]"
 _GRAVE_CARD_RE = re.compile(r"^(o?g\d+) (.+)$")
@@ -108,11 +108,37 @@ class MUDGameState:
         self.opp_banished: list[CardEntry] = []
         self.opp_extra: list[CardEntry] = []
 
+        # Dedup tracking — cards already added to GY by DESTROY/TRIBUTE/DISCARD
+        # Consumed by TO_GRAVEYARD/BANISHED to prevent double-adds.
+        self._pending_gy: dict[str, int] = {}
+
     def _resolve_code(self, name: str) -> int:
         """Look up passcode for *name*, returning 0 if unknown."""
         if not name or self._lookup is None:
             return 0
         return self._lookup.name_to_code(name) or 0
+
+    def _mark_pending_gy(self, name: str) -> None:
+        """Mark a card as already added to GY (by DESTROY/TRIBUTE/DISCARD)."""
+        self._pending_gy[name] = self._pending_gy.get(name, 0) + 1
+
+    def _consume_pending_gy(self, name: str) -> bool:
+        """Check and consume a pending GY entry. Returns True if consumed."""
+        count = self._pending_gy.get(name, 0)
+        if count > 0:
+            if count == 1:
+                del self._pending_gy[name]
+            else:
+                self._pending_gy[name] = count - 1
+            return True
+        return False
+
+    @staticmethod
+    def _norm_spec(spec: str) -> str:
+        """Strip single 'o' prefix for spec comparison (om1→m1, os2→s2)."""
+        if spec.startswith("o") and len(spec) > 1 and spec[1] in "mshgrx":
+            return spec[1:]
+        return spec
 
     # ------------------------------------------------------------------
     # Event dispatch
@@ -188,6 +214,12 @@ class MUDGameState:
             position=ev.position,
             spec=ev.card_spec,
         )
+        # Dedup: if a FROM_GY/FROM_BANISHED event already added this card
+        # to the field, skip the duplicate add.
+        mzone = self.opp_mzone if ev.is_opponent else self.my_mzone
+        if any(c.name == ev.card_name and c.spec == ev.card_spec
+               for c in mzone):
+            return
         if ev.is_opponent:
             self.opp_hand_count = max(0, self.opp_hand_count - 1)
             self.opp_mzone.append(entry)
@@ -272,11 +304,27 @@ class MUDGameState:
             self.opp_hand_count = max(0, self.opp_hand_count - 1)
         elif spec.startswith("h"):
             self._remove_from_hand(ev.card_name)
+        elif ev.is_opponent and not spec.startswith(("om", "os")):
+            # Bare card name (no zone prefix) = opponent activated from hand
+            self.opp_hand_count = max(0, self.opp_hand_count - 1)
 
     def _on_destroy(self, ev: ParsedEvent) -> None:
-        # Destroy removes from field; the subsequent TO_GRAVEYARD/BANISHED
-        # event handles adding to the destination zone.
-        self._remove_from_field(ev.card_spec, ev.card_name)
+        removed = self._remove_from_field(ev.card_spec, ev.card_name)
+        entry = removed or CardEntry(
+            name=ev.card_name,
+            code=self._resolve_code(ev.card_name),
+        )
+        entry.spec = ""
+        # DESTROY events don't set is_opponent — infer from spec prefix
+        is_opp = (ev.card_spec or "").startswith("o") or ev.is_opponent
+        if is_opp:
+            self.opp_graveyard.append(entry)
+        else:
+            self.my_graveyard.append(entry)
+        self._mark_pending_gy(ev.card_name)
+
+    # Known non-field zone spec prefixes (graveyard, banished, extra deck)
+    _NONFIELD_PREFIXES = ("g", "r", "x", "og", "or", "ox")
 
     def _on_to_graveyard(self, ev: ParsedEvent) -> None:
         spec = ev.card_spec or ""
@@ -287,9 +335,16 @@ class MUDGameState:
                 self.opp_hand_count = max(0, self.opp_hand_count - 1)
             elif spec.startswith("h"):
                 removed = self._remove_from_hand(ev.card_name)
-            else:
+            elif spec.startswith(self._NONFIELD_PREFIXES):
                 removed = self._remove_from_nonfield(
                     spec, ev.card_name, ev.is_opponent)
+            elif self._norm_spec(spec).startswith(("m", "s")):
+                # Field-spec card not found — check if already added to GY
+                # by a prior DESTROY/TRIBUTE/DISCARD event
+                if self._consume_pending_gy(ev.card_name):
+                    return
+                # else: card was activated from hand (never on field) → add to GY
+            # else: deck or unrecognized spec — skip removal
         entry = removed or CardEntry(
             name=ev.card_name,
             code=self._resolve_code(ev.card_name),
@@ -310,9 +365,14 @@ class MUDGameState:
                 self.opp_hand_count = max(0, self.opp_hand_count - 1)
             elif spec.startswith("h"):
                 removed = self._remove_from_hand(ev.card_name)
-            else:
+            elif spec.startswith(self._NONFIELD_PREFIXES):
                 removed = self._remove_from_nonfield(
                     spec, ev.card_name, ev.is_opponent)
+            elif self._norm_spec(spec).startswith(("m", "s")):
+                # Field-spec card not found — check if already processed
+                if self._consume_pending_gy(ev.card_name):
+                    return
+            # else: deck or unrecognized spec — skip removal
         entry = removed or CardEntry(
             name=ev.card_name,
             code=self._resolve_code(ev.card_name),
@@ -386,15 +446,32 @@ class MUDGameState:
         self._add_to_field(entry, ev.target_spec, ev.is_opponent)
 
     def _on_tribute(self, ev: ParsedEvent) -> None:
-        self._remove_from_field(ev.card_spec, ev.card_name)
-        # Tributed card goes to GY — tracked by subsequent TO_GRAVEYARD event
+        removed = self._remove_from_field(ev.card_spec, ev.card_name)
+        entry = removed or CardEntry(
+            name=ev.card_name,
+            code=self._resolve_code(ev.card_name),
+        )
+        entry.spec = ""
+        if ev.is_opponent:
+            self.opp_graveyard.append(entry)
+        else:
+            self.my_graveyard.append(entry)
+        self._mark_pending_gy(ev.card_name)
 
     def _on_discard(self, ev: ParsedEvent) -> None:
         if ev.is_opponent:
             self.opp_hand_count = max(0, self.opp_hand_count - 1)
         else:
             self._remove_from_hand(ev.card_name)
-        # Discarded card goes to GY — tracked by subsequent TO_GRAVEYARD event
+        entry = CardEntry(
+            name=ev.card_name,
+            code=self._resolve_code(ev.card_name),
+        )
+        if ev.is_opponent:
+            self.opp_graveyard.append(entry)
+        else:
+            self.my_graveyard.append(entry)
+        self._mark_pending_gy(ev.card_name)
 
     def _on_control_change(self, ev: ParsedEvent) -> None:
         """Card changed controller — move between own/opp field zones."""
@@ -473,11 +550,16 @@ class MUDGameState:
     def _remove_from_field(
         self, spec: str, name: str = "",
     ) -> CardEntry | None:
-        """Remove a card from field zones by spec, returning it if found."""
+        """Remove a card from field zones by spec, returning it if found.
+
+        Spec comparison normalizes the ``o`` prefix so ``"om1"`` matches
+        a card stored as ``"m1"`` and vice-versa.
+        """
+        norm = self._norm_spec(spec) if spec else ""
         for zone in (self.my_mzone, self.my_szone,
                      self.opp_mzone, self.opp_szone):
             for i, card in enumerate(zone):
-                if spec and card.spec == spec:
+                if norm and self._norm_spec(card.spec) == norm:
                     removed = zone.pop(i)
                     if self._is_token(removed):
                         logger.warning(
