@@ -184,6 +184,25 @@ class TestSummon:
         assert len(gs.my_mzone) == 1
         assert gs.my_mzone[0].spec == "m1"
 
+    def test_flip_summon_in_place(self, gs: MUDGameState):
+        """Flip summon updates existing face-down card instead of appending."""
+        # Set a face-down monster first
+        gs.update(_ev(
+            EventType.SET, player="you", card_spec="m1",
+            card_name="", position="face-down defense"))
+        assert len(gs.my_mzone) == 1
+        assert gs.my_mzone[0].position == "face-down defense"
+        assert gs.my_mzone[0].name == ""
+        # Flip summon reveals it — should update in place, not duplicate
+        gs.update(_ev(
+            EventType.FLIP_SUMMON, player="Player1",
+            card_name="Kuriboh", card_spec="m1"))
+        assert len(gs.my_mzone) == 1
+        assert gs.my_mzone[0].name == "Kuriboh"
+        assert gs.my_mzone[0].code == 40640057
+        assert gs.my_mzone[0].position == "face-up attack"
+        assert gs.my_mzone[0].spec == "m1"
+
     def test_set_monster(self, gs: MUDGameState):
         gs.update(_ev(
             EventType.SET, player="you", card_spec="m1",
@@ -205,6 +224,24 @@ class TestSummon:
         assert len(gs.opp_mzone) == 1
         # Opponent set — no card name visible
         assert gs.opp_mzone[0].name == ""
+
+    def test_opp_set_spell_with_o_prefix(self, gs: MUDGameState):
+        """Opponent set with 'os1' spec routes to opp_szone, not opp_mzone."""
+        gs.update(_ev(
+            EventType.SET, player="P2", is_opponent=True,
+            card_spec="os1", position="face-down"))
+        assert len(gs.opp_szone) == 1
+        assert len(gs.opp_mzone) == 0
+        assert gs.opp_szone[0].spec == "os1"
+
+    def test_opp_set_monster_with_o_prefix(self, gs: MUDGameState):
+        """Opponent set with 'om1' spec routes to opp_mzone, not opp_szone."""
+        gs.update(_ev(
+            EventType.SET, player="P2", is_opponent=True,
+            card_spec="om1", position="face-down defense"))
+        assert len(gs.opp_mzone) == 1
+        assert len(gs.opp_szone) == 0
+        assert gs.opp_mzone[0].spec == "om1"
 
 
 # ---------------------------------------------------------------------------

@@ -633,6 +633,60 @@ class TestEventSummon:
         assert ev.card_name == "Man-Eater Bug"
         assert ev.card_spec == "m2"
 
+
+class TestEventSummonIsOpponent:
+    """Nickname-based is_opponent detection for summon events (S1 fix)."""
+
+    @pytest.fixture
+    def p1_parser(self) -> MUDTextParser:
+        return MUDTextParser(own_nickname="Player1")
+
+    def test_own_summon_not_opponent(self, p1_parser: MUDTextParser):
+        ev = p1_parser.feed_line(
+            "Player1 summoning Dark Magician (2500/2100) "
+            "in face-up attack position.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.is_opponent is False
+
+    def test_opp_summon_is_opponent(self, p1_parser: MUDTextParser):
+        ev = p1_parser.feed_line(
+            "Player2 summoning Blue-Eyes White Dragon (3000/2500) "
+            "in face-up attack position.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.is_opponent is True
+
+    def test_opp_special_summon_is_opponent(self, p1_parser: MUDTextParser):
+        ev = p1_parser.feed_line(
+            "Player2 special summoning Blue-Eyes White Dragon (3000/2500) "
+            "in face-up attack position.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.SP_SUMMON
+        assert ev.is_opponent is True
+
+    def test_opp_flip_summon_is_opponent(self, p1_parser: MUDTextParser):
+        ev = p1_parser.feed_line("Player2 flip summons Man-Eater Bug (m2).")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.FLIP_SUMMON
+        assert ev.is_opponent is True
+
+    def test_case_insensitive_nickname(self):
+        parser = MUDTextParser(own_nickname="player1")
+        ev = parser.feed_line(
+            "Player1 summoning Dark Magician (2500/2100) "
+            "in face-up attack position.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.is_opponent is False
+
+    def test_no_nickname_defaults_not_opponent(self, parser: MUDTextParser):
+        """Without own_nickname, is_opponent defaults to False (backward compat)."""
+        ev = parser.feed_line(
+            "Player2 summoning Blue-Eyes White Dragon (3000/2500) "
+            "in face-up attack position.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.is_opponent is False
+
+
+class TestEventSet:
     def test_set_self(self, parser: MUDTextParser):
         ev = parser.feed_line(
             "You set m1 (Kuriboh) in face-down defense position.")

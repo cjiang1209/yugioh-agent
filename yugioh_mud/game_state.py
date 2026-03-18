@@ -177,7 +177,23 @@ class MUDGameState:
             self.my_mzone.append(entry)
 
     _on_sp_summon = _on_summon
-    _on_flip_summon = _on_summon
+
+    def _on_flip_summon(self, ev: ParsedEvent) -> None:
+        zone = self.opp_mzone if ev.is_opponent else self.my_mzone
+        # Find existing face-down card by spec and update in place
+        for card in zone:
+            if card.spec == ev.card_spec:
+                card.name = ev.card_name
+                card.code = self._resolve_code(ev.card_name)
+                card.position = ev.position or "face-up attack"
+                return
+        # Fallback: card not found (tracking drift) — append
+        zone.append(CardEntry(
+            name=ev.card_name,
+            code=self._resolve_code(ev.card_name),
+            position=ev.position or "face-up attack",
+            spec=ev.card_spec,
+        ))
 
     def _on_set(self, ev: ParsedEvent) -> None:
         entry = CardEntry(
@@ -186,8 +202,9 @@ class MUDGameState:
             position=ev.position,
             spec=ev.card_spec,
         )
-        # Determine zone from spec: "m*" = monster, "s*" = spell/trap
-        if ev.card_spec.startswith("s"):
+        # Determine zone from spec: "m*"/"om*" = monster, "s*"/"os*" = spell/trap
+        raw_spec = ev.card_spec.lstrip("o") if ev.card_spec.startswith("o") else ev.card_spec
+        if raw_spec.startswith("s"):
             if ev.is_opponent:
                 self.opp_szone.append(entry)
             else:

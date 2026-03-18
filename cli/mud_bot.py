@@ -89,7 +89,7 @@ async def run(config: MUDBotConfig) -> None:
     try:
         await conn.connect()
         logging.info("Connected to ws://%s:%d", config.server_host, config.server_port)
-        parser = MUDTextParser()
+        parser = MUDTextParser(own_nickname=config.nickname)
         if config.mode == "random":
             agent = RandomAgent(seed=config.seed)
         else:

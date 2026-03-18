@@ -336,7 +336,7 @@ class MUDProtocol:
                     # Don't break — continue reading the response
                 elif isinstance(check, ParsedPrompt):
                     await self._act_on_prompt(check)
-                    break
+                    return
                 if is_duel_end(resp):
                     logger.info("Duel ended during resync: %s", resp)
                     self.state = State.FINISHED

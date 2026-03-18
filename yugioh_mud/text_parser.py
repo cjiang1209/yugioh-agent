@@ -319,7 +319,8 @@ class _Mode(Enum):
 class MUDTextParser:
     """Line-oriented parser for MUD duel prompts."""
 
-    def __init__(self) -> None:
+    def __init__(self, own_nickname: str = "") -> None:
+        self._own_nickname = own_nickname.lower()
         self._mode = _Mode.SCANNING
         self._pending_type: PromptType | None = None
         self._options: list[str] = []
@@ -334,9 +335,15 @@ class MUDTextParser:
         self._idle_context = False
         self._battle_context = False
 
+    def _is_opponent_player(self, player: str) -> bool:
+        """Return True if *player* is not our own nickname."""
+        if not self._own_nickname:
+            return False  # no nickname configured — can't determine
+        return player.lower() != self._own_nickname
+
     def reset(self) -> None:
         """Reset all parser state."""
-        self.__init__()  # type: ignore[misc]
+        self.__init__(own_nickname=self._own_nickname)  # type: ignore[misc]
 
     def feed_line(self, line: str) -> ParsedPrompt | ParsedEvent | None:
         """Feed a single line from the server.
@@ -699,22 +706,28 @@ class MUDTextParser:
         # -- Special summon (check before normal summon) --
         m = _SP_SUMMON_RE.match(line)
         if m:
+            player = m.group(1)
+            opp = self._is_opponent_player(player)
             return ParsedEvent(
-                EventType.SP_SUMMON, player=m.group(1),
+                EventType.SP_SUMMON, player=player, is_opponent=opp,
                 card_name=m.group(2), position=m.group(4), raw=line)
 
         # -- Summon (normal) --
         m = _SUMMON_RE.match(line)
         if m:
+            player = m.group(1)
+            opp = self._is_opponent_player(player)
             return ParsedEvent(
-                EventType.SUMMON, player=m.group(1),
+                EventType.SUMMON, player=player, is_opponent=opp,
                 card_name=m.group(2), position=m.group(5), raw=line)
 
         # -- Flip summon --
         m = _FLIP_SUMMON_RE.match(line)
         if m:
+            player = m.group(1)
+            opp = self._is_opponent_player(player)
             return ParsedEvent(
-                EventType.FLIP_SUMMON, player=m.group(1),
+                EventType.FLIP_SUMMON, player=player, is_opponent=opp,
                 card_name=m.group(2), card_spec=m.group(3), raw=line)
 
         # -- Set --
