@@ -174,8 +174,10 @@ class MUDGameState:
             spec=ev.card_spec,
         )
         if ev.is_opponent:
+            self.opp_hand_count = max(0, self.opp_hand_count - 1)
             self.opp_mzone.append(entry)
         else:
+            self._remove_from_hand(ev.card_name)
             self.my_mzone.append(entry)
 
     def _on_sp_summon(self, ev: ParsedEvent) -> None:
@@ -187,8 +189,11 @@ class MUDGameState:
             spec=ev.card_spec,
         )
         if ev.is_opponent:
+            self.opp_hand_count = max(0, self.opp_hand_count - 1)
             self.opp_mzone.append(entry)
         else:
+            # Speculatively remove from hand — no-op if card isn't there
+            self._remove_from_hand(ev.card_name)
             # Guarded heuristic: remove from extra deck if the card is NOT
             # already in GY or banished (those are revival targets, not
             # extra deck summons).
@@ -226,6 +231,11 @@ class MUDGameState:
             position=ev.position,
             spec=ev.card_spec,
         )
+        # Remove from hand — card leaves hand when set
+        if ev.is_opponent:
+            self.opp_hand_count = max(0, self.opp_hand_count - 1)
+        else:
+            self._remove_from_hand(ev.card_name)
         # Determine zone from spec: "m*"/"om*" = monster, "s*"/"os*" = spell/trap
         raw_spec = ev.card_spec.lstrip("o") if ev.card_spec.startswith("o") else ev.card_spec
         if raw_spec.startswith("s"):
@@ -256,7 +266,12 @@ class MUDGameState:
         pass  # Attack declaration doesn't change zone state
 
     def _on_chaining(self, ev: ParsedEvent) -> None:
-        pass  # Chain activation doesn't move cards
+        # Hand activations (hand traps, quick-play spells) remove from hand
+        spec = ev.card_spec or ""
+        if spec.startswith("oh"):
+            self.opp_hand_count = max(0, self.opp_hand_count - 1)
+        elif spec.startswith("h"):
+            self._remove_from_hand(ev.card_name)
 
     def _on_destroy(self, ev: ParsedEvent) -> None:
         # Destroy removes from field; the subsequent TO_GRAVEYARD/BANISHED
@@ -264,10 +279,17 @@ class MUDGameState:
         self._remove_from_field(ev.card_spec, ev.card_name)
 
     def _on_to_graveyard(self, ev: ParsedEvent) -> None:
-        removed = self._remove_from_field(ev.card_spec, ev.card_name)
+        spec = ev.card_spec or ""
+        removed = self._remove_from_field(spec, ev.card_name)
         if not removed:
-            removed = self._remove_from_nonfield(
-                ev.card_spec, ev.card_name, ev.is_opponent)
+            # Try hand removal for hand-sourced cards (h/oh prefix)
+            if spec.startswith("oh"):
+                self.opp_hand_count = max(0, self.opp_hand_count - 1)
+            elif spec.startswith("h"):
+                removed = self._remove_from_hand(ev.card_name)
+            else:
+                removed = self._remove_from_nonfield(
+                    spec, ev.card_name, ev.is_opponent)
         entry = removed or CardEntry(
             name=ev.card_name,
             code=self._resolve_code(ev.card_name),
@@ -280,10 +302,17 @@ class MUDGameState:
             self.my_graveyard.append(entry)
 
     def _on_banished(self, ev: ParsedEvent) -> None:
-        removed = self._remove_from_field(ev.card_spec, ev.card_name)
+        spec = ev.card_spec or ""
+        removed = self._remove_from_field(spec, ev.card_name)
         if not removed:
-            removed = self._remove_from_nonfield(
-                ev.card_spec, ev.card_name, ev.is_opponent)
+            # Try hand removal for hand-sourced cards (h/oh prefix)
+            if spec.startswith("oh"):
+                self.opp_hand_count = max(0, self.opp_hand_count - 1)
+            elif spec.startswith("h"):
+                removed = self._remove_from_hand(ev.card_name)
+            else:
+                removed = self._remove_from_nonfield(
+                    spec, ev.card_name, ev.is_opponent)
         entry = removed or CardEntry(
             name=ev.card_name,
             code=self._resolve_code(ev.card_name),

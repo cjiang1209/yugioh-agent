@@ -260,6 +260,96 @@ class TestSummon:
         assert len(gs.opp_szone) == 0
         assert gs.opp_mzone[0].spec == "om1"
 
+    # -- Fix 1: own summon/set removes from hand --
+
+    def test_summon_removes_from_hand(self, gs: MUDGameState):
+        """Normal summon should remove the card from own hand."""
+        gs.my_hand.append(CardEntry(
+            name="Dark Magician", code=46986414, spec="h1"))
+        gs.update(_ev(
+            EventType.SUMMON, player="P1",
+            card_name="Dark Magician", card_spec="m1",
+            position="face-up attack"))
+        assert len(gs.my_hand) == 0
+        assert len(gs.my_mzone) == 1
+
+    def test_set_removes_from_hand(self, gs: MUDGameState):
+        """Setting a monster should remove from own hand."""
+        gs.my_hand.append(CardEntry(
+            name="Kuriboh", code=40640057, spec="h1"))
+        gs.update(_ev(
+            EventType.SET, player="you", card_spec="m1",
+            card_name="Kuriboh", position="face-down defense"))
+        assert len(gs.my_hand) == 0
+        assert len(gs.my_mzone) == 1
+
+    def test_set_spell_removes_from_hand(self, gs: MUDGameState):
+        """Setting a spell/trap should remove from own hand."""
+        gs.my_hand.append(CardEntry(
+            name="Mirror Force", code=44095762, spec="h1"))
+        gs.update(_ev(
+            EventType.SET, player="you", card_spec="s1",
+            card_name="Mirror Force", position="face-down"))
+        assert len(gs.my_hand) == 0
+        assert len(gs.my_szone) == 1
+
+    def test_sp_summon_removes_from_hand(self, gs: MUDGameState):
+        """Special summon should speculatively remove from hand."""
+        gs.my_hand.append(CardEntry(
+            name="Dark Magician", code=46986414, spec="h1"))
+        gs.update(_ev(
+            EventType.SP_SUMMON, player="P1",
+            card_name="Dark Magician", position="face-up attack"))
+        assert len(gs.my_hand) == 0
+        assert len(gs.my_mzone) == 1
+
+    def test_sp_summon_from_gy_doesnt_remove_hand(self, gs: MUDGameState):
+        """SP summon from GY: hand card with same name should NOT be removed
+        if card isn't actually in hand (speculative removal is a no-op)."""
+        gs.my_graveyard.append(CardEntry(
+            name="Dark Magician", code=46986414))
+        # No Dark Magician in hand
+        gs.update(_ev(
+            EventType.SP_SUMMON, player="P1",
+            card_name="Dark Magician", position="face-up attack"))
+        assert len(gs.my_hand) == 0
+        assert len(gs.my_mzone) == 1
+
+    # -- Fix 2: opponent summon/set decrements opp_hand_count --
+
+    def test_opp_summon_decrements_hand(self, gs: MUDGameState):
+        """Opponent normal summon should decrement opp_hand_count."""
+        gs.opp_hand_count = 5
+        gs.update(_ev(
+            EventType.SUMMON, player="P2", is_opponent=True,
+            card_name="Blue-Eyes White Dragon", position="face-up attack"))
+        assert gs.opp_hand_count == 4
+        assert len(gs.opp_mzone) == 1
+
+    def test_opp_set_decrements_hand(self, gs: MUDGameState):
+        """Opponent set should decrement opp_hand_count."""
+        gs.opp_hand_count = 3
+        gs.update(_ev(
+            EventType.SET, player="P2", is_opponent=True,
+            card_spec="om1", position="face-down defense"))
+        assert gs.opp_hand_count == 2
+
+    def test_opp_sp_summon_decrements_hand(self, gs: MUDGameState):
+        """Opponent special summon should decrement opp_hand_count."""
+        gs.opp_hand_count = 4
+        gs.update(_ev(
+            EventType.SP_SUMMON, player="P2", is_opponent=True,
+            card_name="Blue-Eyes White Dragon", position="face-up attack"))
+        assert gs.opp_hand_count == 3
+
+    def test_opp_hand_count_never_negative(self, gs: MUDGameState):
+        """opp_hand_count should never go below 0."""
+        gs.opp_hand_count = 0
+        gs.update(_ev(
+            EventType.SUMMON, player="P2", is_opponent=True,
+            card_name="Blue-Eyes White Dragon", position="face-up attack"))
+        assert gs.opp_hand_count == 0
+
 
 # ---------------------------------------------------------------------------
 # Position change
@@ -368,6 +458,77 @@ class TestMovement:
             EventType.DISCARD, player="P2", is_opponent=True,
             card_spec="h1", card_name="Kuriboh"))
         assert gs.opp_hand_count == 4
+
+    # -- Fix 3: chaining from hand --
+
+    def test_chaining_from_own_hand(self, gs: MUDGameState):
+        """Activating a hand trap (chaining from h-spec) removes from hand."""
+        gs.my_hand.append(CardEntry(
+            name="Kuriboh", code=40640057, spec="h1"))
+        gs.update(_ev(
+            EventType.CHAINING, player="you",
+            card_spec="h1", card_name="Kuriboh"))
+        assert len(gs.my_hand) == 0
+
+    def test_chaining_from_opp_hand(self, gs: MUDGameState):
+        """Opponent activating from hand decrements opp_hand_count."""
+        gs.opp_hand_count = 4
+        gs.update(_ev(
+            EventType.CHAINING, player="P2", is_opponent=True,
+            card_spec="oh3", card_name="Effect Veiler"))
+        assert gs.opp_hand_count == 3
+
+    def test_chaining_from_field_no_hand_removal(self, gs: MUDGameState):
+        """Chaining from field spec should NOT remove from hand."""
+        gs.my_hand.append(CardEntry(
+            name="Mirror Force", code=44095762, spec="h1"))
+        gs.update(_ev(
+            EventType.CHAINING, player="you",
+            card_spec="s1", card_name="Mirror Force"))
+        # Hand should be untouched — chaining from field
+        assert len(gs.my_hand) == 1
+
+    # -- Fix 5: TO_GRAVEYARD from hand --
+
+    def test_to_graveyard_from_own_hand(self, gs: MUDGameState):
+        """Card sent from hand to GY should remove from hand and add to GY."""
+        gs.my_hand.append(CardEntry(
+            name="Kuriboh", code=40640057, spec="h1"))
+        gs.update(_ev(
+            EventType.TO_GRAVEYARD, player="you",
+            card_spec="h1", card_name="Kuriboh"))
+        assert len(gs.my_hand) == 0
+        assert len(gs.my_graveyard) == 1
+        assert gs.my_graveyard[0].name == "Kuriboh"
+
+    def test_to_graveyard_from_opp_hand(self, gs: MUDGameState):
+        """Opponent card sent from hand to GY should decrement opp_hand_count."""
+        gs.opp_hand_count = 3
+        gs.update(_ev(
+            EventType.TO_GRAVEYARD, player="P2", is_opponent=True,
+            card_spec="oh2", card_name="Effect Veiler"))
+        assert gs.opp_hand_count == 2
+        assert len(gs.opp_graveyard) == 1
+
+    def test_banished_from_own_hand(self, gs: MUDGameState):
+        """Card banished from hand should remove from hand."""
+        gs.my_hand.append(CardEntry(
+            name="Kuriboh", code=40640057, spec="h1"))
+        gs.update(_ev(
+            EventType.BANISHED, player="you",
+            card_spec="h1", card_name="Kuriboh"))
+        assert len(gs.my_hand) == 0
+        assert len(gs.my_banished) == 1
+        assert gs.my_banished[0].name == "Kuriboh"
+
+    def test_banished_from_opp_hand(self, gs: MUDGameState):
+        """Opponent card banished from hand should decrement opp_hand_count."""
+        gs.opp_hand_count = 2
+        gs.update(_ev(
+            EventType.BANISHED, player="P2", is_opponent=True,
+            card_spec="oh1", card_name="Effect Veiler"))
+        assert gs.opp_hand_count == 1
+        assert len(gs.opp_banished) == 1
 
 
 # ---------------------------------------------------------------------------
