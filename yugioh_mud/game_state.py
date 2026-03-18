@@ -156,13 +156,15 @@ class MUDGameState:
     def _on_draw(self, ev: ParsedEvent) -> None:
         if ev.is_opponent:
             self.opp_hand_count += ev.amount
-        else:
-            # We don't know card names from "Drew N cards:" alone.
-            # Individual card lines following the draw header are not
-            # parsed as separate events (they're sub-lines of the draw
-            # message). For now, add unknown entries.
-            for _ in range(ev.amount):
-                self.my_hand.append(CardEntry())
+        # Own draws are handled by DRAW_CARD sub-events with card names.
+        # No blank entries appended here.
+
+    def _on_draw_card(self, ev: ParsedEvent) -> None:
+        """Handle individual drawn card (sub-line after 'Drew N cards:')."""
+        self.my_hand.append(CardEntry(
+            name=ev.card_name,
+            code=self._resolve_code(ev.card_name),
+        ))
 
     def _on_summon(self, ev: ParsedEvent) -> None:
         entry = CardEntry(
@@ -340,6 +342,45 @@ class MUDGameState:
             self._remove_from_hand(ev.card_name)
         # Discarded card goes to GY — tracked by subsequent TO_GRAVEYARD event
 
+    def _on_control_change(self, ev: ParsedEvent) -> None:
+        """Card changed controller — move between own/opp field zones."""
+        removed = self._remove_from_field(ev.card_spec, ev.card_name)
+        entry = removed or CardEntry(
+            name=ev.card_name,
+            code=self._resolve_code(ev.card_name),
+        )
+        entry.spec = ev.target_spec
+        # Card moved to the other player's field
+        is_now_opponent = not ev.is_opponent
+        self._add_to_field(entry, ev.target_spec, is_now_opponent)
+
+    def _on_zone_switch(self, ev: ParsedEvent) -> None:
+        """Card switched zones (same controller) — update spec."""
+        removed = self._remove_from_field(ev.card_spec, ev.card_name)
+        entry = removed or CardEntry(
+            name=ev.card_name,
+            code=self._resolve_code(ev.card_name),
+        )
+        entry.spec = ev.target_spec
+        self._add_to_field(entry, ev.target_spec, ev.is_opponent)
+
+    def _on_swap(self, ev: ParsedEvent) -> None:
+        """Swap control (swap.py) — card moved to new controller.
+
+        Swap events fire once per card (two events for a full swap).
+        We remove from any field zone and re-add at the target spec.
+        The ``player`` field on swap events is empty — we determine
+        the destination from ``target_spec`` prefix (``o`` = opponent).
+        """
+        removed = self._remove_from_field("", ev.card_name)
+        entry = removed or CardEntry(
+            name=ev.card_name,
+            code=self._resolve_code(ev.card_name),
+        )
+        entry.spec = ev.target_spec
+        is_opp = ev.target_spec.startswith("o")
+        self._add_to_field(entry, ev.target_spec, is_opp)
+
     def _on_equip(self, ev: ParsedEvent) -> None:
         pass  # Equip doesn't change zone membership
 
@@ -363,11 +404,12 @@ class MUDGameState:
         for zone in (self.my_mzone, self.my_szone,
                      self.opp_mzone, self.opp_szone):
             for i, card in enumerate(zone):
-                if card.spec == spec:
+                if spec and card.spec == spec:
                     return zone.pop(i)
-                # Also match by name if spec doesn't match (spec may
-                # have changed after zone switches)
-                if name and card.name == name and not card.spec:
+                # Also match by name if spec doesn't match or is empty
+                # (spec may have changed after zone switches, or swap
+                # events don't carry the source spec)
+                if name and card.name == name and (not card.spec or not spec):
                     return zone.pop(i)
         return None
 
@@ -645,6 +687,7 @@ _EVENT_HANDLERS: dict[EventType, Callable[[MUDGameState, ParsedEvent], None]] = 
     EventType.RECOVER: MUDGameState._on_recover,
     EventType.PAY_LP: MUDGameState._on_pay_lp,
     EventType.DRAW: MUDGameState._on_draw,
+    EventType.DRAW_CARD: MUDGameState._on_draw_card,
     EventType.SUMMON: MUDGameState._on_summon,
     EventType.SP_SUMMON: MUDGameState._on_sp_summon,
     EventType.FLIP_SUMMON: MUDGameState._on_flip_summon,
@@ -662,6 +705,9 @@ _EVENT_HANDLERS: dict[EventType, Callable[[MUDGameState, ParsedEvent], None]] = 
     EventType.FROM_BANISHED_TO_FIELD: MUDGameState._on_from_banished_to_field,
     EventType.TRIBUTE: MUDGameState._on_tribute,
     EventType.DISCARD: MUDGameState._on_discard,
+    EventType.CONTROL_CHANGE: MUDGameState._on_control_change,
+    EventType.ZONE_SWITCH: MUDGameState._on_zone_switch,
+    EventType.SWAP: MUDGameState._on_swap,
     EventType.EQUIP: MUDGameState._on_equip,
     EventType.SHUFFLE: MUDGameState._on_shuffle,
     EventType.WIN: MUDGameState._on_win,

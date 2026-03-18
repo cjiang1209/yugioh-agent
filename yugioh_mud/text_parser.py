@@ -47,6 +47,10 @@ class EventType(Enum):
     TRIBUTE = auto()
     DISCARD = auto()
     EQUIP = auto()
+    DRAW_CARD = auto()
+    CONTROL_CHANGE = auto()
+    ZONE_SWITCH = auto()
+    SWAP = auto()
     SHUFFLE = auto()
     WIN = auto()
     LOSE = auto()
@@ -302,6 +306,33 @@ _EQUIP_RE = re.compile(r"^(.+?) equipped to (.+?)\.$")
 _YOUR_SHUFFLE_RE = re.compile(r"^you shuffled your deck\.$")
 _OPP_SHUFFLE_RE = re.compile(r"^(.+?) shuffled their deck\.$")
 
+# Draw sub-line: "1. Dark Magician" (numbered card after "Drew N cards:")
+_DRAW_SUBLINE_RE = re.compile(r"^\d+\. (.+)$")
+
+# Control change (move.py: same location, different controller)
+# Player: "your card {spec} ({name}) changed controller to {op} and is now located at {targetspec}."
+# Opponent: "you now control {plname}s card {spec} ({name}) and its located at {targetspec}."
+_YOUR_CTRL_CHANGE_RE = re.compile(
+    r"^your card (.+?) \((.+?)\) changed controller to (.+?) "
+    r"and is now located at (.+?)\.$")
+_OPP_CTRL_CHANGE_RE = re.compile(
+    r"^you now control (.+?)s card (.+?) \((.+?)\) "
+    r"and its located at (.+?)\.$")
+
+# Zone switch (move.py: same location, same controller)
+# Player: "your card {spec} ({name}) switched its zone to {targetspec}."
+# Opponent: "{plname}s card {spec} ({name}) changed its zone to {targetspec}."
+_YOUR_ZONE_SWITCH_RE = re.compile(
+    r"^your card (.+?) \((.+?)\) switched its zone to (.+?)\.$")
+_OPP_ZONE_SWITCH_RE = re.compile(
+    r"^(.+?)s card (.+?) \((.+?)\) changed its zone to (.+?)\.$")
+
+# Swap (swap.py: control swap)
+# "card {name} swapped control towards {plname} and is now located at {targetspec}."
+_SWAP_RE = re.compile(
+    r"^card (.+?) swapped control towards (.+?) "
+    r"and is now located at (.+?)\.$")
+
 # Win/Lose: "You won ({reason})." / "You lost ({reason})."
 _WIN_RE = re.compile(r"^You won \((.+?)\)\.$")
 _LOSE_RE = re.compile(r"^You lost \((.+?)\)\.$")
@@ -334,6 +365,8 @@ class MUDTextParser:
         # Context flags
         self._idle_context = False
         self._battle_context = False
+        # Draw sub-line tracking
+        self._draw_remaining: int = 0
 
     def _is_opponent_player(self, player: str) -> bool:
         """Return True if *player* is not our own nickname."""
@@ -355,21 +388,41 @@ class MUDTextParser:
         Lines containing embedded newlines (some MUD server messages pack
         multiple logical lines into one WebSocket frame) are split and
         processed individually; the first resulting prompt or event (if any)
-        is returned.
+        is returned.  Use :meth:`feed_line_all` to receive *all* results.
         """
-        # Handle embedded newlines from single WebSocket frames
+        results = self.feed_line_all(line)
+        return results[0] if results else None
+
+    def feed_line_all(self, line: str) -> list[ParsedPrompt | ParsedEvent]:
+        """Feed a line (possibly multi-line) and return *all* parsed results.
+
+        Unlike :meth:`feed_line`, this returns every event and prompt from
+        a WebSocket frame that contains embedded newlines, ensuring none are
+        silently dropped.
+        """
         if "\n" in line:
-            result: ParsedPrompt | ParsedEvent | None = None
+            results: list[ParsedPrompt | ParsedEvent] = []
             for sub in line.split("\n"):
                 sub = sub.strip()
                 if sub:
                     r = self._feed_single(sub)
-                    if r is not None and result is None:
-                        result = r
-            return result
-        return self._feed_single(line)
+                    if r is not None:
+                        results.append(r)
+            return results
+        r = self._feed_single(line)
+        return [r] if r is not None else []
 
     def _feed_single(self, line: str) -> ParsedPrompt | ParsedEvent | None:
+        # Draw sub-lines: after "Drew N cards:", numbered card lines follow
+        if self._draw_remaining > 0:
+            m = _DRAW_SUBLINE_RE.match(line)
+            if m:
+                self._draw_remaining -= 1
+                return ParsedEvent(
+                    EventType.DRAW_CARD, player="you",
+                    card_name=m.group(1), raw=line)
+            # Non-matching line ends draw sub-line sequence
+            self._draw_remaining = 0
         if self._mode == _Mode.ACCUMULATING:
             return self._accumulate(line)
         return self._scan(line)
@@ -693,9 +746,11 @@ class MUDTextParser:
         # -- Draw --
         m = _YOUR_DRAW_RE.match(line)
         if m:
+            count = int(m.group(1))
+            self._draw_remaining = count
             return ParsedEvent(
                 EventType.DRAW, player="you",
-                amount=int(m.group(1)), raw=line)
+                amount=count, raw=line)
         m = _OPP_DRAW_RE.match(line)
         if m:
             nick = m.group(1) or "Opponent"
@@ -909,6 +964,41 @@ class MUDTextParser:
             return ParsedEvent(
                 EventType.SHUFFLE, player=m.group(1),
                 is_opponent=True, raw=line)
+
+        # -- Control change --
+        m = _YOUR_CTRL_CHANGE_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.CONTROL_CHANGE, player="you",
+                card_spec=m.group(1), card_name=m.group(2),
+                target_spec=m.group(4), raw=line)
+        m = _OPP_CTRL_CHANGE_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.CONTROL_CHANGE, player=m.group(1),
+                is_opponent=True, card_spec=m.group(2),
+                card_name=m.group(3), target_spec=m.group(4), raw=line)
+
+        # -- Zone switch --
+        m = _YOUR_ZONE_SWITCH_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.ZONE_SWITCH, player="you",
+                card_spec=m.group(1), card_name=m.group(2),
+                target_spec=m.group(3), raw=line)
+        m = _OPP_ZONE_SWITCH_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.ZONE_SWITCH, player=m.group(1),
+                is_opponent=True, card_spec=m.group(2),
+                card_name=m.group(3), target_spec=m.group(4), raw=line)
+
+        # -- Swap --
+        m = _SWAP_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.SWAP, card_name=m.group(1),
+                target_spec=m.group(3), raw=line)
 
         # -- Win / Lose --
         m = _WIN_RE.match(line)

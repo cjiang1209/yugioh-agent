@@ -599,6 +599,46 @@ class TestEventDraw:
         assert ev.amount == 2
 
 
+class TestEventDrawSublines:
+    """Draw sub-lines: '1. Card Name' after 'Drew N cards:'."""
+
+    def test_draw_sublines_emit_draw_card(self, parser: MUDTextParser):
+        ev = parser.feed_line("Drew 2 cards:")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.DRAW
+
+        ev = parser.feed_line("1. Dark Magician")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.DRAW_CARD
+        assert ev.card_name == "Dark Magician"
+
+        ev = parser.feed_line("2. Blue-Eyes White Dragon")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.DRAW_CARD
+        assert ev.card_name == "Blue-Eyes White Dragon"
+
+    def test_draw_remaining_resets_on_non_match(self, parser: MUDTextParser):
+        parser.feed_line("Drew 3 cards:")
+        parser.feed_line("1. Dark Magician")
+        # Feed a non-draw-subline; remaining should reset
+        ev = parser.feed_line("entering main1 phase.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.NEW_PHASE
+
+    def test_no_draw_sublines_without_header(self, parser: MUDTextParser):
+        """'1. Card' without prior draw header is not a DRAW_CARD."""
+        ev = parser.feed_line("1. Dark Magician")
+        assert ev is None  # no draw context
+
+    def test_opp_draw_no_sublines(self, parser: MUDTextParser):
+        ev = parser.feed_line("Opponent drew 2 cards.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.DRAW
+        # No sublines expected for opponent
+        ev = parser.feed_line("1. Something")
+        assert ev is None  # _draw_remaining not set for opp
+
+
 class TestEventSummon:
     def test_normal_summon(self, parser: MUDTextParser):
         ev = parser.feed_line(
@@ -1010,3 +1050,116 @@ class TestMultiPrompt:
             "Do you want to use the effect from Mirror Force in s1?")
         assert prompt is not None
         assert prompt.prompt_type == PromptType.SELECT_EFFECTYN
+
+
+# ---------------------------------------------------------------------------
+# Control change / Zone switch / Swap events
+# ---------------------------------------------------------------------------
+
+class TestEventControlChange:
+    def test_your_control_change(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "your card m1 (Dark Magician) changed controller to Player2 "
+            "and is now located at om2.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.CONTROL_CHANGE
+        assert ev.player == "you"
+        assert ev.is_opponent is False
+        assert ev.card_spec == "m1"
+        assert ev.card_name == "Dark Magician"
+        assert ev.target_spec == "om2"
+
+    def test_opp_control_change(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "you now control Player2s card om1 (Blue-Eyes White Dragon) "
+            "and its located at m3.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.CONTROL_CHANGE
+        assert ev.is_opponent is True
+        assert ev.card_spec == "om1"
+        assert ev.card_name == "Blue-Eyes White Dragon"
+        assert ev.target_spec == "m3"
+
+
+class TestEventZoneSwitch:
+    def test_your_zone_switch(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "your card m1 (Dark Magician) switched its zone to m3.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.ZONE_SWITCH
+        assert ev.player == "you"
+        assert ev.card_spec == "m1"
+        assert ev.card_name == "Dark Magician"
+        assert ev.target_spec == "m3"
+
+    def test_opp_zone_switch(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "Player2s card om1 (Blue-Eyes White Dragon) "
+            "changed its zone to om3.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.ZONE_SWITCH
+        assert ev.is_opponent is True
+        assert ev.card_spec == "om1"
+        assert ev.card_name == "Blue-Eyes White Dragon"
+        assert ev.target_spec == "om3"
+
+
+class TestEventSwap:
+    def test_swap(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "card Dark Magician swapped control towards Player2 "
+            "and is now located at om1.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.SWAP
+        assert ev.card_name == "Dark Magician"
+        assert ev.target_spec == "om1"
+
+
+# ---------------------------------------------------------------------------
+# feed_line_all — multi-event WebSocket frames
+# ---------------------------------------------------------------------------
+
+class TestFeedLineAll:
+    """feed_line_all returns ALL results from multi-line frames."""
+
+    def test_single_line_event(self, parser: MUDTextParser):
+        results = parser.feed_line_all("Your turn.")
+        assert len(results) == 1
+        assert isinstance(results[0], ParsedEvent)
+        assert results[0].event_type == EventType.NEW_TURN
+
+    def test_single_line_none(self, parser: MUDTextParser):
+        results = parser.feed_line_all("some unrecognised line")
+        assert results == []
+
+    def test_multi_event_frame(self, parser: MUDTextParser):
+        """Multiple events in one WebSocket frame are all returned."""
+        frame = "Your turn.\nentering draw phase."
+        results = parser.feed_line_all(frame)
+        assert len(results) == 2
+        assert results[0].event_type == EventType.NEW_TURN
+        assert results[1].event_type == EventType.NEW_PHASE
+
+    def test_multi_event_with_unrecognised(self, parser: MUDTextParser):
+        """Unrecognised lines between events are skipped."""
+        frame = "Your turn.\nsome noise\nentering draw phase."
+        results = parser.feed_line_all(frame)
+        assert len(results) == 2
+
+    def test_feed_line_returns_first(self, parser: MUDTextParser):
+        """feed_line (single-result) returns first result only."""
+        frame = "Your turn.\nentering draw phase."
+        result = parser.feed_line(frame)
+        assert isinstance(result, ParsedEvent)
+        assert result.event_type == EventType.NEW_TURN
+
+    def test_event_and_prompt_in_frame(self, parser: MUDTextParser):
+        """Frame with both event and prompt returns both via feed_line_all."""
+        frame = ("Your lp decreased by 1000, now 7000\n"
+                 "Do you want to use the effect from Trap Card in s1?")
+        results = parser.feed_line_all(frame)
+        assert len(results) == 2
+        assert isinstance(results[0], ParsedEvent)
+        assert results[0].event_type == EventType.DAMAGE
+        assert isinstance(results[1], ParsedPrompt)
+        assert results[1].prompt_type == PromptType.SELECT_EFFECTYN

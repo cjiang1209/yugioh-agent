@@ -135,18 +135,35 @@ class TestLP:
 # ---------------------------------------------------------------------------
 
 class TestDraw:
-    def test_my_draw(self, gs: MUDGameState):
+    def test_my_draw_header_does_not_add_blanks(self, gs: MUDGameState):
+        """DRAW event alone no longer adds blank entries — DRAW_CARD does."""
         gs.update(_ev(EventType.DRAW, player="you", amount=5))
-        assert len(gs.my_hand) == 5
+        assert len(gs.my_hand) == 0
+
+    def test_my_draw_card_adds_named_entry(self, gs: MUDGameState):
+        gs.update(_ev(EventType.DRAW, player="you", amount=2))
+        gs.update(_ev(EventType.DRAW_CARD, player="you",
+                       card_name="Dark Magician"))
+        gs.update(_ev(EventType.DRAW_CARD, player="you",
+                       card_name="Blue-Eyes White Dragon"))
+        assert len(gs.my_hand) == 2
+        assert gs.my_hand[0].name == "Dark Magician"
+        assert gs.my_hand[0].code == 46986414
+        assert gs.my_hand[1].name == "Blue-Eyes White Dragon"
+        assert gs.my_hand[1].code == 89631139
 
     def test_opp_draw(self, gs: MUDGameState):
         gs.update(_ev(EventType.DRAW, player="P2", is_opponent=True, amount=5))
         assert gs.opp_hand_count == 5
 
     def test_multiple_draws(self, gs: MUDGameState):
-        gs.update(_ev(EventType.DRAW, player="you", amount=5))
+        gs.update(_ev(EventType.DRAW, player="you", amount=3))
+        for name in ("Dark Magician", "Blue-Eyes White Dragon", "Red-Eyes Black Dragon"):
+            gs.update(_ev(EventType.DRAW_CARD, player="you", card_name=name))
         gs.update(_ev(EventType.DRAW, player="you", amount=1))
-        assert len(gs.my_hand) == 6
+        gs.update(_ev(EventType.DRAW_CARD, player="you",
+                       card_name="Dark Magician"))
+        assert len(gs.my_hand) == 4
 
 
 # ---------------------------------------------------------------------------
@@ -598,6 +615,71 @@ class TestNonfieldRemoval:
 
 
 # ---------------------------------------------------------------------------
+# Control change / Zone switch / Swap
+# ---------------------------------------------------------------------------
+
+class TestControlChange:
+    def test_your_card_changes_controller(self, gs: MUDGameState):
+        """Our card on m1 moves to opponent's field at om2."""
+        gs.my_mzone.append(CardEntry(
+            name="Dark Magician", code=46986414, spec="m1"))
+        gs.update(_ev(
+            EventType.CONTROL_CHANGE, player="you",
+            card_spec="m1", card_name="Dark Magician",
+            target_spec="om2"))
+        assert len(gs.my_mzone) == 0
+        assert len(gs.opp_mzone) == 1
+        assert gs.opp_mzone[0].name == "Dark Magician"
+        assert gs.opp_mzone[0].spec == "om2"
+
+    def test_opp_card_changes_to_us(self, gs: MUDGameState):
+        """Opponent's card comes to our field."""
+        gs.opp_mzone.append(CardEntry(
+            name="Blue-Eyes White Dragon", code=89631139, spec="om1"))
+        gs.update(_ev(
+            EventType.CONTROL_CHANGE, player="P2", is_opponent=True,
+            card_spec="om1", card_name="Blue-Eyes White Dragon",
+            target_spec="m3"))
+        assert len(gs.opp_mzone) == 0
+        assert len(gs.my_mzone) == 1
+        assert gs.my_mzone[0].spec == "m3"
+
+
+class TestZoneSwitch:
+    def test_my_card_switches_zone(self, gs: MUDGameState):
+        gs.my_mzone.append(CardEntry(
+            name="Dark Magician", code=46986414, spec="m1"))
+        gs.update(_ev(
+            EventType.ZONE_SWITCH, player="you",
+            card_spec="m1", card_name="Dark Magician",
+            target_spec="m3"))
+        assert len(gs.my_mzone) == 1
+        assert gs.my_mzone[0].spec == "m3"
+
+    def test_opp_card_switches_zone(self, gs: MUDGameState):
+        gs.opp_mzone.append(CardEntry(
+            name="Blue-Eyes White Dragon", code=89631139, spec="om1"))
+        gs.update(_ev(
+            EventType.ZONE_SWITCH, player="P2", is_opponent=True,
+            card_spec="om1", card_name="Blue-Eyes White Dragon",
+            target_spec="om3"))
+        assert len(gs.opp_mzone) == 1
+        assert gs.opp_mzone[0].spec == "om3"
+
+
+class TestSwap:
+    def test_swap_moves_card(self, gs: MUDGameState):
+        gs.my_mzone.append(CardEntry(
+            name="Dark Magician", code=46986414, spec="m1"))
+        gs.update(_ev(
+            EventType.SWAP, card_name="Dark Magician",
+            target_spec="om2"))
+        assert len(gs.my_mzone) == 0
+        assert len(gs.opp_mzone) == 1
+        assert gs.opp_mzone[0].spec == "om2"
+
+
+# ---------------------------------------------------------------------------
 # _parse_card_line
 # ---------------------------------------------------------------------------
 
@@ -781,6 +863,8 @@ class TestEventSequence:
         gs.update(_ev(EventType.NEW_TURN, player="you"))
         gs.update(_ev(EventType.NEW_PHASE, phase="draw phase"))
         gs.update(_ev(EventType.DRAW, player="you", amount=1))
+        gs.update(_ev(EventType.DRAW_CARD, player="you",
+                       card_name="Mystical Space Typhoon"))
         gs.update(_ev(EventType.NEW_PHASE, phase="main1 phase"))
 
         # Summon Dark Magician

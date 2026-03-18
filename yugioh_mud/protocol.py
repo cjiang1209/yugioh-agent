@@ -223,28 +223,31 @@ class MUDProtocol:
         if is_duel_end(line):
             # Feed the win/lose event to game state before finishing
             if self._game_state is not None:
-                end_result = self._text_parser.feed_line(line)  # type: ignore[union-attr]
-                if isinstance(end_result, ParsedEvent):
-                    self._game_state.update(end_result)
+                for r in self._text_parser.feed_line_all(line):  # type: ignore[union-attr]
+                    if isinstance(r, ParsedEvent):
+                        self._game_state.update(r)
             logger.info("Duel ended: %s", line)
             self.state = State.FINISHED
             return
 
-        result = self._text_parser.feed_line(line)  # type: ignore[union-attr]
+        results = self._text_parser.feed_line_all(line)  # type: ignore[union-attr]
 
-        # Feed events to game state
-        if isinstance(result, ParsedEvent) and self._game_state is not None:
-            self._game_state.update(result)
-            if self.config.verbose:
-                logger.info(
-                    "[DUEL] event=%s", result.event_type.name)
-            # Trigger resync at start of our turn
-            if (result.event_type == EventType.NEW_TURN
-                    and not result.is_opponent):
-                self._resync_pending = True
+        # Feed events to game state and find prompt (if any)
+        prompt: ParsedPrompt | None = None
+        for result in results:
+            if isinstance(result, ParsedEvent) and self._game_state is not None:
+                self._game_state.update(result)
+                if self.config.verbose:
+                    logger.info(
+                        "[DUEL] event=%s", result.event_type.name)
+                # Trigger resync at start of our turn
+                if (result.event_type == EventType.NEW_TURN
+                        and not result.is_opponent):
+                    self._resync_pending = True
+            elif isinstance(result, ParsedPrompt):
+                prompt = result
 
-        if isinstance(result, ParsedPrompt):
-            prompt = result
+        if prompt is not None:
             # Send resync commands before the IDLE_CMD prompt of our turn.
             # Only resync on IDLE_CMD because informational commands (score,
             # h, tab, tab2) cause the server to re-send the active
@@ -329,13 +332,16 @@ class MUDProtocol:
                 # informational responses (e.g. shuffle notifications)
                 # — update game state but keep reading.  Only break
                 # when the parser produces a prompt (we've overshot).
-                check = self._text_parser.feed_line(resp)  # type: ignore[union-attr]
-                if isinstance(check, ParsedEvent):
-                    if self._game_state is not None:
-                        self._game_state.update(check)
-                    # Don't break — continue reading the response
-                elif isinstance(check, ParsedPrompt):
-                    await self._act_on_prompt(check)
+                found_prompt = False
+                for check in self._text_parser.feed_line_all(resp):  # type: ignore[union-attr]
+                    if isinstance(check, ParsedEvent):
+                        if self._game_state is not None:
+                            self._game_state.update(check)
+                        # Don't break — continue reading the response
+                    elif isinstance(check, ParsedPrompt):
+                        await self._act_on_prompt(check)
+                        found_prompt = True
+                if found_prompt:
                     return
                 if is_duel_end(resp):
                     logger.info("Duel ended during resync: %s", resp)

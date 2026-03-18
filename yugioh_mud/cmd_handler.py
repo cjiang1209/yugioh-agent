@@ -123,7 +123,7 @@ def _resolve_card_code(
         LOCATION_SZONE: game_state.my_szone,
         LOCATION_GRAVE: game_state.my_graveyard,
         LOCATION_REMOVED: game_state.my_banished,
-        # LOCATION_EXTRA: extra deck not tracked by MUDGameState
+        LOCATION_EXTRA: game_state.my_extra,
     }.get(loc)
     if zone is None:
         return 0
@@ -148,15 +148,21 @@ async def _recv_and_process(
     if verbose:
         logger.info("[CMD_HANDLER] recv: %s", line)
     if is_duel_end(line):
-        # Feed the end event before raising
-        result = text_parser.feed_line(line)
-        if isinstance(result, ParsedEvent) and game_state is not None:
-            game_state.update(result)
+        # Feed all events before raising
+        for r in text_parser.feed_line_all(line):
+            if isinstance(r, ParsedEvent) and game_state is not None:
+                game_state.update(r)
         raise DuelEndedError(line)
-    result = text_parser.feed_line(line)
-    if isinstance(result, ParsedEvent) and game_state is not None:
-        game_state.update(result)
-    return line, result
+    results = text_parser.feed_line_all(line)
+    prompt_result: object = None
+    for r in results:
+        if isinstance(r, ParsedEvent) and game_state is not None:
+            game_state.update(r)
+        elif isinstance(r, ParsedPrompt):
+            prompt_result = r
+    # Return the prompt if found, otherwise the last result (or None)
+    final = prompt_result or (results[-1] if results else None)
+    return line, final
 
 
 async def _send(conn: Connection, text: str, verbose: bool) -> None:
