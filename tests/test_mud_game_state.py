@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from yugioh_mud.card_lookup import CardNameLookup
-from yugioh_mud.game_state import CardEntry, MUDGameState
+from yugioh_mud.game_state import CardEntry, MUDGameState, _parse_card_line
 from yugioh_mud.text_parser import EventType, ParsedEvent
 
 
@@ -415,6 +415,322 @@ class TestResyncTab:
         ])
         assert len(gs.my_mzone) == 0
         assert len(gs.my_szone) == 0
+
+
+# ---------------------------------------------------------------------------
+# Full event sequence (integration-style)
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Extra deck tracking
+# ---------------------------------------------------------------------------
+
+class TestExtraDeck:
+    def _summon(self, gs, name, spec, opponent=False):
+        gs.update(_ev(
+            EventType.SUMMON, player="P2" if opponent else "P1",
+            is_opponent=opponent,
+            card_name=name, card_spec=spec, position="face-up attack"))
+        zone = gs.opp_mzone if opponent else gs.my_mzone
+        zone[-1].spec = spec
+
+    def test_to_extra_deck_own(self, gs: MUDGameState):
+        self._summon(gs, "Decode Talker", "m1")
+        gs.update(_ev(
+            EventType.TO_EXTRA_DECK, player="you",
+            card_spec="m1", card_name="Decode Talker"))
+        assert len(gs.my_mzone) == 0
+        assert len(gs.my_extra) == 1
+        assert gs.my_extra[0].name == "Decode Talker"
+
+    def test_to_extra_deck_opp(self, gs: MUDGameState):
+        self._summon(gs, "Decode Talker", "m1", opponent=True)
+        gs.update(_ev(
+            EventType.TO_EXTRA_DECK, player="P2", is_opponent=True,
+            card_spec="m1", card_name="Decode Talker"))
+        assert len(gs.opp_mzone) == 0
+        assert len(gs.opp_extra) == 1
+        # Opponent extra — name hidden
+        assert gs.opp_extra[0].name == ""
+
+
+# ---------------------------------------------------------------------------
+# GY/Banished → Field
+# ---------------------------------------------------------------------------
+
+class TestFromGYBanished:
+    def test_from_gy_to_field_own(self, gs: MUDGameState):
+        gs.my_graveyard.append(CardEntry(
+            name="Dark Magician", code=46986414, spec="g1"))
+        gs.update(_ev(
+            EventType.FROM_GY_TO_FIELD, player="you",
+            card_spec="g1", card_name="Dark Magician", target_spec="m2"))
+        assert len(gs.my_graveyard) == 0
+        assert len(gs.my_mzone) == 1
+        assert gs.my_mzone[0].name == "Dark Magician"
+        assert gs.my_mzone[0].spec == "m2"
+
+    def test_from_gy_to_field_opp(self, gs: MUDGameState):
+        gs.opp_graveyard.append(CardEntry(
+            name="Kuriboh", code=40640057, spec="og1"))
+        gs.update(_ev(
+            EventType.FROM_GY_TO_FIELD, player="P2", is_opponent=True,
+            card_spec="og1", card_name="Kuriboh", target_spec="om1"))
+        assert len(gs.opp_graveyard) == 0
+        assert len(gs.opp_mzone) == 1
+        assert gs.opp_mzone[0].name == "Kuriboh"
+
+    def test_from_gy_to_szone(self, gs: MUDGameState):
+        gs.my_graveyard.append(CardEntry(
+            name="Mirror Force", code=44095762, spec="g1"))
+        gs.update(_ev(
+            EventType.FROM_GY_TO_FIELD, player="you",
+            card_spec="g1", card_name="Mirror Force", target_spec="s3"))
+        assert len(gs.my_graveyard) == 0
+        assert len(gs.my_szone) == 1
+
+    def test_from_banished_to_field_own(self, gs: MUDGameState):
+        gs.my_banished.append(CardEntry(
+            name="Dark Magician", code=46986414, spec="r1"))
+        gs.update(_ev(
+            EventType.FROM_BANISHED_TO_FIELD, player="you",
+            card_spec="r1", card_name="Dark Magician", target_spec="m3"))
+        assert len(gs.my_banished) == 0
+        assert len(gs.my_mzone) == 1
+        assert gs.my_mzone[0].name == "Dark Magician"
+
+    def test_from_banished_to_field_opp(self, gs: MUDGameState):
+        gs.opp_banished.append(CardEntry(
+            name="Kuriboh", code=40640057, spec="or1"))
+        gs.update(_ev(
+            EventType.FROM_BANISHED_TO_FIELD, player="P2", is_opponent=True,
+            card_spec="or1", card_name="Kuriboh", target_spec="om2"))
+        assert len(gs.opp_banished) == 0
+        assert len(gs.opp_mzone) == 1
+
+
+# ---------------------------------------------------------------------------
+# Non-field zone removal (GY→hand, banished→GY, etc.)
+# ---------------------------------------------------------------------------
+
+class TestNonfieldRemoval:
+    def test_gy_to_hand(self, gs: MUDGameState):
+        gs.my_graveyard.append(CardEntry(
+            name="Dark Magician", code=46986414, spec="g1"))
+        gs.update(_ev(
+            EventType.TO_HAND, player="you",
+            card_spec="g1", card_name="Dark Magician"))
+        assert len(gs.my_graveyard) == 0
+        assert any(c.name == "Dark Magician" for c in gs.my_hand)
+
+    def test_banished_to_gy(self, gs: MUDGameState):
+        gs.my_banished.append(CardEntry(
+            name="Kuriboh", code=40640057, spec="r1"))
+        gs.update(_ev(
+            EventType.TO_GRAVEYARD, player="you",
+            card_spec="r1", card_name="Kuriboh"))
+        assert len(gs.my_banished) == 0
+        assert len(gs.my_graveyard) == 1
+        assert gs.my_graveyard[0].name == "Kuriboh"
+
+    def test_gy_to_banished(self, gs: MUDGameState):
+        gs.my_graveyard.append(CardEntry(
+            name="Dark Magician", code=46986414, spec="g1"))
+        gs.update(_ev(
+            EventType.BANISHED, player="you",
+            card_spec="g1", card_name="Dark Magician"))
+        assert len(gs.my_graveyard) == 0
+        assert len(gs.my_banished) == 1
+
+    def test_banished_to_deck(self, gs: MUDGameState):
+        gs.my_banished.append(CardEntry(
+            name="Dark Magician", code=46986414, spec="r1"))
+        gs.update(_ev(
+            EventType.TO_DECK, player="you",
+            card_spec="r1", card_name="Dark Magician"))
+        assert len(gs.my_banished) == 0
+
+    def test_extra_to_gy(self, gs: MUDGameState):
+        gs.my_extra.append(CardEntry(
+            name="Decode Talker", spec="x1"))
+        gs.update(_ev(
+            EventType.TO_GRAVEYARD, player="you",
+            card_spec="x1", card_name="Decode Talker"))
+        assert len(gs.my_extra) == 0
+        assert len(gs.my_graveyard) == 1
+
+
+# ---------------------------------------------------------------------------
+# _parse_card_line
+# ---------------------------------------------------------------------------
+
+class TestParseCardLine:
+    def test_basic(self):
+        name, pos = _parse_card_line("Dark Magician face-up attack")
+        assert name == "Dark Magician"
+        assert pos == "face-up attack"
+
+    def test_with_level(self):
+        name, pos = _parse_card_line(
+            "Dark Magician face-up attack level 7")
+        assert name == "Dark Magician"
+        assert pos == "face-up attack"
+
+    def test_tricky_name(self):
+        name, pos = _parse_card_line(
+            "Attack Gainer face-up attack level 4")
+        assert name == "Attack Gainer"
+        assert pos == "face-up attack"
+
+    def test_facedown(self):
+        name, pos = _parse_card_line("face-down defense")
+        assert name == ""
+        assert pos == "face-down defense"
+
+    def test_link_rating(self):
+        name, pos = _parse_card_line(
+            "Decode Talker face-up attack link rating 3")
+        assert name == "Decode Talker"
+        assert pos == "face-up attack"
+
+    def test_rank(self):
+        name, pos = _parse_card_line(
+            "Number 39: Utopia face-up attack rank 4")
+        assert name == "Number 39: Utopia"
+        assert pos == "face-up attack"
+
+    def test_face_down_no_level(self):
+        name, pos = _parse_card_line("face down")
+        assert name == ""
+        assert pos == "face down"
+
+    def test_level_warrior(self):
+        """Card named 'Level Warrior' should not be confused with level suffix."""
+        name, pos = _parse_card_line(
+            "Level Warrior face-up attack level 3")
+        assert name == "Level Warrior"
+        assert pos == "face-up attack"
+
+
+# ---------------------------------------------------------------------------
+# Resync — grave
+# ---------------------------------------------------------------------------
+
+class TestResyncGrave:
+    def test_resync_grave_own(self, gs: MUDGameState):
+        gs.resync_grave([
+            "g1 Dark Magician face-up attack level 7",
+            "g2 Kuriboh face-up defense level 1",
+        ])
+        assert len(gs.my_graveyard) == 2
+        assert gs.my_graveyard[0].name == "Dark Magician"
+        assert gs.my_graveyard[0].spec == "g1"
+        assert gs.my_graveyard[0].code == 46986414
+        assert gs.my_graveyard[1].name == "Kuriboh"
+
+    def test_resync_grave_opp(self, gs: MUDGameState):
+        gs.resync_grave([
+            "og1 Blue-Eyes White Dragon face-up attack level 8",
+        ], opponent=True)
+        assert len(gs.opp_graveyard) == 1
+        assert gs.opp_graveyard[0].name == "Blue-Eyes White Dragon"
+        assert gs.opp_graveyard[0].spec == "og1"
+
+    def test_resync_grave_empty(self, gs: MUDGameState):
+        gs.my_graveyard.append(CardEntry(name="stale"))
+        gs.resync_grave(["No cards."])
+        assert len(gs.my_graveyard) == 0
+
+    def test_resync_grave_facedown(self, gs: MUDGameState):
+        gs.resync_grave(["og1 face-down defense"], opponent=True)
+        assert len(gs.opp_graveyard) == 1
+        assert gs.opp_graveyard[0].name == ""
+        assert gs.opp_graveyard[0].position == "face-down defense"
+
+
+# ---------------------------------------------------------------------------
+# Resync — removed
+# ---------------------------------------------------------------------------
+
+class TestResyncRemoved:
+    def test_resync_removed_own(self, gs: MUDGameState):
+        gs.resync_removed([
+            "r1 Dark Magician face-up attack level 7",
+        ])
+        assert len(gs.my_banished) == 1
+        assert gs.my_banished[0].name == "Dark Magician"
+        assert gs.my_banished[0].spec == "r1"
+
+    def test_resync_removed_opp(self, gs: MUDGameState):
+        gs.resync_removed([
+            "or1 Kuriboh face-up defense level 1",
+        ], opponent=True)
+        assert len(gs.opp_banished) == 1
+        assert gs.opp_banished[0].name == "Kuriboh"
+
+    def test_resync_removed_empty(self, gs: MUDGameState):
+        gs.my_banished.append(CardEntry(name="stale"))
+        gs.resync_removed(["No cards."])
+        assert len(gs.my_banished) == 0
+
+
+# ---------------------------------------------------------------------------
+# Resync — extra
+# ---------------------------------------------------------------------------
+
+class TestResyncExtra:
+    def test_resync_extra_own(self, gs: MUDGameState):
+        gs.resync_extra([
+            "x1 Decode Talker face-up attack link rating 3",
+        ])
+        assert len(gs.my_extra) == 1
+        assert gs.my_extra[0].name == "Decode Talker"
+        assert gs.my_extra[0].spec == "x1"
+
+    def test_resync_extra_opp(self, gs: MUDGameState):
+        gs.resync_extra([
+            "ox1 Blue-Eyes White Dragon face-up attack level 8",
+        ], opponent=True)
+        assert len(gs.opp_extra) == 1
+        assert gs.opp_extra[0].name == "Blue-Eyes White Dragon"
+
+    def test_resync_extra_empty(self, gs: MUDGameState):
+        gs.my_extra.append(CardEntry(name="stale"))
+        gs.resync_extra(["No cards."])
+        assert len(gs.my_extra) == 0
+
+    def test_resync_extra_facedown_opp(self, gs: MUDGameState):
+        gs.resync_extra(["ox1 face down"], opponent=True)
+        assert len(gs.opp_extra) == 1
+        assert gs.opp_extra[0].name == ""
+        assert gs.opp_extra[0].position == "face down"
+
+
+# ---------------------------------------------------------------------------
+# Resync — score drift for opp GY and banished
+# ---------------------------------------------------------------------------
+
+class TestResyncScoreDrift:
+    def test_opp_gy_drift(self, gs: MUDGameState, caplog):
+        gs.opp_graveyard = [CardEntry(name="x")] * 3  # tracked: 3
+        import logging
+        with caplog.at_level(logging.WARNING):
+            gs.resync_score(["Grave: You: 0 Opponent: 1"])
+        assert "opp GY drift" in caplog.text
+
+    def test_banished_drift(self, gs: MUDGameState, caplog):
+        gs.my_banished = [CardEntry(name="x")] * 2  # tracked: 2
+        import logging
+        with caplog.at_level(logging.WARNING):
+            gs.resync_score(["Removed: You: 0 Opponent: 0"])
+        assert "banished drift" in caplog.text
+
+    def test_opp_banished_drift(self, gs: MUDGameState, caplog):
+        gs.opp_banished = [CardEntry(name="x")] * 2  # tracked: 2
+        import logging
+        with caplog.at_level(logging.WARNING):
+            gs.resync_score(["Removed: You: 0 Opponent: 0"])
+        assert "opp banished drift" in caplog.text
 
 
 # ---------------------------------------------------------------------------

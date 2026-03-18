@@ -1,8 +1,9 @@
 """MUD duel game state tracker.
 
-Maintains zone contents, LP, turn number, and current phase by consuming
-``ParsedEvent`` objects from the text parser.  Supports periodic resync
-from ground-truth ``hand``/``tab``/``score`` command responses.
+Maintains zone contents (including extra deck), LP, turn number, and current
+phase by consuming ``ParsedEvent`` objects from the text parser.  Supports
+periodic resync from ground-truth ``hand``/``tab``/``score``/``grave``/
+``removed``/``extra`` command responses.
 """
 
 from __future__ import annotations
@@ -54,6 +55,19 @@ _TAB_SPELL_RE = re.compile(r"^(s\d+): (.+?) (face-.+)$")
 # Tab response: face-down (no name) "m{n}: face-down defense" etc.
 _TAB_FACEDOWN_RE = re.compile(r"^([ms]\d+): (face-.+)$")
 
+# Grave/removed/extra response: "{spec} {name} {position} [level N]"
+_GRAVE_CARD_RE = re.compile(r"^(o?g\d+) (.+)$")
+_REMOVED_CARD_RE = re.compile(r"^(o?r\d+) (.+)$")
+_EXTRA_CARD_RE = re.compile(r"^(o?x\d+) (.+)$")
+
+# Suffix patterns for _parse_card_line (right-to-left parsing)
+_LEVEL_SUFFIX_RE = re.compile(r"\s+(?:level|rank|link rating)\s+\d+$", re.IGNORECASE)
+_POSITION_SUFFIXES = (
+    "face-up attack", "face-down attack",
+    "face-up defense", "face-down defense",
+    "face-up", "face down",
+)
+
 
 # ---------------------------------------------------------------------------
 # MUDGameState
@@ -84,6 +98,7 @@ class MUDGameState:
         self.my_szone: list[CardEntry] = []
         self.my_graveyard: list[CardEntry] = []
         self.my_banished: list[CardEntry] = []
+        self.my_extra: list[CardEntry] = []
 
         # Zones — opponent
         self.opp_hand_count: int = 0
@@ -91,6 +106,7 @@ class MUDGameState:
         self.opp_szone: list[CardEntry] = []
         self.opp_graveyard: list[CardEntry] = []
         self.opp_banished: list[CardEntry] = []
+        self.opp_extra: list[CardEntry] = []
 
     def _resolve_code(self, name: str) -> int:
         """Look up passcode for *name*, returning 0 if unknown."""
@@ -207,6 +223,9 @@ class MUDGameState:
 
     def _on_to_graveyard(self, ev: ParsedEvent) -> None:
         removed = self._remove_from_field(ev.card_spec, ev.card_name)
+        if not removed:
+            removed = self._remove_from_nonfield(
+                ev.card_spec, ev.card_name, ev.is_opponent)
         entry = removed or CardEntry(
             name=ev.card_name,
             code=self._resolve_code(ev.card_name),
@@ -219,6 +238,9 @@ class MUDGameState:
 
     def _on_banished(self, ev: ParsedEvent) -> None:
         removed = self._remove_from_field(ev.card_spec, ev.card_name)
+        if not removed:
+            removed = self._remove_from_nonfield(
+                ev.card_spec, ev.card_name, ev.is_opponent)
         entry = removed or CardEntry(
             name=ev.card_name,
             code=self._resolve_code(ev.card_name),
@@ -230,7 +252,10 @@ class MUDGameState:
             self.my_banished.append(entry)
 
     def _on_to_hand(self, ev: ParsedEvent) -> None:
-        self._remove_from_field(ev.card_spec, ev.card_name)
+        removed = self._remove_from_field(ev.card_spec, ev.card_name)
+        if not removed:
+            self._remove_from_nonfield(
+                ev.card_spec, ev.card_name, ev.is_opponent)
         if ev.is_opponent:
             self.opp_hand_count += 1
         else:
@@ -241,12 +266,51 @@ class MUDGameState:
             ))
 
     def _on_to_deck(self, ev: ParsedEvent) -> None:
-        self._remove_from_field(ev.card_spec, ev.card_name)
+        removed = self._remove_from_field(ev.card_spec, ev.card_name)
+        if not removed:
+            self._remove_from_nonfield(
+                ev.card_spec, ev.card_name, ev.is_opponent)
         # Deck contents not tracked
 
     def _on_to_extra_deck(self, ev: ParsedEvent) -> None:
-        self._remove_from_field(ev.card_spec, ev.card_name)
-        # Extra deck contents not tracked
+        removed = self._remove_from_field(ev.card_spec, ev.card_name)
+        if not removed:
+            removed = self._remove_from_nonfield(
+                ev.card_spec, ev.card_name, ev.is_opponent)
+        entry = removed or CardEntry(
+            name=ev.card_name,
+            code=self._resolve_code(ev.card_name),
+            spec=ev.card_spec,
+        )
+        if ev.is_opponent:
+            # Opponent extra deck — name hidden
+            self.opp_extra.append(CardEntry(spec=ev.card_spec))
+        else:
+            self.my_extra.append(entry)
+
+    def _on_from_gy_to_field(self, ev: ParsedEvent) -> None:
+        if ev.is_opponent:
+            self._remove_from_zone(self.opp_graveyard, ev.card_spec, ev.card_name)
+        else:
+            self._remove_from_zone(self.my_graveyard, ev.card_spec, ev.card_name)
+        entry = CardEntry(
+            name=ev.card_name,
+            code=self._resolve_code(ev.card_name),
+            spec=ev.target_spec,
+        )
+        self._add_to_field(entry, ev.target_spec, ev.is_opponent)
+
+    def _on_from_banished_to_field(self, ev: ParsedEvent) -> None:
+        if ev.is_opponent:
+            self._remove_from_zone(self.opp_banished, ev.card_spec, ev.card_name)
+        else:
+            self._remove_from_zone(self.my_banished, ev.card_spec, ev.card_name)
+        entry = CardEntry(
+            name=ev.card_name,
+            code=self._resolve_code(ev.card_name),
+            spec=ev.target_spec,
+        )
+        self._add_to_field(entry, ev.target_spec, ev.is_opponent)
 
     def _on_tribute(self, ev: ParsedEvent) -> None:
         self._remove_from_field(ev.card_spec, ev.card_name)
@@ -289,6 +353,46 @@ class MUDGameState:
                 if name and card.name == name and not card.spec:
                     return zone.pop(i)
         return None
+
+    def _remove_from_zone(
+        self, zone: list[CardEntry], spec: str, name: str = "",
+    ) -> CardEntry | None:
+        """Remove a card from a single zone list by spec or name."""
+        for i, card in enumerate(zone):
+            if card.spec == spec:
+                return zone.pop(i)
+            if name and card.name == name:
+                return zone.pop(i)
+        return None
+
+    def _remove_from_nonfield(
+        self, spec: str, name: str, is_opponent: bool,
+    ) -> CardEntry | None:
+        """Try removing from GY, banished, or extra for the given player."""
+        if is_opponent:
+            zones = [self.opp_graveyard, self.opp_banished, self.opp_extra]
+        else:
+            zones = [self.my_graveyard, self.my_banished, self.my_extra]
+        for zone in zones:
+            removed = self._remove_from_zone(zone, spec, name)
+            if removed:
+                return removed
+        return None
+
+    def _add_to_field(
+        self, entry: CardEntry, target_spec: str, is_opponent: bool,
+    ) -> None:
+        """Add a card entry to the appropriate field zone.
+
+        *target_spec* is e.g. ``"m2"``, ``"s3"``, ``"om2"``, ``"os3"``.
+        For opponent specs the ``"o"`` prefix is stripped before checking.
+        """
+        raw = target_spec.lstrip("o") if target_spec.startswith("o") else target_spec
+        if raw.startswith("m"):
+            zone = self.opp_mzone if is_opponent else self.my_mzone
+        else:
+            zone = self.opp_szone if is_opponent else self.my_szone
+        zone.append(entry)
 
     def _remove_from_hand(self, name: str) -> CardEntry | None:
         """Remove a card from own hand by name."""
@@ -338,6 +442,20 @@ class MUDGameState:
                         logger.warning(
                             "Resync GY drift: tracked %d, actual %d",
                             len(self.my_graveyard), my_count)
+                    if len(self.opp_graveyard) != opp_count:
+                        logger.warning(
+                            "Resync opp GY drift: tracked %d, actual %d",
+                            len(self.opp_graveyard), opp_count)
+                elif label == "Removed":
+                    if len(self.my_banished) != my_count:
+                        logger.warning(
+                            "Resync banished drift: tracked %d, actual %d",
+                            len(self.my_banished), my_count)
+                    if len(self.opp_banished) != opp_count:
+                        logger.warning(
+                            "Resync opp banished drift: tracked %d, "
+                            "actual %d",
+                            len(self.opp_banished), opp_count)
                 continue
 
             if _SCORE_TURN_RE.match(line):
@@ -411,6 +529,96 @@ class MUDGameState:
             self.my_mzone = new_mzone
             self.my_szone = new_szone
 
+    def resync_grave(self, lines: list[str], opponent: bool = False) -> None:
+        """Parse ``grave``/``grave2`` response and overwrite graveyard."""
+        zone = self.opp_graveyard if opponent else self.my_graveyard
+        new_zone = self._parse_zone_lines(lines, _GRAVE_CARD_RE)
+        old_count = len(zone)
+        if opponent:
+            self.opp_graveyard = new_zone
+        else:
+            self.my_graveyard = new_zone
+        if old_count != len(new_zone):
+            prefix = "opp " if opponent else ""
+            logger.warning(
+                "Resync %sGY: %d → %d cards",
+                prefix, old_count, len(new_zone))
+
+    def resync_removed(self, lines: list[str], opponent: bool = False) -> None:
+        """Parse ``removed``/``removed2`` response and overwrite banished."""
+        zone = self.opp_banished if opponent else self.my_banished
+        new_zone = self._parse_zone_lines(lines, _REMOVED_CARD_RE)
+        old_count = len(zone)
+        if opponent:
+            self.opp_banished = new_zone
+        else:
+            self.my_banished = new_zone
+        if old_count != len(new_zone):
+            prefix = "opp " if opponent else ""
+            logger.warning(
+                "Resync %sbanished: %d → %d cards",
+                prefix, old_count, len(new_zone))
+
+    def resync_extra(self, lines: list[str], opponent: bool = False) -> None:
+        """Parse ``extra``/``extra2`` response and overwrite extra deck."""
+        zone = self.opp_extra if opponent else self.my_extra
+        new_zone = self._parse_zone_lines(lines, _EXTRA_CARD_RE)
+        old_count = len(zone)
+        if opponent:
+            self.opp_extra = new_zone
+        else:
+            self.my_extra = new_zone
+        if old_count != len(new_zone):
+            prefix = "opp " if opponent else ""
+            logger.warning(
+                "Resync %sextra: %d → %d cards",
+                prefix, old_count, len(new_zone))
+
+    def _parse_zone_lines(
+        self, lines: list[str], card_re: re.Pattern[str],
+    ) -> list[CardEntry]:
+        """Parse zone command response lines into a list of CardEntry."""
+        new_zone: list[CardEntry] = []
+        for line in lines:
+            if line == "No cards.":
+                break
+            m = card_re.match(line)
+            if m:
+                spec = m.group(1)
+                name, position = _parse_card_line(m.group(2))
+                new_zone.append(CardEntry(
+                    name=name,
+                    code=self._resolve_code(name),
+                    position=position,
+                    spec=spec,
+                ))
+        return new_zone
+
+
+def _parse_card_line(text: str) -> tuple[str, str]:
+    """Parse ``"{name} {position} [level N]"`` into ``(name, position)``.
+
+    Parses right-to-left: strip optional level/rank/link suffix, then strip
+    position string from a closed set, remaining text is the card name.
+    Returns ``("", position)`` for face-down cards (no name visible).
+    """
+    remainder = text.rstrip()
+
+    # 1. Strip optional level/rank/link rating suffix
+    remainder = _LEVEL_SUFFIX_RE.sub("", remainder)
+
+    # 2. Strip position suffix (longest match first — list is pre-sorted)
+    position = ""
+    lower = remainder.lower()
+    for pos in _POSITION_SUFFIXES:
+        if lower.endswith(pos):
+            position = pos
+            remainder = remainder[: len(remainder) - len(pos)].rstrip()
+            break
+
+    name = remainder.strip()
+    return name, position
+
 
 # Handler dispatch table (avoids long if/elif chain in update())
 _EVENT_HANDLERS: dict[EventType, Callable[[MUDGameState, ParsedEvent], None]] = {
@@ -433,6 +641,8 @@ _EVENT_HANDLERS: dict[EventType, Callable[[MUDGameState, ParsedEvent], None]] = 
     EventType.TO_HAND: MUDGameState._on_to_hand,
     EventType.TO_DECK: MUDGameState._on_to_deck,
     EventType.TO_EXTRA_DECK: MUDGameState._on_to_extra_deck,
+    EventType.FROM_GY_TO_FIELD: MUDGameState._on_from_gy_to_field,
+    EventType.FROM_BANISHED_TO_FIELD: MUDGameState._on_from_banished_to_field,
     EventType.TRIBUTE: MUDGameState._on_tribute,
     EventType.DISCARD: MUDGameState._on_discard,
     EventType.EQUIP: MUDGameState._on_equip,

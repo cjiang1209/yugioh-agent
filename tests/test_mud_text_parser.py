@@ -767,6 +767,52 @@ class TestEventMovement:
         assert ev.event_type == EventType.TO_DECK
         assert ev.is_opponent is True
 
+    def test_your_from_gy_to_field(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "your card g1 (Dark Magician) returns from the graveyard "
+            "to the field at m2.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.FROM_GY_TO_FIELD
+        assert ev.player == "you"
+        assert ev.card_spec == "g1"
+        assert ev.card_name == "Dark Magician"
+        assert ev.target_spec == "m2"
+
+    def test_opp_from_gy_to_field(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "Player2s card og1 (Kuriboh) returns from the graveyard "
+            "to the field at om1.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.FROM_GY_TO_FIELD
+        assert ev.player == "Player2"
+        assert ev.is_opponent is True
+        assert ev.card_spec == "og1"
+        assert ev.card_name == "Kuriboh"
+        assert ev.target_spec == "om1"
+
+    def test_your_from_banished_to_field(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "your banished card r1 (Dark Magician) returns to the "
+            "field at m3.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.FROM_BANISHED_TO_FIELD
+        assert ev.player == "you"
+        assert ev.card_spec == "r1"
+        assert ev.card_name == "Dark Magician"
+        assert ev.target_spec == "m3"
+
+    def test_opp_from_banished_to_field(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "Player2's banished card or1 (Kuriboh) returned to their "
+            "field at om2.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.FROM_BANISHED_TO_FIELD
+        assert ev.player == "Player2"
+        assert ev.is_opponent is True
+        assert ev.card_spec == "or1"
+        assert ev.card_name == "Kuriboh"
+        assert ev.target_spec == "om2"
+
     def test_your_to_extra_deck(self, parser: MUDTextParser):
         ev = parser.feed_line(
             "your card m1 (Decode Talker) returned to your extra deck.")

@@ -42,6 +42,8 @@ class EventType(Enum):
     TO_HAND = auto()
     TO_DECK = auto()
     TO_EXTRA_DECK = auto()
+    FROM_GY_TO_FIELD = auto()
+    FROM_BANISHED_TO_FIELD = auto()
     TRIBUTE = auto()
     DISCARD = auto()
     EQUIP = auto()
@@ -261,6 +263,27 @@ _YOUR_TO_EXTRA_RE = re.compile(
     r"^your card (.+?) \((.+?)\) returned to your extra deck\.$")
 _OPP_TO_EXTRA_RE = re.compile(
     r"^(.+?)'s card (.+?) \((.+?)\) returned to their extra deck\.$")
+
+# From graveyard to field (self):
+#   "your card {spec} ({name}) returns from the graveyard to the field at {tspec}."
+# From graveyard to field (opp — no apostrophe, server quirk):
+#   "{nick}s card {spec} ({name}) returns from the graveyard to the field at {tspec}."
+_YOUR_FROM_GY_RE = re.compile(
+    r"^your card (.+?) \((.+?)\) returns from the graveyard "
+    r"to the field at (.+?)\.$")
+_OPP_FROM_GY_RE = re.compile(
+    r"^(.+?)s card (.+?) \((.+?)\) returns from the graveyard "
+    r"to the field at (.+?)\.$")
+
+# From banished to field (self):
+#   "your banished card {spec} ({name}) returns to the field at {tspec}."
+# From banished to field (opp — has apostrophe):
+#   "{nick}'s banished card {spec} ({name}) returned to their field at {tspec}."
+_YOUR_FROM_BANISHED_RE = re.compile(
+    r"^your banished card (.+?) \((.+?)\) returns to the field at (.+?)\.$")
+_OPP_FROM_BANISHED_RE = re.compile(
+    r"^(.+?)'s banished card (.+?) \((.+?)\) returned to their field "
+    r"at (.+?)\.$")
 
 # Tribute (self): "You tribute {spec} ({name})."
 # Tribute (opp):  "{nick} tributes {spec} ({name})."
@@ -744,6 +767,34 @@ class MUDTextParser:
             return ParsedEvent(
                 EventType.DESTROY, card_spec=m.group(1),
                 card_name=m.group(2), raw=line)
+
+        # -- From graveyard to field --
+        m = _YOUR_FROM_GY_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.FROM_GY_TO_FIELD, player="you",
+                card_spec=m.group(1), card_name=m.group(2),
+                target_spec=m.group(3), raw=line)
+        m = _OPP_FROM_GY_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.FROM_GY_TO_FIELD, player=m.group(1),
+                is_opponent=True, card_spec=m.group(2),
+                card_name=m.group(3), target_spec=m.group(4), raw=line)
+
+        # -- From banished to field --
+        m = _YOUR_FROM_BANISHED_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.FROM_BANISHED_TO_FIELD, player="you",
+                card_spec=m.group(1), card_name=m.group(2),
+                target_spec=m.group(3), raw=line)
+        m = _OPP_FROM_BANISHED_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.FROM_BANISHED_TO_FIELD, player=m.group(1),
+                is_opponent=True, card_spec=m.group(2),
+                card_name=m.group(3), target_spec=m.group(4), raw=line)
 
         # -- To graveyard --
         m = _YOUR_TO_GY_RE.match(line)

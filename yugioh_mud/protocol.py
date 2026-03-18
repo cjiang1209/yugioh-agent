@@ -295,7 +295,8 @@ class MUDProtocol:
     async def _send_resync(self) -> None:
         """Send resync commands and collect responses.
 
-        Sends ``score``, ``h`` (hand), ``tab``, ``tab2`` commands.
+        Sends ``score``, ``h``, ``tab``, ``tab2``, ``grave``, ``grave2``,
+        ``removed``, ``removed2``, ``extra``, ``extra2`` commands.
         The responses arrive as regular lines that are *not* duel prompts
         or events — they are informational text that the parser returns
         as ``None``.  We collect them and feed to the game state resync
@@ -306,6 +307,12 @@ class MUDProtocol:
             ("h", "resync_hand", {}),
             ("tab", "resync_tab", {"opponent": False}),
             ("tab2", "resync_tab", {"opponent": True}),
+            ("grave", "resync_grave", {"opponent": False}),
+            ("grave2", "resync_grave", {"opponent": True}),
+            ("removed", "resync_removed", {"opponent": False}),
+            ("removed2", "resync_removed", {"opponent": True}),
+            ("extra", "resync_extra", {"opponent": False}),
+            ("extra2", "resync_extra", {"opponent": True}),
         ]:
             await self._send(cmd)
             lines: list[str] = []
