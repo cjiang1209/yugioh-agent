@@ -911,3 +911,159 @@ class TestEventSequence:
         assert len(gs.my_mzone) == 0
         assert len(gs.my_graveyard) == 1
         assert gs.my_graveyard[0].name == "Dark Magician"
+
+
+# ---------------------------------------------------------------------------
+# S10: Clear card_spec on GY/banished entry
+# ---------------------------------------------------------------------------
+
+class TestClearSpecOnGYBanished:
+    def _summon(self, gs, name, spec, opponent=False):
+        gs.update(_ev(
+            EventType.SUMMON, player="P2" if opponent else "P1",
+            is_opponent=opponent,
+            card_name=name, card_spec=spec, position="face-up attack"))
+        zone = gs.opp_mzone if opponent else gs.my_mzone
+        zone[-1].spec = spec
+
+    def test_to_gy_clears_spec(self, gs: MUDGameState):
+        self._summon(gs, "Dark Magician", "m1")
+        gs.update(_ev(
+            EventType.TO_GRAVEYARD, player="you",
+            card_spec="m1", card_name="Dark Magician"))
+        assert gs.my_graveyard[0].spec == ""
+
+    def test_banished_clears_spec(self, gs: MUDGameState):
+        self._summon(gs, "Kuriboh", "m2")
+        gs.update(_ev(
+            EventType.BANISHED, player="you",
+            card_spec="m2", card_name="Kuriboh"))
+        assert gs.my_banished[0].spec == ""
+
+    def test_opp_to_gy_clears_spec(self, gs: MUDGameState):
+        self._summon(gs, "Blue-Eyes White Dragon", "om1", opponent=True)
+        gs.update(_ev(
+            EventType.TO_GRAVEYARD, player="P2", is_opponent=True,
+            card_spec="om1", card_name="Blue-Eyes White Dragon"))
+        assert gs.opp_graveyard[0].spec == ""
+
+
+# ---------------------------------------------------------------------------
+# S11: _on_pos_change searches spell/trap zones
+# ---------------------------------------------------------------------------
+
+class TestPosChangeSzone:
+    def test_pos_change_szone(self, gs: MUDGameState):
+        gs.update(_ev(
+            EventType.SET, player="you", card_spec="s1",
+            card_name="Mirror Force", position="face-down"))
+        gs.update(_ev(
+            EventType.POS_CHANGE, card_spec="s1",
+            card_name="Mirror Force", position="face-up"))
+        assert gs.my_szone[0].position == "face-up"
+
+    def test_pos_change_opp_szone(self, gs: MUDGameState):
+        gs.opp_szone.append(CardEntry(
+            name="", spec="os1", position="face-down"))
+        gs.update(_ev(
+            EventType.POS_CHANGE, card_spec="os1",
+            card_name="Trap Card", position="face-up"))
+        assert gs.opp_szone[0].position == "face-up"
+        assert gs.opp_szone[0].name == "Trap Card"
+
+
+# ---------------------------------------------------------------------------
+# S12: Remove extra deck entry on SP_SUMMON (guarded)
+# ---------------------------------------------------------------------------
+
+class TestSpSummonExtraDeck:
+    def test_sp_summon_removes_from_extra(self, gs: MUDGameState):
+        gs.my_extra.append(CardEntry(name="Decode Talker", code=0, spec="x1"))
+        # No copy in GY or banished → should remove from extra (name-based)
+        gs.update(_ev(
+            EventType.SP_SUMMON, player="Player1",
+            card_name="Decode Talker", position="face-up attack"))
+        assert len(gs.my_mzone) == 1
+        assert gs.my_mzone[0].name == "Decode Talker"
+        assert len(gs.my_extra) == 0
+
+    def test_sp_summon_does_not_remove_if_in_gy(self, gs: MUDGameState):
+        """GY revival — extra deck should NOT be depleted."""
+        gs.my_extra.append(CardEntry(
+            name="Dark Magician", code=46986414, spec="x1"))
+        gs.my_graveyard.append(CardEntry(
+            name="Dark Magician", code=46986414, spec=""))
+        gs.update(_ev(
+            EventType.SP_SUMMON, player="Player1",
+            card_name="Dark Magician", position="face-up attack"))
+        assert len(gs.my_mzone) == 1
+        # Extra entry preserved (card came from GY, not extra)
+        assert len(gs.my_extra) == 1
+
+    def test_opp_sp_summon_no_extra_removal(self, gs: MUDGameState):
+        """Opponent SP summon never touches our extra deck."""
+        gs.opp_extra.append(CardEntry(name="Xyz Dragon", spec="ox1"))
+        gs.update(_ev(
+            EventType.SP_SUMMON, player="P2", is_opponent=True,
+            card_name="Xyz Dragon", position="face-up attack"))
+        assert len(gs.opp_mzone) == 1
+        assert len(gs.opp_extra) == 1
+
+
+# ---------------------------------------------------------------------------
+# S13: XYZ material attach/detach
+# ---------------------------------------------------------------------------
+
+class TestXYZMaterial:
+    def test_xyz_attach_removes_from_field(self, gs: MUDGameState):
+        gs.my_mzone.append(CardEntry(
+            name="Kuriboh", code=40640057, spec="m1"))
+        gs.update(_ev(
+            EventType.XYZ_ATTACH, player="you",
+            card_spec="m1", card_name="Kuriboh",
+            target_spec="m2", target_name="Number 39: Utopia"))
+        assert len(gs.my_mzone) == 0
+
+    def test_xyz_attach_opp(self, gs: MUDGameState):
+        gs.opp_mzone.append(CardEntry(
+            name="Blue-Eyes White Dragon", code=89631139, spec="om1"))
+        gs.update(_ev(
+            EventType.XYZ_ATTACH, player="P2", is_opponent=True,
+            card_spec="om1", card_name="Blue-Eyes White Dragon",
+            target_spec="om2", target_name="Galaxy-Eyes"))
+        assert len(gs.opp_mzone) == 0
+
+    def test_xyz_detach_is_noop(self, gs: MUDGameState):
+        """Detach doesn't move cards — subsequent TO_GRAVEYARD does."""
+        gs.update(_ev(
+            EventType.XYZ_DETACH, player="you",
+            card_name="Kuriboh"))
+        assert len(gs.my_graveyard) == 0
+
+
+# ---------------------------------------------------------------------------
+# S7: resync_tab drift logging
+# ---------------------------------------------------------------------------
+
+class TestResyncTabDrift:
+    def test_mzone_drift_logged(self, gs: MUDGameState, caplog):
+        gs.my_mzone = [CardEntry(name="x")] * 2  # tracked: 2
+        import logging
+        with caplog.at_level(logging.WARNING):
+            gs.resync_tab([
+                "Your table:",
+                "m1: Dark Magician (2500/2100) level 7 face-up attack",
+            ])
+        assert "mzone drift" in caplog.text
+        assert "tracked 2" in caplog.text
+        assert "actual 1" in caplog.text
+
+    def test_szone_drift_logged(self, gs: MUDGameState, caplog):
+        gs.my_szone = [CardEntry(name="x")] * 3  # tracked: 3
+        import logging
+        with caplog.at_level(logging.WARNING):
+            gs.resync_tab([
+                "Your table:",
+                "Table is empty.",
+            ])
+        assert "szone drift" in caplog.text

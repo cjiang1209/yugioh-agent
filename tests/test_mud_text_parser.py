@@ -1115,6 +1115,44 @@ class TestEventSwap:
         assert ev.target_spec == "om1"
 
 
+class TestEventXYZ:
+    def test_xyz_attach_own(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "your card m1 (Kuriboh) was attached to m2 "
+            "(Number 39: Utopia) as XYZ material")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.XYZ_ATTACH
+        assert ev.card_spec == "m1"
+        assert ev.card_name == "Kuriboh"
+        assert ev.target_spec == "m2"
+        assert ev.target_name == "Number 39: Utopia"
+        assert ev.is_opponent is False
+
+    def test_xyz_attach_opp(self, parser: MUDTextParser):
+        ev = parser.feed_line(
+            "Player2's card om1 (Blue-Eyes) was attached to om2 "
+            "(Galaxy-Eyes) as XYZ material")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.XYZ_ATTACH
+        assert ev.is_opponent is True
+        assert ev.card_name == "Blue-Eyes"
+        assert ev.target_name == "Galaxy-Eyes"
+
+    def test_xyz_detach_own(self, parser: MUDTextParser):
+        ev = parser.feed_line("you detached Kuriboh.")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.XYZ_DETACH
+        assert ev.card_name == "Kuriboh"
+        assert ev.is_opponent is False
+
+    def test_xyz_detach_opp(self, parser: MUDTextParser):
+        ev = parser.feed_line("Player2 detached Blue-Eyes White Dragon")
+        assert isinstance(ev, ParsedEvent)
+        assert ev.event_type == EventType.XYZ_DETACH
+        assert ev.card_name == "Blue-Eyes White Dragon"
+        assert ev.is_opponent is True
+
+
 # ---------------------------------------------------------------------------
 # feed_line_all — multi-event WebSocket frames
 # ---------------------------------------------------------------------------

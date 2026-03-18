@@ -248,13 +248,14 @@ class MUDProtocol:
                 prompt = result
 
         if prompt is not None:
-            # Send resync commands before the IDLE_CMD prompt of our turn.
-            # Only resync on IDLE_CMD because informational commands (score,
-            # h, tab, tab2) cause the server to re-send the active
-            # DuelReader prompt — and only the idle re-prompt ("Select a
-            # card:") is guaranteed to be in _DUELREADER_REPROMPTS.
+            # Send resync commands before IDLE_CMD or BATTLE_MENU prompts.
+            # Informational commands (score, h, tab, tab2) cause the server
+            # to re-send the active DuelReader/DuelMenu prompt — both
+            # "Select a card:" (idle) and "Select an option:" (battle)
+            # are in _DUELREADER_REPROMPTS.
             if (self._resync_pending and self._game_state is not None
-                    and prompt.prompt_type == PromptType.IDLE_CMD):
+                    and prompt.prompt_type in (
+                        PromptType.IDLE_CMD, PromptType.BATTLE_MENU)):
                 self._resync_pending = False
                 await self._send_resync()
                 if self.state != State.DUEL:

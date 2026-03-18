@@ -178,7 +178,29 @@ class MUDGameState:
         else:
             self.my_mzone.append(entry)
 
-    _on_sp_summon = _on_summon
+    def _on_sp_summon(self, ev: ParsedEvent) -> None:
+        code = self._resolve_code(ev.card_name)
+        entry = CardEntry(
+            name=ev.card_name,
+            code=code,
+            position=ev.position,
+            spec=ev.card_spec,
+        )
+        if ev.is_opponent:
+            self.opp_mzone.append(entry)
+        else:
+            # Guarded heuristic: remove from extra deck if the card is NOT
+            # already in GY or banished (those are revival targets, not
+            # extra deck summons).
+            in_gy = (any(c.code == code for c in self.my_graveyard)
+                     if code else
+                     any(c.name == ev.card_name for c in self.my_graveyard))
+            in_ban = (any(c.code == code for c in self.my_banished)
+                      if code else
+                      any(c.name == ev.card_name for c in self.my_banished))
+            if not in_gy and not in_ban:
+                self._remove_from_zone(self.my_extra, "", ev.card_name)
+            self.my_mzone.append(entry)
 
     def _on_flip_summon(self, ev: ParsedEvent) -> None:
         zone = self.opp_mzone if ev.is_opponent else self.my_mzone
@@ -219,8 +241,9 @@ class MUDGameState:
 
     def _on_pos_change(self, ev: ParsedEvent) -> None:
         spec = ev.card_spec
-        # Search own zones first, then opponent
-        for zone in (self.my_mzone, self.opp_mzone):
+        # Search all field zones (monster + spell/trap) for both players
+        for zone in (self.my_mzone, self.my_szone,
+                     self.opp_mzone, self.opp_szone):
             for card in zone:
                 if card.spec == spec:
                     card.position = ev.position
@@ -248,8 +271,9 @@ class MUDGameState:
         entry = removed or CardEntry(
             name=ev.card_name,
             code=self._resolve_code(ev.card_name),
-            spec=ev.card_spec,
         )
+        # Clear stale field spec — GY entries use name-based lookup
+        entry.spec = ""
         if ev.is_opponent:
             self.opp_graveyard.append(entry)
         else:
@@ -263,8 +287,9 @@ class MUDGameState:
         entry = removed or CardEntry(
             name=ev.card_name,
             code=self._resolve_code(ev.card_name),
-            spec=ev.card_spec,
         )
+        # Clear stale field spec — banished entries use name-based lookup
+        entry.spec = ""
         if ev.is_opponent:
             self.opp_banished.append(entry)
         else:
@@ -381,6 +406,20 @@ class MUDGameState:
         is_opp = ev.target_spec.startswith("o")
         self._add_to_field(entry, ev.target_spec, is_opp)
 
+    def _on_xyz_attach(self, ev: ParsedEvent) -> None:
+        """XYZ material attach — card leaves its zone and becomes overlay."""
+        self._remove_from_field(ev.card_spec, ev.card_name)
+        if not ev.card_spec:
+            # Also try removing from hand (hand traps can be attached)
+            if ev.is_opponent:
+                self.opp_hand_count = max(0, self.opp_hand_count - 1)
+            else:
+                self._remove_from_hand(ev.card_name)
+
+    def _on_xyz_detach(self, ev: ParsedEvent) -> None:
+        # Detached material goes to GY — tracked by subsequent TO_GRAVEYARD event
+        pass
+
     def _on_equip(self, ev: ParsedEvent) -> None:
         pass  # Equip doesn't change zone membership
 
@@ -397,6 +436,11 @@ class MUDGameState:
     # Zone helpers
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _is_token(entry: CardEntry) -> bool:
+        """Return True if *entry* looks like a token (code 0 with a name)."""
+        return entry.code == 0 and bool(entry.name)
+
     def _remove_from_field(
         self, spec: str, name: str = "",
     ) -> CardEntry | None:
@@ -405,12 +449,22 @@ class MUDGameState:
                      self.opp_mzone, self.opp_szone):
             for i, card in enumerate(zone):
                 if spec and card.spec == spec:
-                    return zone.pop(i)
+                    removed = zone.pop(i)
+                    if self._is_token(removed):
+                        logger.warning(
+                            "Token-like card removed from field: %s (spec=%s)",
+                            removed.name, spec)
+                    return removed
                 # Also match by name if spec doesn't match or is empty
                 # (spec may have changed after zone switches, or swap
                 # events don't carry the source spec)
                 if name and card.name == name and (not card.spec or not spec):
-                    return zone.pop(i)
+                    removed = zone.pop(i)
+                    if self._is_token(removed):
+                        logger.warning(
+                            "Token-like card removed from field: %s (name match)",
+                            removed.name)
+                    return removed
         return None
 
     def _remove_from_zone(
@@ -581,6 +635,17 @@ class MUDGameState:
                     spec=spec,
                 ))
                 continue
+        prefix = "opp " if opponent else ""
+        old_mzone = self.opp_mzone if opponent else self.my_mzone
+        old_szone = self.opp_szone if opponent else self.my_szone
+        if len(old_mzone) != len(new_mzone):
+            logger.warning(
+                "Resync %smzone drift: tracked %d, actual %d",
+                prefix, len(old_mzone), len(new_mzone))
+        if len(old_szone) != len(new_szone):
+            logger.warning(
+                "Resync %sszone drift: tracked %d, actual %d",
+                prefix, len(old_szone), len(new_szone))
         if opponent:
             self.opp_mzone = new_mzone
             self.opp_szone = new_szone
@@ -708,6 +773,8 @@ _EVENT_HANDLERS: dict[EventType, Callable[[MUDGameState, ParsedEvent], None]] = 
     EventType.CONTROL_CHANGE: MUDGameState._on_control_change,
     EventType.ZONE_SWITCH: MUDGameState._on_zone_switch,
     EventType.SWAP: MUDGameState._on_swap,
+    EventType.XYZ_ATTACH: MUDGameState._on_xyz_attach,
+    EventType.XYZ_DETACH: MUDGameState._on_xyz_detach,
     EventType.EQUIP: MUDGameState._on_equip,
     EventType.SHUFFLE: MUDGameState._on_shuffle,
     EventType.WIN: MUDGameState._on_win,

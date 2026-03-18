@@ -52,6 +52,8 @@ class EventType(Enum):
     ZONE_SWITCH = auto()
     SWAP = auto()
     SHUFFLE = auto()
+    XYZ_ATTACH = auto()
+    XYZ_DETACH = auto()
     WIN = auto()
     LOSE = auto()
 
@@ -332,6 +334,22 @@ _OPP_ZONE_SWITCH_RE = re.compile(
 _SWAP_RE = re.compile(
     r"^card (.+?) swapped control towards (.+?) "
     r"and is now located at (.+?)\.$")
+
+# XYZ material attach (self):
+#   "your card {spec} ({name}) was attached to {targetspec} ({targetname}) as XYZ material"
+# XYZ material attach (opp):
+#   "{plname}'s card {spec} ({name}) was attached to {targetspec} ({targetname}) as XYZ material"
+_YOUR_XYZ_ATTACH_RE = re.compile(
+    r"^your card (.+?) \((.+?)\) was attached to (.+?) \((.+?)\) "
+    r"as XYZ material$")
+_OPP_XYZ_ATTACH_RE = re.compile(
+    r"^(.+?)'s card (.+?) \((.+?)\) was attached to (.+?) \((.+?)\) "
+    r"as XYZ material$")
+
+# XYZ material detach (self): "you detached {name}."
+# XYZ material detach (opp): "{nick} detached {name}"
+_YOUR_XYZ_DETACH_RE = re.compile(r"^you detached (.+?)\.$")
+_OPP_XYZ_DETACH_RE = re.compile(r"^(.+?) detached (.+?)$")
 
 # Win/Lose: "You won ({reason})." / "You lost ({reason})."
 _WIN_RE = re.compile(r"^You won \((.+?)\)\.$")
@@ -954,6 +972,32 @@ class MUDTextParser:
             return ParsedEvent(
                 EventType.EQUIP, card_name=m.group(1),
                 target_name=m.group(2), raw=line)
+
+        # -- XYZ material attach --
+        m = _YOUR_XYZ_ATTACH_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.XYZ_ATTACH, player="you",
+                card_spec=m.group(1), card_name=m.group(2),
+                target_spec=m.group(3), target_name=m.group(4), raw=line)
+        m = _OPP_XYZ_ATTACH_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.XYZ_ATTACH, player=m.group(1), is_opponent=True,
+                card_spec=m.group(2), card_name=m.group(3),
+                target_spec=m.group(4), target_name=m.group(5), raw=line)
+
+        # -- XYZ material detach --
+        m = _YOUR_XYZ_DETACH_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.XYZ_DETACH, player="you",
+                card_name=m.group(1), raw=line)
+        m = _OPP_XYZ_DETACH_RE.match(line)
+        if m:
+            return ParsedEvent(
+                EventType.XYZ_DETACH, player=m.group(1), is_opponent=True,
+                card_name=m.group(2), raw=line)
 
         # -- Shuffle --
         if _YOUR_SHUFFLE_RE.match(line):
