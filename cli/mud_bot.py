@@ -123,6 +123,7 @@ def main() -> None:
     args = parse_args()
     level = logging.DEBUG if args.verbose else logging.INFO
     logging.basicConfig(level=level, format="%(asctime)s %(levelname)s %(message)s")
+    logging.getLogger("websockets").setLevel(logging.INFO)
 
     config = build_config(args)
     try:

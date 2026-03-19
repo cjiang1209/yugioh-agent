@@ -157,6 +157,7 @@ class MUDGameState:
     def _on_new_turn(self, ev: ParsedEvent) -> None:
         self.turn += 1
         self.is_my_turn = not ev.is_opponent
+        self._log_turn_start_summary()
 
     def _on_new_phase(self, ev: ParsedEvent) -> None:
         self.phase = ev.phase
@@ -537,6 +538,34 @@ class MUDGameState:
 
     def _on_lose(self, ev: ParsedEvent) -> None:
         pass  # Terminal — no state update needed
+
+    # ------------------------------------------------------------------
+    # Turn summary
+    # ------------------------------------------------------------------
+
+    def _log_turn_start_summary(self) -> None:
+        """Log a DEBUG summary of the game state at the start of a new turn."""
+        logger.debug(
+            "Turn %d start | %s's turn | "
+            "My LP=%d hand=%d mon=%d st=%d gy=%d ban=%d extra=%d | "
+            "Opp LP=%d hand=%d mon=%d st=%d gy=%d ban=%d extra=%d",
+            self.turn,
+            "mine" if self.is_my_turn else "opp",
+            self.my_lp,
+            len(self.my_hand),
+            len(self.my_mzone),
+            len(self.my_szone),
+            len(self.my_graveyard),
+            len(self.my_banished),
+            len(self.my_extra),
+            self.opp_lp,
+            self.opp_hand_count,
+            len(self.opp_mzone),
+            len(self.opp_szone),
+            len(self.opp_graveyard),
+            len(self.opp_banished),
+            len(self.opp_extra),
+        )
 
     # ------------------------------------------------------------------
     # Zone helpers
