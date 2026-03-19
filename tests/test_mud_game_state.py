@@ -582,8 +582,8 @@ class TestResyncHand:
     def test_resync_hand(self, gs: MUDGameState):
         gs.my_hand = [CardEntry(name="stale")]
         gs.resync_hand([
-            "h1 Dark Magician",
-            "h2 Kuriboh",
+            "h1 Dark Magician level 7",
+            "h2 Kuriboh level 1",
         ])
         assert len(gs.my_hand) == 2
         assert gs.my_hand[0].name == "Dark Magician"

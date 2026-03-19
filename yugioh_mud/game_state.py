@@ -718,25 +718,7 @@ class MUDGameState:
 
     def resync_hand(self, lines: list[str]) -> None:
         """Parse ``hand`` command response and overwrite own hand."""
-        new_hand: list[CardEntry] = []
-        for line in lines:
-            if line == "No cards.":
-                break
-            m = _HAND_CARD_RE.match(line)
-            if m:
-                name = m.group(2)
-                new_hand.append(CardEntry(
-                    name=name,
-                    code=self._resolve_code(name),
-                    spec=m.group(1),
-                ))
-        if new_hand or any(l == "No cards." for l in lines):
-            old_count = len(self.my_hand)
-            self.my_hand = new_hand
-            if old_count != len(self.my_hand):
-                logger.warning(
-                    "Resync hand: %d → %d cards",
-                    old_count, len(self.my_hand))
+        self._resync_zone(lines, _HAND_CARD_RE, "hand")
 
     def resync_tab(self, lines: list[str], opponent: bool = False) -> None:
         """Parse ``tab``/``tab2`` response and overwrite field zones."""
@@ -795,48 +777,45 @@ class MUDGameState:
 
     def resync_grave(self, lines: list[str], opponent: bool = False) -> None:
         """Parse ``grave``/``grave2`` response and overwrite graveyard."""
-        zone = self.opp_graveyard if opponent else self.my_graveyard
-        new_zone = self._parse_zone_lines(lines, _GRAVE_CARD_RE)
-        old_count = len(zone)
-        if opponent:
-            self.opp_graveyard = new_zone
-        else:
-            self.my_graveyard = new_zone
-        if old_count != len(new_zone):
-            prefix = "opp " if opponent else ""
-            logger.warning(
-                "Resync %sGY: %d → %d cards",
-                prefix, old_count, len(new_zone))
+        self._resync_zone(lines, _GRAVE_CARD_RE, "graveyard", opponent)
 
     def resync_removed(self, lines: list[str], opponent: bool = False) -> None:
         """Parse ``removed``/``removed2`` response and overwrite banished."""
-        zone = self.opp_banished if opponent else self.my_banished
-        new_zone = self._parse_zone_lines(lines, _REMOVED_CARD_RE)
-        old_count = len(zone)
-        if opponent:
-            self.opp_banished = new_zone
-        else:
-            self.my_banished = new_zone
-        if old_count != len(new_zone):
-            prefix = "opp " if opponent else ""
-            logger.warning(
-                "Resync %sbanished: %d → %d cards",
-                prefix, old_count, len(new_zone))
+        self._resync_zone(lines, _REMOVED_CARD_RE, "banished", opponent)
 
     def resync_extra(self, lines: list[str], opponent: bool = False) -> None:
         """Parse ``extra``/``extra2`` response and overwrite extra deck."""
-        zone = self.opp_extra if opponent else self.my_extra
-        new_zone = self._parse_zone_lines(lines, _EXTRA_CARD_RE)
-        old_count = len(zone)
-        if opponent:
-            self.opp_extra = new_zone
-        else:
-            self.my_extra = new_zone
-        if old_count != len(new_zone):
-            prefix = "opp " if opponent else ""
+        self._resync_zone(lines, _EXTRA_CARD_RE, "extra", opponent)
+
+    def _resync_zone(
+        self,
+        lines: list[str],
+        card_re: re.Pattern[str],
+        zone: str,
+        opponent: bool = False,
+    ) -> None:
+        """Shared resync helper for hand/graveyard/banished/extra.
+
+        *zone* is the attribute suffix: ``"hand"``, ``"graveyard"``,
+        ``"banished"``, or ``"extra"``.  The attribute name is derived as
+        ``opp_{zone}`` (opponent) or ``my_{zone}`` (own).
+        """
+        new_zone = self._parse_zone_lines(lines, card_re)
+        if not new_zone and not any(l == "No cards." for l in lines):
             logger.warning(
-                "Resync %sextra: %d → %d cards",
-                prefix, old_count, len(new_zone))
+                "Resync %s%s: no parseable cards and no 'No cards.' marker, "
+                "skipping overwrite",
+                "opp " if opponent else "", zone)
+            return
+        attr = f"opp_{zone}" if opponent else f"my_{zone}"
+        old_zone: list[CardEntry] = getattr(self, attr)
+        old_count = len(old_zone)
+        setattr(self, attr, new_zone)
+        if old_count != len(new_zone):
+            logger.warning(
+                "Resync %s%s: %d → %d cards",
+                "opp " if opponent else "", zone,
+                old_count, len(new_zone))
 
     def _parse_zone_lines(
         self, lines: list[str], card_re: re.Pattern[str],
