@@ -5,6 +5,7 @@ Pure unit tests — no cards.cdb or MUD server required.
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 from pathlib import Path
 
@@ -550,28 +551,38 @@ class TestNoLookup:
 # ---------------------------------------------------------------------------
 
 class TestResyncScore:
-    def test_resync_score_lp(self, gs: MUDGameState):
+    def test_resync_score_full(self, gs: MUDGameState, caplog):
+        """Full score block: verify LP, hand, deck, turn, and drift warnings."""
         gs.my_lp = 7500  # drifted
-        gs.resync_score([
-            "Your LP: 8000 Opponent LP: 6000",
-            "Hand: You: 5 Opponent: 4",
-            "Deck: You: 35 Opponent: 36",
-            "Grave: You: 0 Opponent: 0",
-            "Removed: You: 0 Opponent: 0",
-            "It's your turn.",
-        ])
+        gs.opp_hand_count = 2  # drifted (actual: 4)
+        gs.my_deck_count = 30  # drifted (actual: 35)
+        gs.opp_deck_count = 30  # drifted (actual: 36)
+        # Set hand to 3 cards so tracked != actual (5) triggers warning
+        gs.my_hand = [CardEntry(name="a"), CardEntry(name="b"), CardEntry(name="c")]
+        with caplog.at_level(logging.WARNING):
+            gs.resync_score([
+                "Your LP: 8000 Opponent LP: 6000",
+                "Hand: You: 5 Opponent: 4",
+                "Deck: You: 35 Opponent: 36",
+                "Grave: You: 0 Opponent: 0",
+                "Removed: You: 0 Opponent: 0",
+                "It's your turn.",
+            ])
         assert gs.my_lp == 8000
         assert gs.opp_lp == 6000
+        assert gs.opp_hand_count == 4
+        assert gs.my_deck_count == 35
+        assert gs.opp_deck_count == 36
         assert gs.is_my_turn is True
+        # Verify drift warnings were logged
+        assert "Resync hand drift" in caplog.text
+        assert "Resync opp hand drift" in caplog.text
+        assert "Resync deck drift" in caplog.text
+        assert "Resync opp deck drift" in caplog.text
 
     def test_resync_score_opp_turn(self, gs: MUDGameState):
         gs.resync_score(["It's Player2's turn."])
         assert gs.is_my_turn is False
-
-    def test_resync_score_hand_count(self, gs: MUDGameState):
-        gs.opp_hand_count = 3  # drifted
-        gs.resync_score(["Hand: You: 5 Opponent: 5"])
-        assert gs.opp_hand_count == 5
 
 
 # ---------------------------------------------------------------------------
@@ -1299,24 +1310,110 @@ class TestResyncExtra:
 class TestResyncScoreDrift:
     def test_opp_gy_drift(self, gs: MUDGameState, caplog):
         gs.opp_graveyard = [CardEntry(name="x")] * 3  # tracked: 3
-        import logging
         with caplog.at_level(logging.WARNING):
             gs.resync_score(["Grave: You: 0 Opponent: 1"])
         assert "opp GY drift" in caplog.text
 
     def test_banished_drift(self, gs: MUDGameState, caplog):
         gs.my_banished = [CardEntry(name="x")] * 2  # tracked: 2
-        import logging
         with caplog.at_level(logging.WARNING):
             gs.resync_score(["Removed: You: 0 Opponent: 0"])
         assert "banished drift" in caplog.text
 
     def test_opp_banished_drift(self, gs: MUDGameState, caplog):
         gs.opp_banished = [CardEntry(name="x")] * 2  # tracked: 2
-        import logging
         with caplog.at_level(logging.WARNING):
             gs.resync_score(["Removed: You: 0 Opponent: 0"])
         assert "opp banished drift" in caplog.text
+
+    def test_deck_drift(self, gs: MUDGameState, caplog):
+        gs.my_deck_count = 20  # drifted (actual: 35)
+        gs.opp_deck_count = 10  # drifted (actual: 36)
+        with caplog.at_level(logging.WARNING):
+            gs.resync_score(["Deck: You: 35 Opponent: 36"])
+        assert gs.my_deck_count == 35
+        assert gs.opp_deck_count == 36
+        assert "deck drift" in caplog.text
+        assert "opp deck drift" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# Deck count tracking
+# ---------------------------------------------------------------------------
+
+class TestDeckCount:
+    def test_draw_decrements_deck(self, gs: MUDGameState):
+        gs.my_deck_count = 40
+        gs.update(_ev(EventType.DRAW, player="you", amount=3))
+        assert gs.my_deck_count == 37
+
+    def test_opp_draw_decrements_deck(self, gs: MUDGameState):
+        gs.opp_deck_count = 40
+        gs.update(_ev(EventType.DRAW, player="P2", is_opponent=True, amount=2))
+        assert gs.opp_deck_count == 38
+
+    def test_mill_to_gy_decrements_deck(self, gs: MUDGameState):
+        """Card sent to GY from deck (no zone spec match) → deck count decremented."""
+        gs.my_deck_count = 35
+        # Empty spec = no recognized zone prefix → assumed deck source
+        gs.update(_ev(
+            EventType.TO_GRAVEYARD, player="you",
+            card_name="Dark Magician", card_spec=""))
+        assert gs.my_deck_count == 34
+
+    def test_search_to_hand_decrements_deck(self, gs: MUDGameState):
+        """Card added to hand from deck (no zone spec) → deck count decremented."""
+        gs.my_deck_count = 35
+        # Empty spec = no recognized zone prefix → assumed deck source
+        gs.update(_ev(
+            EventType.TO_HAND, player="you",
+            card_name="Dark Magician", card_spec=""))
+        assert gs.my_deck_count == 34
+        assert len(gs.my_hand) == 1
+
+    def test_banish_from_deck_decrements(self, gs: MUDGameState):
+        """Card banished from deck (no zone spec) → deck count decremented."""
+        gs.my_deck_count = 35
+        # Empty spec = no recognized zone prefix → assumed deck source
+        gs.update(_ev(
+            EventType.BANISHED, player="you",
+            card_name="Dark Magician", card_spec=""))
+        assert gs.my_deck_count == 34
+
+    def test_to_deck_increments(self, gs: MUDGameState):
+        """Card returned to deck from GY → deck count incremented."""
+        gs.my_deck_count = 30
+        gs.my_graveyard.append(CardEntry(name="Kuriboh", code=40640057))
+        gs.update(_ev(
+            EventType.TO_DECK, player="you",
+            card_name="Kuriboh", card_spec="g1"))
+        assert gs.my_deck_count == 31
+        assert len(gs.my_graveyard) == 0
+
+    def test_deck_count_floor_zero(self, gs: MUDGameState):
+        """Deck count never goes negative."""
+        gs.my_deck_count = 0
+        gs.update(_ev(EventType.DRAW, player="you", amount=1))
+        assert gs.my_deck_count == 0
+
+    def test_to_deck_unknown_source_increments(self, gs: MUDGameState):
+        """Card returned to deck from untracked source still increments count."""
+        gs.my_deck_count = 30
+        # Empty spec, card not on field or in any tracked zone
+        gs.update(_ev(
+            EventType.TO_DECK, player="you",
+            card_name="Unknown Card", card_spec=""))
+        assert gs.my_deck_count == 31
+
+    def test_to_deck_from_opp_hand(self, gs: MUDGameState):
+        """Opponent card returned from hand to deck: hand decrements, deck increments."""
+        gs.opp_hand_count = 4
+        gs.opp_deck_count = 30
+        gs.update(_ev(
+            EventType.TO_DECK, player="P2", is_opponent=True,
+            card_name="Some Card", card_spec="oh1"))
+        assert gs.opp_hand_count == 3
+        assert gs.opp_deck_count == 31
 
 
 # ---------------------------------------------------------------------------
@@ -1476,6 +1573,26 @@ class TestSpSummonExtraDeck:
         assert len(gs.opp_mzone) == 1
         assert len(gs.opp_extra) == 1
 
+    def test_opp_sp_summon_revival_no_hand_decrement(self, gs: MUDGameState):
+        """Opponent revival from GY should not decrement hand count."""
+        gs.opp_hand_count = 3
+        gs.opp_graveyard.append(CardEntry(
+            name="Dark Magician", code=46986414))
+        gs.update(_ev(
+            EventType.SP_SUMMON, player="P2", is_opponent=True,
+            card_name="Dark Magician", position="face-up attack"))
+        assert gs.opp_hand_count == 3  # unchanged — card came from GY
+        assert len(gs.opp_mzone) == 1
+
+    def test_opp_sp_summon_from_hand_decrements(self, gs: MUDGameState):
+        """Opponent SP summon (not revival) decrements hand count."""
+        gs.opp_hand_count = 3
+        gs.update(_ev(
+            EventType.SP_SUMMON, player="P2", is_opponent=True,
+            card_name="Cyber Dragon", position="face-up attack"))
+        assert gs.opp_hand_count == 2
+        assert len(gs.opp_mzone) == 1
+
 
 # ---------------------------------------------------------------------------
 # S13: XYZ material attach/detach
@@ -1515,7 +1632,6 @@ class TestXYZMaterial:
 class TestResyncTabDrift:
     def test_mzone_drift_logged(self, gs: MUDGameState, caplog):
         gs.my_mzone = [CardEntry(name="x")] * 2  # tracked: 2
-        import logging
         with caplog.at_level(logging.WARNING):
             gs.resync_tab([
                 "Your table:",
@@ -1527,7 +1643,6 @@ class TestResyncTabDrift:
 
     def test_szone_drift_logged(self, gs: MUDGameState, caplog):
         gs.my_szone = [CardEntry(name="x")] * 3  # tracked: 3
-        import logging
         with caplog.at_level(logging.WARNING):
             gs.resync_tab([
                 "Your table:",

@@ -94,6 +94,7 @@ class MUDGameState:
 
         # Zones — own
         self.my_hand: list[CardEntry] = []
+        self.my_deck_count: int = 0
         self.my_mzone: list[CardEntry] = []
         self.my_szone: list[CardEntry] = []
         self.my_graveyard: list[CardEntry] = []
@@ -102,6 +103,7 @@ class MUDGameState:
 
         # Zones — opponent
         self.opp_hand_count: int = 0
+        self.opp_deck_count: int = 0
         self.opp_mzone: list[CardEntry] = []
         self.opp_szone: list[CardEntry] = []
         self.opp_graveyard: list[CardEntry] = []
@@ -183,6 +185,9 @@ class MUDGameState:
     def _on_draw(self, ev: ParsedEvent) -> None:
         if ev.is_opponent:
             self.opp_hand_count += ev.amount
+            self.opp_deck_count = max(0, self.opp_deck_count - ev.amount)
+        else:
+            self.my_deck_count = max(0, self.my_deck_count - ev.amount)
         # Own draws are handled by DRAW_CARD sub-events with card names.
         # No blank entries appended here.
 
@@ -222,11 +227,22 @@ class MUDGameState:
                for c in mzone):
             return
         if ev.is_opponent:
-            self.opp_hand_count = max(0, self.opp_hand_count - 1)
+            # Check if card is a revival from opp GY/banished (tracked zones)
+            in_gy = (any(c.code == code for c in self.opp_graveyard)
+                     if code else
+                     any(c.name == ev.card_name for c in self.opp_graveyard))
+            in_ban = (any(c.code == code for c in self.opp_banished)
+                      if code else
+                      any(c.name == ev.card_name for c in self.opp_banished))
+            if not in_gy and not in_ban:
+                # Not a revival — speculatively assume hand (most common).
+                # Deck-sourced sp summons (e.g. Cyber Dragon) will be
+                # imprecise here; resync corrects both hand and deck counts.
+                self.opp_hand_count = max(0, self.opp_hand_count - 1)
             self.opp_mzone.append(entry)
         else:
             # Speculatively remove from hand — no-op if card isn't there
-            self._remove_from_hand(ev.card_name)
+            removed_hand = self._remove_from_hand(ev.card_name)
             # Guarded heuristic: remove from extra deck if the card is NOT
             # already in GY or banished (those are revival targets, not
             # extra deck summons).
@@ -236,8 +252,13 @@ class MUDGameState:
             in_ban = (any(c.code == code for c in self.my_banished)
                       if code else
                       any(c.name == ev.card_name for c in self.my_banished))
+            removed_extra = None
             if not in_gy and not in_ban:
-                self._remove_from_zone(self.my_extra, "", ev.card_name)
+                removed_extra = self._remove_from_zone(
+                    self.my_extra, "", ev.card_name)
+            # If card didn't come from hand, extra, GY, or banished → deck
+            if not removed_hand and not removed_extra and not in_gy and not in_ban:
+                self.my_deck_count = max(0, self.my_deck_count - 1)
             self.my_mzone.append(entry)
 
     def _on_flip_summon(self, ev: ParsedEvent) -> None:
@@ -345,7 +366,12 @@ class MUDGameState:
                 if self._consume_pending_gy(ev.card_name):
                     return
                 # else: card was activated from hand (never on field) → add to GY
-            # else: deck or unrecognized spec — skip removal
+            else:
+                # No recognized zone prefix — card likely came from deck
+                if ev.is_opponent:
+                    self.opp_deck_count = max(0, self.opp_deck_count - 1)
+                else:
+                    self.my_deck_count = max(0, self.my_deck_count - 1)
         entry = removed or CardEntry(
             name=ev.card_name,
             code=self._resolve_code(ev.card_name),
@@ -373,7 +399,12 @@ class MUDGameState:
                 # Field-spec card not found — check if already processed
                 if self._consume_pending_gy(ev.card_name):
                     return
-            # else: deck or unrecognized spec — skip removal
+            else:
+                # No recognized zone prefix — card likely came from deck
+                if ev.is_opponent:
+                    self.opp_deck_count = max(0, self.opp_deck_count - 1)
+                else:
+                    self.my_deck_count = max(0, self.my_deck_count - 1)
         entry = removed or CardEntry(
             name=ev.card_name,
             code=self._resolve_code(ev.card_name),
@@ -388,8 +419,18 @@ class MUDGameState:
     def _on_to_hand(self, ev: ParsedEvent) -> None:
         removed = self._remove_from_field(ev.card_spec, ev.card_name)
         if not removed:
-            self._remove_from_nonfield(
+            removed = self._remove_from_nonfield(
                 ev.card_spec, ev.card_name, ev.is_opponent)
+        if not removed:
+            spec = ev.card_spec or ""
+            if (not spec.startswith(("h", "oh"))
+                    and not spec.startswith(self._NONFIELD_PREFIXES)
+                    and not self._norm_spec(spec).startswith(("m", "s"))):
+                # No recognized zone prefix — card likely came from deck
+                if ev.is_opponent:
+                    self.opp_deck_count = max(0, self.opp_deck_count - 1)
+                else:
+                    self.my_deck_count = max(0, self.my_deck_count - 1)
         if ev.is_opponent:
             self.opp_hand_count += 1
         else:
@@ -402,9 +443,19 @@ class MUDGameState:
     def _on_to_deck(self, ev: ParsedEvent) -> None:
         removed = self._remove_from_field(ev.card_spec, ev.card_name)
         if not removed:
-            self._remove_from_nonfield(
+            removed = self._remove_from_nonfield(
                 ev.card_spec, ev.card_name, ev.is_opponent)
-        # Deck contents not tracked
+        # Also handle opponent hand (tracked as count only, not a list)
+        spec = ev.card_spec or ""
+        if not removed and spec.startswith("oh"):
+            self.opp_hand_count = max(0, self.opp_hand_count - 1)
+        elif not removed and spec.startswith("h"):
+            self._remove_from_hand(ev.card_name)
+        # A TO_DECK event always means a card entered the deck
+        if ev.is_opponent:
+            self.opp_deck_count += 1
+        else:
+            self.my_deck_count += 1
 
     def _on_to_extra_deck(self, ev: ParsedEvent) -> None:
         removed = self._remove_from_field(ev.card_spec, ev.card_name)
@@ -547,12 +598,13 @@ class MUDGameState:
         """Log a DEBUG summary of the game state at the start of a new turn."""
         logger.debug(
             "Turn %d start | %s's turn | "
-            "My LP=%d hand=%d mon=%d st=%d gy=%d ban=%d extra=%d | "
-            "Opp LP=%d hand=%d mon=%d st=%d gy=%d ban=%d extra=%d",
+            "My LP=%d hand=%d deck=%d mon=%d st=%d gy=%d ban=%d extra=%d | "
+            "Opp LP=%d hand=%d deck=%d mon=%d st=%d gy=%d ban=%d extra=%d",
             self.turn,
             "mine" if self.is_my_turn else "opp",
             self.my_lp,
             len(self.my_hand),
+            self.my_deck_count,
             len(self.my_mzone),
             len(self.my_szone),
             len(self.my_graveyard),
@@ -560,6 +612,7 @@ class MUDGameState:
             len(self.my_extra),
             self.opp_lp,
             self.opp_hand_count,
+            self.opp_deck_count,
             len(self.opp_mzone),
             len(self.opp_szone),
             len(self.opp_graveyard),
@@ -690,6 +743,17 @@ class MUDGameState:
                             "Resync opp hand drift: tracked %d, actual %d",
                             self.opp_hand_count, opp_count)
                         self.opp_hand_count = opp_count
+                elif label == "Deck":
+                    if self.my_deck_count != my_count:
+                        logger.warning(
+                            "Resync deck drift: tracked %d, actual %d",
+                            self.my_deck_count, my_count)
+                        self.my_deck_count = my_count
+                    if self.opp_deck_count != opp_count:
+                        logger.warning(
+                            "Resync opp deck drift: tracked %d, actual %d",
+                            self.opp_deck_count, opp_count)
+                        self.opp_deck_count = opp_count
                 elif label == "Grave":
                     if len(self.my_graveyard) != my_count:
                         logger.warning(
