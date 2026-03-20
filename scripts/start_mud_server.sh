@@ -13,5 +13,7 @@ fi
 
 source "$MUD_DIR/.venv/bin/activate"
 cd "$MUD_DIR"
+# Ensure duels log directory exists (server writes duel debug logs here).
+mkdir -p duels
 # Default: telnet on 4000, WebSocket on 8080. Override with explicit flags.
 exec python ygo.py --websocket-port "${WS_PORT:-8080}" "$@"

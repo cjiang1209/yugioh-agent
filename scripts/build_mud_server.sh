@@ -142,7 +142,8 @@ if ! python -c "import twisted" 2>/dev/null; then
     # of the attribute list. When code passes done as the first positional arg,
     # it gets assigned to command_separator instead. Fix via __attrs_post_init__.
     GSB_INTERCEPT="$GSB_DIR/intercept.py"
-    if ! grep -q '__attrs_post_init__' "$GSB_INTERCEPT" 2>/dev/null; then
+    # Guard: check specifically for the Reader __attrs_post_init__ (Menu already has one)
+    if ! grep -q 'callable(self.command_separator)' "$GSB_INTERCEPT" 2>/dev/null; then
         echo "Patching gsb Reader for attrs>=22 attribute ordering ..."
         sed -i.bak '/^    done=attrib(default=Factory(lambda: None))/a\
 \
@@ -219,10 +220,17 @@ else
     echo "Warning: assets/cards.cdb not found. You will need to provide it before running the server."
 fi
 
-# ─── 10. Run alembic migrations (best-effort) ───────────────────────────────
-echo "Running alembic migrations ..."
+# ─── 10. Run alembic migrations (only if game.db already exists) ──────────────
+# On a fresh build there is no game.db yet — the server creates it on first
+# startup via Base.metadata.create_all() with the latest schema, so no
+# migrations are needed.  Only run alembic on an existing DB.
 cd "$MUD_DIR"
-alembic upgrade head || echo "Warning: alembic migration failed (non-fatal)."
+if [ -f "$MUD_DIR/game.db" ]; then
+    echo "Running alembic migrations on existing game.db ..."
+    alembic upgrade head || echo "Warning: alembic migration failed (non-fatal)."
+else
+    echo "No game.db found, skipping alembic migrations (created on first server start)."
+fi
 
 # ─── Done ────────────────────────────────────────────────────────────────────
 echo ""
