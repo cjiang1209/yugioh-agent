@@ -37,6 +37,14 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, NamedTuple
 
+from yugioh_env.constants import (
+    LOCATION_BANISHED,
+    LOCATION_EXTRA,
+    LOCATION_GRAVE,
+    LOCATION_HAND,
+    LOCATION_MZONE,
+    LOCATION_SZONE,
+)
 from yugioh_mud.text_parser import (
     ParsedEvent, ParsedPrompt, PromptType, _CARDSPEC_LINE_RE,
     is_duel_end,
@@ -50,24 +58,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Location constants (matching training env)
-# ---------------------------------------------------------------------------
-
-LOCATION_HAND = 2
-LOCATION_MZONE = 4
-LOCATION_SZONE = 8
-LOCATION_GRAVE = 16
-LOCATION_EXTRA = 64
-LOCATION_REMOVED = 128
-
 _SPEC_PREFIX_TO_LOCATION = {
     "h": LOCATION_HAND,
     "m": LOCATION_MZONE,
     "s": LOCATION_SZONE,
     "g": LOCATION_GRAVE,
     "x": LOCATION_EXTRA,
-    "r": LOCATION_REMOVED,
+    "r": LOCATION_BANISHED,
 }
 
 # ---------------------------------------------------------------------------
@@ -122,7 +119,7 @@ def _resolve_card_code(
         LOCATION_MZONE: game_state.my_mzone,
         LOCATION_SZONE: game_state.my_szone,
         LOCATION_GRAVE: game_state.my_graveyard,
-        LOCATION_REMOVED: game_state.my_banished,
+        LOCATION_BANISHED: game_state.my_banished,
         LOCATION_EXTRA: game_state.my_extra,
     }.get(loc)
     if zone is None:

@@ -1,0 +1,495 @@
+"""Unit tests for MUDObservationBuilder.
+
+Pure unit tests — no torch, no MUD server. Uses CardDatabase from a temp
+SQLite DB (same pattern as test_mud_game_state.py).
+"""
+
+from __future__ import annotations
+
+import sqlite3
+import struct
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+from yugioh_env.card_database import CardDatabase
+from yugioh_env.constants import (
+    LOCATION_BANISHED,
+    LOCATION_EXTRA,
+    LOCATION_GRAVE,
+    LOCATION_HAND,
+    LOCATION_MZONE,
+    LOCATION_SZONE,
+    MSG_SELECT_BATTLECMD,
+    MSG_SELECT_CARD,
+    MSG_SELECT_EFFECTYN,
+    MSG_SELECT_IDLECMD,
+    PHASE_DRAW,
+    PHASE_MAIN1,
+    POS_FACEDOWN_DEFENSE,
+    POS_FACEUP_ATTACK,
+)
+from yugioh_env.observation import (
+    ACTION_FEATURES,
+    CARD_FEATURES,
+    GLOBAL_FEATURES,
+    MAX_ACTIONS,
+    MAX_CARDS,
+    ZONE_SLOTS,
+)
+from yugioh_mud.cmd_handler import StructuredAction
+from yugioh_mud.game_state import CardEntry, MUDGameState
+from yugioh_mud.observation import (
+    MUDObservationBuilder,
+    PHASE_MAP,
+    POSITION_MAP,
+    PROMPT_MSG_MAP,
+)
+from yugioh_mud.text_parser import ParsedPrompt, PromptType
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+# Card data for the temp DB
+_CARDS = [
+    # (id, name, type, atk, def, level, race, attribute, alias)
+    (89631139, "Blue-Eyes White Dragon", 17, 3000, 2500, 8, 0x20, 0x10, 0),
+    (46986414, "Dark Magician", 17, 2500, 2100, 7, 0x2, 0x20, 0),
+    (40640057, "Kuriboh", 17, 300, 200, 1, 0x10, 0x20, 0),
+    (44095762, "Mirror Force", 4, 0, 0, 0, 0, 0, 0),
+]
+
+
+@pytest.fixture(scope="module")
+def tmp_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    db_path = tmp_path_factory.mktemp("cards") / "cards.cdb"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        "CREATE TABLE datas ("
+        "id INTEGER PRIMARY KEY, ot INTEGER DEFAULT 0, alias INTEGER DEFAULT 0, "
+        "setcode INTEGER DEFAULT 0, type INTEGER DEFAULT 0, "
+        "atk INTEGER DEFAULT 0, def INTEGER DEFAULT 0, "
+        "level INTEGER DEFAULT 0, race INTEGER DEFAULT 0, "
+        "attribute INTEGER DEFAULT 0)"
+    )
+    conn.execute(
+        "CREATE TABLE texts (id INTEGER PRIMARY KEY, name TEXT, desc TEXT)")
+    for cid, name, ctype, atk, dfn, level, race, attr, alias in _CARDS:
+        conn.execute(
+            "INSERT INTO datas (id, alias, type, atk, def, level, race, attribute) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (cid, alias, ctype, atk, dfn, level, race, attr),
+        )
+        conn.execute(
+            "INSERT INTO texts (id, name, desc) VALUES (?, ?, ?)",
+            (cid, name, ""),
+        )
+    conn.commit()
+    conn.close()
+    return db_path
+
+
+@pytest.fixture(scope="module")
+def card_db(tmp_db: Path) -> CardDatabase:
+    return CardDatabase(tmp_db)
+
+
+@pytest.fixture
+def builder(card_db: CardDatabase) -> MUDObservationBuilder:
+    return MUDObservationBuilder(card_db)
+
+
+@pytest.fixture
+def gs() -> MUDGameState:
+    return MUDGameState()
+
+
+def _make_prompt(
+    ptype: PromptType,
+    options: list[str] | None = None,
+    structured_actions: list[StructuredAction] | None = None,
+) -> ParsedPrompt:
+    p = ParsedPrompt(prompt_type=ptype, options=options or [])
+    if structured_actions is not None:
+        p.structured_actions = structured_actions
+    return p
+
+
+def _read_u16(arr: np.ndarray, offset: int) -> int:
+    return int(arr[offset]) | (int(arr[offset + 1]) << 8)
+
+
+def _read_u32(arr: np.ndarray, offset: int) -> int:
+    return (int(arr[offset])
+            | (int(arr[offset + 1]) << 8)
+            | (int(arr[offset + 2]) << 16)
+            | (int(arr[offset + 3]) << 24))
+
+
+# ---------------------------------------------------------------------------
+# 1. Phase/position/prompt mapping completeness
+# ---------------------------------------------------------------------------
+
+class TestMappings:
+    def test_phase_map_keys(self):
+        assert "draw phase" in PHASE_MAP
+        assert "standby phase" in PHASE_MAP
+        assert "main1 phase" in PHASE_MAP
+        assert "battle phase" in PHASE_MAP
+        assert "main2 phase" in PHASE_MAP
+        assert "end phase" in PHASE_MAP
+
+    def test_phase_map_values(self):
+        assert PHASE_MAP["draw phase"] == PHASE_DRAW
+        assert PHASE_MAP["main1 phase"] == PHASE_MAIN1
+
+    def test_position_map_keys(self):
+        assert "face-up attack" in POSITION_MAP
+        assert "face-down defense" in POSITION_MAP
+        assert "face-up defense" in POSITION_MAP
+        assert "face-down attack" in POSITION_MAP
+
+    def test_position_map_values(self):
+        assert POSITION_MAP["face-up attack"] == POS_FACEUP_ATTACK
+        assert POSITION_MAP["face-down defense"] == POS_FACEDOWN_DEFENSE
+
+    def test_prompt_msg_map_idle(self):
+        assert PROMPT_MSG_MAP[PromptType.IDLE_CMD] == MSG_SELECT_IDLECMD
+
+    def test_prompt_msg_map_battle(self):
+        assert PROMPT_MSG_MAP[PromptType.BATTLE_MENU] == MSG_SELECT_BATTLECMD
+
+    def test_prompt_msg_map_effectyn(self):
+        assert PROMPT_MSG_MAP[PromptType.SELECT_EFFECTYN] == MSG_SELECT_EFFECTYN
+
+
+# ---------------------------------------------------------------------------
+# 2. Global state encoding
+# ---------------------------------------------------------------------------
+
+class TestGlobalState:
+    def test_global_state_layout(self, builder, gs):
+        gs.my_lp = 7500
+        gs.opp_lp = 6000
+        gs.turn = 3
+        gs.phase = "main1 phase"
+        gs.is_my_turn = True
+        gs.my_deck_count = 30
+        gs.my_hand = [CardEntry(name="A", code=1)]
+        gs.my_graveyard = [CardEntry(name="B"), CardEntry(name="C")]
+        gs.my_banished = [CardEntry(name="D")]
+        gs.my_extra = []
+        gs.opp_deck_count = 28
+        gs.opp_hand_count = 5
+        gs.opp_graveyard = [CardEntry(name="E")]
+        gs.opp_banished = []
+        gs.opp_extra = [CardEntry(name="F")]
+
+        prompt = _make_prompt(PromptType.IDLE_CMD, ["e"])
+        obs = builder.build(gs, prompt)
+        g = obs["global_state"]
+
+        assert g.shape == (GLOBAL_FEATURES,)
+        assert g.dtype == np.uint8
+
+        idx = 0
+        # my_lp
+        assert _read_u16(g, idx) == 7500
+        idx += 2
+        # opp_lp
+        assert _read_u16(g, idx) == 6000
+        idx += 2
+        # turn_count
+        assert g[idx] == 3
+        idx += 1
+        # phase
+        assert g[idx] == PHASE_MAIN1
+        idx += 1
+        # is_my_turn
+        assert g[idx] == 1
+        idx += 1
+        # chain_count (TODO: always 0)
+        assert g[idx] == 0
+        idx += 1
+        # msg_type
+        assert g[idx] == MSG_SELECT_IDLECMD
+        idx += 1
+        # Agent counts: deck, hand, grave, banished, extra
+        assert g[idx] == 30  # deck
+        idx += 1
+        assert g[idx] == 1   # hand (len of my_hand)
+        idx += 1
+        assert g[idx] == 2   # grave
+        idx += 1
+        assert g[idx] == 1   # banished
+        idx += 1
+        assert g[idx] == 0   # extra
+        idx += 1
+        # Opponent counts
+        assert g[idx] == 28  # deck
+        idx += 1
+        assert g[idx] == 5   # hand
+        idx += 1
+        assert g[idx] == 1   # grave
+        idx += 1
+        assert g[idx] == 0   # banished
+        idx += 1
+        assert g[idx] == 1   # extra
+        idx += 1
+        # is_finished
+        assert g[idx] == 0
+
+
+# ---------------------------------------------------------------------------
+# 3. Card encoding — known card in hand
+# ---------------------------------------------------------------------------
+
+class TestCardEncoding:
+    def test_my_hand_card(self, builder, gs):
+        gs.my_hand = [
+            CardEntry(name="Blue-Eyes", code=89631139, position=""),
+        ]
+        prompt = _make_prompt(PromptType.IDLE_CMD, ["e"])
+        obs = builder.build(gs, prompt)
+        c = obs["cards"]
+
+        assert c.shape == (MAX_CARDS, CARD_FEATURES)
+        # First card should be the hand card
+        card0 = c[0]
+        # code (bytes 0-3)
+        assert _read_u32(card0, 0) == 89631139
+        # location (byte 4)
+        assert card0[4] == LOCATION_HAND
+        # sequence (byte 5)
+        assert card0[5] == 0
+        # controller (byte 7)
+        assert card0[7] == 0  # agent
+        # is_public (byte 8)
+        assert card0[8] == 1
+        # ATK starts at offset 19 (code:4 + loc:1 + seq:1 + pos:1 + ctrl:1 + pub:1 + type:4 + lvl:1 + attr:1 + race:4)
+        assert _read_u16(card0, 19) == 3000
+        # DEF at offset 21
+        assert _read_u16(card0, 21) == 2500
+
+
+# ---------------------------------------------------------------------------
+# 4. Opponent hand — hidden entries
+# ---------------------------------------------------------------------------
+
+class TestOpponentHand:
+    def test_opp_hand_hidden_entries(self, builder, gs):
+        gs.opp_hand_count = 3
+        prompt = _make_prompt(PromptType.IDLE_CMD, ["e"])
+        obs = builder.build(gs, prompt)
+        c = obs["cards"]
+
+        # Agent has no cards, so opp hand starts at idx 0
+        # but agent zones come first (all empty), so opp hand starts
+        # after agent zones
+        # Find first non-zero card
+        opp_hand_cards = []
+        for i in range(MAX_CARDS):
+            if c[i, 4] == LOCATION_HAND and c[i, 7] == 1:
+                opp_hand_cards.append(c[i])
+
+        assert len(opp_hand_cards) == 3
+        for card in opp_hand_cards:
+            # code should be 0 (hidden)
+            assert _read_u32(card, 0) == 0
+            # controller = 1 (opponent)
+            assert card[7] == 1
+            # is_public = 0
+            assert card[8] == 0
+
+
+# ---------------------------------------------------------------------------
+# 5. Opponent face-down
+# ---------------------------------------------------------------------------
+
+class TestOpponentFaceDown:
+    def test_opp_facedown_monster(self, builder, gs):
+        gs.opp_mzone = [
+            CardEntry(name="", code=0, position="face-down defense"),
+        ]
+        prompt = _make_prompt(PromptType.IDLE_CMD, ["e"])
+        obs = builder.build(gs, prompt)
+        c = obs["cards"]
+
+        # Find the opp mzone card
+        opp_mon = []
+        for i in range(MAX_CARDS):
+            if c[i, 4] == LOCATION_MZONE and c[i, 7] == 1:
+                opp_mon.append(c[i])
+
+        assert len(opp_mon) == 1
+        card = opp_mon[0]
+        assert _read_u32(card, 0) == 0  # code hidden
+        assert card[6] == 0  # position = 0 (hidden)
+        assert card[8] == 0  # is_public = 0
+
+
+# ---------------------------------------------------------------------------
+# 6. Zone fill order
+# ---------------------------------------------------------------------------
+
+class TestZoneFillOrder:
+    def test_cards_in_rl_order(self, builder, gs):
+        gs.my_hand = [CardEntry(name="A", code=40640057)]
+        gs.my_mzone = [CardEntry(name="B", code=89631139,
+                                 position="face-up attack")]
+        gs.my_graveyard = [CardEntry(name="C", code=46986414)]
+
+        prompt = _make_prompt(PromptType.IDLE_CMD, ["e"])
+        obs = builder.build(gs, prompt)
+        c = obs["cards"]
+
+        # Cards should appear in order: hand, mzone, szone, grave, ...
+        codes = []
+        for i in range(MAX_CARDS):
+            code = _read_u32(c[i], 0)
+            if code != 0:
+                codes.append(code)
+
+        # hand (Kuriboh), mzone (BEWD), grave (DM)
+        assert codes[0] == 40640057   # hand
+        assert codes[1] == 89631139   # mzone
+        assert codes[2] == 46986414   # grave
+
+
+# ---------------------------------------------------------------------------
+# 7. Idle action features
+# ---------------------------------------------------------------------------
+
+class TestIdleActionFeatures:
+    def test_idle_structured_actions(self, builder, gs):
+        sa = [
+            StructuredAction(category=0, cardspec="h1", card_code=89631139,
+                             location=LOCATION_HAND, sequence=0, sub_action="s"),
+            StructuredAction(category=5, cardspec="s1", card_code=44095762,
+                             location=LOCATION_SZONE, sequence=0, sub_action="v"),
+            StructuredAction(category=7, sub_action="e"),
+        ]
+        prompt = _make_prompt(PromptType.IDLE_CMD, ["e"],
+                              structured_actions=sa)
+        obs = builder.build(gs, prompt)
+        a = obs["actions"]
+        m = obs["action_mask"]
+
+        assert a.shape == (MAX_ACTIONS, ACTION_FEATURES)
+        # 3 actions valid
+        assert m[0] == 1
+        assert m[1] == 1
+        assert m[2] == 1
+        assert m[3] == 0
+
+        # Action 0: msg_type=IDLE_CMD, category=0, code=BEWD
+        assert a[0, 0] == MSG_SELECT_IDLECMD
+        assert a[0, 1] == 0  # category (summon)
+        assert _read_u32(a[0], 2) == 89631139
+
+        # Action 1: msg_type=IDLE_CMD, category=5
+        assert a[1, 0] == MSG_SELECT_IDLECMD
+        assert a[1, 1] == 5  # category (activate)
+        assert _read_u32(a[1], 2) == 44095762
+
+        # Action 2: end phase, category=7
+        assert a[2, 1] == 7
+
+
+# ---------------------------------------------------------------------------
+# 8. Battle action features
+# ---------------------------------------------------------------------------
+
+class TestBattleActionFeatures:
+    def test_battle_structured_actions(self, builder, gs):
+        sa = [
+            StructuredAction(category=1, cardspec="m1", card_code=89631139,
+                             location=LOCATION_MZONE, sequence=0, sub_action="m1"),
+            StructuredAction(category=3, sub_action="e"),
+        ]
+        prompt = _make_prompt(PromptType.BATTLE_MENU, ["a", "e"],
+                              structured_actions=sa)
+        obs = builder.build(gs, prompt)
+        a = obs["actions"]
+        m = obs["action_mask"]
+
+        assert a[0, 0] == MSG_SELECT_BATTLECMD
+        assert a[0, 1] == 1  # attack category
+        assert a[1, 1] == 3  # end phase category
+        assert m[0] == 1
+        assert m[1] == 1
+        assert m[2] == 0
+
+
+# ---------------------------------------------------------------------------
+# 9. Action mask
+# ---------------------------------------------------------------------------
+
+class TestActionMask:
+    def test_mask_valid_and_padding(self, builder, gs):
+        sa = [StructuredAction(category=i, sub_action="e") for i in range(5)]
+        prompt = _make_prompt(PromptType.IDLE_CMD, ["e"],
+                              structured_actions=sa)
+        obs = builder.build(gs, prompt)
+        m = obs["action_mask"]
+
+        assert m.shape == (MAX_ACTIONS,)
+        assert m.dtype == np.int8
+        # First 5 valid
+        for i in range(5):
+            assert m[i] == 1
+        # Rest padding
+        for i in range(5, MAX_ACTIONS):
+            assert m[i] == 0
+
+    def test_mask_max_actions_cap(self, builder, gs):
+        # More actions than MAX_ACTIONS
+        sa = [StructuredAction(category=0, sub_action="e")
+              for _ in range(40)]
+        prompt = _make_prompt(PromptType.IDLE_CMD, ["e"],
+                              structured_actions=sa)
+        obs = builder.build(gs, prompt)
+        m = obs["action_mask"]
+
+        # Should cap at MAX_ACTIONS
+        assert sum(m) == MAX_ACTIONS
+
+
+# ---------------------------------------------------------------------------
+# 10. Non-idle prompt actions
+# ---------------------------------------------------------------------------
+
+class TestNonIdlePromptActions:
+    def test_effectyn_encodes_two_actions(self, builder, gs):
+        prompt = _make_prompt(PromptType.SELECT_EFFECTYN,
+                              ["yes", "no"])
+        obs = builder.build(gs, prompt)
+        m = obs["action_mask"]
+        a = obs["actions"]
+
+        assert m[0] == 1
+        assert m[1] == 1
+        assert m[2] == 0
+        assert a[0, 0] == MSG_SELECT_EFFECTYN
+        assert a[1, 0] == MSG_SELECT_EFFECTYN
+        assert a[0, 8] == 0  # index 0 = yes
+        assert a[1, 8] == 1  # index 1 = no
+
+    def test_select_card_encodes_from_options(self, builder, gs):
+        prompt = _make_prompt(PromptType.SELECT_CARD,
+                              ["h1: Blue-Eyes", "h2: Kuriboh", "h3: Dark Magician"])
+        obs = builder.build(gs, prompt)
+        m = obs["action_mask"]
+        a = obs["actions"]
+
+        assert m[0] == 1
+        assert m[1] == 1
+        assert m[2] == 1
+        assert m[3] == 0
+        assert a[0, 0] == MSG_SELECT_CARD
+        assert a[0, 8] == 0
+        assert a[1, 8] == 1
+        assert a[2, 8] == 2

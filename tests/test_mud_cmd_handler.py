@@ -21,10 +21,10 @@ from yugioh_mud.cmd_handler import (
     LOCATION_EXTRA,
     LOCATION_HAND,
     LOCATION_MZONE,
-    LOCATION_REMOVED,
     LOCATION_SZONE,
     LOCATION_GRAVE,
 )
+from yugioh_env.constants import LOCATION_BANISHED
 from yugioh_mud.game_state import CardEntry, MUDGameState
 from yugioh_mud.text_parser import MUDTextParser, ParsedPrompt, PromptType
 
@@ -75,8 +75,8 @@ class TestParseCardspec:
         assert parse_cardspec("x1") == (LOCATION_EXTRA, 0)
 
     def test_removed(self):
-        assert parse_cardspec("r1") == (LOCATION_REMOVED, 0)
-        assert parse_cardspec("r3") == (LOCATION_REMOVED, 2)
+        assert parse_cardspec("r1") == (LOCATION_BANISHED, 0)
+        assert parse_cardspec("r3") == (LOCATION_BANISHED, 2)
 
     def test_unknown(self):
         assert parse_cardspec("??") == (0, 0)
@@ -376,7 +376,7 @@ class TestIdleCmdHandlerGameState:
         r1_action = [a for a in prompt.structured_actions
                      if a.cardspec == "r1"][0]
         assert r1_action.card_code == 70426919
-        assert r1_action.location == LOCATION_REMOVED
+        assert r1_action.location == LOCATION_BANISHED
         assert r1_action.sequence == 0
 
 
