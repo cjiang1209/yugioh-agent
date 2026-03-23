@@ -42,10 +42,12 @@ def parse_args() -> argparse.Namespace:
 
     play = parser.add_argument_group("play")
     play.add_argument("--mode", type=str, default=None,
-                      choices=["passive", "random"],
-                      help="Play mode (default: random)")
+                      help="Play mode: passive, random, model:PATH (default: random)")
     play.add_argument("--seed", type=int, default=None,
                       help="RNG seed (default: host=42, guest=137)")
+    play.add_argument("--device", type=str, default="cpu",
+                      help="Torch device for model inference (default: cpu)")
+
 
     debug = parser.add_argument_group("debug")
     debug.add_argument("--verbose", action="store_true",
@@ -72,9 +74,16 @@ def build_config(args: argparse.Namespace) -> MUDBotConfig:
     if args.deck is not None:
         overrides["deck"] = args.deck
     if args.mode is not None:
-        overrides["mode"] = args.mode
+        mode_spec = args.mode
+        if mode_spec.startswith("model:"):
+            overrides["mode"] = "model"
+            overrides["checkpoint"] = mode_spec[len("model:"):]
+        else:
+            overrides["mode"] = mode_spec
     if args.seed is not None:
         overrides["seed"] = args.seed
+    if args.device != "cpu":
+        overrides["device"] = args.device
     if args.verbose:
         overrides["verbose"] = True
 
@@ -90,7 +99,17 @@ async def run(config: MUDBotConfig) -> None:
         await conn.connect()
         logging.info("Connected to ws://%s:%d", config.server_host, config.server_port)
         parser = MUDTextParser(own_nickname=config.nickname)
-        if config.mode == "random":
+        if config.mode == "model":
+            if not config.checkpoint:
+                logging.error("--mode model:PATH requires a checkpoint path")
+                return
+            if not os.path.exists(config.db_path):
+                logging.error("--mode model requires cards.cdb at %s", config.db_path)
+                return
+            from yugioh_mud.agent import ModelAgent
+            agent = ModelAgent(
+                config.checkpoint, config.db_path, config.device)
+        elif config.mode == "random":
             agent = RandomAgent(seed=config.seed)
         else:
             agent = PassiveAgent()

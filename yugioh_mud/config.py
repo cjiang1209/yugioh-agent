@@ -27,6 +27,10 @@ class MUDBotConfig:
     # Database
     db_path: str = "assets/cards.cdb"
 
+    # Model
+    checkpoint: str = ""        # path to .pt checkpoint
+    device: str = "cpu"         # torch device
+
     # Debug
     verbose: bool = False
 

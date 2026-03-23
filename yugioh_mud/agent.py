@@ -11,6 +11,8 @@ import logging
 import random
 from typing import TYPE_CHECKING, Protocol
 
+import numpy as np
+
 from yugioh_mud.text_parser import ParsedPrompt, PromptType
 
 if TYPE_CHECKING:
@@ -168,3 +170,99 @@ class RandomAgent:
         if n > 0:
             return self._rng.randrange(n)
         return 0
+
+
+# ---------------------------------------------------------------------------
+# Model action mapping (module-level for testability without torch)
+# ---------------------------------------------------------------------------
+
+
+def map_model_action(action_idx: int, prompt: ParsedPrompt) -> int:
+    """Map a model's raw action index to an Agent return value.
+
+    Translates the integer action output from the RL network into the
+    appropriate agent constant for the given prompt type.
+    """
+    pt = prompt.prompt_type
+    n = len(prompt.options)
+
+    if pt in (PromptType.IDLE_CMD, PromptType.BATTLE_MENU):
+        sa = prompt.structured_actions
+        if action_idx >= len(sa):
+            return END_PHASE
+        # Return the index directly — the cmd_handler dispatches phase
+        # transitions (to_bp, to_ep, to_m2) via StructuredAction.sub_action.
+        return action_idx
+
+    if pt in (PromptType.SELECT_EFFECTYN, PromptType.SELECT_YESNO):
+        return 0 if action_idx == 0 else DECLINE
+
+    if pt == PromptType.SELECT_CHAIN:
+        return action_idx if action_idx < n else CANCEL
+
+    if pt == PromptType.SELECT_UNSELECT:
+        return action_idx if action_idx < n else FINISH
+
+    # Generic selections: clamp to valid range
+    if n > 0:
+        return min(action_idx, n - 1)
+
+    return CANCEL
+
+
+# ---------------------------------------------------------------------------
+# ModelAgent — uses a trained YuGiOhNet checkpoint
+# ---------------------------------------------------------------------------
+
+class ModelAgent:
+    """Agent that uses a trained YuGiOhNet checkpoint to select actions.
+
+    Requires torch and yugioh_rl to be installed (``pip install -e ".[train]"``).
+    """
+
+    def __init__(
+        self,
+        checkpoint_path: str,
+        db_path: str,
+        device: str = "cpu",
+    ) -> None:
+        import torch
+        from yugioh_rl.config import TrainingConfig
+        from yugioh_rl.network import YuGiOhNet
+
+        from yugioh_env.card_database import CardDatabase
+        from yugioh_mud.observation import MUDObservationBuilder
+
+        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+        config: TrainingConfig = checkpoint["config"]
+        self._network = YuGiOhNet.from_state_dict(config, checkpoint["model_state_dict"])
+        self._network.to(device)
+        self._network.eval()
+        self._device = torch.device(device)
+
+        card_db = CardDatabase(db_path)
+        self._obs_builder = MUDObservationBuilder(card_db)
+        self._fallback = PassiveAgent()
+        self._log = logging.getLogger(__name__)
+
+    def choose(
+        self,
+        prompt: ParsedPrompt,
+        game_state: MUDGameState | None = None,
+    ) -> int:
+        if game_state is None:
+            return self._fallback.choose(prompt)
+
+        import torch
+
+        obs = self._obs_builder.build(game_state, prompt)
+        t_cards = torch.from_numpy(obs["cards"]).unsqueeze(0).to(self._device)
+        t_global = torch.from_numpy(obs["global_state"]).unsqueeze(0).to(self._device)
+        t_actions = torch.from_numpy(obs["actions"]).unsqueeze(0).to(self._device)
+        t_mask = torch.from_numpy(obs["action_mask"]).unsqueeze(0).to(self._device)
+
+        with torch.no_grad():
+            logits, _ = self._network(t_cards, t_global, t_actions, t_mask)
+            action_idx = logits.argmax(dim=-1).item()
+
+        return map_model_action(action_idx, prompt)

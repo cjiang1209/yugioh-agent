@@ -79,6 +79,8 @@ Tests auto-skip when prerequisites are missing:
 - `test_mud_text_parser.py`: pure unit tests for duel prompt/event parsing, no external deps
 - `test_mud_card_lookup.py`: pure unit tests (uses temp SQLite DB), no external deps
 - `test_mud_game_state.py`: pure unit tests (uses temp SQLite DB for CardNameLookup), no external deps
+- `test_mud_observation.py`: pure unit tests (uses temp SQLite DB for CardDatabase), no external deps
+- `test_mud_model_agent.py`: skips if `torch` not installed
 
 ## Architecture
 
@@ -294,7 +296,8 @@ yugioh_mud/
 ├── card_lookup.py         — Name-to-passcode reverse index from cards.cdb texts table
 ├── game_state.py          — Zone tracking (MUDGameState) consuming ParsedEvent + CardNameLookup
 ├── cmd_handler.py         — Atomic idle/battle handlers (probe→build→decide→execute)
-├── agent.py               — Agent protocol + PassiveAgent + RandomAgent
+├── observation.py         — MUDGameState → numpy RL observation arrays via encode_card() + CardDatabase
+├── agent.py               — Agent protocol + PassiveAgent + RandomAgent + ModelAgent
 └── action_translator.py   — Converts agent int actions → MUD text commands
 cli/mud_bot.py             — CLI entry point (--profile host/guest, --deck, --verbose)
 scripts/mud_bot.sh         — Shell wrapper (activates venv, forwards args)
