@@ -6,6 +6,8 @@ the training environment's observation format.
 
 from __future__ import annotations
 
+import re
+
 import numpy as np
 
 from yugioh_env.card_database import CardDatabase
@@ -55,6 +57,10 @@ from yugioh_env.observation import (
 )
 from yugioh_mud.game_state import CardEntry, MUDGameState
 from yugioh_mud.text_parser import ParsedPrompt, PromptType
+
+_EFFECTYN_NAME_RE = re.compile(
+    r"Do you want to use the effect from (.+?)(?:\s+in\s+[a-z]+\d+)?\?"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -329,7 +335,7 @@ class MUDObservationBuilder:
         if prompt.prompt_type in (PromptType.IDLE_CMD, PromptType.BATTLE_MENU):
             self._encode_structured_actions(actions, mask, prompt, msg_type)
         elif prompt.prompt_type in (PromptType.SELECT_EFFECTYN, PromptType.SELECT_YESNO):
-            self._encode_binary_choice(actions, mask, msg_type)
+            self._encode_binary_choice(actions, mask, msg_type, prompt, gs)
         elif prompt.prompt_type in (PromptType.SELECT_CARD, PromptType.SELECT_TRIBUTE):
             self._encode_option_actions(actions, mask, prompt, msg_type, gs)
         else:
@@ -344,15 +350,22 @@ class MUDObservationBuilder:
         prompt: ParsedPrompt,
         msg_type: int,
     ) -> None:
+        # Track per-category counts so ``index`` matches the RL encoding
+        # (index within the sub-category list, not the flat action list).
+        cat_counts: dict[int, int] = {}
         for i, sa in enumerate(prompt.structured_actions[:MAX_ACTIONS]):
+            cat = sa.category
+            sub_idx = cat_counts.get(cat, 0)
+            cat_counts[cat] = sub_idx + 1
+
             feat = np.zeros(ACTION_FEATURES, dtype=np.uint8)
             feat[0] = msg_type & 0xFF
-            feat[1] = sa.category & 0xFF
+            feat[1] = cat & 0xFF
             code = sa.card_code
             feat[2], feat[3], feat[4], feat[5] = _encode_u32(code)
             feat[6] = sa.location & 0xFF
             feat[7] = min(sa.sequence, 255)
-            feat[8] = i & 0xFF
+            feat[8] = sub_idx & 0xFF
             feat[9] = 1  # num_selected
             actions[i] = feat
             mask[i] = 1
@@ -362,12 +375,22 @@ class MUDObservationBuilder:
         actions: np.ndarray,
         mask: np.ndarray,
         msg_type: int,
+        prompt: ParsedPrompt,
+        gs: MUDGameState,
     ) -> None:
-        # Action 0 = Yes, Action 1 = No
+        # RL encoding: Yes → category=0, No → category=1, both index=0.
+        # For EFFECTYN, include the card code extracted from the prompt text.
+        code = 0
+        if prompt.prompt_type == PromptType.SELECT_EFFECTYN and prompt.raw_lines:
+            m = _EFFECTYN_NAME_RE.match(prompt.raw_lines[0])
+            if m:
+                code = gs.resolve_code(m.group(1))
         for i in range(2):
             feat = np.zeros(ACTION_FEATURES, dtype=np.uint8)
             feat[0] = msg_type & 0xFF
-            feat[8] = i
+            feat[1] = i & 0xFF  # category: 0=Yes, 1=No
+            feat[2], feat[3], feat[4], feat[5] = _encode_u32(code)
+            # feat[8] = 0 (index stays 0 for both)
             actions[i] = feat
             mask[i] = 1
 

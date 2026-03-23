@@ -114,7 +114,7 @@ class MUDGameState:
         # Consumed by TO_GRAVEYARD/BANISHED to prevent double-adds.
         self._pending_gy: dict[str, int] = {}
 
-    def _resolve_code(self, name: str) -> int:
+    def resolve_code(self, name: str) -> int:
         """Look up passcode for *name*, returning 0 if unknown."""
         if not name or self._lookup is None:
             return 0
@@ -195,13 +195,13 @@ class MUDGameState:
         """Handle individual drawn card (sub-line after 'Drew N cards:')."""
         self.my_hand.append(CardEntry(
             name=ev.card_name,
-            code=self._resolve_code(ev.card_name),
+            code=self.resolve_code(ev.card_name),
         ))
 
     def _on_summon(self, ev: ParsedEvent) -> None:
         entry = CardEntry(
             name=ev.card_name,
-            code=self._resolve_code(ev.card_name),
+            code=self.resolve_code(ev.card_name),
             position=ev.position,
             spec=ev.card_spec,
         )
@@ -213,7 +213,7 @@ class MUDGameState:
             self.my_mzone.append(entry)
 
     def _on_sp_summon(self, ev: ParsedEvent) -> None:
-        code = self._resolve_code(ev.card_name)
+        code = self.resolve_code(ev.card_name)
         entry = CardEntry(
             name=ev.card_name,
             code=code,
@@ -267,13 +267,13 @@ class MUDGameState:
         for card in zone:
             if card.spec == ev.card_spec:
                 card.name = ev.card_name
-                card.code = self._resolve_code(ev.card_name)
+                card.code = self.resolve_code(ev.card_name)
                 card.position = ev.position or "face-up attack"
                 return
         # Fallback: card not found (tracking drift) — append
         zone.append(CardEntry(
             name=ev.card_name,
-            code=self._resolve_code(ev.card_name),
+            code=self.resolve_code(ev.card_name),
             position=ev.position or "face-up attack",
             spec=ev.card_spec,
         ))
@@ -281,7 +281,7 @@ class MUDGameState:
     def _on_set(self, ev: ParsedEvent) -> None:
         entry = CardEntry(
             name=ev.card_name,
-            code=self._resolve_code(ev.card_name),
+            code=self.resolve_code(ev.card_name),
             position=ev.position,
             spec=ev.card_spec,
         )
@@ -313,7 +313,7 @@ class MUDGameState:
                     card.position = ev.position
                     if ev.card_name:
                         card.name = ev.card_name
-                        card.code = self._resolve_code(ev.card_name)
+                        card.code = self.resolve_code(ev.card_name)
                     return
 
     def _on_attack(self, ev: ParsedEvent) -> None:
@@ -334,7 +334,7 @@ class MUDGameState:
         removed = self._remove_from_field(ev.card_spec, ev.card_name)
         entry = removed or CardEntry(
             name=ev.card_name,
-            code=self._resolve_code(ev.card_name),
+            code=self.resolve_code(ev.card_name),
         )
         entry.spec = ""
         # DESTROY events don't set is_opponent — infer from spec prefix
@@ -374,7 +374,7 @@ class MUDGameState:
                     self.my_deck_count = max(0, self.my_deck_count - 1)
         entry = removed or CardEntry(
             name=ev.card_name,
-            code=self._resolve_code(ev.card_name),
+            code=self.resolve_code(ev.card_name),
         )
         # Clear stale field spec — GY entries use name-based lookup
         entry.spec = ""
@@ -407,7 +407,7 @@ class MUDGameState:
                     self.my_deck_count = max(0, self.my_deck_count - 1)
         entry = removed or CardEntry(
             name=ev.card_name,
-            code=self._resolve_code(ev.card_name),
+            code=self.resolve_code(ev.card_name),
         )
         # Clear stale field spec — banished entries use name-based lookup
         entry.spec = ""
@@ -436,7 +436,7 @@ class MUDGameState:
         else:
             self.my_hand.append(CardEntry(
                 name=ev.card_name,
-                code=self._resolve_code(ev.card_name),
+                code=self.resolve_code(ev.card_name),
                 spec=ev.card_spec,
             ))
 
@@ -464,7 +464,7 @@ class MUDGameState:
                 ev.card_spec, ev.card_name, ev.is_opponent)
         entry = removed or CardEntry(
             name=ev.card_name,
-            code=self._resolve_code(ev.card_name),
+            code=self.resolve_code(ev.card_name),
             spec=ev.card_spec,
         )
         if ev.is_opponent:
@@ -480,7 +480,7 @@ class MUDGameState:
             self._remove_from_zone(self.my_graveyard, ev.card_spec, ev.card_name)
         entry = CardEntry(
             name=ev.card_name,
-            code=self._resolve_code(ev.card_name),
+            code=self.resolve_code(ev.card_name),
             spec=ev.target_spec,
         )
         self._add_to_field(entry, ev.target_spec, ev.is_opponent)
@@ -492,7 +492,7 @@ class MUDGameState:
             self._remove_from_zone(self.my_banished, ev.card_spec, ev.card_name)
         entry = CardEntry(
             name=ev.card_name,
-            code=self._resolve_code(ev.card_name),
+            code=self.resolve_code(ev.card_name),
             spec=ev.target_spec,
         )
         self._add_to_field(entry, ev.target_spec, ev.is_opponent)
@@ -501,7 +501,7 @@ class MUDGameState:
         removed = self._remove_from_field(ev.card_spec, ev.card_name)
         entry = removed or CardEntry(
             name=ev.card_name,
-            code=self._resolve_code(ev.card_name),
+            code=self.resolve_code(ev.card_name),
         )
         entry.spec = ""
         if ev.is_opponent:
@@ -517,7 +517,7 @@ class MUDGameState:
             self._remove_from_hand(ev.card_name)
         entry = CardEntry(
             name=ev.card_name,
-            code=self._resolve_code(ev.card_name),
+            code=self.resolve_code(ev.card_name),
         )
         if ev.is_opponent:
             self.opp_graveyard.append(entry)
@@ -530,7 +530,7 @@ class MUDGameState:
         removed = self._remove_from_field(ev.card_spec, ev.card_name)
         entry = removed or CardEntry(
             name=ev.card_name,
-            code=self._resolve_code(ev.card_name),
+            code=self.resolve_code(ev.card_name),
         )
         entry.spec = ev.target_spec
         # Card moved to the other player's field
@@ -542,7 +542,7 @@ class MUDGameState:
         removed = self._remove_from_field(ev.card_spec, ev.card_name)
         entry = removed or CardEntry(
             name=ev.card_name,
-            code=self._resolve_code(ev.card_name),
+            code=self.resolve_code(ev.card_name),
         )
         entry.spec = ev.target_spec
         self._add_to_field(entry, ev.target_spec, ev.is_opponent)
@@ -558,7 +558,7 @@ class MUDGameState:
         removed = self._remove_from_field("", ev.card_name)
         entry = removed or CardEntry(
             name=ev.card_name,
-            code=self._resolve_code(ev.card_name),
+            code=self.resolve_code(ev.card_name),
         )
         entry.spec = ev.target_spec
         is_opp = ev.target_spec.startswith("o")
@@ -807,7 +807,7 @@ class MUDGameState:
                 spec, name = m.group(1), m.group(2)
                 new_mzone.append(CardEntry(
                     name=name,
-                    code=self._resolve_code(name),
+                    code=self.resolve_code(name),
                     spec=spec,
                 ))
                 continue
@@ -816,7 +816,7 @@ class MUDGameState:
                 spec, name, pos = m.group(1), m.group(2), m.group(3)
                 new_szone.append(CardEntry(
                     name=name,
-                    code=self._resolve_code(name),
+                    code=self.resolve_code(name),
                     position=pos,
                     spec=spec,
                 ))
@@ -895,7 +895,7 @@ class MUDGameState:
                 name, position = _parse_card_line(m.group(2))
                 new_zone.append(CardEntry(
                     name=name,
-                    code=self._resolve_code(name),
+                    code=self.resolve_code(name),
                     position=position,
                     spec=spec,
                 ))

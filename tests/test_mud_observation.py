@@ -107,16 +107,6 @@ def gs() -> MUDGameState:
     return MUDGameState()
 
 
-def _make_prompt(
-    ptype: PromptType,
-    options: list[str] | None = None,
-    structured_actions: list[StructuredAction] | None = None,
-) -> ParsedPrompt:
-    p = ParsedPrompt(prompt_type=ptype, options=options or [])
-    if structured_actions is not None:
-        p.structured_actions = structured_actions
-    return p
-
 
 def _read_u16(arr: np.ndarray, offset: int) -> int:
     return int(arr[offset]) | (int(arr[offset + 1]) << 8)
@@ -188,7 +178,7 @@ class TestGlobalState:
         gs.opp_banished = []
         gs.opp_extra = [CardEntry(name="F")]
 
-        prompt = _make_prompt(PromptType.IDLE_CMD, ["e"])
+        prompt = ParsedPrompt(prompt_type=PromptType.IDLE_CMD, options=["e"])
         obs = builder.build(gs, prompt)
         g = obs["global_state"]
 
@@ -252,7 +242,7 @@ class TestCardEncoding:
         gs.my_hand = [
             CardEntry(name="Blue-Eyes", code=89631139, position=""),
         ]
-        prompt = _make_prompt(PromptType.IDLE_CMD, ["e"])
+        prompt = ParsedPrompt(prompt_type=PromptType.IDLE_CMD, options=["e"])
         obs = builder.build(gs, prompt)
         c = obs["cards"]
 
@@ -282,7 +272,7 @@ class TestCardEncoding:
 class TestOpponentHand:
     def test_opp_hand_hidden_entries(self, builder, gs):
         gs.opp_hand_count = 3
-        prompt = _make_prompt(PromptType.IDLE_CMD, ["e"])
+        prompt = ParsedPrompt(prompt_type=PromptType.IDLE_CMD, options=["e"])
         obs = builder.build(gs, prompt)
         c = obs["cards"]
 
@@ -314,7 +304,7 @@ class TestOpponentFaceDown:
         gs.opp_mzone = [
             CardEntry(name="", code=0, position="face-down defense"),
         ]
-        prompt = _make_prompt(PromptType.IDLE_CMD, ["e"])
+        prompt = ParsedPrompt(prompt_type=PromptType.IDLE_CMD, options=["e"])
         obs = builder.build(gs, prompt)
         c = obs["cards"]
 
@@ -342,7 +332,7 @@ class TestZoneFillOrder:
                                  position="face-up attack")]
         gs.my_graveyard = [CardEntry(name="C", code=46986414)]
 
-        prompt = _make_prompt(PromptType.IDLE_CMD, ["e"])
+        prompt = ParsedPrompt(prompt_type=PromptType.IDLE_CMD, options=["e"])
         obs = builder.build(gs, prompt)
         c = obs["cards"]
 
@@ -372,7 +362,7 @@ class TestIdleActionFeatures:
                              location=LOCATION_SZONE, sequence=0, sub_action="v"),
             StructuredAction(category=7, sub_action="e"),
         ]
-        prompt = _make_prompt(PromptType.IDLE_CMD, ["e"],
+        prompt = ParsedPrompt(prompt_type=PromptType.IDLE_CMD, options=["e"],
                               structured_actions=sa)
         obs = builder.build(gs, prompt)
         a = obs["actions"]
@@ -398,6 +388,37 @@ class TestIdleActionFeatures:
         # Action 2: end phase, category=7
         assert a[2, 1] == 7
 
+    def test_idle_index_is_per_category(self, builder, gs):
+        """index (byte 8) resets per category, matching RL encoding."""
+        sa = [
+            StructuredAction(category=0, cardspec="h1", card_code=89631139,
+                             location=LOCATION_HAND, sequence=0, sub_action="s"),
+            StructuredAction(category=0, cardspec="h2", card_code=38517737,
+                             location=LOCATION_HAND, sequence=1, sub_action="s"),
+            StructuredAction(category=5, cardspec="s1", card_code=44095762,
+                             location=LOCATION_SZONE, sequence=0, sub_action="v"),
+            StructuredAction(category=6, sub_action="b"),
+            StructuredAction(category=7, sub_action="e"),
+        ]
+        prompt = ParsedPrompt(prompt_type=PromptType.IDLE_CMD, options=["b", "e"],
+                              structured_actions=sa)
+        obs = builder.build(gs, prompt)
+        a = obs["actions"]
+
+        # Two normal summons: index 0 and 1 within category 0
+        assert a[0, 1] == 0  # category
+        assert a[0, 8] == 0  # sub-index 0
+        assert a[1, 1] == 0  # same category
+        assert a[1, 8] == 1  # sub-index 1
+        # Activate: first in its category → index 0
+        assert a[2, 1] == 5
+        assert a[2, 8] == 0
+        # Phase transitions: each is first in its category → index 0
+        assert a[3, 1] == 6
+        assert a[3, 8] == 0
+        assert a[4, 1] == 7
+        assert a[4, 8] == 0
+
 
 # ---------------------------------------------------------------------------
 # 8. Battle action features
@@ -410,7 +431,7 @@ class TestBattleActionFeatures:
                              location=LOCATION_MZONE, sequence=0, sub_action="m1"),
             StructuredAction(category=3, sub_action="e"),
         ]
-        prompt = _make_prompt(PromptType.BATTLE_MENU, ["a", "e"],
+        prompt = ParsedPrompt(prompt_type=PromptType.BATTLE_MENU, options=["a", "e"],
                               structured_actions=sa)
         obs = builder.build(gs, prompt)
         a = obs["actions"]
@@ -431,7 +452,7 @@ class TestBattleActionFeatures:
 class TestActionMask:
     def test_mask_valid_and_padding(self, builder, gs):
         sa = [StructuredAction(category=i, sub_action="e") for i in range(5)]
-        prompt = _make_prompt(PromptType.IDLE_CMD, ["e"],
+        prompt = ParsedPrompt(prompt_type=PromptType.IDLE_CMD, options=["e"],
                               structured_actions=sa)
         obs = builder.build(gs, prompt)
         m = obs["action_mask"]
@@ -449,7 +470,7 @@ class TestActionMask:
         # More actions than MAX_ACTIONS
         sa = [StructuredAction(category=0, sub_action="e")
               for _ in range(40)]
-        prompt = _make_prompt(PromptType.IDLE_CMD, ["e"],
+        prompt = ParsedPrompt(prompt_type=PromptType.IDLE_CMD, options=["e"],
                               structured_actions=sa)
         obs = builder.build(gs, prompt)
         m = obs["action_mask"]
@@ -464,8 +485,8 @@ class TestActionMask:
 
 class TestNonIdlePromptActions:
     def test_effectyn_encodes_two_actions(self, builder, gs):
-        prompt = _make_prompt(PromptType.SELECT_EFFECTYN,
-                              ["yes", "no"])
+        prompt = ParsedPrompt(prompt_type=PromptType.SELECT_EFFECTYN,
+                              options=["yes", "no"])
         obs = builder.build(gs, prompt)
         m = obs["action_mask"]
         a = obs["actions"]
@@ -475,12 +496,34 @@ class TestNonIdlePromptActions:
         assert m[2] == 0
         assert a[0, 0] == MSG_SELECT_EFFECTYN
         assert a[1, 0] == MSG_SELECT_EFFECTYN
-        assert a[0, 8] == 0  # index 0 = yes
-        assert a[1, 8] == 1  # index 1 = no
+        # RL encoding: Yes → category=0, No → category=1, both index=0
+        assert a[0, 1] == 0  # category 0 = yes
+        assert a[1, 1] == 1  # category 1 = no
+        assert a[0, 8] == 0  # index 0
+        assert a[1, 8] == 0  # index 0
+
+    def test_effectyn_extracts_card_code(self, builder, tmp_db):
+        from yugioh_mud.card_lookup import CardNameLookup
+        lookup = CardNameLookup(tmp_db)
+        gs_with_lookup = MUDGameState(card_lookup=lookup)
+
+        prompt = ParsedPrompt(
+            prompt_type=PromptType.SELECT_EFFECTYN,
+            options=["yes", "no"],
+            raw_lines=["Do you want to use the effect from Mirror Force in s1?"],
+        )
+        obs = builder.build(gs_with_lookup, prompt)
+        a = obs["actions"]
+
+        # Both Yes and No should carry Mirror Force's passcode (44095762)
+        code_yes = _read_u32(a[0], 2)
+        code_no = _read_u32(a[1], 2)
+        assert code_yes == 44095762
+        assert code_no == 44095762
 
     def test_select_card_encodes_from_options(self, builder, gs):
-        prompt = _make_prompt(PromptType.SELECT_CARD,
-                              ["h1: Blue-Eyes", "h2: Kuriboh", "h3: Dark Magician"])
+        prompt = ParsedPrompt(prompt_type=PromptType.SELECT_CARD,
+                              options=["h1: Blue-Eyes", "h2: Kuriboh", "h3: Dark Magician"])
         obs = builder.build(gs, prompt)
         m = obs["action_mask"]
         a = obs["actions"]
