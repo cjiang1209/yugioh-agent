@@ -18,6 +18,7 @@ from yugioh_env.constants import (
     LOCATION_BANISHED,
     LOCATION_EXTRA,
     LOCATION_OVERLAY,
+    PHASE_NAMES,
     POS_FACEUP_ATTACK,
     POS_FACEDOWN_ATTACK,
     POS_FACEUP_DEFENSE,
@@ -42,30 +43,7 @@ from yugioh_env.constants import (
     MSG_EQUIP,
     MSG_TOSS_COIN,
     MSG_TOSS_DICE,
-    PHASE_DRAW,
-    PHASE_STANDBY,
-    PHASE_MAIN1,
-    PHASE_BATTLE_START,
-    PHASE_BATTLE_STEP,
-    PHASE_DAMAGE,
-    PHASE_DAMAGE_CAL,
-    PHASE_BATTLE,
-    PHASE_MAIN2,
-    PHASE_END,
 )
-
-_PHASE_NAMES = {
-    PHASE_DRAW: "Draw",
-    PHASE_STANDBY: "Standby",
-    PHASE_MAIN1: "Main 1",
-    PHASE_BATTLE_START: "Battle Start",
-    PHASE_BATTLE_STEP: "Battle Step",
-    PHASE_DAMAGE: "Damage",
-    PHASE_DAMAGE_CAL: "Damage Calc",
-    PHASE_BATTLE: "Battle",
-    PHASE_MAIN2: "Main 2",
-    PHASE_END: "End",
-}
 
 _POS_NAMES = {
     POS_FACEUP_ATTACK: "FU-Atk",
@@ -261,7 +239,7 @@ def format_events(
 
         elif msg_type == MSG_NEW_PHASE:
             phase = msg.get("phase", 0)
-            phase_name = _PHASE_NAMES.get(phase, f"0x{phase:02x}")
+            phase_name = PHASE_NAMES.get(phase, f"0x{phase:02x}")
             events.append(f"Phase: {phase_name}")
 
         elif msg_type == MSG_DRAW:

@@ -24,22 +24,9 @@ import time
 from pathlib import Path
 
 from yugioh_env.client import YuGiOhEnv
+from yugioh_env.constants import PHASE_NAMES
 from yugioh_env.deck_parser import parse_ydk
 from yugioh_env.models import YuGiOhAction, YuGiOhObservation
-
-# Phase ID -> human-readable name
-PHASE_NAMES = {
-    0x01: "Draw",
-    0x02: "Standby",
-    0x04: "Main 1",
-    0x08: "Battle Start",
-    0x10: "Battle Step",
-    0x20: "Damage",
-    0x40: "Damage Calc",
-    0x80: "Battle",
-    0x100: "Main 2",
-    0x200: "End",
-}
 
 # MSG_SELECT type -> human-readable name
 MSG_SELECT_NAMES = {

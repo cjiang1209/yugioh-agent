@@ -113,6 +113,33 @@ PHASE_BATTLE = 0x80
 PHASE_MAIN2 = 0x100
 PHASE_END = 0x200
 
+PHASE_NAMES = {
+    PHASE_DRAW: "Draw",
+    PHASE_STANDBY: "Standby",
+    PHASE_MAIN1: "Main 1",
+    PHASE_BATTLE_START: "Battle Start",
+    PHASE_BATTLE_STEP: "Battle Step",
+    PHASE_DAMAGE: "Damage",
+    PHASE_DAMAGE_CAL: "Damage Calc",
+    PHASE_BATTLE: "Battle",
+    PHASE_MAIN2: "Main 2",
+    PHASE_END: "End",
+}
+
+
+# ─── Utilities ───────────────────────────────────────────────────────────────
+
+def split_setcodes(packed: int) -> list[int]:
+    """Split a packed 64-bit setcode value into individual 16-bit codes."""
+    codes: list[int] = []
+    while packed:
+        sc = packed & 0xFFFF
+        if sc:
+            codes.append(sc)
+        packed >>= 16
+    return codes
+
+
 # ─── Messages ────────────────────────────────────────────────────────────────
 MSG_RETRY = 1
 MSG_HINT = 2

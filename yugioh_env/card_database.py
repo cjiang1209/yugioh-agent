@@ -5,6 +5,8 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from yugioh_env.constants import TYPE_LINK, split_setcodes
+
 
 class CardDatabase:
     """Reads card data from a .cdb SQLite database.
@@ -39,15 +41,7 @@ class CardDatabase:
         lscale = (level_raw >> 24) & 0xFF
         rscale = (level_raw >> 16) & 0xFF
 
-        # Parse setcode as list of 16-bit values
-        setcode_raw = row["setcode"]
-        setcodes = []
-        val = setcode_raw
-        while val:
-            sc = val & 0xFFFF
-            if sc:
-                setcodes.append(sc)
-            val >>= 16
+        setcodes = split_setcodes(row["setcode"])
 
         card = {
             "code": row["id"],
@@ -64,8 +58,6 @@ class CardDatabase:
             "link_marker": 0,  # link_marker stored in def for Link monsters
         }
 
-        # For Link monsters, defense field stores link marker
-        from yugioh_env.constants import TYPE_LINK
         if card["type"] & TYPE_LINK:
             card["link_marker"] = row["def"]
             card["defense"] = 0

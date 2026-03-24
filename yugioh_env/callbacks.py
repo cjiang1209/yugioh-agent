@@ -11,6 +11,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from yugioh_env.constants import split_setcodes
 from yugioh_env.core_types import (
     OCG_CardData,
     OCG_DataReader,
@@ -89,7 +90,7 @@ class DuelCallbacks:
         # Build null-terminated setcodes array and store to prevent GC
         setcodes = card.get("setcodes", [])
         if isinstance(setcodes, int):
-            setcodes = self._split_setcodes(setcodes)
+            setcodes = split_setcodes(setcodes)
         arr = (c_uint16 * (len(setcodes) + 1))()
         for i, sc in enumerate(setcodes):
             arr[i] = sc
@@ -106,17 +107,6 @@ class DuelCallbacks:
         data.lscale = card.get("lscale", 0)
         data.rscale = card.get("rscale", 0)
         data.link_marker = card.get("link_marker", 0)
-
-    @staticmethod
-    def _split_setcodes(packed: int) -> list[int]:
-        """Split a packed 64-bit setcode value into individual 16-bit codes."""
-        codes = []
-        while packed:
-            sc = packed & 0xFFFF
-            if sc:
-                codes.append(sc)
-            packed >>= 16
-        return codes
 
     def _card_reader_done(
         self, payload: c_void_p, data_ptr: POINTER(OCG_CardData)

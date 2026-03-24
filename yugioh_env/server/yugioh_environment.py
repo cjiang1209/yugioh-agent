@@ -21,15 +21,15 @@ from yugioh_env.constants import (
     LOCATION_GRAVE,
     LOCATION_BANISHED,
     LOCATION_EXTRA,
+    PHASE_BATTLE,
+    PHASE_BATTLE_START,
+    PHASE_DRAW,
+    PHASE_END,
+    PHASE_MAIN1,
+    PHASE_MAIN2,
+    PHASE_STANDBY,
     SELECT_MSGS,
     MSG_WIN,
-    PHASE_DRAW,
-    PHASE_STANDBY,
-    PHASE_MAIN1,
-    PHASE_BATTLE_START,
-    PHASE_BATTLE,
-    PHASE_MAIN2,
-    PHASE_END,
 )
 from yugioh_env.duel import Duel
 from yugioh_env.lib_loader import load_library
@@ -39,7 +39,8 @@ from yugioh_env.opponent import Opponent, RandomOpponent
 
 logger = logging.getLogger(__name__)
 
-PHASE_NAMES = {
+# Lowercase phase names for the HTTP API response
+_API_PHASE_NAMES = {
     PHASE_DRAW: "draw",
     PHASE_STANDBY: "standby",
     PHASE_MAIN1: "main1",
@@ -274,7 +275,7 @@ class YuGiOhEnvironment(Environment):
             return YuGiOhState()
 
         gs = self._duel.game_state
-        phase_name = PHASE_NAMES.get(gs.phase, "unknown")
+        phase_name = _API_PHASE_NAMES.get(gs.phase, "unknown")
 
         return YuGiOhState(
             step_count=self._step_count,
