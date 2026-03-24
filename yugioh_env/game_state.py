@@ -15,6 +15,8 @@ from yugioh_env.constants import (
     MSG_WIN,
     MSG_START,
     MSG_MOVE,
+    MSG_CHAINING,
+    MSG_CHAIN_END,
     LOCATION_HAND,
     LOCATION_MZONE,
     LOCATION_SZONE,
@@ -95,6 +97,12 @@ class GameState:
         elif msg_type == MSG_WIN:
             self.is_finished = True
             self.winner = msg["player"]
+
+        elif msg_type == MSG_CHAINING:
+            self.chain_count += 1
+
+        elif msg_type == MSG_CHAIN_END:
+            self.chain_count = 0
 
         elif msg_type == MSG_MOVE:
             self._update_zone_counts(msg)

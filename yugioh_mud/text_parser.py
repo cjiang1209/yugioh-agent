@@ -18,6 +18,16 @@ if TYPE_CHECKING:
     from yugioh_mud.cmd_handler import StructuredAction
 
 
+# Known DuelReader/DuelMenu re-prompt lines.  The MUD server re-sends these
+# after informational commands (h, tab, tab2, score).  Used in protocol and
+# cmd_handler to detect end of command response.
+DUELREADER_REPROMPTS = frozenset({
+    "Select a card:",       # idle DuelReader
+    "Select an option:",    # battle DuelMenu
+    "Enter a line of text.",  # various DuelReader prompts
+})
+
+
 # ---------------------------------------------------------------------------
 # Public types — events (informational lines)
 # ---------------------------------------------------------------------------

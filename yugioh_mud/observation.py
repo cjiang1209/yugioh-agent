@@ -53,6 +53,8 @@ from yugioh_env.observation import (
     MAX_ACTIONS,
     MAX_CARDS,
     ZONE_SLOTS,
+    encode_u16,
+    encode_u32,
     encode_card,
 )
 from yugioh_mud.game_state import CardEntry, MUDGameState
@@ -114,14 +116,6 @@ PROMPT_MSG_MAP: dict[PromptType, int] = {
     PromptType.SELECT_SUM: MSG_SELECT_SUM,
     PromptType.SELECT_UNSELECT: MSG_SELECT_UNSELECT_CARD,
 }
-
-
-def _encode_u16(val: int) -> tuple[int, int]:
-    return val & 0xFF, (val >> 8) & 0xFF
-
-
-def _encode_u32(val: int) -> tuple[int, int, int, int]:
-    return val & 0xFF, (val >> 8) & 0xFF, (val >> 16) & 0xFF, (val >> 24) & 0xFF
 
 
 # ---------------------------------------------------------------------------
@@ -273,10 +267,10 @@ class MUDObservationBuilder:
         idx = 0
 
         # my_lp (2 bytes)
-        g[idx], g[idx + 1] = _encode_u16(min(gs.my_lp, 65535))
+        g[idx], g[idx + 1] = encode_u16(min(gs.my_lp, 65535))
         idx += 2
         # opp_lp (2 bytes)
-        g[idx], g[idx + 1] = _encode_u16(min(gs.opp_lp, 65535))
+        g[idx], g[idx + 1] = encode_u16(min(gs.opp_lp, 65535))
         idx += 2
         # turn_count
         g[idx] = min(gs.turn, 255)
@@ -362,7 +356,7 @@ class MUDObservationBuilder:
             feat[0] = msg_type & 0xFF
             feat[1] = cat & 0xFF
             code = sa.card_code
-            feat[2], feat[3], feat[4], feat[5] = _encode_u32(code)
+            feat[2], feat[3], feat[4], feat[5] = encode_u32(code)
             feat[6] = sa.location & 0xFF
             feat[7] = min(sa.sequence, 255)
             feat[8] = sub_idx & 0xFF
@@ -389,7 +383,7 @@ class MUDObservationBuilder:
             feat = np.zeros(ACTION_FEATURES, dtype=np.uint8)
             feat[0] = msg_type & 0xFF
             feat[1] = i & 0xFF  # category: 0=Yes, 1=No
-            feat[2], feat[3], feat[4], feat[5] = _encode_u32(code)
+            feat[2], feat[3], feat[4], feat[5] = encode_u32(code)
             # feat[8] = 0 (index stays 0 for both)
             actions[i] = feat
             mask[i] = 1

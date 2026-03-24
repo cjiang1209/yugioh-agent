@@ -13,18 +13,10 @@ from yugioh_mud.cmd_handler import BattleCmdHandler, IdleCmdHandler
 from yugioh_mud.config import MUDBotConfig
 from yugioh_mud.game_state import MUDGameState
 from yugioh_mud.text_parser import (
+    DUELREADER_REPROMPTS,
     EventType, MUDTextParser, ParsedEvent, ParsedPrompt, PromptType,
     is_duel_end,
 )
-
-# Known DuelReader/DuelMenu re-prompt lines.  The MUD server re-sends these
-# after informational commands (h, tab, tab2, score).  Used in _send_resync
-# to detect end of command response.
-_DUELREADER_REPROMPTS = frozenset({
-    "Select a card:",       # idle DuelReader
-    "Select an option:",    # battle DuelMenu
-    "Enter a line of text.",  # various DuelReader prompts
-})
 
 logger = logging.getLogger(__name__)
 
@@ -252,7 +244,7 @@ class MUDProtocol:
             # Informational commands (score, h, tab, tab2) cause the server
             # to re-send the active DuelReader/DuelMenu prompt — both
             # "Select a card:" (idle) and "Select an option:" (battle)
-            # are in _DUELREADER_REPROMPTS.
+            # are in DUELREADER_REPROMPTS.
             if (self._resync_pending and self._game_state is not None
                     and prompt.prompt_type in (
                         PromptType.IDLE_CMD, PromptType.BATTLE_MENU)):
@@ -352,7 +344,7 @@ class MUDProtocol:
                 # All informational commands end when the server re-sends
                 # the active DuelReader prompt ("Select a card:",
                 # "Select an option:", "Enter a line of text.").
-                if resp in _DUELREADER_REPROMPTS:
+                if resp in DUELREADER_REPROMPTS:
                     break
             getattr(self._game_state, parser_method)(lines, **kwargs)
 

@@ -46,6 +46,7 @@ from yugioh_env.constants import (
     LOCATION_SZONE,
 )
 from yugioh_mud.text_parser import (
+    DUELREADER_REPROMPTS,
     ParsedEvent, ParsedPrompt, PromptType, _CARDSPEC_LINE_RE,
     is_duel_end,
 )
@@ -186,12 +187,6 @@ _IDLE_CATEGORIES = [
     _IdleCategory(re.compile(r"^Activatable:\s*(.+)$"), 5, "v"),  # see multi-effect TODO below
 ]
 
-# Known DuelReader re-prompts (response terminators)
-_DUELREADER_REPROMPTS = frozenset({
-    "Select a card:",
-    "Select an option:",
-    "Enter a line of text.",
-})
 
 # Submenu letters recognized during execution phase
 _SUBMENU_LETTER_RE = re.compile(r"^([a-z]{1,2}): ")
@@ -257,7 +252,7 @@ class IdleCmdHandler:
                 continue
 
             # Terminator: DuelReader re-prompt or a new ParsedPrompt
-            if line in _DUELREADER_REPROMPTS:
+            if line in DUELREADER_REPROMPTS:
                 break
             if isinstance(result, ParsedPrompt):
                 break

@@ -38,7 +38,7 @@ ZONE_SLOTS = {
 # Total per player = 15+7+6+30+20+15 = 93, times 2 = 186, leaves room for overflow
 
 
-def _encode_u16(val: int) -> tuple[int, int]:
+def encode_u16(val: int) -> tuple[int, int]:
     """Encode a uint16 value as two uint8 bytes (little-endian)."""
     return val & 0xFF, (val >> 8) & 0xFF
 
@@ -49,7 +49,7 @@ def _encode_i16_clamped(val: int) -> tuple[int, int]:
     return val & 0xFF, (val >> 8) & 0xFF
 
 
-def _encode_u32(val: int) -> tuple[int, int, int, int]:
+def encode_u32(val: int) -> tuple[int, int, int, int]:
     """Encode a uint32 value as four uint8 bytes (little-endian)."""
     return val & 0xFF, (val >> 8) & 0xFF, (val >> 16) & 0xFF, (val >> 24) & 0xFF
 
@@ -83,7 +83,7 @@ def encode_card(
     idx = 0
 
     # card_id (4 bytes, uint32 LE)
-    feat[idx], feat[idx + 1], feat[idx + 2], feat[idx + 3] = _encode_u32(code & 0xFFFFFFFF)
+    feat[idx], feat[idx + 1], feat[idx + 2], feat[idx + 3] = encode_u32(code & 0xFFFFFFFF)
     idx += 4
 
     # location, sequence, position, controller, is_public
@@ -114,7 +114,7 @@ def encode_card(
     idx += 1
 
     # race (4 bytes, uint32 LE)
-    feat[idx], feat[idx + 1], feat[idx + 2], feat[idx + 3] = _encode_u32(race & 0xFFFFFFFF)
+    feat[idx], feat[idx + 1], feat[idx + 2], feat[idx + 3] = encode_u32(race & 0xFFFFFFFF)
     idx += 4
 
     # ATK (2 bytes, clamped)
@@ -132,7 +132,7 @@ def encode_card(
     idx += 1
 
     # link_marker (2 bytes)
-    feat[idx], feat[idx + 1] = _encode_u16(link_marker)
+    feat[idx], feat[idx + 1] = encode_u16(link_marker)
     idx += 2
 
     # counter_count
@@ -290,11 +290,11 @@ def build_observation(
     idx = 0
     # my_lp (2 bytes)
     lp = min(game_state.lp[agent_player], 65535)
-    global_state[idx], global_state[idx + 1] = _encode_u16(lp)
+    global_state[idx], global_state[idx + 1] = encode_u16(lp)
     idx += 2
     # opp_lp (2 bytes)
     lp = min(game_state.lp[opp_player], 65535)
-    global_state[idx], global_state[idx + 1] = _encode_u16(lp)
+    global_state[idx], global_state[idx + 1] = encode_u16(lp)
     idx += 2
     # turn_count
     global_state[idx] = min(game_state.turn_count, 255)

@@ -254,7 +254,7 @@ class Duel:
         info.con = team
         info.loc = location
         info.seq = seq
-        info.pos = POS_FACEDOWN_DEFENSE if location == LOCATION_EXTRA else POS_FACEDOWN_DEFENSE
+        info.pos = POS_FACEDOWN_DEFENSE
         self._lib.OCG_DuelNewCard(self._duel_handle, ctypes.byref(info))
 
     def process_until_choice(self) -> tuple[dict | None, GameState, list[dict]]:
