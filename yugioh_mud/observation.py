@@ -10,8 +10,8 @@ import re
 
 import numpy as np
 
-from yugioh_env.card_database import CardDatabase
-from yugioh_env.constants import (
+from yugioh_core.card_database import CardDatabase
+from yugioh_core.constants import (
     LOCATION_BANISHED,
     LOCATION_EXTRA,
     LOCATION_GRAVE,
@@ -46,7 +46,7 @@ from yugioh_env.constants import (
     POS_FACEUP_DEFENSE,
     POS_FACEDOWN_ATTACK,
 )
-from yugioh_env.observation import (
+from yugioh_core.encoding import (
     ACTION_FEATURES,
     CARD_FEATURES,
     GLOBAL_FEATURES,

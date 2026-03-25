@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from yugioh_env.constants import (
+from yugioh_core.constants import (
     MSG_NEW_TURN,
     MSG_NEW_PHASE,
     MSG_DAMAGE,

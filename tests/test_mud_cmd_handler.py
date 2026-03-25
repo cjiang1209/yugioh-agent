@@ -24,7 +24,7 @@ from yugioh_mud.cmd_handler import (
     LOCATION_SZONE,
     LOCATION_GRAVE,
 )
-from yugioh_env.constants import LOCATION_BANISHED
+from yugioh_core.constants import LOCATION_BANISHED
 from yugioh_mud.game_state import CardEntry, MUDGameState
 from yugioh_mud.text_parser import MUDTextParser, ParsedPrompt, PromptType
 

@@ -11,7 +11,7 @@ import struct
 import logging
 from typing import Any
 
-from yugioh_env.constants import *  # noqa: F401,F403
+from yugioh_core.constants import *  # noqa: F401,F403
 
 logger = logging.getLogger(__name__)
 

@@ -230,7 +230,7 @@ class ModelAgent:
         from yugioh_rl.config import TrainingConfig
         from yugioh_rl.network import YuGiOhNet
 
-        from yugioh_env.card_database import CardDatabase
+        from yugioh_core.card_database import CardDatabase
         from yugioh_mud.observation import MUDObservationBuilder
 
         checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)

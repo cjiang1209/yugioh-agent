@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from yugioh_env.constants import TYPE_LINK, split_setcodes
+from yugioh_core.constants import TYPE_LINK, split_setcodes
 
 
 class CardDatabase:

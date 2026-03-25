@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from yugioh_env.action_space import ActionMapper
-from yugioh_env.constants import (
+from yugioh_core.constants import (
     MSG_SELECT_BATTLECMD,
     MSG_SELECT_IDLECMD,
     POS_FACEUP_ATTACK,

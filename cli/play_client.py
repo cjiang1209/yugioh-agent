@@ -24,7 +24,7 @@ import time
 from pathlib import Path
 
 from yugioh_env.client import YuGiOhEnv
-from yugioh_env.constants import PHASE_NAMES
+from yugioh_core.constants import PHASE_NAMES
 from yugioh_env.deck_parser import parse_ydk
 from yugioh_env.models import YuGiOhAction, YuGiOhObservation
 

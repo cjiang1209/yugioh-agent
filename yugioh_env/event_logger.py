@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from yugioh_env.constants import (
+from yugioh_core.constants import (
     LOCATION_DECK,
     LOCATION_HAND,
     LOCATION_MZONE,

@@ -37,13 +37,18 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, NamedTuple
 
-from yugioh_env.constants import (
+from yugioh_core.constants import (
     LOCATION_BANISHED,
     LOCATION_EXTRA,
     LOCATION_GRAVE,
     LOCATION_HAND,
     LOCATION_MZONE,
     LOCATION_SZONE,
+)
+from yugioh_core.action_categories import (
+    IDLE_SUMMON, IDLE_SP_SUMMON, IDLE_REPOSITION, IDLE_MSET,
+    IDLE_SSET, IDLE_ACTIVATE, IDLE_TO_BP, IDLE_TO_EP,
+    BATTLE_ACTIVATE, BATTLE_ATTACK, BATTLE_TO_M2, BATTLE_TO_EP,
 )
 from yugioh_mud.text_parser import (
     DUELREADER_REPROMPTS,
@@ -175,16 +180,16 @@ async def _send(conn: Connection, text: str, verbose: bool) -> None:
 
 class _IdleCategory(NamedTuple):
     regex: re.Pattern[str]
-    category: int       # idle action category (0-5)
+    category: int       # IDLE_* action category constant
     sub_action: str     # submenu letter to send
 
 _IDLE_CATEGORIES = [
-    _IdleCategory(re.compile(r"^Summonable in attack position:\s*(.+)$"), 0, "s"),
-    _IdleCategory(re.compile(r"^Special summonable:\s*(.+)$"), 1, "c"),
-    _IdleCategory(re.compile(r"^Repositionable:\s*(.+)$"), 2, "r"),
-    _IdleCategory(re.compile(r"^Summonable in defense position:\s*(.+)$"), 3, "m"),
-    _IdleCategory(re.compile(r"^Settable:\s*(.+)$"), 4, "t"),
-    _IdleCategory(re.compile(r"^Activatable:\s*(.+)$"), 5, "v"),  # see multi-effect TODO below
+    _IdleCategory(re.compile(r"^Summonable in attack position:\s*(.+)$"), IDLE_SUMMON, "s"),
+    _IdleCategory(re.compile(r"^Special summonable:\s*(.+)$"), IDLE_SP_SUMMON, "c"),
+    _IdleCategory(re.compile(r"^Repositionable:\s*(.+)$"), IDLE_REPOSITION, "r"),
+    _IdleCategory(re.compile(r"^Summonable in defense position:\s*(.+)$"), IDLE_MSET, "m"),
+    _IdleCategory(re.compile(r"^Settable:\s*(.+)$"), IDLE_SSET, "t"),
+    _IdleCategory(re.compile(r"^Activatable:\s*(.+)$"), IDLE_ACTIVATE, "v"),  # see multi-effect TODO below
 ]
 
 
@@ -277,9 +282,9 @@ class IdleCmdHandler:
         # Add phase transitions from original prompt.options
         for opt in prompt.options:
             if opt == "b":
-                actions.append(StructuredAction(category=6, sub_action="b"))
+                actions.append(StructuredAction(category=IDLE_TO_BP, sub_action="b"))
             elif opt == "e":
-                actions.append(StructuredAction(category=7, sub_action="e"))
+                actions.append(StructuredAction(category=IDLE_TO_EP, sub_action="e"))
 
         prompt.structured_actions = actions
 
@@ -307,7 +312,7 @@ class IdleCmdHandler:
         chosen = actions[action_idx]
 
         # Phase transition
-        if chosen.category in (6, 7):
+        if chosen.category in (IDLE_TO_BP, IDLE_TO_EP):
             await _send(conn, chosen.sub_action, verbose)
             return False
 
@@ -462,7 +467,7 @@ class BattleCmdHandler:
             loc, seq = parse_cardspec(spec)
             code = _resolve_card_code(spec, game_state)
             actions.append(StructuredAction(
-                category=0, cardspec=spec, card_code=code,
+                category=BATTLE_ACTIVATE, cardspec=spec, card_code=code,
                 location=loc, sequence=seq, sub_action=spec,
             ))
 
@@ -470,14 +475,14 @@ class BattleCmdHandler:
             loc, seq = parse_cardspec(spec)
             code = _resolve_card_code(spec, game_state)
             actions.append(StructuredAction(
-                category=1, cardspec=spec, card_code=code,
+                category=BATTLE_ATTACK, cardspec=spec, card_code=code,
                 location=loc, sequence=seq, sub_action=spec,
             ))
 
         if "m" in prompt.options:
-            actions.append(StructuredAction(category=2, sub_action="m"))
+            actions.append(StructuredAction(category=BATTLE_TO_M2, sub_action="m"))
         if "e" in prompt.options:
-            actions.append(StructuredAction(category=3, sub_action="e"))
+            actions.append(StructuredAction(category=BATTLE_TO_EP, sub_action="e"))
 
         prompt.structured_actions = actions
 
@@ -502,12 +507,12 @@ class BattleCmdHandler:
         chosen = actions[action_idx]
 
         # Phase transitions
-        if chosen.category in (2, 3):
+        if chosen.category in (BATTLE_TO_M2, BATTLE_TO_EP):
             await _send(conn, chosen.sub_action, verbose)
             return False
 
         # Attack
-        if chosen.category == 1:
+        if chosen.category == BATTLE_ATTACK:
             await _send(conn, "a", verbose)
             # Wait for "Select a card:" (BATTLE_SELECT)
             while True:
@@ -521,7 +526,7 @@ class BattleCmdHandler:
             return False
 
         # Activate
-        if chosen.category == 0:
+        if chosen.category == BATTLE_ACTIVATE:
             await _send(conn, "c", verbose)
             # Wait for "Enter a line of text." (BATTLE_SELECT)
             while True:

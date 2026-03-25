@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from yugioh_env.action_space import ActionMapper
-from yugioh_env.constants import MSG_SELECT_YESNO
+from yugioh_core.constants import MSG_SELECT_YESNO
 from yugioh_env.opponent import GreedyOpponent, Opponent, RandomOpponent
 
 

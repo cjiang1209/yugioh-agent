@@ -9,16 +9,18 @@ import numpy as np
 import pytest
 import torch
 
-from yugioh_env.observation import (
+from yugioh_core.encoding import (
     CARD_FEATURES,
     GLOBAL_FEATURES,
     MAX_CARDS,
-    build_observation,
     encode_card,
+    ACTION_FEATURES,
+    MAX_ACTIONS,
 )
+from yugioh_env.observation import build_observation
 from yugioh_env.game_state import GameState
-from yugioh_env.action_space import ActionMapper, ACTION_FEATURES, MAX_ACTIONS
-from yugioh_env.constants import (
+from yugioh_env.action_space import ActionMapper
+from yugioh_core.constants import (
     LOCATION_HAND,
     LOCATION_MZONE,
     MSG_SELECT_CARD,

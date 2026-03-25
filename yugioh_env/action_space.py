@@ -6,8 +6,13 @@ import logging
 from itertools import combinations
 import numpy as np
 
-from yugioh_env.constants import *  # noqa: F401,F403
-from yugioh_env.observation import MAX_ACTIONS, ACTION_FEATURES
+from yugioh_core.constants import *  # noqa: F401,F403
+from yugioh_core.encoding import MAX_ACTIONS, ACTION_FEATURES
+from yugioh_core.action_categories import (
+    IDLE_SUMMON, IDLE_SP_SUMMON, IDLE_REPOSITION, IDLE_MSET,
+    IDLE_SSET, IDLE_ACTIVATE, IDLE_TO_BP, IDLE_TO_EP,
+    BATTLE_ACTIVATE, BATTLE_ATTACK, BATTLE_TO_M2, BATTLE_TO_EP,
+)
 from yugioh_env import response_builder as rb
 
 logger = logging.getLogger(__name__)
@@ -95,56 +100,56 @@ def _extract_idle_actions(msg: dict) -> list[dict]:
 
     for i, card in enumerate(msg.get("summonable", [])):
         actions.append({
-            "category": 0, "index": i, "code": card.get("code", 0),
+            "category": IDLE_SUMMON, "index": i, "code": card.get("code", 0),
             "location": card.get("location", 0), "sequence": card.get("sequence", 0),
-            "build_response": lambda cat=0, idx=i: rb.build_select_idlecmd_response(cat, idx),
+            "build_response": lambda cat=IDLE_SUMMON, idx=i: rb.build_select_idlecmd_response(cat, idx),
         })
 
     for i, card in enumerate(msg.get("sp_summonable", [])):
         actions.append({
-            "category": 1, "index": i, "code": card.get("code", 0),
+            "category": IDLE_SP_SUMMON, "index": i, "code": card.get("code", 0),
             "location": card.get("location", 0), "sequence": card.get("sequence", 0),
-            "build_response": lambda cat=1, idx=i: rb.build_select_idlecmd_response(cat, idx),
+            "build_response": lambda cat=IDLE_SP_SUMMON, idx=i: rb.build_select_idlecmd_response(cat, idx),
         })
 
     for i, card in enumerate(msg.get("repositionable", [])):
         actions.append({
-            "category": 2, "index": i, "code": card.get("code", 0),
+            "category": IDLE_REPOSITION, "index": i, "code": card.get("code", 0),
             "location": card.get("location", 0), "sequence": card.get("sequence", 0),
-            "build_response": lambda cat=2, idx=i: rb.build_select_idlecmd_response(cat, idx),
+            "build_response": lambda cat=IDLE_REPOSITION, idx=i: rb.build_select_idlecmd_response(cat, idx),
         })
 
     for i, card in enumerate(msg.get("mset", [])):
         actions.append({
-            "category": 3, "index": i, "code": card.get("code", 0),
+            "category": IDLE_MSET, "index": i, "code": card.get("code", 0),
             "location": card.get("location", 0), "sequence": card.get("sequence", 0),
-            "build_response": lambda cat=3, idx=i: rb.build_select_idlecmd_response(cat, idx),
+            "build_response": lambda cat=IDLE_MSET, idx=i: rb.build_select_idlecmd_response(cat, idx),
         })
 
     for i, card in enumerate(msg.get("sset", [])):
         actions.append({
-            "category": 4, "index": i, "code": card.get("code", 0),
+            "category": IDLE_SSET, "index": i, "code": card.get("code", 0),
             "location": card.get("location", 0), "sequence": card.get("sequence", 0),
-            "build_response": lambda cat=4, idx=i: rb.build_select_idlecmd_response(cat, idx),
+            "build_response": lambda cat=IDLE_SSET, idx=i: rb.build_select_idlecmd_response(cat, idx),
         })
 
     for i, card in enumerate(msg.get("activatable", [])):
         actions.append({
-            "category": 5, "index": i, "code": card.get("code", 0),
+            "category": IDLE_ACTIVATE, "index": i, "code": card.get("code", 0),
             "location": card.get("location", 0), "sequence": card.get("sequence", 0),
-            "build_response": lambda cat=5, idx=i: rb.build_select_idlecmd_response(cat, idx),
+            "build_response": lambda cat=IDLE_ACTIVATE, idx=i: rb.build_select_idlecmd_response(cat, idx),
         })
 
     if msg.get("to_bp"):
         actions.append({
-            "category": 6, "index": 0, "code": 0, "location": 0, "sequence": 0,
-            "build_response": lambda: rb.build_select_idlecmd_response(6, 0),
+            "category": IDLE_TO_BP, "index": 0, "code": 0, "location": 0, "sequence": 0,
+            "build_response": lambda: rb.build_select_idlecmd_response(IDLE_TO_BP, 0),
         })
 
     if msg.get("to_ep"):
         actions.append({
-            "category": 7, "index": 0, "code": 0, "location": 0, "sequence": 0,
-            "build_response": lambda: rb.build_select_idlecmd_response(7, 0),
+            "category": IDLE_TO_EP, "index": 0, "code": 0, "location": 0, "sequence": 0,
+            "build_response": lambda: rb.build_select_idlecmd_response(IDLE_TO_EP, 0),
         })
 
     return actions
@@ -156,28 +161,28 @@ def _extract_battle_actions(msg: dict) -> list[dict]:
 
     for i, card in enumerate(msg.get("activatable", [])):
         actions.append({
-            "category": 0, "index": i, "code": card.get("code", 0),
+            "category": BATTLE_ACTIVATE, "index": i, "code": card.get("code", 0),
             "location": card.get("location", 0), "sequence": card.get("sequence", 0),
-            "build_response": lambda cat=0, idx=i: rb.build_select_battlecmd_response(cat, idx),
+            "build_response": lambda cat=BATTLE_ACTIVATE, idx=i: rb.build_select_battlecmd_response(cat, idx),
         })
 
     for i, card in enumerate(msg.get("attackable", [])):
         actions.append({
-            "category": 1, "index": i, "code": card.get("code", 0),
+            "category": BATTLE_ATTACK, "index": i, "code": card.get("code", 0),
             "location": card.get("location", 0), "sequence": card.get("sequence", 0),
-            "build_response": lambda cat=1, idx=i: rb.build_select_battlecmd_response(cat, idx),
+            "build_response": lambda cat=BATTLE_ATTACK, idx=i: rb.build_select_battlecmd_response(cat, idx),
         })
 
     if msg.get("to_m2"):
         actions.append({
-            "category": 2, "index": 0, "code": 0, "location": 0, "sequence": 0,
-            "build_response": lambda: rb.build_select_battlecmd_response(2, 0),
+            "category": BATTLE_TO_M2, "index": 0, "code": 0, "location": 0, "sequence": 0,
+            "build_response": lambda: rb.build_select_battlecmd_response(BATTLE_TO_M2, 0),
         })
 
     if msg.get("to_ep"):
         actions.append({
-            "category": 3, "index": 0, "code": 0, "location": 0, "sequence": 0,
-            "build_response": lambda: rb.build_select_battlecmd_response(3, 0),
+            "category": BATTLE_TO_EP, "index": 0, "code": 0, "location": 0, "sequence": 0,
+            "build_response": lambda: rb.build_select_battlecmd_response(BATTLE_TO_EP, 0),
         })
 
     return actions

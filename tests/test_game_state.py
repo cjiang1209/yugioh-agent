@@ -1,7 +1,7 @@
 """Test GameState message-driven updates."""
 
 from yugioh_env.game_state import GameState
-from yugioh_env.constants import (
+from yugioh_core.constants import (
     MSG_START,
     MSG_NEW_TURN,
     MSG_NEW_PHASE,

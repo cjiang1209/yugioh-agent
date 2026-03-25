@@ -5,7 +5,7 @@ import struct
 import pytest
 
 from yugioh_env.message_parser import BinaryReader, parse_messages
-from yugioh_env.constants import (
+from yugioh_core.constants import (
     MSG_NEW_TURN, MSG_WIN, MSG_SELECT_YESNO,
     MSG_SELECT_IDLECMD, MSG_SELECT_BATTLECMD,
     MSG_SELECT_SUM, MSG_SORT_CHAIN,

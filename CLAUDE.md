@@ -85,6 +85,17 @@ Tests auto-skip when prerequisites are missing:
 ## Architecture
 
 ```
+yugioh_core  (zero project deps — shared primitives)
+  ├── constants.py         — ygopro-core constants, split_setcodes(), PHASE_NAMES, SELECT_MSGS
+  ├── encoding.py          — observation encoding (encode_card, encode_u16/u32, dims, ZONE_SLOTS)
+  ├── card_database.py     — CardDatabase (SQLite .cdb reader)
+  └── action_categories.py — named idle/battle action category constants (IDLE_SUMMON, etc.)
+     ↑
+  ┌──┴──┐
+yugioh_env  yugioh_mud  (both import core; mud does not depend on env)
+     ↑         ↑
+     └── yugioh_rl (lazy imports for ModelAgent/ModelOpponent)
+
 HTTP Client (YuGiOhEnv)
         ↕  openenv-core HTTP
 FastAPI Server (server/app.py)
@@ -92,7 +103,7 @@ FastAPI Server (server/app.py)
 YuGiOhEnvironment (server/yugioh_environment.py)
   ├── Duel (duel.py)             — manages one duel lifetime via OCG C API
   │     ├── DuelCallbacks        — bridges Python ↔ C (card data, script loading)
-  │     ├── CardDatabase         — reads card stats from cards.cdb via sqlite3
+  │     ├── CardDatabase         — reads card stats from cards.cdb (from yugioh_core)
   │     ├── GameState            — tracks LP, zones, phase, turn from parsed messages
   │     └── libocgcore (ctypes)  — C++ engine loaded via lib_loader.py
   ├── ActionMapper               — maps SELECT messages to fixed action space (32 max)

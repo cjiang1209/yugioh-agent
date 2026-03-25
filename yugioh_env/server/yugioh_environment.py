@@ -12,9 +12,9 @@ from openenv.core.env_server.interfaces import Environment
 from openenv.core.env_server.types import Observation
 
 from yugioh_env.action_space import ActionMapper
-from yugioh_env.card_database import CardDatabase
+from yugioh_core.card_database import CardDatabase
 from yugioh_env.event_logger import FieldTracker, format_events
-from yugioh_env.constants import (
+from yugioh_core.constants import (
     LOCATION_HAND,
     LOCATION_MZONE,
     LOCATION_SZONE,

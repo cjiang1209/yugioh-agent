@@ -9,7 +9,7 @@ import struct
 from pathlib import Path
 from typing import Any
 
-from yugioh_env.constants import (
+from yugioh_core.constants import (
     DUEL_MODE_MR5,
     LOCATION_DECK,
     LOCATION_EXTRA,
@@ -40,7 +40,7 @@ from yugioh_env.core_types import (
     c_void_p,
 )
 from yugioh_env.callbacks import DuelCallbacks
-from yugioh_env.card_database import CardDatabase
+from yugioh_core.card_database import CardDatabase
 from yugioh_env.deck_parser import parse_ydk
 from yugioh_env.game_state import GameState
 from yugioh_env.message_parser import parse_messages

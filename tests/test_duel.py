@@ -2,7 +2,7 @@
 
 import pytest
 
-from yugioh_env.constants import LOCATION_HAND, SELECT_MSGS, MSG_WIN
+from yugioh_core.constants import LOCATION_HAND, SELECT_MSGS, MSG_WIN
 from yugioh_env.duel import Duel
 
 
@@ -50,7 +50,7 @@ def test_query_count(duel, deck_path):
     duel.create(deck0=deck_path, deck1=deck_path, seed=42)
     duel.process_until_choice()
 
-    from yugioh_env.constants import LOCATION_DECK, LOCATION_HAND
+    from yugioh_core.constants import LOCATION_DECK, LOCATION_HAND
     # After initial draw, each player should have some cards in hand
     hand0 = duel.query_count(0, LOCATION_HAND)
     hand1 = duel.query_count(1, LOCATION_HAND)

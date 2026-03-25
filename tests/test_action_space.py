@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from yugioh_env.action_space import ActionMapper, MAX_ACTIONS, ACTION_FEATURES
-from yugioh_env.constants import (
+from yugioh_core.constants import (
     LOCATION_MZONE,
     LOCATION_SZONE,
     MSG_SELECT_CARD,

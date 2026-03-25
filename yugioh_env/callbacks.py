@@ -11,7 +11,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from yugioh_env.constants import split_setcodes
+from yugioh_core.constants import split_setcodes
 from yugioh_env.core_types import (
     OCG_CardData,
     OCG_DataReader,
@@ -26,7 +26,7 @@ from yugioh_env.core_types import (
 )
 
 if TYPE_CHECKING:
-    from yugioh_env.card_database import CardDatabase
+    from yugioh_core.card_database import CardDatabase
 
 logger = logging.getLogger(__name__)
 
