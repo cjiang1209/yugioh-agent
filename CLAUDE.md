@@ -25,10 +25,13 @@ make test       # python -m pytest tests/ -v
 make clean      # rm -rf build/
 
 # Run a single test file
-python -m pytest tests/test_message_parser.py -v
+python -m pytest tests/env/test_message_parser.py -v
 
 # Run a specific test
-python -m pytest tests/test_duel.py::test_name -v
+python -m pytest tests/env/test_duel.py::test_name -v
+
+# Run only one module's tests
+python -m pytest tests/mud/ -v
 
 # Run the server (activates venv automatically)
 scripts/start_server.sh
@@ -65,22 +68,24 @@ scripts/mud_bot.sh --verbose                               # log all protocol li
 
 ## Test Skip Behavior
 
+Tests are organized into subdirectories by module (`tests/core/`, `tests/env/`, `tests/mud/`, `tests/rl/`, `tests/cli/`). Run a single module's tests with e.g. `python -m pytest tests/mud/ -v`.
+
 Tests auto-skip when prerequisites are missing:
-- `lib` fixture: skips if `libocgcore` not built (`make build`)
-- `db_path` fixture: skips if `assets/cards.cdb` absent
-- `script_dirs` fixture: skips if `third_party/CardScripts/` absent
-- Pure unit tests (`test_message_parser`, `test_observation`, `test_action_space`, `test_deck_parser`) require no external deps
-- `test_opponent.py` ModelOpponent tests: skips if `torch` not installed
-- `test_card_embeddings.py`: TextEmbeddingLookup/network tests skip if `torch` not installed; `test_build_embeddings_output_structure` skips if `sentence-transformers` not installed
-- `test_checkpoint_init.py`: skips if `torch` not installed
-- `test_eval_opponents.py`: skips if `torch` not installed
-- `test_resume.py`: skips if `torch` not installed
-- `test_mud_protocol.py`: pure unit tests (uses FakeConnection), no external deps
-- `test_mud_text_parser.py`: pure unit tests for duel prompt/event parsing, no external deps
-- `test_mud_card_lookup.py`: pure unit tests (uses temp SQLite DB), no external deps
-- `test_mud_game_state.py`: pure unit tests (uses temp SQLite DB for CardNameLookup), no external deps
-- `test_mud_observation.py`: pure unit tests (uses temp SQLite DB for CardDatabase), no external deps
-- `test_mud_model_agent.py`: skips if `torch` not installed
+- `lib` fixture (`tests/env/conftest.py`): skips if `libocgcore` not built (`make build`)
+- `db_path` fixture (`tests/conftest.py`): skips if `assets/cards.cdb` absent
+- `script_dirs` fixture (`tests/env/conftest.py`): skips if `third_party/CardScripts/` absent
+- Pure unit tests (`tests/env/test_message_parser`, `tests/env/test_observation`, `tests/env/test_action_space`, `tests/env/test_deck_parser`) require no external deps
+- `tests/env/test_opponent.py` ModelOpponent tests: skips if `torch` not installed
+- `tests/rl/test_card_embeddings.py`: TextEmbeddingLookup/network tests skip if `torch` not installed; `test_build_embeddings_output_structure` skips if `sentence-transformers` not installed
+- `tests/rl/test_checkpoint_init.py`: skips if `torch` not installed
+- `tests/rl/test_eval_opponents.py`: skips if `torch` not installed
+- `tests/rl/test_resume.py`: skips if `torch` not installed
+- `tests/mud/test_protocol.py`: pure unit tests (uses FakeConnection), no external deps
+- `tests/mud/test_text_parser.py`: pure unit tests for duel prompt/event parsing, no external deps
+- `tests/mud/test_card_lookup.py`: pure unit tests (uses temp SQLite DB), no external deps
+- `tests/mud/test_game_state.py`: pure unit tests (uses temp SQLite DB for CardNameLookup), no external deps
+- `tests/mud/test_observation.py`: pure unit tests (uses temp SQLite DB for CardDatabase), no external deps
+- `tests/mud/test_model_agent.py`: skips if `torch` not installed
 
 ## Architecture
 
