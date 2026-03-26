@@ -73,31 +73,33 @@ export function CardZone({
       title={slot?.card.name ?? label}
     >
       {slot ? (
-        <div
-          className="w-full h-full relative"
-          style={{
-            transform: isDefPos ? "rotate(90deg)" : "none",
-            transition: "transform 0.2s ease",
-          }}
-        >
-          {isFaceDown ? (
-            <div className="card-back w-full h-full" />
-          ) : (
-            <img
-              src={
-                slot.card.id
-                  ? `https://images.ygoprodeck.com/images/cards_small/${slot.card.id}.jpg`
-                  : CARD_BACK_URL
-              }
-              alt={slot.card.name}
-              className="w-full h-full object-cover rounded-sm"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = CARD_BACK_URL;
-              }}
-            />
-          )}
-          {/* ATK/DEF badge */}
-          {slot.card.atk !== undefined && !isFaceDown && (
+        <>
+          <div
+            className="w-full h-full"
+            style={{
+              transform: isDefPos ? "rotate(90deg)" : "none",
+              transition: "transform 0.2s ease",
+            }}
+          >
+            {isFaceDown ? (
+              <div className="card-back w-full h-full" />
+            ) : (
+              <img
+                src={
+                  slot.card.id
+                    ? `https://images.ygoprodeck.com/images/cards_small/${slot.card.id}.jpg`
+                    : CARD_BACK_URL
+                }
+                alt={slot.card.name}
+                className="w-full h-full object-cover rounded-sm"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = CARD_BACK_URL;
+                }}
+              />
+            )}
+          </div>
+          {/* ATK/DEF badge — outside rotated container so it stays at the bottom */}
+          {label === "MONSTER" && slot.card.atk !== undefined && !isFaceDown && (
             <div
               className="absolute bottom-0 left-0 right-0 text-center font-bold"
               style={{
@@ -105,13 +107,13 @@ export function CardZone({
                 paddingBlock: "2px",
                 background: "rgba(0,0,0,0.8)",
                 color: slot.position === "ATK" ? "var(--neon-cyan)" : "var(--neon-yellow)",
-                transform: isDefPos ? "rotate(-90deg)" : "none",
+                zIndex: 1,
               }}
             >
               {slot.position === "ATK" ? slot.card.atk : slot.card.def}
             </div>
           )}
-        </div>
+        </>
       ) : (
         showLabel && label ? (
           <span
