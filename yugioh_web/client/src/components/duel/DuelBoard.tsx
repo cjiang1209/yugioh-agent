@@ -50,6 +50,7 @@ function requiredTributes(level: number) {
 export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, onEngineAction }: DuelBoardProps) {
   const [selection, setSelection] = useState<SelectionMode>({ type: "none" });
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [bottomTab, setBottomTab] = useState<"actions" | "log">(engineMode ? "actions" : "log");
   const [selectedCardDetail, setSelectedCardDetail] = useState<GameCard | null>(null);
   const [graveyardViewer, setGraveyardViewer] = useState<{ side: PlayerSide; tab: "graveyard" | "banished" | "extra" } | null>(null);
   const [showSurrenderConfirm, setShowSurrenderConfirm] = useState(false);
@@ -1437,10 +1438,48 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
             )}
           </div>
         </div>
-        {/* Bottom half: engine action panel or duel log */}
+        {/* Bottom half: tabbed actions / log */}
         <div className="flex-1 flex flex-col" style={{ minHeight: 0 }}>
-          {engineMode && engineActions && onEngineAction ? (
-            <EngineActionPanel actions={engineActions} onAction={onEngineAction} />
+          {engineMode ? (
+            <>
+              {/* Tab bar */}
+              <div
+                className="flex flex-shrink-0"
+                style={{ borderBottom: "1px solid rgba(0,245,255,0.15)" }}
+              >
+                {(["actions", "log"] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    onClick={() => setBottomTab(tab)}
+                    className="flex-1 py-1.5 transition-all"
+                    style={{
+                      fontFamily: "'Orbitron', sans-serif",
+                      fontSize: "0.6rem",
+                      letterSpacing: "0.1em",
+                      color: bottomTab === tab ? "var(--neon-cyan)" : "var(--text-secondary)",
+                      background: bottomTab === tab ? "rgba(0,245,255,0.06)" : "transparent",
+                      borderBottom: bottomTab === tab ? "2px solid var(--neon-cyan)" : "2px solid transparent",
+                      opacity: bottomTab === tab ? 1 : 0.5,
+                      cursor: "pointer",
+                      border: "none",
+                      borderTop: "none",
+                      borderLeft: "none",
+                      borderRight: "none",
+                    }}
+                  >
+                    {tab === "actions" ? `ACTIONS (${engineActions?.length ?? 0})` : "LOG"}
+                  </button>
+                ))}
+              </div>
+              {/* Tab content */}
+              <div className="flex-1" style={{ minHeight: 0 }}>
+                {bottomTab === "actions" && engineActions && onEngineAction ? (
+                  <EngineActionPanel actions={engineActions} onAction={onEngineAction} />
+                ) : (
+                  <DuelLog logs={state.log} />
+                )}
+              </div>
+            </>
           ) : (
             <DuelLog logs={state.log} />
           )}

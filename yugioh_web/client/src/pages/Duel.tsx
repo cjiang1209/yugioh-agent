@@ -186,21 +186,22 @@ export default function Duel() {
     <div className="fixed inset-0" style={{ background: "var(--bg-void)" }}>
       {/* Mode toggle — top-right corner */}
       <div
-        className="absolute top-0 right-0 z-40 flex items-center gap-1"
-        style={{ padding: "4px 8px" }}
+        className="absolute top-0 right-0 flex items-center gap-1"
+        style={{ padding: "4px 8px", zIndex: 100 }}
         onClick={(e) => e.stopPropagation()}
       >
         {(["fun", "real"] as const).map((m) => (
           <button
             key={m}
             onClick={() => setMode(m)}
-            className="px-2 py-1 rounded transition-all"
+            className="px-2 py-1 rounded transition-all hover:opacity-100"
             style={{
               ...MODE_BUTTON_BASE,
-              background: mode === m ? "rgba(0,245,255,0.15)" : "rgba(0,0,0,0.5)",
-              border: `1px solid ${mode === m ? "rgba(0,245,255,0.5)" : "rgba(255,255,255,0.1)"}`,
-              color: mode === m ? "var(--neon-cyan)" : "var(--text-secondary)",
-              opacity: mode === m ? 1 : 0.5,
+              background: mode === m ? "rgba(0,245,255,0.15)" : "rgba(0,0,0,0.7)",
+              border: `1px solid ${mode === m ? "rgba(0,245,255,0.5)" : "rgba(255,255,255,0.25)"}`,
+              color: mode === m ? "var(--neon-cyan)" : "#aabbcc",
+              opacity: mode === m ? 1 : 0.75,
+              cursor: "pointer",
             }}
           >
             {m === "fun" ? "FUN" : "REAL"}

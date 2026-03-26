@@ -21,5 +21,5 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.state.web_env = create_web_env()
+app.state.web_env = create_web_env({"deck_path": "assets/decks/blue_eyes.ydk"})
 app.include_router(web_router)

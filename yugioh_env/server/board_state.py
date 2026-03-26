@@ -17,7 +17,10 @@ from yugioh_core.constants import (
     POS_FACEDOWN_ATTACK,
     POS_FACEUP_DEFENSE,
     POS_FACEDOWN_DEFENSE,
+    POS_FACEUP,
     POS_FACEDOWN,
+    POS_ATTACK,
+    POS_DEFENSE,
     QUERY_BASIC,
     QUERY_END,
     TYPE_MONSTER,
@@ -36,6 +39,10 @@ _POS_NAMES = {
     POS_FACEDOWN_ATTACK: "FACE_DOWN_ATK",
     POS_FACEUP_DEFENSE: "DEF",
     POS_FACEDOWN_DEFENSE: "FACE_DOWN_DEF",
+    POS_FACEUP: "ATK",
+    POS_FACEDOWN: "FACE_DOWN_ATK",
+    POS_ATTACK: "ATK",
+    POS_DEFENSE: "DEF",
 }
 
 # ─── edo9300 query buffer parser ───────────────────────────────────────────
