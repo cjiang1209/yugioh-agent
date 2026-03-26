@@ -17,11 +17,16 @@ import { LifePoints } from "./LifePoints";
 import { AttackAnimation } from "./AttackAnimation";
 import { SummonAnimation } from "./SummonAnimation";
 import { PhaseIndicator } from "./PhaseIndicator";
+import { EngineActionPanel } from "./EngineActionPanel";
+import type { EngineAction } from "../../../../shared/engineTypes";
 
 interface DuelBoardProps {
   state: DuelState;
   mySide: PlayerSide;
   onAction: (action: GameAction) => void;
+  engineMode?: boolean;
+  engineActions?: EngineAction[];
+  onEngineAction?: (actionIndex: number) => void;
 }
 
 type SelectionMode =
@@ -42,7 +47,7 @@ function requiredTributes(level: number) {
   return 2;
 }
 
-export function DuelBoard({ state, mySide, onAction }: DuelBoardProps) {
+export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, onEngineAction }: DuelBoardProps) {
   const [selection, setSelection] = useState<SelectionMode>({ type: "none" });
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [selectedCardDetail, setSelectedCardDetail] = useState<GameCard | null>(null);
@@ -74,7 +79,8 @@ export function DuelBoard({ state, mySide, onAction }: DuelBoardProps) {
   const isMyTurn = state.activePlayer === mySide;
   const phase = state.phase;
 
-  const canAct = isMyTurn && !state.winner;
+  // In engine mode, disable all click-zone interactions — actions come from the panel
+  const canAct = !engineMode && isMyTurn && !state.winner;
   const canSummon = canAct && (phase === "MAIN1" || phase === "MAIN2") && !myPlayer.hasNormalSummoned;
   const canAttack = canAct && phase === "BATTLE";
   const canSetSpell = canAct && (phase === "MAIN1" || phase === "MAIN2");
@@ -1431,9 +1437,13 @@ export function DuelBoard({ state, mySide, onAction }: DuelBoardProps) {
             )}
           </div>
         </div>
-        {/* Duel log — bottom half */}
+        {/* Bottom half: engine action panel or duel log */}
         <div className="flex-1 flex flex-col" style={{ minHeight: 0 }}>
-          <DuelLog logs={state.log} />
+          {engineMode && engineActions && onEngineAction ? (
+            <EngineActionPanel actions={engineActions} onAction={onEngineAction} />
+          ) : (
+            <DuelLog logs={state.log} />
+          )}
         </div>
       </div>
 

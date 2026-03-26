@@ -97,11 +97,13 @@ function RealModeDuel() {
       <OverlayBar>
         <RestartButton onClick={() => reset(Math.floor(Math.random() * 100000))} />
       </OverlayBar>
-      {/* TODO(Subphase F): pass engineMode, engineActions, onEngineAction */}
       <DuelBoard
         state={state}
         mySide="player1"
         onAction={() => {}}
+        engineMode
+        engineActions={engineActions}
+        onEngineAction={submitAction}
       />
     </>
   );
