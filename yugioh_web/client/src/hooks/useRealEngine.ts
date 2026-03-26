@@ -208,15 +208,31 @@ export function useRealEngine(apiUrl: string = "http://localhost:8000"): UseReal
   const [error, setError] = useState<string | null>(null);
   const logRef = useRef<string[]>([]);
 
+  // Auto-pass categories that should be submitted without prompting
+  const AUTO_PASS_CATEGORIES = new Set(["pass", "no"]);
+
+  const submitRef = useRef<(index: number) => Promise<void>>(undefined);
+
   const applyResponse = useCallback((resp: EngineResponse) => {
     // Append new events to the running log
     const newLog = [...logRef.current, ...resp.event_log];
     logRef.current = newLog;
     setEventLog(newLog);
-    setEngineActions(resp.actions);
     setState(engineResponseToDuelState(resp, newLog));
     setStatus(resp.done ? "ended" : "dueling");
     setError(null);
+
+    // Auto-pass: if the only action is pass/no-chain, submit it automatically
+    if (
+      !resp.done &&
+      resp.actions.length === 1 &&
+      AUTO_PASS_CATEGORIES.has(resp.actions[0].category)
+    ) {
+      setEngineActions([]);  // hide from UI during auto-pass
+      setTimeout(() => submitRef.current?.(resp.actions[0].index), 0);
+    } else {
+      setEngineActions(resp.actions);
+    }
   }, []);
 
   const reset = useCallback(async (seed?: number) => {
@@ -256,6 +272,8 @@ export function useRealEngine(apiUrl: string = "http://localhost:8000"): UseReal
       setStatus("error");
     }
   }, [apiUrl, applyResponse]);
+
+  submitRef.current = submitAction;
 
   return { state, engineActions, eventLog, status, error, reset, submitAction };
 }
