@@ -1,4 +1,4 @@
-// ─── Real Engine Hook ────────────────────────────────────────────────────────
+// ─── AI Engine Hook ─────────────────────────────────────────────────────────
 // Connects to the Python FastAPI backend (/api/web/*) and maps responses
 // to the existing DuelState shape consumed by DuelBoard.
 
@@ -19,13 +19,13 @@ import type {
   EngineResponse,
 } from "../../../shared/engineTypes";
 
-export type RealEngineStatus = "idle" | "loading" | "dueling" | "ended" | "error";
+export type AIEngineStatus = "idle" | "loading" | "dueling" | "ended" | "error";
 
-export interface UseRealEngineReturn {
+export interface UseAIEngineReturn {
   state: DuelState | null;
   engineActions: EngineAction[];
   eventLog: string[];
-  status: RealEngineStatus;
+  status: AIEngineStatus;
   error: string | null;
   reset: (seed?: number) => Promise<void>;
   submitAction: (actionIndex: number) => Promise<void>;
@@ -200,11 +200,11 @@ function engineResponseToDuelState(resp: EngineResponse, log: string[]): DuelSta
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
-export function useRealEngine(apiUrl: string = "http://localhost:8000"): UseRealEngineReturn {
+export function useAIEngine(apiUrl: string = "http://localhost:8000"): UseAIEngineReturn {
   const [state, setState] = useState<DuelState | null>(null);
   const [engineActions, setEngineActions] = useState<EngineAction[]>([]);
   const [eventLog, setEventLog] = useState<string[]>([]);
-  const [status, setStatus] = useState<RealEngineStatus>("idle");
+  const [status, setStatus] = useState<AIEngineStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const logRef = useRef<string[]>([]);
 

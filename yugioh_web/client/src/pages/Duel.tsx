@@ -1,9 +1,6 @@
 import { useState } from "react";
 import { DuelBoard } from "../components/duel/DuelBoard";
-import { useSelfPlayDuel } from "../hooks/useSelfPlayDuel";
-import { useRealEngine } from "../hooks/useRealEngine";
-
-type DuelMode = "fun" | "real";
+import { useAIEngine } from "../hooks/useAIEngine";
 
 const MODE_BUTTON_BASE = {
   fontFamily: "'Orbitron', sans-serif",
@@ -12,47 +9,10 @@ const MODE_BUTTON_BASE = {
   backdropFilter: "blur(4px)",
 } as const;
 
-// ─── Fun Mode wrapper ────────────────────────────────────────────────────────
+// ─── AI Mode wrapper ────────────────────────────────────────────────────────
 
-function FunModeDuel() {
-  const { state, viewSide, status, sendAction, switchSide, restart } = useSelfPlayDuel();
-
-  if (status === "loading" || !state) {
-    return <LoadingSpinner message="Fetching card data..." />;
-  }
-
-  return (
-    <>
-      <OverlayBar>
-        <button
-          onClick={switchSide}
-          className="flex items-center gap-1.5 px-3 py-1 rounded transition-all"
-          style={{
-            ...MODE_BUTTON_BASE,
-            background: "rgba(0,0,0,0.7)",
-            border: "1px solid rgba(0,245,255,0.25)",
-            color: "var(--neon-cyan)",
-          }}
-          title="Switch to opponent's side"
-        >
-          <span style={{ fontSize: "0.7rem" }}>⇄</span>
-          <span>
-            VIEWING: <span style={{ color: "var(--neon-yellow)" }}>
-              {viewSide === "player1" ? state.player1.name.toUpperCase() : state.player2.name.toUpperCase()}
-            </span>
-          </span>
-        </button>
-        <RestartButton onClick={restart} />
-      </OverlayBar>
-      <DuelBoard state={state} mySide={viewSide} onAction={sendAction} />
-    </>
-  );
-}
-
-// ─── Real Mode wrapper ───────────────────────────────────────────────────────
-
-function RealModeDuel() {
-  const { state, engineActions, status, error, reset, submitAction } = useRealEngine();
+function AIModeDuel() {
+  const { state, engineActions, status, error, reset, submitAction } = useAIEngine();
 
   // Auto-reset on first mount
   const [hasStarted, setHasStarted] = useState(false);
@@ -180,36 +140,9 @@ function RestartButton({ onClick }: { onClick: () => void }) {
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function Duel() {
-  const [mode, setMode] = useState<DuelMode>("fun");
-
   return (
     <div className="fixed inset-0" style={{ background: "var(--bg-void)" }}>
-      {/* Mode toggle — top-right corner */}
-      <div
-        className="absolute top-0 right-0 flex items-center gap-1"
-        style={{ padding: "4px 8px", zIndex: 100 }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {(["fun", "real"] as const).map((m) => (
-          <button
-            key={m}
-            onClick={() => setMode(m)}
-            className="px-2 py-1 rounded transition-all hover:opacity-100"
-            style={{
-              ...MODE_BUTTON_BASE,
-              background: mode === m ? "rgba(0,245,255,0.15)" : "rgba(0,0,0,0.7)",
-              border: `1px solid ${mode === m ? "rgba(0,245,255,0.5)" : "rgba(255,255,255,0.25)"}`,
-              color: mode === m ? "var(--neon-cyan)" : "#aabbcc",
-              opacity: mode === m ? 1 : 0.75,
-              cursor: "pointer",
-            }}
-          >
-            {m === "fun" ? "FUN" : "REAL"}
-          </button>
-        ))}
-      </div>
-
-      {mode === "fun" ? <FunModeDuel /> : <RealModeDuel />}
+      <AIModeDuel />
     </div>
   );
 }

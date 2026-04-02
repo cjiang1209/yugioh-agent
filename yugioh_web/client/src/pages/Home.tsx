@@ -97,7 +97,7 @@ export default function Home() {
         {/* Feature list */}
         <div className="flex flex-wrap justify-center gap-3 mb-8 max-w-lg mx-auto">
           {[
-            "Self-Play Mode",
+            "AI Mode",
             "Full Turn Phases",
             "Monster Battles",
             "Spell & Trap Cards",
