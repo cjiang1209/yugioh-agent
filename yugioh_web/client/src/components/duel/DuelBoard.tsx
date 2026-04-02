@@ -787,7 +787,13 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
               size="md"
               canPlace={canPlace}
               isOpponent={!isMine}
-              onClick={() => isMine && handleMySpellTrapZoneClick(i)}
+              onClick={() => {
+                if (isMine) {
+                  handleMySpellTrapZoneClick(i);
+                } else if (slot && !slot.faceDown) {
+                  setSelectedCardDetail(slot.card);
+                }
+              }}
             />
           );
         })}
