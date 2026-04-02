@@ -1478,10 +1478,10 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
                   <button
                     key={tab}
                     onClick={() => setBottomTab(tab)}
-                    className="flex-1 py-1.5 transition-all"
+                    className="flex-1 py-2 transition-all"
                     style={{
                       fontFamily: "'Orbitron', sans-serif",
-                      fontSize: "0.6rem",
+                      fontSize: "0.75rem",
                       letterSpacing: "0.1em",
                       color: bottomTab === tab ? "var(--neon-cyan)" : "var(--text-secondary)",
                       background: bottomTab === tab ? "rgba(0,245,255,0.06)" : "transparent",

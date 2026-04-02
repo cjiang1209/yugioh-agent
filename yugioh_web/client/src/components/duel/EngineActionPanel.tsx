@@ -38,30 +38,6 @@ interface EngineActionPanelProps {
 export function EngineActionPanel({ actions, onAction }: EngineActionPanelProps) {
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div
-        className="px-3 py-2 flex-shrink-0"
-        style={{
-          borderBottom: "1px solid rgba(0,245,255,0.15)",
-          fontFamily: "'Orbitron', sans-serif",
-          fontSize: "0.75rem",
-          letterSpacing: "0.1em",
-          color: "var(--neon-cyan)",
-        }}
-      >
-        ACTIONS
-        <span
-          style={{
-            marginLeft: "0.5em",
-            fontSize: "0.6rem",
-            opacity: 0.5,
-            fontFamily: "'Share Tech Mono', monospace",
-          }}
-        >
-          ({actions.length})
-        </span>
-      </div>
-
       {/* Action list */}
       <div
         className="flex-1 overflow-y-auto"
