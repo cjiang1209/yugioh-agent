@@ -41,6 +41,9 @@ interface ContextMenuState {
   items: { label: string; action: () => void; color?: string; disabled?: boolean }[];
 }
 
+// Module-level cache for card descriptions fetched from YGOProDeck API
+const descCache = new Map<number, string>();
+
 function requiredTributes(level: number) {
   if (level <= 4) return 0;
   if (level <= 6) return 1;
@@ -54,6 +57,24 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
   const [selectedCardDetail, setSelectedCardDetail] = useState<GameCard | null>(null);
   const [graveyardViewer, setGraveyardViewer] = useState<{ side: PlayerSide; tab: "graveyard" | "banished" | "extra" } | null>(null);
   const [showSurrenderConfirm, setShowSurrenderConfirm] = useState(false);
+
+  // Fetch card description from YGOProDeck API when a card is selected
+  useEffect(() => {
+    if (!selectedCardDetail || !selectedCardDetail.id || selectedCardDetail.desc) return;
+    const id = selectedCardDetail.id;
+    if (descCache.has(id)) {
+      setSelectedCardDetail(prev => prev?.id === id ? { ...prev, desc: descCache.get(id)! } : prev);
+      return;
+    }
+    fetch(`https://db.ygoprodeck.com/api/v7/cardinfo.php?id=${id}`)
+      .then(r => r.json())
+      .then(data => {
+        const desc = data.data?.[0]?.desc ?? "";
+        descCache.set(id, desc);
+        setSelectedCardDetail(prev => prev?.id === id ? { ...prev, desc } : prev);
+      })
+      .catch(() => {});
+  }, [selectedCardDetail?.id, selectedCardDetail?.desc]);
   const [attackAnim, setAttackAnim] = useState<{
     fromRect: DOMRect;
     toRect: DOMRect | null;
