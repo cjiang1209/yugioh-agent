@@ -154,3 +154,72 @@ def _describe_one(action: dict, msg_type: int, card_name: str) -> tuple[str, str
     if card_name:
         return f"Select {card_name}", "select_card"
     return f"Action #{action.get('index', 0)}", "unknown"
+
+
+# ─── Prompt metadata ─────────────────────────────────────────────────────────
+
+_PROMPT_TYPE_MAP = {
+    MSG_SELECT_IDLECMD: "idle_cmd",
+    MSG_SELECT_BATTLECMD: "battle_cmd",
+    MSG_SELECT_EFFECTYN: "effect_yn",
+    MSG_SELECT_YESNO: "yes_no",
+    MSG_SELECT_OPTION: "option",
+    MSG_SELECT_CARD: "select_card",
+    MSG_SELECT_CHAIN: "chain",
+    MSG_SELECT_PLACE: "place",
+    MSG_SELECT_DISFIELD: "place",
+    MSG_SELECT_POSITION: "position",
+    MSG_SELECT_TRIBUTE: "tribute",
+    MSG_SELECT_UNSELECT_CARD: "select_card",
+}
+
+
+def describe_prompt(mapper: ActionMapper, card_db: CardDatabase) -> dict:
+    """Build prompt metadata from the current mapper state."""
+    msg_type = mapper.msg_type
+    msg = mapper.msg
+    prompt_type = _PROMPT_TYPE_MAP.get(msg_type, "unknown")
+    result: dict = {"type": prompt_type}
+
+    if msg_type == MSG_SELECT_EFFECTYN:
+        code = msg.get("code", 0)
+        result["card_code"] = code
+        result["card_name"] = card_db.get_card_name(code) if code else ""
+
+    elif msg_type == MSG_SELECT_CARD:
+        result["min"] = msg.get("min", 1)
+        result["max"] = msg.get("max", 1)
+        result["cancelable"] = bool(msg.get("cancelable", 0))
+        result["selected_count"] = len(msg.get("_selected", []))
+
+    elif msg_type == MSG_SELECT_TRIBUTE:
+        # min = minimum total release value, NOT minimum card count.
+        # A single monster with release_param=2 can satisfy min=2.
+        # max = maximum number of cards that can be selected.
+        selected = msg.get("_selected", [])
+        cards = msg.get("cards", [])
+        result["min_release"] = msg.get("min", 1)
+        result["max_cards"] = msg.get("max", 1)
+        result["cancelable"] = bool(msg.get("cancelable", 0))
+        result["release_total"] = sum(
+            cards[i].get("release_param", 1) for i in selected if i < len(cards)
+        )
+        result["cards_selected"] = len(selected)
+
+    elif msg_type == MSG_SELECT_UNSELECT_CARD:
+        result["min"] = msg.get("min", 1)
+        result["max"] = msg.get("max", 1)
+        result["finishable"] = bool(msg.get("finishable", 0))
+
+    elif msg_type == MSG_SELECT_CHAIN:
+        result["forced"] = bool(msg.get("forced", 0))
+
+    elif msg_type == MSG_SELECT_POSITION:
+        code = msg.get("code", 0)
+        result["card_code"] = code
+        result["card_name"] = card_db.get_card_name(code) if code else ""
+
+    elif msg_type in (MSG_SELECT_PLACE, MSG_SELECT_DISFIELD):
+        result["count"] = msg.get("count", 1)
+
+    return result

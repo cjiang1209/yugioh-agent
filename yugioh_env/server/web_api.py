@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from yugioh_env.models import YuGiOhAction
 from yugioh_env.server.board_state import build_board_state
-from yugioh_env.server.action_describer import describe_actions
+from yugioh_env.server.action_describer import describe_actions, describe_prompt
 from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
 
 logger = logging.getLogger(__name__)
@@ -49,6 +49,7 @@ def _build_response(env: YuGiOhEnvironment, event_log: list[str], done: bool, re
     """Build the unified JSON response from current env state."""
     board = build_board_state(env)
     actions = describe_actions(env._mapper, env._card_db) if not done else []
+    prompt = describe_prompt(env._mapper, env._card_db) if not done else None
 
     gs = env._duel.game_state if env._duel else None
     agent = env._agent_player
@@ -66,6 +67,7 @@ def _build_response(env: YuGiOhEnvironment, event_log: list[str], done: bool, re
         "board": board,
         "game_state": game_state,
         "actions": actions,
+        "prompt": prompt,
         "event_log": event_log,
         "done": done,
         "reward": reward,
