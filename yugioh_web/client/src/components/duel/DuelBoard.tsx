@@ -17,7 +17,7 @@ import { LifePoints } from "./LifePoints";
 import { AttackAnimation } from "./AttackAnimation";
 import { SummonAnimation } from "./SummonAnimation";
 import { PhaseIndicator } from "./PhaseIndicator";
-import { EngineActionPanel } from "./EngineActionPanel";
+import { EnginePromptRouter } from "./EnginePromptRouter";
 import type { EngineAction, EnginePrompt } from "../../../../shared/engineTypes";
 
 interface DuelBoardProps {
@@ -1502,7 +1502,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
               {/* Tab content */}
               <div className="flex-1" style={{ minHeight: 0 }}>
                 {bottomTab === "actions" && engineActions && onEngineAction ? (
-                  <EngineActionPanel actions={engineActions} onAction={onEngineAction} />
+                  <EnginePromptRouter actions={engineActions} prompt={enginePrompt ?? null} onAction={onEngineAction} />
                 ) : (
                   <DuelLog logs={state.log} />
                 )}
