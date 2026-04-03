@@ -54,6 +54,21 @@ class ActionMapper:
             self._actions = self._actions[:MAX_ACTIONS]
 
     @property
+    def msg_type(self) -> int:
+        """The current SELECT message type constant."""
+        return self._msg_type
+
+    @property
+    def msg(self) -> dict:
+        """The current parsed SELECT message (treat as read-only)."""
+        return self._msg
+
+    @property
+    def actions(self) -> list[dict]:
+        """The current list of legal action dicts (treat as read-only)."""
+        return self._actions
+
+    @property
     def num_actions(self) -> int:
         return len(self._actions)
 

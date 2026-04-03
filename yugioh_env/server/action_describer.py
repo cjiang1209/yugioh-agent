@@ -58,8 +58,8 @@ _POS_NAMES = {
 
 def describe_actions(mapper: ActionMapper, card_db: CardDatabase) -> list[dict]:
     """Return a list of action dicts with human-readable descriptions."""
-    actions = mapper._actions
-    msg_type = mapper._msg_type
+    actions = mapper.actions
+    msg_type = mapper.msg_type
     result: list[dict] = []
 
     for i, action in enumerate(actions):
