@@ -12,7 +12,7 @@ const MODE_BUTTON_BASE = {
 // ─── AI Mode wrapper ────────────────────────────────────────────────────────
 
 function AIModeDuel() {
-  const { state, engineActions, status, error, reset, submitAction } = useAIEngine();
+  const { state, engineActions, enginePrompt, status, error, reset, submitAction } = useAIEngine();
 
   // Auto-reset on first mount
   const [hasStarted, setHasStarted] = useState(false);
@@ -63,6 +63,7 @@ function AIModeDuel() {
         onAction={() => {}}
         engineMode
         engineActions={engineActions}
+        enginePrompt={enginePrompt}
         onEngineAction={submitAction}
       />
     </>

@@ -18,7 +18,7 @@ import { AttackAnimation } from "./AttackAnimation";
 import { SummonAnimation } from "./SummonAnimation";
 import { PhaseIndicator } from "./PhaseIndicator";
 import { EngineActionPanel } from "./EngineActionPanel";
-import type { EngineAction } from "../../../../shared/engineTypes";
+import type { EngineAction, EnginePrompt } from "../../../../shared/engineTypes";
 
 interface DuelBoardProps {
   state: DuelState;
@@ -26,6 +26,7 @@ interface DuelBoardProps {
   onAction: (action: GameAction) => void;
   engineMode?: boolean;
   engineActions?: EngineAction[];
+  enginePrompt?: EnginePrompt | null;
   onEngineAction?: (actionIndex: number) => void;
 }
 
@@ -50,7 +51,7 @@ function requiredTributes(level: number) {
   return 2;
 }
 
-export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, onEngineAction }: DuelBoardProps) {
+export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, enginePrompt, onEngineAction }: DuelBoardProps) {
   const [selection, setSelection] = useState<SelectionMode>({ type: "none" });
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [bottomTab, setBottomTab] = useState<"actions" | "log">(engineMode ? "actions" : "log");

@@ -100,9 +100,44 @@ export interface EngineAction {
     | "select_card"
     | "position"
     | "place"
+    | "tribute"
     | "finish"
     | "option"
     | "unknown";
+}
+
+// ─── Prompt metadata ──────────────────────────────────────────────────────────
+
+export type PromptType =
+  | "idle_cmd"
+  | "battle_cmd"
+  | "effect_yn"
+  | "yes_no"
+  | "option"
+  | "select_card"
+  | "chain"
+  | "place"
+  | "position"
+  | "tribute"
+  | "unknown";
+
+/** Prompt metadata describing the current engine decision context. */
+export interface EnginePrompt {
+  type: PromptType;
+  card_code?: number;
+  card_name?: string;
+  min?: number;
+  max?: number;
+  cancelable?: boolean;
+  finishable?: boolean;
+  forced?: boolean;
+  count?: number;
+  selected_count?: number;
+  // Tribute-specific fields
+  min_release?: number;
+  max_cards?: number;
+  release_total?: number;
+  cards_selected?: number;
 }
 
 /** Unified response shape from all /api/web/ endpoints. */
@@ -110,6 +145,7 @@ export interface EngineResponse {
   board: EngineBoard;
   game_state: EngineGameState;
   actions: EngineAction[];
+  prompt: EnginePrompt | null;
   event_log: string[];
   done: boolean;
   reward: number;

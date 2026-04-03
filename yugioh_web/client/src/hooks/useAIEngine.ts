@@ -16,6 +16,7 @@ import type {
   EngineAction,
   EngineFieldCard,
   EngineHandCard,
+  EnginePrompt,
   EngineResponse,
 } from "../../../shared/engineTypes";
 
@@ -24,6 +25,7 @@ export type AIEngineStatus = "idle" | "loading" | "dueling" | "ended" | "error";
 export interface UseAIEngineReturn {
   state: DuelState | null;
   engineActions: EngineAction[];
+  enginePrompt: EnginePrompt | null;
   eventLog: string[];
   status: AIEngineStatus;
   error: string | null;
@@ -203,6 +205,7 @@ function engineResponseToDuelState(resp: EngineResponse, log: string[]): DuelSta
 export function useAIEngine(apiUrl: string = "http://localhost:8000"): UseAIEngineReturn {
   const [state, setState] = useState<DuelState | null>(null);
   const [engineActions, setEngineActions] = useState<EngineAction[]>([]);
+  const [enginePrompt, setEnginePrompt] = useState<EnginePrompt | null>(null);
   const [eventLog, setEventLog] = useState<string[]>([]);
   const [status, setStatus] = useState<AIEngineStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -221,6 +224,7 @@ export function useAIEngine(apiUrl: string = "http://localhost:8000"): UseAIEngi
     setState(engineResponseToDuelState(resp, newLog));
     setStatus(resp.done ? "ended" : "dueling");
     setError(null);
+    setEnginePrompt(resp.prompt ?? null);
 
     // Auto-pass: if the only action is pass/no-chain, submit it automatically
     if (
@@ -229,6 +233,7 @@ export function useAIEngine(apiUrl: string = "http://localhost:8000"): UseAIEngi
       AUTO_PASS_CATEGORIES.has(resp.actions[0].category)
     ) {
       setEngineActions([]);  // hide from UI during auto-pass
+      setEnginePrompt(null); // hide prompt during auto-pass
       setTimeout(() => submitRef.current?.(resp.actions[0].index), 0);
     } else {
       setEngineActions(resp.actions);
@@ -275,5 +280,5 @@ export function useAIEngine(apiUrl: string = "http://localhost:8000"): UseAIEngi
 
   submitRef.current = submitAction;
 
-  return { state, engineActions, eventLog, status, error, reset, submitAction };
+  return { state, engineActions, enginePrompt, eventLog, status, error, reset, submitAction };
 }
