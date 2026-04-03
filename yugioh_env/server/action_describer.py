@@ -13,6 +13,7 @@ from yugioh_core.constants import (
     MSG_SELECT_PLACE,
     MSG_SELECT_DISFIELD,
     MSG_SELECT_POSITION,
+    MSG_SELECT_TRIBUTE,
     MSG_SELECT_UNSELECT_CARD,
     POS_FACEUP_ATTACK,
     POS_FACEDOWN_ATTACK,
@@ -136,13 +137,20 @@ def _describe_one(action: dict, msg_type: int, card_name: str) -> tuple[str, str
             desc = f"{card_name}: {pos_name}"
         return desc, "position"
 
+    if msg_type == MSG_SELECT_TRIBUTE:
+        if cat == 1:
+            num = action.get("num_selected", 0)
+            return f"Finish tributing ({num} card{'s' if num != 1 else ''})", "finish"
+        label = f"Tribute {card_name}" if card_name else f"Tribute card #{action.get('index', 0)}"
+        return label, "tribute"
+
     if msg_type == MSG_SELECT_UNSELECT_CARD:
         if cat == 1:
             return "Finish selection", "finish"
         label = f"Select {card_name}" if card_name else f"Select card #{action.get('index', 0)}"
         return label, "select_card"
 
-    # Fallback for tribute, sum, sort, announce, counter, rps, etc.
+    # Fallback for sum, sort, announce, counter, rps, etc.
     if card_name:
         return f"Select {card_name}", "select_card"
     return f"Action #{action.get('index', 0)}", "unknown"

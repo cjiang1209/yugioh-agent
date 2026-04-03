@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from itertools import combinations
+from collections.abc import Callable
 import numpy as np
 
 from yugioh_core.constants import *  # noqa: F401,F403
@@ -215,20 +215,29 @@ def _extract_option_actions(msg: dict) -> list[dict]:
     ]
 
 
-def _extract_card_actions(msg: dict) -> list[dict]:
-    """For MSG_SELECT_CARD: present individual card picks per step.
+def _extract_multi_step_actions(
+    msg: dict,
+    *,
+    can_finish: Callable[[list[dict], list[int]], bool],
+    completes: Callable[[list[dict], list[int]], bool],
+) -> list[dict]:
+    """Shared helper for multi-step card selection.
 
     The caller drives multi-step selection by injecting ``_selected``
     (list of already-chosen card indices) into the message before each
-    ``update`` call.  On each step this extractor presents the remaining
-    cards; picks that complete the selection get a real ``build_response``,
-    intermediate picks get ``None``.  A "finish" action (category=1)
-    appears when ``min < max`` and enough cards are already selected.
+    ``update`` call.  On each step this helper presents the remaining
+    cards; picks where ``completes`` returns True get a real
+    ``build_response``, intermediate picks get ``None``.  A "finish"
+    action (category=1) appears when ``can_finish`` returns True.
+
+    Args:
+        can_finish: ``(cards, selected) -> bool`` — True when a "finish"
+            action should be offered (agent can stop early).
+        completes: ``(cards, new_selected) -> bool`` — True when this
+            pick should produce a real ``build_response``.
     """
     cards = msg.get("cards", [])
     selected: list[int] = msg.get("_selected", [])
-    min_sel = msg.get("min", 1)
-    max_sel = msg.get("max", min_sel)
     selected_set = set(selected)
     if not cards:
         return []
@@ -238,21 +247,20 @@ def _extract_card_actions(msg: dict) -> list[dict]:
         if i in selected_set:
             continue
         new_selected = selected + [i]
-        completes = len(new_selected) >= max_sel
+        done = completes(cards, new_selected)
         actions.append({
             "category": 0, "index": i, "code": card.get("code", 0),
             "location": card.get("location", 0), "sequence": card.get("sequence", 0),
             "num_selected": len(new_selected),
             "build_response": (
                 (lambda idxs=new_selected: rb.build_select_card_response(idxs))
-                if completes else None
+                if done else None
             ),
         })
         if len(actions) >= MAX_ACTIONS:
             return actions
 
-    # "Finish" when min < max and enough cards are already selected
-    if min_sel < max_sel and len(selected) >= min_sel:
+    if can_finish(cards, selected):
         actions.append({
             "category": 1, "index": 0, "code": 0, "location": 0, "sequence": 0,
             "num_selected": len(selected),
@@ -260,6 +268,24 @@ def _extract_card_actions(msg: dict) -> list[dict]:
         })
 
     return actions
+
+
+def _extract_card_actions(msg: dict) -> list[dict]:
+    """For MSG_SELECT_CARD: count-based multi-step selection.
+
+    Completes when ``len(selected) >= max``.  Finish offered when
+    ``min < max`` and ``len(selected) >= min``.
+    """
+    min_sel = msg.get("min", 1)
+    max_sel = msg.get("max", min_sel)
+
+    def _completes(cards: list[dict], selected: list[int]) -> bool:
+        return len(selected) >= max_sel
+
+    def _can_finish(cards: list[dict], selected: list[int]) -> bool:
+        return min_sel < max_sel and len(selected) >= min_sel
+
+    return _extract_multi_step_actions(msg, can_finish=_can_finish, completes=_completes)
 
 
 def _extract_chain_actions(msg: dict) -> list[dict]:
@@ -332,30 +358,24 @@ def _extract_position_actions(msg: dict) -> list[dict]:
 
 
 def _extract_tribute_actions(msg: dict) -> list[dict]:
-    """For MSG_SELECT_TRIBUTE: generate valid tribute combinations.
+    """For MSG_SELECT_TRIBUTE: multi-step tribute selection.
 
-    The engine requires sum(release_param) >= min for selected cards.
+    Uses release-total semantics: ``can_finish`` when
+    ``sum(release_param) >= min``, ``completes`` when release is met
+    AND card count reaches ``max``.
     """
-    cards = msg.get("cards", [])
-    min_sel = msg.get("min", 1)
-    max_sel = msg.get("max", min_sel)
-    if not cards:
-        return []
-    actions = []
-    for size in range(1, min(max_sel, len(cards)) + 1):
-        for combo in combinations(range(len(cards)), size):
-            total_release = sum(cards[i].get("release_param", 1) for i in combo)
-            if total_release >= min_sel:
-                indices = list(combo)
-                card = cards[indices[0]]
-                actions.append({
-                    "category": 0, "index": indices[0], "code": card.get("code", 0),
-                    "location": card.get("location", 0), "sequence": card.get("sequence", 0),
-                    "build_response": lambda idxs=indices: rb.build_select_card_response(idxs),
-                })
-                if len(actions) >= MAX_ACTIONS:
-                    return actions
-    return actions
+    min_rel = msg.get("min", 1)
+    max_cards = msg.get("max", min_rel)
+
+    def _completes(cards: list[dict], selected: list[int]) -> bool:
+        total = sum(cards[i].get("release_param", 1) for i in selected)
+        return total >= min_rel and len(selected) >= max_cards
+
+    def _can_finish(cards: list[dict], selected: list[int]) -> bool:
+        total = sum(cards[i].get("release_param", 1) for i in selected)
+        return total >= min_rel
+
+    return _extract_multi_step_actions(msg, can_finish=_can_finish, completes=_completes)
 
 
 def _extract_sum_actions(msg: dict) -> list[dict]:

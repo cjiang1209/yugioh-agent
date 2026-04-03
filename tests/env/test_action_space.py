@@ -322,9 +322,9 @@ def test_select_card_multi_select():
 # --- Tribute tests ---
 
 def test_tribute_two_tributes():
-    """MSG_SELECT_TRIBUTE with min=2 generates valid pair combos."""
+    """MSG_SELECT_TRIBUTE with min=2, max=2 uses two-step selection."""
     mapper = ActionMapper()
-    mapper.update({
+    msg = {
         "msg_type": MSG_SELECT_TRIBUTE,
         "player": 0,
         "cancelable": 0,
@@ -335,10 +335,19 @@ def test_tribute_two_tributes():
             {"code": 200, "controller": 0, "location": 4, "sequence": 1, "release_param": 1},
             {"code": 300, "controller": 0, "location": 4, "sequence": 2, "release_param": 1},
         ],
-    })
-    # C(3,2) = 3 pairs, all valid since each release_param=1 and 1+1 >= 2
+    }
+    mapper.update(msg)
+    # Step 1: 3 individual cards, all return None (len=1 < max=2)
     assert mapper.num_actions == 3
     resp = mapper.action_to_response(0)
+    assert resp is None
+
+    # Step 2: pick card 0, inject _selected
+    mapper.update({**msg, "_selected": [0]})
+    # 2 remaining cards, both complete (total=2 >= min=2 and len=2 >= max=2)
+    assert mapper.num_actions == 2
+    resp = mapper.action_to_response(0)
+    assert resp is not None
     typ, count = struct.unpack_from("<iI", resp, 0)
     assert typ == 0
     assert count == 2
@@ -434,9 +443,9 @@ def test_select_card_min_max_finish_early():
 
 
 def test_tribute_double_release():
-    """A card with release_param=2 can tribute-summon alone for min=2."""
+    """A card with release_param=2 offers finish after first pick."""
     mapper = ActionMapper()
-    mapper.update({
+    msg = {
         "msg_type": MSG_SELECT_TRIBUTE,
         "player": 0,
         "cancelable": 0,
@@ -446,11 +455,29 @@ def test_tribute_double_release():
             {"code": 100, "controller": 0, "location": 4, "sequence": 0, "release_param": 2},
             {"code": 200, "controller": 0, "location": 4, "sequence": 1, "release_param": 1},
         ],
-    })
-    # Card 0 alone (release_param=2 >= min=2): 1 action
-    # Pair (0,1) with total 3 >= 2: 1 action
-    # Card 1 alone (release_param=1 < min=2): not valid
+    }
+    mapper.update(msg)
+    # Step 1: both cards return None (len=1 < max=2)
     assert mapper.num_actions == 2
+    resp = mapper.action_to_response(0)
+    assert resp is None
+
+    # Step 2: after picking card 0 (release_param=2), can_finish fires
+    mapper.update({**msg, "_selected": [0]})
+    # 1 remaining card + 1 finish (total release=2 >= min=2)
+    assert mapper.num_actions == 2
+    # Card 1 completes (total=3 >= 2 and len=2 >= 2)
+    resp = mapper.action_to_response(0)
+    assert resp is not None
+    typ, count = struct.unpack_from("<iI", resp, 0)
+    assert typ == 0
+    assert count == 2
+    # Finish action sends just card 0
+    resp_finish = mapper.action_to_response(1)
+    assert resp_finish is not None
+    typ, count = struct.unpack_from("<iI", resp_finish, 0)
+    assert typ == 0
+    assert count == 1
 
 
 # --- MSG_SELECT_COUNTER response format ---
@@ -494,3 +521,118 @@ def test_select_counter_actions_response():
     c0, c1 = struct.unpack("<HH", resp)
     # First action: remove min(counter_count, count) from card 0
     assert c0 + c1 > 0
+
+
+# --- Tribute multi-step tests ---
+
+def test_tribute_multi_step_with_finish():
+    """Tribute with min=2, max=3: finish offered after 2 cards, completes at 3."""
+    mapper = ActionMapper()
+    msg = {
+        "msg_type": MSG_SELECT_TRIBUTE,
+        "player": 0,
+        "cancelable": 0,
+        "min": 2,
+        "max": 3,
+        "cards": [
+            {"code": 100, "controller": 0, "location": 4, "sequence": 0, "release_param": 1},
+            {"code": 200, "controller": 0, "location": 4, "sequence": 1, "release_param": 1},
+            {"code": 300, "controller": 0, "location": 4, "sequence": 2, "release_param": 1},
+        ],
+    }
+    mapper.update(msg)
+    # Step 1: 3 cards, no finish (total=0 < min=2)
+    assert mapper.num_actions == 3
+
+    # Pick card 0
+    resp = mapper.action_to_response(0)
+    assert resp is None
+
+    # Step 2: 2 remaining, no finish yet (total=1 < min=2)
+    mapper.update({**msg, "_selected": [0]})
+    assert mapper.num_actions == 2
+
+    # Pick card 1
+    resp = mapper.action_to_response(0)
+    assert resp is None
+
+    # Step 3: 1 remaining card + finish (total=2 >= min=2)
+    mapper.update({**msg, "_selected": [0, 1]})
+    assert mapper.num_actions == 2  # 1 card + 1 finish
+
+    # Picking the last card hits max=3 and completes
+    resp = mapper.action_to_response(0)
+    assert resp is not None
+    typ, count = struct.unpack_from("<iI", resp, 0)
+    assert typ == 0
+    assert count == 3
+
+    # Or pick finish with 2 cards
+    resp_finish = mapper.action_to_response(1)
+    assert resp_finish is not None
+    typ, count = struct.unpack_from("<iI", resp_finish, 0)
+    assert typ == 0
+    assert count == 2
+
+
+def test_tribute_release_param_finish_early():
+    """release_param=2 card allows finish after 1 pick via can_finish."""
+    mapper = ActionMapper()
+    msg = {
+        "msg_type": MSG_SELECT_TRIBUTE,
+        "player": 0,
+        "cancelable": 0,
+        "min": 2,
+        "max": 2,
+        "cards": [
+            {"code": 100, "controller": 0, "location": 4, "sequence": 0, "release_param": 2},
+            {"code": 200, "controller": 0, "location": 4, "sequence": 1, "release_param": 1},
+        ],
+    }
+    mapper.update(msg)
+    # Step 1: pick release_param=2 card — returns None (len=1 < max=2)
+    resp = mapper.action_to_response(0)
+    assert resp is None
+
+    # Step 2: can_finish fires (total=2 >= min=2)
+    mapper.update({**msg, "_selected": [0]})
+    # 1 remaining card + 1 finish = 2 actions
+    assert mapper.num_actions == 2
+
+    # Finish sends response with 1 card
+    resp_finish = mapper.action_to_response(1)
+    assert resp_finish is not None
+    typ, count = struct.unpack_from("<iI", resp_finish, 0)
+    assert typ == 0
+    assert count == 1
+    idx = struct.unpack_from("<I", resp_finish, 8)[0]
+    assert idx == 0  # original card index 0
+
+
+def test_tribute_num_selected_feature():
+    """Feature byte 9 (num_selected) reflects multi-step accumulation."""
+    mapper = ActionMapper()
+    msg = {
+        "msg_type": MSG_SELECT_TRIBUTE,
+        "player": 0,
+        "cancelable": 0,
+        "min": 2,
+        "max": 2,
+        "cards": [
+            {"code": 100, "controller": 0, "location": 4, "sequence": 0, "release_param": 1},
+            {"code": 200, "controller": 0, "location": 4, "sequence": 1, "release_param": 1},
+            {"code": 300, "controller": 0, "location": 4, "sequence": 2, "release_param": 1},
+        ],
+    }
+    mapper.update(msg)
+    features = mapper.get_action_features()
+    # Step 1: each card action has num_selected = 1 (will be 1 after pick)
+    for i in range(3):
+        assert features[i][9] == 1
+
+    # Step 2: after picking card 0
+    mapper.update({**msg, "_selected": [0]})
+    features2 = mapper.get_action_features()
+    # Remaining card actions have num_selected = 2 (will be 2 after pick)
+    for i in range(2):
+        assert features2[i][9] == 2
