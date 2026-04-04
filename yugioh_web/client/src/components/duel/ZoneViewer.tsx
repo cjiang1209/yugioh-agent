@@ -28,6 +28,7 @@ export function ZoneViewer({
   const isExtra = tab === "extra";
   const accentColor = isGY ? "var(--neon-pink)" : isExtra ? "#ffd700" : "#b44fff";
   const accentRgb = isGY ? "255,45,120" : isExtra ? "255,215,0" : "180,79,255";
+  const hlRgb = accentRgb.replaceAll(",", " ");
 
   function handleCardClick(card: GameCard) {
     setSelectedId(card.instanceId);
@@ -134,19 +135,15 @@ export function ZoneViewer({
                 return (
                   <div
                     key={card.instanceId}
-                    className="relative flex-shrink-0 cursor-pointer rounded overflow-hidden transition-all"
+                    className={`relative flex-shrink-0 cursor-pointer rounded overflow-hidden transition-all${isSelected ? " card-highlight" : ""}`}
                     style={{
                       width: "100px",
                       height: "140px",
-                      border: isSelected
-                        ? `2px solid ${accentColor}`
-                        : "1px solid var(--border-dim)",
-                      boxShadow: isSelected
-                        ? `0 0 12px rgba(${accentRgb},0.6)`
-                        : "none",
-                      transform: isSelected ? "scale(1.08)" : "scale(1)",
+                      "--hl-rgb": hlRgb,
+                      border: isSelected ? undefined : "1px solid var(--border-dim)",
+                      boxShadow: isSelected ? undefined : "none",
                       filter: isGY ? "none" : isExtra ? "none" : "hue-rotate(60deg) brightness(0.8) saturate(1.2)",
-                    }}
+                    } as React.CSSProperties}
                     onClick={() => handleCardClick(card)}
                   >
                     <img

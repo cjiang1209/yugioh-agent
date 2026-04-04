@@ -43,6 +43,14 @@ interface ContextMenuState {
   items: { label: string; action: () => void; color?: string; disabled?: boolean }[];
 }
 
+/** Stable card locator — survives state refreshes (unlike instanceId). */
+type BoardZone = "hand" | "mzone" | "szone" | "emz" | "field";
+type CardLocator = { cardCode: number; side: "mine" | "opp"; zone: BoardZone; seq: number };
+
+function locatorKey(cardCode: number, side: string, zone: string, seq: number): string {
+  return `${cardCode}-${side}-${zone}-${seq}`;
+}
+
 // Module-level cache for card descriptions fetched from YGOProDeck API
 const descCache = new Map<number, string>();
 
@@ -57,6 +65,18 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [bottomTab, setBottomTab] = useState<"actions" | "log">(engineMode ? "actions" : "log");
   const [selectedCardDetail, setSelectedCardDetail] = useState<GameCard | null>(null);
+  const [selectedLocator, setSelectedLocator] = useState<string | null>(null);
+
+  function selectCardForDetail(card: GameCard, side: "mine" | "opp", zone: BoardZone, seq: number) {
+    setSelectedCardDetail(card);
+    setSelectedLocator(locatorKey(card.id, side, zone, seq));
+  }
+
+  /** Check if a board position still holds the expected card. */
+  function isLocatorMatch(cardId: number | undefined, side: string, zone: string, seq: number): boolean {
+    if (!selectedLocator || cardId === undefined) return false;
+    return selectedLocator === locatorKey(cardId, side, zone, seq);
+  }
   const [zoneViewer, setZoneViewer] = useState<{ side: PlayerSide; tab: "graveyard" | "banished" | "extra" } | null>(null);
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
 
@@ -179,7 +199,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
   // ─── Hand card click ────────────────────────────────────────────────────────
 
   function handleHandCardClick(index: number, card: GameCard) {
-    setSelectedCardDetail(card);
+    selectCardForDetail(card, "mine", "hand", index);
     if (!canAct) return;
     if (selection.type === "hand" && selection.index === index) {
       clearSelection();
@@ -263,8 +283,8 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
 
   function handleMyMonsterZoneClick(zoneIndex: number) {
     const slot = myPlayer.monsterZones[zoneIndex];
-    if (slot) setSelectedCardDetail(slot.card);
-    // Tribute selection modee
+    if (slot) selectCardForDetail(slot.card, "mine", "mzone", zoneIndex);
+    // Tribute selection mode
     if (selection.type === "tribute") {
       if (!slot) return;
       const already = selection.zones.includes(zoneIndex);
@@ -377,7 +397,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
   function handleOpponentMonsterZoneClick(zoneIndex: number) {
     const oppSlot = opponentPlayer.monsterZones[zoneIndex];
     // Never reveal face-down opponent cards
-    if (oppSlot && !oppSlot.faceDown) setSelectedCardDetail(oppSlot.card);
+    if (oppSlot && !oppSlot.faceDown) selectCardForDetail(oppSlot.card, "opp", "mzone", zoneIndex);
     if (selection.type === "attacker") {
       fireAttack(selection.zone, zoneIndex, {
         type: "DECLARE_ATTACK",
@@ -394,7 +414,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
     const slot = myPlayer.spellTrapZones[zoneIndex];
 
     // Always show card details for own cards (face-down included — player knows their own set cards)
-    if (slot) setSelectedCardDetail(slot.card);
+    if (slot) selectCardForDetail(slot.card, "mine", "szone", zoneIndex);
 
     if (selection.type === "hand") {
       if (!canAct) return;
@@ -467,7 +487,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
   function handleMyEMZClick(e: React.MouseEvent) {
     e.stopPropagation();
     const slot = myPlayer.extraMonsterZone;
-    if (slot) setSelectedCardDetail(slot.card);
+    if (slot) selectCardForDetail(slot.card, "mine", "emz", 0);
 
     // Place Extra Deck card from hand
     if (selection.type === "hand" && !slot) {
@@ -532,10 +552,13 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
     slot: FieldCard | null,
     isMine: boolean,
     canPlace: boolean,
+    isDetailSelected: boolean,
     onClick: (e: React.MouseEvent) => void
   ) {
+    const highlighted = isDetailSelected && !!slot;
     return (
       <div
+        className={highlighted ? "card-highlight" : ""}
         onClick={onClick}
         title={slot ? slot.card.name : "Extra Monster Zone"}
         style={{
@@ -543,13 +566,13 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
           height: "140px",
           borderRadius: "0.3rem",
           overflow: "visible",
-          border: canPlace
+          border: highlighted ? undefined : canPlace
             ? "2px solid var(--neon-cyan)"
             : slot
             ? "2px solid rgba(255,215,0,0.8)"
             : "1px dashed rgba(255,215,0,0.4)",
           background: slot ? "transparent" : "rgba(255,215,0,0.04)",
-          boxShadow: slot
+          boxShadow: highlighted ? undefined : slot
             ? "0 0 12px rgba(255,215,0,0.5), inset 0 0 8px rgba(255,215,0,0.1)"
             : canPlace
             ? "0 0 8px rgba(0,245,255,0.5)"
@@ -652,7 +675,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
 
     const oppEMZClick = (e: React.MouseEvent) => {
       e.stopPropagation();
-      if (oppSlot && !oppSlot.faceDown) setSelectedCardDetail(oppSlot.card);
+      if (oppSlot && !oppSlot.faceDown) selectCardForDetail(oppSlot.card, "opp", "emz", 0);
       if (selection.type === "attacker") {
         fireAttack(selection.zone, null, {
           type: "DECLARE_ATTACK",
@@ -680,13 +703,13 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
             <div style={{ width: `${CARD_W}px`, flexShrink: 0 }} />
 
             {/* col 1: my EMZ */}
-            {renderEMZSlot(mySlot, true, canPlaceMine, handleMyEMZClick)}
+            {renderEMZSlot(mySlot, true, canPlaceMine, isLocatorMatch(mySlot?.card.id, "mine", "emz", 0), handleMyEMZClick)}
 
             {/* col 2: empty spacer */}
             <div style={{ width: `${CARD_W}px`, flexShrink: 0 }} />
 
             {/* col 3: opponent EMZ */}
-            {renderEMZSlot(oppSlot, false, false, oppEMZClick)}
+            {renderEMZSlot(oppSlot, false, false, isLocatorMatch(oppSlot?.card.id, "opp", "emz", 0), oppEMZClick)}
 
             {/* col 4: empty spacer */}
             <div style={{ width: `${CARD_W}px`, flexShrink: 0 }} />
@@ -762,6 +785,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
               label="MONSTER"
               size="md"
               isSelected={isAttacker || isTributeSelected}
+              isDetailSelected={isLocatorMatch(slot?.card.id, isMine ? "mine" : "opp", "mzone", i)}
               isValidTarget={isValidTarget}
               canPlace={canTribute || canPlaceMonster}
               isOpponent={!isMine}
@@ -787,13 +811,14 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
               slot={slot}
               label="S/T"
               size="md"
+              isDetailSelected={isLocatorMatch(slot?.card.id, isMine ? "mine" : "opp", "szone", i)}
               canPlace={canPlace}
               isOpponent={!isMine}
               onClick={() => {
                 if (isMine) {
                   handleMySpellTrapZoneClick(i);
                 } else if (slot && !slot.faceDown) {
-                  setSelectedCardDetail(slot.card);
+                  selectCardForDetail(slot.card, "opp", "szone", i);
                 }
               }}
             />
@@ -815,8 +840,9 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
 
   function handleMyFieldZoneClick(e: React.MouseEvent) {
     e.stopPropagation();
-    if (!canAct) return;
     const fieldCard = myPlayer.fieldZone;
+    if (fieldCard) selectCardForDetail(fieldCard.card, "mine", "field", 0);
+    if (!canAct) return;
 
     // Place a Field Spell from hand
     if (selection.type === "hand") {
@@ -853,17 +879,24 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
       selection.card.type?.includes("Spell") &&
       selection.card.race === "Field" &&
       canSetSpell;
+    const fieldSide = isMine ? "mine" : "opp";
+    const isDetailSel = isLocatorMatch(fieldCard?.card.id, fieldSide, "field", 0);
+
+    const handleFieldClick = isMine ? handleMyFieldZoneClick : () => {
+      if (fieldCard && !fieldCard.faceDown) selectCardForDetail(fieldCard.card, "opp", "field", 0);
+    };
 
     return (
       <div
-        onClick={isMine ? handleMyFieldZoneClick : undefined}
+        className={isDetailSel ? "card-highlight" : ""}
+        onClick={handleFieldClick}
         title={fieldCard ? fieldCard.card.name : "Field Zone"}
         style={{
           width: "100px",
           height: "140px",
           borderRadius: "0.3rem",
           overflow: "hidden",
-          border: canPlaceField
+          border: isDetailSel ? undefined : canPlaceField
             ? "2px solid var(--neon-cyan)"
             : fieldCard
             ? "2px solid rgba(0,245,255,0.7)"
@@ -871,12 +904,12 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
           background: fieldCard
             ? "transparent"
             : "rgba(0,245,255,0.04)",
-          boxShadow: fieldCard
+          boxShadow: isDetailSel ? undefined : fieldCard
             ? "0 0 10px rgba(0,245,255,0.4), inset 0 0 8px rgba(0,245,255,0.1)"
             : canPlaceField
             ? "0 0 8px rgba(0,245,255,0.5)"
             : "none",
-          cursor: isMine ? "pointer" : "default",
+          cursor: "pointer",
           flexShrink: 0,
           position: "relative",
         }}
@@ -1344,6 +1377,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
                     card={card}
                     index={i}
                     isSelected={selection.type === "hand" && selection.index === i}
+                    isDetailSelected={isLocatorMatch(card.id, "mine", "hand", i)}
                     pileMode={myPile}
                     pileOffset={myPile ? i * myStep : undefined}
                     onClick={() => handleHandCardClick(i, card)}
@@ -1549,7 +1583,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
             zoneViewer.side === mySide ? myPlayer.name : opponentPlayer.name
           }
           onClose={() => setZoneViewer(null)}
-          onCardSelect={(card) => setSelectedCardDetail(card)}
+          onCardSelect={(card) => { setSelectedCardDetail(card); setSelectedLocator(null); }}
         />
       )}
 

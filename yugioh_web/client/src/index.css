@@ -89,6 +89,11 @@ body {
   background: rgba(0, 245, 255, 0.1);
   box-shadow: 0 0 14px rgba(0, 245, 255, 0.35);
 }
+.card-highlight {
+  border: 2px solid rgb(var(--hl-rgb, 0 245 255)) !important;
+  box-shadow: 0 0 12px rgb(var(--hl-rgb, 0 245 255) / 0.6) !important;
+  z-index: 10;
+}
 .card-zone.selected {
   border-color: var(--neon-pink);
   background: rgba(255, 45, 120, 0.1);
