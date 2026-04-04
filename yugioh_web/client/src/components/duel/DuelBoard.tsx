@@ -28,6 +28,7 @@ interface DuelBoardProps {
   engineActions?: EngineAction[];
   enginePrompt?: EnginePrompt | null;
   onEngineAction?: (actionIndex: number) => void;
+  onRestart?: () => void;
 }
 
 type SelectionMode =
@@ -51,13 +52,13 @@ function requiredTributes(level: number) {
   return 2;
 }
 
-export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, enginePrompt, onEngineAction }: DuelBoardProps) {
+export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, enginePrompt, onEngineAction, onRestart }: DuelBoardProps) {
   const [selection, setSelection] = useState<SelectionMode>({ type: "none" });
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [bottomTab, setBottomTab] = useState<"actions" | "log">(engineMode ? "actions" : "log");
   const [selectedCardDetail, setSelectedCardDetail] = useState<GameCard | null>(null);
   const [graveyardViewer, setGraveyardViewer] = useState<{ side: PlayerSide; tab: "graveyard" | "banished" | "extra" } | null>(null);
-  const [showSurrenderConfirm, setShowSurrenderConfirm] = useState(false);
+  const [showRestartConfirm, setShowRestartConfirm] = useState(false);
 
   // Fetch card description from YGOProDeck API when a card is selected
   useEffect(() => {
@@ -1207,7 +1208,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
           </div>
         </div>
 
-        {/* Center divider: phase indicator + EMZ slots + surrender button — all in one row */}
+        {/* Center divider: phase indicator + EMZ slots + restart button — all in one row */}
         <div
           className="flex-shrink-0 relative"
           style={{
@@ -1219,7 +1220,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
         >
           {/*
            * The EMZ slots (100×140px) define the row height.
-           * The phase card and surrender button are absolutely positioned
+           * The phase card and restart button are absolutely positioned
            * on the left and right edges, vertically centered.
            * The EMZ grid sits in the center using the same board-center-row
            * structure as the zone grids for pixel-perfect column alignment.
@@ -1285,19 +1286,21 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
             </div>
           </div>
 
-          {/* Surrender button — absolute right, vertically centered */}
-          <div className="absolute right-3 top-0 bottom-0 flex items-center">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowSurrenderConfirm(true);
-              }}
-              className="px-2 py-0.5 text-[0.5rem] rounded opacity-70 hover:opacity-100 transition-opacity"
-              style={{ border: "1px solid var(--neon-pink)", color: "var(--neon-pink)", fontFamily: "'Orbitron', sans-serif" }}
-            >
-              SURRENDER
-            </button>
-          </div>
+          {/* Restart button — absolute right, vertically centered */}
+          {onRestart && (
+            <div className="absolute right-3 top-0 bottom-0 flex items-center">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowRestartConfirm(true);
+                }}
+                className="px-2 py-0.5 text-[0.5rem] rounded opacity-70 hover:opacity-100 transition-opacity"
+                style={{ border: "1px solid var(--neon-pink)", color: "var(--neon-pink)", fontFamily: "'Orbitron', sans-serif" }}
+              >
+                RESTART
+              </button>
+            </div>
+          )}
         </div>
 
         {/* My area — compact, no stretching */}
@@ -1550,12 +1553,12 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
         />
       )}
 
-      {/* Surrender confirmation dialog */}
-      {showSurrenderConfirm && (
+      {/* Restart confirmation dialog */}
+      {showRestartConfirm && (
         <div
           className="fixed inset-0 flex items-center justify-center"
           style={{ background: "rgba(0,0,0,0.75)", zIndex: 2000 }}
-          onClick={() => setShowSurrenderConfirm(false)}
+          onClick={() => setShowRestartConfirm(false)}
         >
           <div
             className="rounded animate-slide-up flex flex-col items-center gap-4 px-8 py-6"
@@ -1569,7 +1572,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
             onClick={(e) => e.stopPropagation()}
           >
             {/* Icon */}
-            <div style={{ fontSize: "2rem", lineHeight: 1 }}>🏳️</div>
+            <div style={{ fontSize: "2rem", lineHeight: 1 }}>↺</div>
 
             {/* Title */}
             <div
@@ -1582,7 +1585,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
                 textAlign: "center",
               }}
             >
-              SURRENDER?
+              RESTART?
             </div>
 
             {/* Body */}
@@ -1595,7 +1598,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
                 lineHeight: 1.5,
               }}
             >
-              Are you sure you want to concede this duel? This cannot be undone.
+              Start a new duel? Current progress will be lost.
             </div>
 
             {/* Buttons */}
@@ -1612,11 +1615,11 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
                   boxShadow: "0 0 8px rgba(255,45,120,0.2)",
                 }}
                 onClick={() => {
-                  setShowSurrenderConfirm(false);
-                  onAction({ type: "SURRENDER" });
+                  setShowRestartConfirm(false);
+                  onRestart?.();
                 }}
               >
-                YES, SURRENDER
+                YES, RESTART
               </button>
               <button
                 className="flex-1 py-1.5 rounded transition-all hover:opacity-90"
@@ -1628,9 +1631,9 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
                   border: "1px solid rgba(0,245,255,0.4)",
                   color: "var(--neon-cyan)",
                 }}
-                onClick={() => setShowSurrenderConfirm(false)}
+                onClick={() => setShowRestartConfirm(false)}
               >
-                KEEP FIGHTING
+                KEEP PLAYING
               </button>
             </div>
           </div>

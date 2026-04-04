@@ -44,7 +44,7 @@ export function PositionPanel({ actions, prompt, onAction }: PositionPanelProps)
             alt={cardName}
             style={{
               width: "80px",
-              height: "116px",
+              height: "112px",
               objectFit: "cover",
               borderRadius: "4px",
               border: "1px solid rgba(245,230,66,0.4)",

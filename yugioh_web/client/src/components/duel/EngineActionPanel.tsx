@@ -89,8 +89,8 @@ export function EngineActionPanel({ actions, onAction }: EngineActionPanelProps)
                     src={`${CARD_IMAGE_BASE}/${action.card_code}.jpg`}
                     alt=""
                     style={{
-                      width: "28px",
-                      height: "40px",
+                      width: "50px",
+                      height: "70px",
                       objectFit: "cover",
                       borderRadius: "2px",
                       flexShrink: 0,
@@ -103,8 +103,8 @@ export function EngineActionPanel({ actions, onAction }: EngineActionPanelProps)
                 ) : (
                   <div
                     style={{
-                      width: "28px",
-                      height: "40px",
+                      width: "50px",
+                      height: "70px",
                       flexShrink: 0,
                       borderRadius: "2px",
                       background: "rgba(255,255,255,0.04)",

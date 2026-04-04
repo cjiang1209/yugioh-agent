@@ -73,7 +73,7 @@ export function SelectCardPanel({ actions, prompt, onAction }: SelectCardPanelPr
         className="flex-1 overflow-y-auto"
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
+          gridTemplateColumns: "repeat(2, 1fr)",
           gap: "6px",
           padding: "8px",
           alignContent: "start",
@@ -113,8 +113,8 @@ export function SelectCardPanel({ actions, prompt, onAction }: SelectCardPanelPr
                   src={`${CARD_IMAGE_BASE}/${action.card_code}.jpg`}
                   alt={action.card_name}
                   style={{
-                    width: "48px",
-                    height: "70px",
+                    width: "80px",
+                    height: "112px",
                     objectFit: "cover",
                     borderRadius: "3px",
                     border: "1px solid rgba(180,79,255,0.4)",
@@ -126,8 +126,8 @@ export function SelectCardPanel({ actions, prompt, onAction }: SelectCardPanelPr
               ) : (
                 <div
                   style={{
-                    width: "48px",
-                    height: "70px",
+                    width: "80px",
+                    height: "112px",
                     borderRadius: "3px",
                     background: "rgba(255,255,255,0.04)",
                     border: "1px solid rgba(180,79,255,0.3)",

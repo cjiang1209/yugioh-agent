@@ -54,9 +54,6 @@ function AIModeDuel() {
 
   return (
     <>
-      <OverlayBar>
-        <RestartButton onClick={() => reset(Math.floor(Math.random() * 100000))} />
-      </OverlayBar>
       <DuelBoard
         state={state}
         mySide="player1"
@@ -65,6 +62,7 @@ function AIModeDuel() {
         engineActions={engineActions}
         enginePrompt={enginePrompt}
         onEngineAction={submitAction}
+        onRestart={() => reset(Math.floor(Math.random() * 100000))}
       />
     </>
   );
