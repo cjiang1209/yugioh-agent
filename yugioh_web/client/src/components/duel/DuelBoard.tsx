@@ -12,7 +12,7 @@ import { ActionMenu } from "./ActionMenu";
 import { CardTooltip } from "./CardTooltip";
 import { CardZone, HandCard } from "./CardZone";
 import { DuelLog } from "./DuelLog";
-import { GraveyardViewer } from "./GraveyardViewer";
+import { ZoneViewer } from "./ZoneViewer";
 import { LifePoints } from "./LifePoints";
 import { AttackAnimation } from "./AttackAnimation";
 import { SummonAnimation } from "./SummonAnimation";
@@ -57,7 +57,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [bottomTab, setBottomTab] = useState<"actions" | "log">(engineMode ? "actions" : "log");
   const [selectedCardDetail, setSelectedCardDetail] = useState<GameCard | null>(null);
-  const [graveyardViewer, setGraveyardViewer] = useState<{ side: PlayerSide; tab: "graveyard" | "banished" | "extra" } | null>(null);
+  const [zoneViewer, setZoneViewer] = useState<{ side: PlayerSide; tab: "graveyard" | "banished" | "extra" } | null>(null);
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
 
   // Fetch card description from YGOProDeck API when a card is selected
@@ -974,7 +974,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
         <div
           className="flex flex-col items-center gap-0.5 cursor-pointer"
           title={`Graveyard: ${player.graveyard.length} cards`}
-          onClick={() => setGraveyardViewer({ side, tab: "graveyard" })}
+          onClick={() => setZoneViewer({ side, tab: "graveyard" })}
         >
           <div
             className="rounded overflow-hidden"
@@ -1016,7 +1016,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
         <div
           className="flex flex-col items-center gap-0.5 cursor-pointer"
           title={`Banished: ${player.banished.length} cards`}
-          onClick={() => setGraveyardViewer({ side, tab: "banished" })}
+          onClick={() => setZoneViewer({ side, tab: "banished" })}
         >
           <div
             className="rounded overflow-hidden"
@@ -1065,7 +1065,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
       <div
         className="flex flex-col items-center gap-0.5 cursor-pointer"
         title={`Extra Deck: ${count} cards`}
-        onClick={() => setGraveyardViewer({ side, tab: "extra" })}
+        onClick={() => setZoneViewer({ side, tab: "extra" })}
       >
         <div
           className="rounded overflow-hidden"
@@ -1527,28 +1527,28 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
         />
       )}
 
-      {graveyardViewer && (
-        <GraveyardViewer
+      {zoneViewer && (
+        <ZoneViewer
           graveyard={
-            graveyardViewer.side === mySide
+            zoneViewer.side === mySide
               ? myPlayer.graveyard
               : opponentPlayer.graveyard
           }
           banished={
-            graveyardViewer.side === mySide
+            zoneViewer.side === mySide
               ? myPlayer.banished
               : opponentPlayer.banished
           }
           extra={
-            graveyardViewer.side === mySide
+            zoneViewer.side === mySide
               ? myPlayer.extraDeck
               : opponentPlayer.extraDeck
           }
-          initialTab={graveyardViewer.tab}
+          initialTab={zoneViewer.tab}
           playerName={
-            graveyardViewer.side === mySide ? myPlayer.name : opponentPlayer.name
+            zoneViewer.side === mySide ? myPlayer.name : opponentPlayer.name
           }
-          onClose={() => setGraveyardViewer(null)}
+          onClose={() => setZoneViewer(null)}
           onCardSelect={(card) => setSelectedCardDetail(card)}
         />
       )}

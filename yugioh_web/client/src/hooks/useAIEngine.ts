@@ -143,7 +143,7 @@ function engineResponseToDuelState(resp: EngineResponse, log: string[]): DuelSta
     deck: Array.from({ length: board.player.deck_count }, (_, i) => makeFaceDownHandCard(i)),
     graveyard: (board.player.graveyard ?? []).map((c, i) => engineCardToGameCard(c, "grave", i)),
     banished: (board.player.banished ?? []).map((c, i) => engineCardToGameCard(c, "banished", i)),
-    extraDeck: Array.from({ length: board.player.extra_deck_count }, (_, i) => makeFaceDownHandCard(i)),
+    extraDeck: (board.player.extra_deck ?? []).map((c, i) => engineCardToGameCard(c, "extra", i)),
     monsterZones: playerMonsters,
     spellTrapZones: playerST,
     fieldZone: board.player.field_zone

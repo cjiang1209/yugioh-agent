@@ -250,7 +250,7 @@ def _build_card(card: dict, card_db, hidden: bool = False) -> dict:
     return result
 
 
-def _build_hand_card(card: dict, card_db) -> dict:
+def _build_card_info(card: dict, card_db) -> dict:
     code = card.get("code", 0)
     name = card_db.get_card_name(code) if code else "Unknown"
     db_card = card_db.get_card(code) if code else None
@@ -265,6 +265,8 @@ def _build_hand_card(card: dict, card_db) -> dict:
         result["attack"] = card.get("attack") if card.get("attack") is not None else (db_card["attack"] if db_card else None)
         result["defense"] = card.get("defense") if card.get("defense") is not None else (db_card["defense"] if db_card else None)
         result["level"] = card.get("level", 0) or card.get("rank", 0) or (db_card["level"] if db_card else 0)
+        if type_val & TYPE_LINK:
+            result["link_rating"] = card.get("link_rating", 0) or (db_card["level"] if db_card else 0)
     return result
 
 
@@ -296,6 +298,7 @@ def build_board_state(env: YuGiOhEnvironment) -> dict:
     agent_st = _query_location(duel, agent, LOCATION_SZONE)
     agent_grave = _query_location(duel, agent, LOCATION_GRAVE)
     agent_banished = _query_location(duel, agent, LOCATION_BANISHED)
+    agent_extra = _query_location(duel, agent, LOCATION_EXTRA)
 
     opp_monsters = _query_location(duel, opp, LOCATION_MZONE)
     opp_st = _query_location(duel, opp, LOCATION_SZONE)
@@ -307,13 +310,13 @@ def build_board_state(env: YuGiOhEnvironment) -> dict:
     # Build agent side (full info)
     agent_st_zone = _build_zone(agent_st, card_db, 6)
     player = {
-        "hand": [_build_hand_card(c, card_db) for c in agent_hand if c.get("code")],
+        "hand": [_build_card_info(c, card_db) for c in agent_hand if c.get("code")],
         "monsters": _build_zone(agent_monsters, card_db, 5),
         "spells_traps": agent_st_zone[:5],
         "field_zone": agent_st_zone[5],
         "graveyard": [_build_card(c, card_db) for c in agent_grave if c.get("code")],
         "banished": [_build_card(c, card_db) for c in agent_banished if c.get("code")],
-        "extra_deck_count": gs.extra_count[agent],
+        "extra_deck": [_build_card_info(c, card_db) for c in agent_extra if c.get("code")],
         "deck_count": gs.deck_count[agent],
         "lp": gs.lp[agent],
     }

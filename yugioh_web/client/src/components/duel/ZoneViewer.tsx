@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { GameCard } from "../../../../shared/gameTypes";
 
-interface GraveyardViewerProps {
+interface ZoneViewerProps {
   graveyard: GameCard[];
   banished: GameCard[];
   extra?: GameCard[];
@@ -11,7 +11,7 @@ interface GraveyardViewerProps {
   onCardSelect?: (card: GameCard) => void;
 }
 
-export function GraveyardViewer({
+export function ZoneViewer({
   graveyard,
   banished,
   extra = [],
@@ -19,7 +19,7 @@ export function GraveyardViewer({
   initialTab = "extra",
   onClose,
   onCardSelect,
-}: GraveyardViewerProps) {
+}: ZoneViewerProps) {
   const [tab, setTab] = useState<"graveyard" | "banished" | "extra">(initialTab);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 

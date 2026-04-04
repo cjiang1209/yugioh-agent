@@ -34,7 +34,7 @@ export interface EnginePlayerBoard {
   field_zone: EngineFieldCard | null;
   graveyard: EngineFieldCard[];
   banished: EngineFieldCard[];
-  extra_deck_count: number;
+  extra_deck: EngineHandCard[];
   deck_count: number;
   lp: number;
 }

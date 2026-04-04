@@ -83,6 +83,26 @@ def test_reset_cards_have_names(web_client):
         assert card["type"] in ("monster", "spell", "trap")
 
 
+def test_reset_extra_deck_visible_for_player(web_client):
+    """Player extra_deck should be a list of card dicts; opponent keeps extra_deck_count."""
+    data = _reset(web_client)
+    player = data["board"]["player"]
+    opp = data["board"]["opponent"]
+
+    # Player gets full extra deck card info
+    assert "extra_deck" in player
+    assert isinstance(player["extra_deck"], list)
+    for card in player["extra_deck"]:
+        assert card["code"] > 0
+        assert card["name"] not in ("", "Unknown", "Unknown(0)")
+        assert card["type"] in ("monster", "spell", "trap")
+
+    # Opponent only gets a count (no card data)
+    assert "extra_deck_count" in opp
+    assert isinstance(opp["extra_deck_count"], int)
+    assert "extra_deck" not in opp
+
+
 def test_step_returns_valid_response(web_client):
     """Step with action 0 returns the same response shape."""
     _reset(web_client)
