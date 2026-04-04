@@ -36,8 +36,8 @@ export function ZoneViewer({
 
   return (
     <div
-      className="fixed inset-0 flex items-center justify-center"
-      style={{ background: "rgba(0,0,0,0.85)", zIndex: 2000 }}
+      className="fixed flex items-center justify-center"
+      style={{ top: 0, bottom: 0, left: 0, right: "clamp(180px, 20vw, 280px)", background: "rgba(0,0,0,0.85)", zIndex: 2000 }}
       onClick={onClose}
     >
       <div
