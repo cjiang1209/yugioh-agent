@@ -82,6 +82,9 @@ export interface EngineAction {
   description: string;
   card_code: number;
   card_name: string;
+  side?: "mine" | "opp";
+  location?: number;  // engine location constant (0x02=HAND, 0x04=MZONE, etc.)
+  sequence?: number;  // slot index
   category:
     | "summon"
     | "special_summon"

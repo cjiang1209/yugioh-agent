@@ -7,6 +7,7 @@ interface CardZoneProps {
   size?: "sm" | "md" | "lg";
   isSelected?: boolean;
   isDetailSelected?: boolean;
+  isActionable?: boolean;
   isValidTarget?: boolean;
   canPlace?: boolean;
   isOpponent?: boolean;
@@ -40,6 +41,7 @@ export function CardZone({
   size = "md",
   isSelected,
   isDetailSelected,
+  isActionable,
   isValidTarget,
   canPlace,
   isOpponent,
@@ -54,6 +56,7 @@ export function CardZone({
     "card-zone",
     isSelected ? "selected" : "",
     isDetailSelected && !isSelected ? "card-highlight" : "",
+    isActionable && !isSelected ? "actionable" : "",
     isValidTarget ? "valid-target" : "",
     canPlace ? "can-place" : "",
     className,
@@ -144,6 +147,7 @@ interface HandCardProps {
   index: number;
   isSelected?: boolean;
   isDetailSelected?: boolean;
+  isActionable?: boolean;
   isOpponentCard?: boolean;
   pileMode?: boolean;
   pileOffset?: number; // left offset in px for this card in pile
@@ -151,11 +155,12 @@ interface HandCardProps {
   onContextMenu?: (e: React.MouseEvent) => void;
 }
 
-export function HandCard({ card, index, isSelected, isDetailSelected, isOpponentCard, pileMode, pileOffset, onClick, onContextMenu }: HandCardProps) {
+export function HandCard({ card, index, isSelected, isDetailSelected, isActionable, isOpponentCard, pileMode, pileOffset, onClick, onContextMenu }: HandCardProps) {
   const w = "100px";
   const h = "140px";
   const [hovered, setHovered] = useState(false);
   const isDetailHighlighted = isDetailSelected && !isSelected;
+  const isActionHighlighted = isActionable && !isSelected;
 
   if (isOpponentCard) {
     if (pileMode) {
@@ -190,17 +195,17 @@ export function HandCard({ card, index, isSelected, isDetailSelected, isOpponent
     const isLifted = hovered || isSelected;
     return (
       <div
-        className={`absolute flex-shrink-0 cursor-pointer transition-all duration-150${isDetailHighlighted ? " card-highlight" : ""}`}
+        className={`absolute flex-shrink-0 cursor-pointer transition-all duration-150${isDetailHighlighted ? " card-highlight" : ""}${isActionHighlighted ? " actionable" : ""}`}
         style={{
           width: w,
           height: h,
           left: pileOffset ?? 0,
           top: 8,
-          zIndex: isLifted ? 1000 : isDetailHighlighted ? 100 : index,
+          zIndex: isLifted ? 1000 : (isDetailHighlighted || isActionHighlighted) ? 100 : index,
           transform: isSelected ? "translateY(-10px)" : isLifted ? "translateY(-10px)" : "translateY(0)",
-          border: isDetailHighlighted ? undefined : isSelected ? "1px solid var(--neon-pink)" : "1px solid var(--border-dim)",
+          border: (isDetailHighlighted || isActionHighlighted) ? undefined : isSelected ? "1px solid var(--neon-pink)" : "1px solid var(--border-dim)",
           borderRadius: "4px",
-          boxShadow: isDetailHighlighted ? undefined : isSelected
+          boxShadow: (isDetailHighlighted || isActionHighlighted) ? undefined : isSelected
             ? "0 0 14px rgba(255,45,120,0.7), 0 -4px 14px rgba(255,45,120,0.4)"
             : "0 2px 8px rgba(0,0,0,0.5)",
         }}
@@ -225,14 +230,14 @@ export function HandCard({ card, index, isSelected, isDetailSelected, isOpponent
 
   return (
     <div
-      className={`relative flex-shrink-0 cursor-pointer transition-all duration-150${isDetailHighlighted ? " card-highlight" : ""}`}
+      className={`relative flex-shrink-0 cursor-pointer transition-all duration-150${isDetailHighlighted ? " card-highlight" : ""}${isActionHighlighted ? " actionable" : ""}`}
       style={{
         width: w,
         height: h,
         transform: isSelected ? "translateY(-10px)" : "translateY(0)",
-        border: isDetailHighlighted ? undefined : isSelected ? "1px solid var(--neon-pink)" : "1px solid var(--border-dim)",
+        border: (isDetailHighlighted || isActionHighlighted) ? undefined : isSelected ? "1px solid var(--neon-pink)" : "1px solid var(--border-dim)",
         borderRadius: "4px",
-        boxShadow: isDetailHighlighted ? undefined : isSelected
+        boxShadow: (isDetailHighlighted || isActionHighlighted) ? undefined : isSelected
           ? "0 0 14px rgba(255,45,120,0.7), 0 -4px 14px rgba(255,45,120,0.4)"
           : "0 2px 8px rgba(0,0,0,0.5)",
       }}

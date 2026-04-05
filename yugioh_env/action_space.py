@@ -116,42 +116,42 @@ def _extract_idle_actions(msg: dict) -> list[dict]:
     for i, card in enumerate(msg.get("summonable", [])):
         actions.append({
             "category": IDLE_SUMMON, "index": i, "code": card.get("code", 0),
-            "location": card.get("location", 0), "sequence": card.get("sequence", 0),
+            "controller": card.get("controller", 0), "location": card.get("location", 0), "sequence": card.get("sequence", 0),
             "build_response": lambda cat=IDLE_SUMMON, idx=i: rb.build_select_idlecmd_response(cat, idx),
         })
 
     for i, card in enumerate(msg.get("sp_summonable", [])):
         actions.append({
             "category": IDLE_SP_SUMMON, "index": i, "code": card.get("code", 0),
-            "location": card.get("location", 0), "sequence": card.get("sequence", 0),
+            "controller": card.get("controller", 0), "location": card.get("location", 0), "sequence": card.get("sequence", 0),
             "build_response": lambda cat=IDLE_SP_SUMMON, idx=i: rb.build_select_idlecmd_response(cat, idx),
         })
 
     for i, card in enumerate(msg.get("repositionable", [])):
         actions.append({
             "category": IDLE_REPOSITION, "index": i, "code": card.get("code", 0),
-            "location": card.get("location", 0), "sequence": card.get("sequence", 0),
+            "controller": card.get("controller", 0), "location": card.get("location", 0), "sequence": card.get("sequence", 0),
             "build_response": lambda cat=IDLE_REPOSITION, idx=i: rb.build_select_idlecmd_response(cat, idx),
         })
 
     for i, card in enumerate(msg.get("mset", [])):
         actions.append({
             "category": IDLE_MSET, "index": i, "code": card.get("code", 0),
-            "location": card.get("location", 0), "sequence": card.get("sequence", 0),
+            "controller": card.get("controller", 0), "location": card.get("location", 0), "sequence": card.get("sequence", 0),
             "build_response": lambda cat=IDLE_MSET, idx=i: rb.build_select_idlecmd_response(cat, idx),
         })
 
     for i, card in enumerate(msg.get("sset", [])):
         actions.append({
             "category": IDLE_SSET, "index": i, "code": card.get("code", 0),
-            "location": card.get("location", 0), "sequence": card.get("sequence", 0),
+            "controller": card.get("controller", 0), "location": card.get("location", 0), "sequence": card.get("sequence", 0),
             "build_response": lambda cat=IDLE_SSET, idx=i: rb.build_select_idlecmd_response(cat, idx),
         })
 
     for i, card in enumerate(msg.get("activatable", [])):
         actions.append({
             "category": IDLE_ACTIVATE, "index": i, "code": card.get("code", 0),
-            "location": card.get("location", 0), "sequence": card.get("sequence", 0),
+            "controller": card.get("controller", 0), "location": card.get("location", 0), "sequence": card.get("sequence", 0),
             "build_response": lambda cat=IDLE_ACTIVATE, idx=i: rb.build_select_idlecmd_response(cat, idx),
         })
 
@@ -177,14 +177,14 @@ def _extract_battle_actions(msg: dict) -> list[dict]:
     for i, card in enumerate(msg.get("activatable", [])):
         actions.append({
             "category": BATTLE_ACTIVATE, "index": i, "code": card.get("code", 0),
-            "location": card.get("location", 0), "sequence": card.get("sequence", 0),
+            "controller": card.get("controller", 0), "location": card.get("location", 0), "sequence": card.get("sequence", 0),
             "build_response": lambda cat=BATTLE_ACTIVATE, idx=i: rb.build_select_battlecmd_response(cat, idx),
         })
 
     for i, card in enumerate(msg.get("attackable", [])):
         actions.append({
             "category": BATTLE_ATTACK, "index": i, "code": card.get("code", 0),
-            "location": card.get("location", 0), "sequence": card.get("sequence", 0),
+            "controller": card.get("controller", 0), "location": card.get("location", 0), "sequence": card.get("sequence", 0),
             "build_response": lambda cat=BATTLE_ATTACK, idx=i: rb.build_select_battlecmd_response(cat, idx),
         })
 
@@ -205,9 +205,11 @@ def _extract_battle_actions(msg: dict) -> list[dict]:
 
 def _extract_effectyn_actions(msg: dict) -> list[dict]:
     return [
-        {"category": 0, "index": 0, "code": msg.get("code", 0), "location": 0, "sequence": 0,
+        {"category": 0, "index": 0, "code": msg.get("code", 0),
+         "controller": msg.get("controller", 0), "location": msg.get("location", 0), "sequence": msg.get("sequence", 0),
          "build_response": lambda: rb.build_select_yesno_response(True)},
-        {"category": 1, "index": 0, "code": msg.get("code", 0), "location": 0, "sequence": 0,
+        {"category": 1, "index": 0, "code": msg.get("code", 0),
+         "controller": msg.get("controller", 0), "location": msg.get("location", 0), "sequence": msg.get("sequence", 0),
          "build_response": lambda: rb.build_select_yesno_response(False)},
     ]
 
@@ -265,7 +267,7 @@ def _extract_multi_step_actions(
         done = completes(cards, new_selected)
         actions.append({
             "category": 0, "index": i, "code": card.get("code", 0),
-            "location": card.get("location", 0), "sequence": card.get("sequence", 0),
+            "controller": card.get("controller", 0), "location": card.get("location", 0), "sequence": card.get("sequence", 0),
             "num_selected": len(new_selected),
             "build_response": (
                 (lambda idxs=new_selected: rb.build_select_card_response(idxs))
@@ -310,7 +312,7 @@ def _extract_chain_actions(msg: dict) -> list[dict]:
     for i, chain in enumerate(chains):
         actions.append({
             "category": 0, "index": i, "code": chain.get("code", 0),
-            "location": chain.get("location", 0), "sequence": chain.get("sequence", 0),
+            "controller": chain.get("controller", 0), "location": chain.get("location", 0), "sequence": chain.get("sequence", 0),
             "build_response": lambda idx=i: rb.build_select_chain_response(idx),
         })
     if not forced:
@@ -397,7 +399,7 @@ def _extract_sum_actions(msg: dict) -> list[dict]:
     optional = msg.get("optional_cards", [])
     return [
         {"category": 0, "index": i, "code": card.get("code", 0),
-         "location": card.get("location", 0), "sequence": card.get("sequence", 0),
+         "controller": card.get("controller", 0), "location": card.get("location", 0), "sequence": card.get("sequence", 0),
          "build_response": lambda idx=i: rb.build_select_sum_response([idx])}
         for i, card in enumerate(optional)
     ]
@@ -408,7 +410,7 @@ def _extract_unselect_actions(msg: dict) -> list[dict]:
     for i, card in enumerate(msg.get("selectable", [])):
         actions.append({
             "category": 0, "index": i, "code": card.get("code", 0),
-            "location": card.get("location", 0), "sequence": card.get("sequence", 0),
+            "controller": card.get("controller", 0), "location": card.get("location", 0), "sequence": card.get("sequence", 0),
             "build_response": lambda idx=i: rb.build_select_unselect_card_response(idx),
         })
     if msg.get("finishable"):

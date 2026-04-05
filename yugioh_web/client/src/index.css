@@ -90,9 +90,19 @@ body {
   box-shadow: 0 0 14px rgba(0, 245, 255, 0.35);
 }
 .card-highlight {
-  border: 2px solid rgb(var(--hl-rgb, 0 245 255)) !important;
-  box-shadow: 0 0 12px rgb(var(--hl-rgb, 0 245 255) / 0.6) !important;
+  border: 2px solid rgb(var(--hl-rgb, 0 245 255));
+  box-shadow: 0 0 12px rgb(var(--hl-rgb, 0 245 255) / 0.6);
   z-index: 10;
+}
+.actionable {
+  z-index: 10;
+  animation: card-breathe 1s ease-in-out infinite alternate;
+  animation-delay: -9999s;
+  transition: none;
+}
+@keyframes card-breathe {
+  from { box-shadow: 0 0 4px rgb(var(--hl-rgb, 0 245 255) / 0.15); }
+  to   { box-shadow: 0 0 20px rgb(var(--hl-rgb, 0 245 255) / 0.8); }
 }
 .card-zone.selected {
   border-color: var(--neon-pink);

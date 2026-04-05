@@ -51,8 +51,12 @@ def _build_response(env: YuGiOhEnvironment, event_log: list[str], done: bool, re
     actions = describe_actions(env._mapper, env._card_db) if not done else []
     prompt = describe_prompt(env._mapper, env._card_db) if not done else None
 
-    gs = env._duel.game_state if env._duel else None
+    # Convert absolute controller → relative side for the client
     agent = env._agent_player
+    for a in actions:
+        a["side"] = "mine" if a.pop("controller") == agent else "opp"
+
+    gs = env._duel.game_state if env._duel else None
 
     game_state: dict[str, Any] = {}
     if gs:

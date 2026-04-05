@@ -51,6 +51,16 @@ function locatorKey(cardCode: number, side: string, zone: string, seq: number): 
   return `${cardCode}-${side}-${zone}-${seq}`;
 }
 
+/** Map engine location constants to BoardZone names. */
+const LOCATION_TO_ZONE: Record<number, string> = {
+  0x02: "hand",
+  0x04: "mzone",
+  0x08: "szone",
+  0x10: "grave",
+  0x20: "banished",
+  0x40: "extra",
+};
+
 // Module-level cache for card descriptions fetched from YGOProDeck API
 const descCache = new Map<number, string>();
 
@@ -77,6 +87,33 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
     if (!selectedLocator || cardId === undefined) return false;
     return selectedLocator === locatorKey(cardId, side, zone, seq);
   }
+
+  // Build set of actionable card locator keys from engine actions
+  const actionableKeys = new Set<string>();
+  const actionableZones = new Set<string>();
+  if (engineActions) {
+    for (const a of engineActions) {
+      if (a.card_code && a.side && a.location !== undefined && a.sequence !== undefined) {
+        // Field zone: engine uses SZONE seq 5 (LOCATION_FZONE 0x100 can't appear on wire — location is u8)
+        if (a.location === 0x08 && a.sequence === 5) {
+          actionableKeys.add(locatorKey(a.card_code, a.side, "field", 0));
+          actionableZones.add(`${a.side}-field`);
+        } else {
+          const zone = LOCATION_TO_ZONE[a.location];
+          if (zone) {
+            actionableKeys.add(locatorKey(a.card_code, a.side, zone, a.sequence));
+            actionableZones.add(`${a.side}-${zone}`);
+          }
+        }
+      }
+    }
+  }
+
+  function isActionable(cardId: number | undefined, side: string, zone: string, seq: number): boolean {
+    if (!cardId || actionableKeys.size === 0) return false;
+    return actionableKeys.has(locatorKey(cardId, side, zone, seq));
+  }
+
   const [zoneViewer, setZoneViewer] = useState<{ side: PlayerSide; tab: "graveyard" | "banished" | "extra" } | null>(null);
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
 
@@ -553,12 +590,14 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
     isMine: boolean,
     canPlace: boolean,
     isDetailSelected: boolean,
+    isActionableSlot: boolean,
     onClick: (e: React.MouseEvent) => void
   ) {
     const highlighted = isDetailSelected && !!slot;
+    const actionHighlighted = isActionableSlot && !!slot;
     return (
       <div
-        className={highlighted ? "card-highlight" : ""}
+        className={[highlighted ? "card-highlight" : "", actionHighlighted ? "actionable" : ""].filter(Boolean).join(" ")}
         onClick={onClick}
         title={slot ? slot.card.name : "Extra Monster Zone"}
         style={{
@@ -566,13 +605,13 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
           height: "140px",
           borderRadius: "0.3rem",
           overflow: "visible",
-          border: highlighted ? undefined : canPlace
+          border: (highlighted || actionHighlighted) ? undefined : canPlace
             ? "2px solid var(--neon-cyan)"
             : slot
             ? "2px solid rgba(255,215,0,0.8)"
             : "1px dashed rgba(255,215,0,0.4)",
           background: slot ? "transparent" : "rgba(255,215,0,0.04)",
-          boxShadow: highlighted ? undefined : slot
+          boxShadow: (highlighted || actionHighlighted) ? undefined : slot
             ? "0 0 12px rgba(255,215,0,0.5), inset 0 0 8px rgba(255,215,0,0.1)"
             : canPlace
             ? "0 0 8px rgba(0,245,255,0.5)"
@@ -703,13 +742,13 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
             <div style={{ width: `${CARD_W}px`, flexShrink: 0 }} />
 
             {/* col 1: my EMZ */}
-            {renderEMZSlot(mySlot, true, canPlaceMine, isLocatorMatch(mySlot?.card.id, "mine", "emz", 0), handleMyEMZClick)}
+            {renderEMZSlot(mySlot, true, canPlaceMine, isLocatorMatch(mySlot?.card.id, "mine", "emz", 0), isActionable(mySlot?.card.id, "mine", "emz", 0), handleMyEMZClick)}
 
             {/* col 2: empty spacer */}
             <div style={{ width: `${CARD_W}px`, flexShrink: 0 }} />
 
             {/* col 3: opponent EMZ */}
-            {renderEMZSlot(oppSlot, false, false, isLocatorMatch(oppSlot?.card.id, "opp", "emz", 0), oppEMZClick)}
+            {renderEMZSlot(oppSlot, false, false, isLocatorMatch(oppSlot?.card.id, "opp", "emz", 0), isActionable(oppSlot?.card.id, "opp", "emz", 0), oppEMZClick)}
 
             {/* col 4: empty spacer */}
             <div style={{ width: `${CARD_W}px`, flexShrink: 0 }} />
@@ -786,6 +825,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
               size="md"
               isSelected={isAttacker || isTributeSelected}
               isDetailSelected={isLocatorMatch(slot?.card.id, isMine ? "mine" : "opp", "mzone", i)}
+              isActionable={isActionable(slot?.card.id, isMine ? "mine" : "opp", "mzone", i)}
               isValidTarget={isValidTarget}
               canPlace={canTribute || canPlaceMonster}
               isOpponent={!isMine}
@@ -812,6 +852,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
               label="S/T"
               size="md"
               isDetailSelected={isLocatorMatch(slot?.card.id, isMine ? "mine" : "opp", "szone", i)}
+              isActionable={isActionable(slot?.card.id, isMine ? "mine" : "opp", "szone", i)}
               canPlace={canPlace}
               isOpponent={!isMine}
               onClick={() => {
@@ -881,6 +922,8 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
       canSetSpell;
     const fieldSide = isMine ? "mine" : "opp";
     const isDetailSel = isLocatorMatch(fieldCard?.card.id, fieldSide, "field", 0);
+    const isFieldActionable = isActionable(fieldCard?.card.id, fieldSide, "field", 0);
+    const fieldHighlight = isDetailSel || isFieldActionable;
 
     const handleFieldClick = isMine ? handleMyFieldZoneClick : () => {
       if (fieldCard && !fieldCard.faceDown) selectCardForDetail(fieldCard.card, "opp", "field", 0);
@@ -888,7 +931,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
 
     return (
       <div
-        className={isDetailSel ? "card-highlight" : ""}
+        className={[isDetailSel ? "card-highlight" : "", isFieldActionable ? "actionable" : ""].filter(Boolean).join(" ")}
         onClick={handleFieldClick}
         title={fieldCard ? fieldCard.card.name : "Field Zone"}
         style={{
@@ -896,7 +939,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
           height: "140px",
           borderRadius: "0.3rem",
           overflow: "hidden",
-          border: isDetailSel ? undefined : canPlaceField
+          border: fieldHighlight ? undefined : canPlaceField
             ? "2px solid var(--neon-cyan)"
             : fieldCard
             ? "2px solid rgba(0,245,255,0.7)"
@@ -904,7 +947,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
           background: fieldCard
             ? "transparent"
             : "rgba(0,245,255,0.04)",
-          boxShadow: isDetailSel ? undefined : fieldCard
+          boxShadow: fieldHighlight ? undefined : fieldCard
             ? "0 0 10px rgba(0,245,255,0.4), inset 0 0 8px rgba(0,245,255,0.1)"
             : canPlaceField
             ? "0 0 8px rgba(0,245,255,0.5)"
@@ -999,8 +1042,11 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
   }
 
   function renderGraveyardZone(player: PlayerState, side: PlayerSide) {
+    const relSide = side === mySide ? "mine" : "opp";
     const topCard = player.graveyard[player.graveyard.length - 1];
     const topBanished = player.banished[player.banished.length - 1];
+    const gyActionable = actionableZones.has(`${relSide}-grave`);
+    const banActionable = actionableZones.has(`${relSide}-banished`);
     return (
       <div className="flex items-end gap-1">
         {/* Graveyard */}
@@ -1010,14 +1056,15 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
           onClick={() => setZoneViewer({ side, tab: "graveyard" })}
         >
           <div
-            className="rounded overflow-hidden"
+            className={`rounded overflow-hidden${gyActionable ? " actionable" : ""}`}
             style={{
               width: "71px",
               height: "100px",
-              border: "1px solid rgba(255,45,120,0.6)",
+              "--hl-rgb": "255 45 120",
+              border: gyActionable ? undefined : "1px solid rgba(255,45,120,0.6)",
               background: "rgba(255,45,120,0.08)",
-              boxShadow: "0 0 6px rgba(255,45,120,0.2)",
-            }}
+              boxShadow: gyActionable ? undefined : "0 0 6px rgba(255,45,120,0.2)",
+            } as React.CSSProperties}
           >
             {topCard ? (
               <img
@@ -1052,14 +1099,15 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
           onClick={() => setZoneViewer({ side, tab: "banished" })}
         >
           <div
-            className="rounded overflow-hidden"
+            className={`rounded overflow-hidden${banActionable ? " actionable" : ""}`}
             style={{
               width: "71px",
               height: "100px",
-              border: "1px solid rgba(180,79,255,0.6)",
+              "--hl-rgb": "180 79 255",
+              border: banActionable ? undefined : "1px solid rgba(180,79,255,0.6)",
               background: "rgba(180,79,255,0.08)",
-              boxShadow: "0 0 6px rgba(180,79,255,0.2)",
-            }}
+              boxShadow: banActionable ? undefined : "0 0 6px rgba(180,79,255,0.2)",
+            } as React.CSSProperties}
           >
             {topBanished ? (
               <img
@@ -1093,6 +1141,8 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
   }
 
   function renderExtraDeckZone(player: PlayerState, side: PlayerSide) {
+    const relSide = side === mySide ? "mine" : "opp";
+    const extraActionable = actionableZones.has(`${relSide}-extra`);
     const count = player.extraDeck.length;
     return (
       <div
@@ -1101,17 +1151,18 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
         onClick={() => setZoneViewer({ side, tab: "extra" })}
       >
         <div
-          className="rounded overflow-hidden"
+          className={`rounded overflow-hidden${extraActionable ? " actionable" : ""}`}
           style={{
             width: "71px",
             height: "100px",
-            border: "1px solid rgba(255,215,0,0.6)",
+            "--hl-rgb": "255 215 0",
+            border: extraActionable ? undefined : "1px solid rgba(255,215,0,0.6)",
             background: "rgba(255,215,0,0.08)",
-            boxShadow: "0 0 6px rgba(255,215,0,0.2)",
+            boxShadow: extraActionable ? undefined : "0 0 6px rgba(255,215,0,0.2)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-          }}
+          } as React.CSSProperties}
         >
           <span style={{ color: "#ffd700", fontSize: "1rem", opacity: count > 0 ? 0.85 : 0.3, textShadow: "0 0 6px rgba(255,215,0,0.5)" }}>★</span>
         </div>
@@ -1378,6 +1429,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
                     index={i}
                     isSelected={selection.type === "hand" && selection.index === i}
                     isDetailSelected={isLocatorMatch(card.id, "mine", "hand", i)}
+                    isActionable={isActionable(card.id, "mine", "hand", i)}
                     pileMode={myPile}
                     pileOffset={myPile ? i * myStep : undefined}
                     onClick={() => handleHandCardClick(i, card)}
@@ -1584,6 +1636,10 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
           }
           onClose={() => setZoneViewer(null)}
           onCardSelect={(card) => { setSelectedCardDetail(card); setSelectedLocator(null); }}
+          isCardActionable={(cardId, zone, seq) => {
+            const side = zoneViewer.side === mySide ? "mine" : "opp";
+            return isActionable(cardId, side, zone, seq);
+          }}
         />
       )}
 

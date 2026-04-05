@@ -9,6 +9,7 @@ interface ZoneViewerProps {
   initialTab?: "graveyard" | "banished" | "extra";
   onClose: () => void;
   onCardSelect?: (card: GameCard) => void;
+  isCardActionable?: (cardId: number, zone: string, seq: number) => boolean;
 }
 
 export function ZoneViewer({
@@ -19,6 +20,7 @@ export function ZoneViewer({
   initialTab = "extra",
   onClose,
   onCardSelect,
+  isCardActionable,
 }: ZoneViewerProps) {
   const [tab, setTab] = useState<"graveyard" | "banished" | "extra">(initialTab);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -26,6 +28,7 @@ export function ZoneViewer({
   const cards = tab === "graveyard" ? graveyard : tab === "banished" ? banished : extra;
   const isGY = tab === "graveyard";
   const isExtra = tab === "extra";
+  const zoneName = isGY ? "grave" : isExtra ? "extra" : "banished";
   const accentColor = isGY ? "var(--neon-pink)" : isExtra ? "#ffd700" : "#b44fff";
   const accentRgb = isGY ? "255,45,120" : isExtra ? "255,215,0" : "180,79,255";
   const hlRgb = accentRgb.replaceAll(",", " ");
@@ -130,18 +133,19 @@ export function ZoneViewer({
             </div>
           ) : (
             <div className="flex flex-wrap gap-2" style={{ alignContent: "flex-start" }}>
-              {cards.map((card) => {
+              {cards.map((card, i) => {
                 const isSelected = selectedId === card.instanceId;
+                const actionable = isCardActionable?.(card.id, zoneName, i) ?? false;
                 return (
                   <div
                     key={card.instanceId}
-                    className={`relative flex-shrink-0 cursor-pointer rounded overflow-hidden transition-all${isSelected ? " card-highlight" : ""}`}
+                    className={`relative flex-shrink-0 cursor-pointer rounded overflow-hidden transition-all${isSelected ? " card-highlight" : ""}${actionable ? " actionable" : ""}`}
                     style={{
                       width: "100px",
                       height: "140px",
                       "--hl-rgb": hlRgb,
-                      border: isSelected ? undefined : "1px solid var(--border-dim)",
-                      boxShadow: isSelected ? undefined : "none",
+                      border: (isSelected || actionable) ? undefined : "1px solid var(--border-dim)",
+                      boxShadow: (isSelected || actionable) ? undefined : "none",
                       filter: isGY ? "none" : isExtra ? "none" : "hue-rotate(60deg) brightness(0.8) saturate(1.2)",
                     } as React.CSSProperties}
                     onClick={() => handleCardClick(card)}

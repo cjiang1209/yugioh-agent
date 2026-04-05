@@ -75,6 +75,9 @@ def describe_actions(mapper: ActionMapper, card_db: CardDatabase) -> list[dict]:
             "card_code": code,
             "card_name": card_name,
             "category": category_str,
+            "controller": action.get("controller", 0),
+            "location": action.get("location", 0),
+            "sequence": action.get("sequence", 0),
         })
 
     return result
