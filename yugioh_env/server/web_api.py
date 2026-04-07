@@ -101,18 +101,33 @@ def reset_duel(body: ResetRequest, request: Request) -> dict:
 
 
 @web_router.get("/decks")
-def list_decks() -> list[dict]:
-    """List available .ydk decks from assets/decks/."""
+def list_decks(request: Request) -> list[dict]:
+    """List available .ydk decks from assets/decks/ with card names."""
     decks_dir = Path(__file__).resolve().parent.parent.parent / "assets" / "decks"
-    result = []
+    card_db = request.app.state.web_env._card_db
+
+    # Parse all decks first to collect codes
+    parsed = []
+    all_codes: set[int] = set()
     for ydk_path in sorted(decks_dir.glob("*.ydk")):
         deck = parse_ydk(ydk_path)
+        main = deck["main"]
+        extra = deck.get("extra", [])
+        all_codes.update(main)
+        all_codes.update(extra)
+        parsed.append((ydk_path, main, extra))
+
+    # Batch-fetch all card names in one query
+    names = card_db.get_card_names_batch(all_codes)
+
+    result = []
+    for ydk_path, main, extra in parsed:
         name = ydk_path.stem.replace("_", " ").title()
         result.append({
             "name": name,
             "filename": ydk_path.name,
-            "main": deck["main"],
-            "extra": deck.get("extra", []),
+            "main": [{"code": c, "name": names.get(c, f"Unknown({c})")} for c in main],
+            "extra": [{"code": c, "name": names.get(c, f"Unknown({c})")} for c in extra],
         })
     return result
 

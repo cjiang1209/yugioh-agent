@@ -5,6 +5,8 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from typing import Iterable
+
 from yugioh_core.constants import TYPE_LINK, split_setcodes
 
 
@@ -64,6 +66,17 @@ class CardDatabase:
 
         self._cache[code] = card
         return card
+
+    def get_card_names_batch(self, codes: Iterable[int]) -> dict[int, str]:
+        """Get card names for multiple passcodes in a single query."""
+        unique = list(set(codes))
+        if not unique:
+            return {}
+        placeholders = ",".join("?" * len(unique))
+        rows = self._conn.execute(
+            f"SELECT id, name FROM texts WHERE id IN ({placeholders})", unique
+        ).fetchall()
+        return {r["id"]: r["name"] for r in rows}
 
     def get_card_name(self, code: int) -> str:
         """Get card name by passcode."""

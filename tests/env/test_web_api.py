@@ -242,7 +242,7 @@ def test_monster_on_field_has_stats(web_client):
 
 
 def test_list_decks(web_client):
-    """GET /decks returns available .ydk files with parsed card lists."""
+    """GET /decks returns available .ydk files with card names."""
     resp = web_client.get("/api/web/decks")
     assert resp.status_code == 200
     decks = resp.json()
@@ -255,11 +255,16 @@ def test_list_decks(web_client):
     for deck in decks:
         assert "name" in deck
         assert "filename" in deck
-        assert "main" in deck
-        assert "extra" in deck
         assert isinstance(deck["main"], list)
         assert isinstance(deck["extra"], list)
         assert 40 <= len(deck["main"]) <= 60
+
+        # Each entry is {code, name}
+        for card in deck["main"] + deck["extra"]:
+            assert isinstance(card["code"], int)
+            assert card["code"] > 0
+            assert isinstance(card["name"], str)
+            assert len(card["name"]) > 0
 
 
 def test_reset_with_custom_deck(web_client):

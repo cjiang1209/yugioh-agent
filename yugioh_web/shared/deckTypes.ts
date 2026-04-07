@@ -2,11 +2,16 @@
 // Deck data comes from GET /api/web/decks which reads .ydk files on the server.
 // The .ydk files in assets/decks/ are the single source of truth.
 
+export interface DeckCardEntry {
+  code: number;
+  name: string;
+}
+
 export interface DeckDefinition {
   name: string;
   filename: string;
-  main: number[];
-  extra: number[];
+  main: DeckCardEntry[];
+  extra: DeckCardEntry[];
 }
 
-export type DeckPayload = Pick<DeckDefinition, "main" | "extra">;
+export type DeckPayload = { main: number[]; extra: number[] };

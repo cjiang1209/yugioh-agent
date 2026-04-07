@@ -2,10 +2,19 @@ import { useEffect, useState } from "react";
 import type { DeckDefinition, DeckPayload } from "../../../shared/deckTypes";
 
 const DECK_COLORS = ["var(--neon-cyan)", "var(--neon-pink)", "var(--neon-yellow)"];
+const CARD_IMAGE_BASE = "https://images.ygoprodeck.com/images/cards_small";
+const CARD_BACK = "https://images.ygoprodeck.com/images/cards/back_high.jpg";
 
 interface DeckSelectorProps {
   apiUrl?: string;
   onDeckSelected: (myDeck: DeckPayload, oppDeck: DeckPayload) => void;
+}
+
+function toPayload(deck: DeckDefinition): DeckPayload {
+  return {
+    main: deck.main.map((c) => c.code),
+    extra: deck.extra.map((c) => c.code),
+  };
 }
 
 export function DeckSelector({ apiUrl = "http://localhost:8000", onDeckSelected }: DeckSelectorProps) {
@@ -72,11 +81,11 @@ export function DeckSelector({ apiUrl = "http://localhost:8000", onDeckSelected 
 
   return (
     <div
-      className="min-h-screen flex flex-col items-center justify-center p-6"
+      className="min-h-screen flex flex-col items-center p-6 pb-12"
       style={{ background: "var(--bg-void)" }}
     >
       {/* Title */}
-      <div className="text-center mb-8">
+      <div className="text-center mb-8 mt-6">
         <h1
           className="text-4xl font-black mb-2"
           style={{
@@ -97,7 +106,7 @@ export function DeckSelector({ apiUrl = "http://localhost:8000", onDeckSelected 
       </div>
 
       {/* Two-slot layout */}
-      <div className="flex gap-10 mb-8 flex-wrap justify-center">
+      <div className="flex gap-10 mb-6 flex-wrap justify-center">
         {/* My Deck slot */}
         <SlotSection
           label="MY DECK"
@@ -130,15 +139,18 @@ export function DeckSelector({ apiUrl = "http://localhost:8000", onDeckSelected 
         />
       </div>
 
+      {/* Deck previews — side by side */}
+      <div className="flex gap-6 mb-8 w-full max-w-5xl flex-wrap justify-center">
+        <DeckPreview labelColor="var(--neon-cyan)" deck={myDeck} />
+        <DeckPreview labelColor="var(--neon-pink)" deck={oppDeck} />
+      </div>
+
       {/* Confirm button */}
       <button
         disabled={!canStart}
         onClick={() => {
           if (myDeck && oppDeck) {
-            onDeckSelected(
-              { main: myDeck.main, extra: myDeck.extra },
-              { main: oppDeck.main, extra: oppDeck.extra },
-            );
+            onDeckSelected(toPayload(myDeck), toPayload(oppDeck));
           }
         }}
         className="px-8 py-3 rounded font-bold text-sm transition-all"
@@ -222,6 +234,127 @@ function SlotSection({
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Deck preview ───────────────────────────────────────────────────────────
+
+function DeckPreview({
+  labelColor,
+  deck,
+}: {
+  labelColor: string;
+  deck: DeckDefinition | null;
+}) {
+  if (!deck) {
+    return (
+      <div
+        className="flex-1 rounded p-4 flex items-center justify-center"
+        style={{
+          minWidth: "280px",
+          minHeight: "200px",
+          background: "var(--bg-panel)",
+          border: "1px solid var(--border-dim)",
+        }}
+      >
+        <div
+          className="text-xs opacity-30"
+          style={{ fontFamily: "'Orbitron', sans-serif", color: labelColor, letterSpacing: "0.1em" }}
+        >
+          SELECT A DECK
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="flex-1 rounded p-4"
+      style={{
+        minWidth: "280px",
+        background: "var(--bg-panel)",
+        border: `1px solid ${labelColor}33`,
+      }}
+    >
+      {/* Main deck section */}
+      <CardSection title={`MAIN DECK (${deck.main.length})`} color={labelColor} cards={deck.main} />
+
+      {/* Extra deck section */}
+      {deck.extra.length > 0 && (
+        <>
+          <div
+            style={{
+              height: "1px",
+              background: `linear-gradient(90deg, transparent, ${labelColor}33, transparent)`,
+              margin: "12px 0",
+            }}
+          />
+          <CardSection title={`EXTRA DECK (${deck.extra.length})`} color={labelColor} cards={deck.extra} />
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Card section (main or extra) ───────────────────────────────────────────
+
+function CardSection({
+  title,
+  color,
+  cards,
+}: {
+  title: string;
+  color: string;
+  cards: { code: number; name: string }[];
+}) {
+  return (
+    <div>
+      <div
+        className="text-xs font-bold mb-2 tracking-wider"
+        style={{ fontFamily: "'Orbitron', sans-serif", color, fontSize: "0.55rem", opacity: 0.7 }}
+      >
+        {title}
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {cards.map((card, idx) => (
+          <div key={`${card.code}-${idx}`} className="group relative" style={{ width: "60px" }}>
+            <img
+              src={`${CARD_IMAGE_BASE}/${card.code}.jpg`}
+              alt={card.name}
+              title={card.name}
+              className="rounded-sm"
+              style={{
+                width: "60px",
+                height: "87px",
+                objectFit: "cover",
+                border: "1px solid var(--border-dim)",
+              }}
+              onError={(e) => {
+                const img = e.target as HTMLImageElement;
+                img.onerror = null;
+                img.src = CARD_BACK;
+              }}
+            />
+            {/* Name tooltip on hover */}
+            <div
+              className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1 px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-10 whitespace-nowrap"
+              style={{
+                background: "rgba(0,0,0,0.9)",
+                border: `1px solid ${color}44`,
+                color: "var(--text-primary)",
+                fontFamily: "'Rajdhani', sans-serif",
+                fontSize: "0.65rem",
+                maxWidth: "160px",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+              }}
+            >
+              {card.name}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
