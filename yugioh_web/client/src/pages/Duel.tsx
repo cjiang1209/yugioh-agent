@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { DuelBoard } from "../components/duel/DuelBoard";
 import { useAIEngine } from "../hooks/useAIEngine";
+import { DeckSelector } from "./DeckSelector";
+import type { DeckPayload } from "../../../shared/deckTypes";
 
 const MODE_BUTTON_BASE = {
   fontFamily: "'Orbitron', sans-serif",
@@ -11,14 +13,31 @@ const MODE_BUTTON_BASE = {
 
 // ─── AI Mode wrapper ────────────────────────────────────────────────────────
 
-function AIModeDuel() {
-  const { state, engineActions, enginePrompt, status, error, reset, submitAction } = useAIEngine();
+const ENGINE_API_URL = "http://localhost:8000";
 
-  // Auto-reset on first mount
+function AIModeDuel() {
+  const { state, engineActions, enginePrompt, status, error, reset, submitAction } = useAIEngine(ENGINE_API_URL);
+  const [selectedDeck0, setSelectedDeck0] = useState<DeckPayload | null>(null);
+  const [selectedDeck1, setSelectedDeck1] = useState<DeckPayload | null>(null);
   const [hasStarted, setHasStarted] = useState(false);
+
+  // Phase 1: Deck selection
+  if (!selectedDeck0 || !selectedDeck1) {
+    return (
+      <DeckSelector
+        apiUrl={ENGINE_API_URL}
+        onDeckSelected={(myDeck, oppDeck) => {
+          setSelectedDeck0(myDeck);
+          setSelectedDeck1(oppDeck);
+        }}
+      />
+    );
+  }
+
+  // Phase 2: Start duel with selected decks
   if (!hasStarted) {
     setHasStarted(true);
-    reset(Math.floor(Math.random() * 100000));
+    reset(Math.floor(Math.random() * 100000), selectedDeck0, selectedDeck1);
   }
 
   if (status === "loading" || (status === "idle" && !state)) {
@@ -36,7 +55,7 @@ function AIModeDuel() {
             {error || "Failed to connect to Python engine. Is the server running?"}
           </div>
           <button
-            onClick={() => reset(Math.floor(Math.random() * 100000))}
+            onClick={() => reset(Math.floor(Math.random() * 100000), selectedDeck0, selectedDeck1)}
             className="px-4 py-2 rounded transition-all"
             style={{
               ...MODE_BUTTON_BASE,
@@ -62,7 +81,7 @@ function AIModeDuel() {
         engineActions={engineActions}
         enginePrompt={enginePrompt}
         onEngineAction={submitAction}
-        onRestart={() => reset(Math.floor(Math.random() * 100000))}
+        onRestart={() => reset(Math.floor(Math.random() * 100000), selectedDeck0, selectedDeck1)}
       />
     </>
   );
@@ -101,7 +120,6 @@ function LoadingSpinner({ message }: { message: string }) {
           {message}
         </div>
       </div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }

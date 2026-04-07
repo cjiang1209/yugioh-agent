@@ -236,3 +236,62 @@ def test_monster_on_field_has_stats(web_client):
                     return  # Test passed
 
     pytest.skip("No player monster summoned in test seeds")
+
+
+# ─── Deck selection tests ─────────────────────────────────────────────────
+
+
+def test_list_decks(web_client):
+    """GET /decks returns available .ydk files with parsed card lists."""
+    resp = web_client.get("/api/web/decks")
+    assert resp.status_code == 200
+    decks = resp.json()
+    assert isinstance(decks, list)
+    assert len(decks) >= 1
+
+    filenames = {d["filename"] for d in decks}
+    assert "starter.ydk" in filenames
+
+    for deck in decks:
+        assert "name" in deck
+        assert "filename" in deck
+        assert "main" in deck
+        assert "extra" in deck
+        assert isinstance(deck["main"], list)
+        assert isinstance(deck["extra"], list)
+        assert 40 <= len(deck["main"]) <= 60
+
+
+def test_reset_with_custom_deck(web_client):
+    """Reset with explicit deck0/deck1 should succeed."""
+    # Use the starter deck's card IDs inline
+    from yugioh_env.deck_parser import parse_ydk
+    deck = parse_ydk("assets/decks/starter.ydk")
+    payload = {"main": deck["main"], "extra": deck.get("extra", [])}
+
+    resp = web_client.post("/api/web/reset", json={
+        "seed": 42,
+        "deck0": payload,
+        "deck1": payload,
+    })
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["done"] is False
+    assert len(data["board"]["player"]["hand"]) > 0
+
+
+def test_reset_with_invalid_deck_returns_422(web_client):
+    """Reset with a malformed deck should return 422."""
+    # Missing 'main' key
+    resp = web_client.post("/api/web/reset", json={
+        "seed": 42,
+        "deck0": {"extra": []},
+    })
+    assert resp.status_code == 422
+
+    # Too few main deck cards
+    resp = web_client.post("/api/web/reset", json={
+        "seed": 42,
+        "deck0": {"main": [89631139] * 10, "extra": []},
+    })
+    assert resp.status_code == 422

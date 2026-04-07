@@ -154,7 +154,7 @@ export default function Home() {
           className="mt-8 text-xs opacity-40 max-w-sm mx-auto leading-relaxed"
           style={{ color: "var(--text-secondary)", fontFamily: "'Rajdhani', sans-serif" }}
         >
-          Click START DUEL to play both sides — use the ⋄ button to switch between Yugi and Kaiba during the duel.
+          Click START DUEL to choose your deck and challenge the AI opponent.
         </div>
       </div>
     </div>

@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from yugioh_env.deck_parser import parse_ydk
 from yugioh_env.models import YuGiOhAction
 from yugioh_env.server.board_state import build_board_state
 from yugioh_env.server.action_describer import describe_actions, describe_prompt
@@ -23,6 +25,8 @@ web_router = APIRouter(prefix="/api/web")
 class ResetRequest(BaseModel):
     seed: int | None = None
     opponent: str | None = None
+    deck0: dict | None = None  # {"main": [int, ...], "extra": [int, ...]}
+    deck1: dict | None = None
 
 
 class StepRequest(BaseModel):
@@ -89,8 +93,28 @@ def create_web_env(config: dict | None = None) -> YuGiOhEnvironment:
 def reset_duel(body: ResetRequest, request: Request) -> dict:
     """Reset (or create) a duel and return the initial state."""
     env: YuGiOhEnvironment = request.app.state.web_env
-    obs = env.reset(seed=body.seed)
+    try:
+        obs = env.reset(seed=body.seed, deck0=body.deck0, deck1=body.deck1)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     return _build_response(env, obs.event_log, obs.done, obs.reward)
+
+
+@web_router.get("/decks")
+def list_decks() -> list[dict]:
+    """List available .ydk decks from assets/decks/."""
+    decks_dir = Path(__file__).resolve().parent.parent.parent / "assets" / "decks"
+    result = []
+    for ydk_path in sorted(decks_dir.glob("*.ydk")):
+        deck = parse_ydk(ydk_path)
+        name = ydk_path.stem.replace("_", " ").title()
+        result.append({
+            "name": name,
+            "filename": ydk_path.name,
+            "main": deck["main"],
+            "extra": deck.get("extra", []),
+        })
+    return result
 
 
 @web_router.post("/step")

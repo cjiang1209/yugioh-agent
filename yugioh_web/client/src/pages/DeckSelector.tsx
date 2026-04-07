@@ -1,28 +1,74 @@
 import { useEffect, useState } from "react";
-import { YgoCard } from "../../../shared/gameTypes";
-import { DeckDefinition, STARTER_DECKS } from "../../../shared/starterDecks";
-import { useCardApi } from "../hooks/useCardApi";
+import type { DeckDefinition, DeckPayload } from "../../../shared/deckTypes";
+
+const DECK_COLORS = ["var(--neon-cyan)", "var(--neon-pink)", "var(--neon-yellow)"];
 
 interface DeckSelectorProps {
-  onDeckSelected: (deck: YgoCard[], deckName: string) => void;
+  apiUrl?: string;
+  onDeckSelected: (myDeck: DeckPayload, oppDeck: DeckPayload) => void;
 }
 
-export function DeckSelector({ onDeckSelected }: DeckSelectorProps) {
-  const [selected, setSelected] = useState<DeckDefinition | null>(null);
-  const [loadedDeck, setLoadedDeck] = useState<YgoCard[] | null>(null);
-  const [loading, setLoading] = useState(false);
-  const { fetchCardsByIds } = useCardApi();
+export function DeckSelector({ apiUrl = "http://localhost:8000", onDeckSelected }: DeckSelectorProps) {
+  const [decks, setDecks] = useState<DeckDefinition[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [myDeck, setMyDeck] = useState<DeckDefinition | null>(null);
+  const [oppDeck, setOppDeck] = useState<DeckDefinition | null>(null);
 
-  async function loadDeck(def: DeckDefinition) {
-    setSelected(def);
-    setLoadedDeck(null);
-    setLoading(true);
-    const cards = await fetchCardsByIds(def.cardIds);
-    setLoadedDeck(cards);
-    setLoading(false);
+  useEffect(() => {
+    fetch(`${apiUrl}/api/web/decks`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`Failed to load decks: ${res.status}`);
+        return res.json();
+      })
+      .then((data: DeckDefinition[]) => {
+        setDecks(data);
+        setLoading(false);
+      })
+      .catch((e) => {
+        setError(e instanceof Error ? e.message : "Failed to load decks");
+        setLoading(false);
+      });
+  }, [apiUrl]);
+
+  if (loading) {
+    return (
+      <div
+        className="min-h-screen flex flex-col items-center justify-center"
+        style={{ background: "var(--bg-void)" }}
+      >
+        <div
+          className="w-10 h-10 rounded-full mx-auto mb-4"
+          style={{
+            border: "2px solid rgba(0,245,255,0.15)",
+            borderTopColor: "var(--neon-cyan)",
+            animation: "spin 0.8s linear infinite",
+          }}
+        />
+        <div
+          className="text-xs"
+          style={{ fontFamily: "'Orbitron', sans-serif", color: "var(--neon-cyan)", letterSpacing: "0.15em" }}
+        >
+          LOADING DECKS...
+        </div>
+      </div>
+    );
   }
 
-  const deckColors = ["var(--neon-pink)", "var(--neon-cyan)", "var(--neon-yellow)"];
+  if (error) {
+    return (
+      <div
+        className="min-h-screen flex flex-col items-center justify-center"
+        style={{ background: "var(--bg-void)" }}
+      >
+        <div style={{ color: "var(--neon-pink)", fontFamily: "'Orbitron', sans-serif", fontSize: "0.8rem" }}>
+          {error}
+        </div>
+      </div>
+    );
+  }
+
+  const canStart = myDeck !== null && oppDeck !== null;
 
   return (
     <div
@@ -40,133 +86,143 @@ export function DeckSelector({ onDeckSelected }: DeckSelectorProps) {
             letterSpacing: "0.15em",
           }}
         >
-          SELECT YOUR DECK
+          SELECT DECKS
         </h1>
-        <p className="text-sm opacity-50" style={{ color: "var(--text-secondary)", fontFamily: "'Rajdhani', sans-serif" }}>
-          Choose a pre-built deck to enter the duel
+        <p
+          className="text-sm opacity-50"
+          style={{ color: "var(--text-secondary)", fontFamily: "'Rajdhani', sans-serif" }}
+        >
+          Choose a deck for each player
         </p>
       </div>
 
-      {/* Deck cards */}
-      <div className="flex gap-6 mb-8 flex-wrap justify-center">
-        {STARTER_DECKS.map((deck, idx) => {
-          const color = deckColors[idx % deckColors.length];
-          const isSelected = selected?.name === deck.name;
-          return (
-            <div
-              key={deck.name}
-              className="hud-bracket cursor-pointer rounded p-4 transition-all"
-              style={{
-                width: "240px",
-                background: isSelected ? `${color}11` : "var(--bg-panel)",
-                border: `1px solid ${isSelected ? color : "var(--border-dim)"}`,
-                boxShadow: isSelected ? `0 0 20px ${color}44` : "none",
-                transform: isSelected ? "translateY(-4px)" : "none",
-              }}
-              onClick={() => loadDeck(deck)}
-            >
-              <div
-                className="text-lg font-bold mb-1"
-                style={{
-                  fontFamily: "'Orbitron', sans-serif",
-                  color,
-                  fontSize: "0.9rem",
-                  letterSpacing: "0.08em",
-                }}
-              >
-                {deck.name}
-              </div>
-              <p
-                className="text-xs opacity-60 mb-3"
-                style={{ color: "var(--text-secondary)", fontFamily: "'Rajdhani', sans-serif" }}
-              >
-                {deck.description}
-              </p>
-              <div
-                className="text-xs"
-                style={{ fontFamily: "'Share Tech Mono', monospace", color, opacity: 0.7 }}
-              >
-                {deck.cardIds.length} CARDS
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      {/* Two-slot layout */}
+      <div className="flex gap-10 mb-8 flex-wrap justify-center">
+        {/* My Deck slot */}
+        <SlotSection
+          label="MY DECK"
+          labelColor="var(--neon-cyan)"
+          decks={decks}
+          deckColors={DECK_COLORS}
+          selected={myDeck}
+          onSelect={setMyDeck}
+        />
 
-      {/* Deck preview */}
-      {selected && (
-        <div
-          className="rounded p-4 mb-6 animate-slide-up"
-          style={{
-            background: "var(--bg-panel)",
-            border: "1px solid var(--border-dim)",
-            maxWidth: "600px",
-            width: "100%",
-          }}
-        >
+        {/* Divider */}
+        <div className="hidden md:flex items-center">
           <div
-            className="text-xs font-bold mb-3 tracking-widest"
-            style={{ fontFamily: "'Orbitron', sans-serif", color: "var(--neon-cyan)", fontSize: "0.6rem" }}
-          >
-            DECK PREVIEW — {selected.name.toUpperCase()}
-          </div>
-          {loading ? (
-            <div className="flex items-center justify-center py-8 gap-3">
-              <div
-                className="w-4 h-4 rounded-full animate-spin"
-                style={{ border: "2px solid var(--neon-cyan)", borderTopColor: "transparent" }}
-              />
-              <span className="text-xs opacity-50" style={{ color: "var(--neon-cyan)", fontFamily: "'Orbitron', sans-serif", fontSize: "0.6rem" }}>
-                LOADING CARDS...
-              </span>
-            </div>
-          ) : loadedDeck ? (
-            <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
-              {loadedDeck.map((card, i) => (
-                <div
-                  key={`${card.id}-${i}`}
-                  className="relative flex-shrink-0 rounded overflow-hidden"
-                  style={{ width: "36px", height: "50px", border: "1px solid var(--border-dim)" }}
-                  title={card.name}
-                >
-                  <img
-                    src={`https://images.ygoprodeck.com/images/cards_small/${card.id}.jpg`}
-                    alt={card.name}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src =
-                        "https://images.ygoprodeck.com/images/cards/back_high.jpg";
-                    }}
-                  />
-                </div>
-              ))}
-            </div>
-          ) : null}
+            style={{
+              width: "1px",
+              height: "200px",
+              background: "linear-gradient(180deg, transparent, var(--border-dim), transparent)",
+            }}
+          />
         </div>
-      )}
+
+        {/* Opponent Deck slot */}
+        <SlotSection
+          label="OPPONENT DECK"
+          labelColor="var(--neon-pink)"
+          decks={decks}
+          deckColors={DECK_COLORS}
+          selected={oppDeck}
+          onSelect={setOppDeck}
+        />
+      </div>
 
       {/* Confirm button */}
       <button
-        disabled={!loadedDeck || loading}
+        disabled={!canStart}
         onClick={() => {
-          if (loadedDeck && selected) {
-            onDeckSelected(loadedDeck, selected.name);
+          if (myDeck && oppDeck) {
+            onDeckSelected(
+              { main: myDeck.main, extra: myDeck.extra },
+              { main: oppDeck.main, extra: oppDeck.extra },
+            );
           }
         }}
         className="px-8 py-3 rounded font-bold text-sm transition-all"
         style={{
           fontFamily: "'Orbitron', sans-serif",
           letterSpacing: "0.15em",
-          background: loadedDeck ? "rgba(0,245,255,0.1)" : "rgba(255,255,255,0.03)",
-          border: `1px solid ${loadedDeck ? "var(--neon-cyan)" : "var(--border-dim)"}`,
-          color: loadedDeck ? "var(--neon-cyan)" : "var(--text-muted)",
-          boxShadow: loadedDeck ? "0 0 20px rgba(0,245,255,0.3)" : "none",
-          cursor: loadedDeck ? "pointer" : "not-allowed",
+          background: canStart ? "rgba(0,245,255,0.1)" : "rgba(255,255,255,0.03)",
+          border: `1px solid ${canStart ? "var(--neon-cyan)" : "var(--border-dim)"}`,
+          color: canStart ? "var(--neon-cyan)" : "var(--text-muted)",
+          boxShadow: canStart ? "0 0 20px rgba(0,245,255,0.3)" : "none",
+          cursor: canStart ? "pointer" : "not-allowed",
           fontSize: "0.75rem",
         }}
       >
-        {loading ? "LOADING..." : loadedDeck ? "ENTER THE DUEL ▶" : "SELECT A DECK"}
+        {canStart ? "ENTER THE DUEL \u25B6" : "SELECT BOTH DECKS"}
       </button>
+    </div>
+  );
+}
+
+// ─── Slot section ───────────────────────────────────────────────────────────
+
+function SlotSection({
+  label,
+  labelColor,
+  decks,
+  deckColors,
+  selected,
+  onSelect,
+}: {
+  label: string;
+  labelColor: string;
+  decks: DeckDefinition[];
+  deckColors: string[];
+  selected: DeckDefinition | null;
+  onSelect: (deck: DeckDefinition) => void;
+}) {
+  return (
+    <div style={{ minWidth: "240px" }}>
+      <div
+        className="text-xs font-bold mb-4 tracking-widest text-center"
+        style={{ fontFamily: "'Orbitron', sans-serif", color: labelColor, fontSize: "0.65rem" }}
+      >
+        {label}
+      </div>
+      <div className="flex flex-col gap-3">
+        {decks.map((deck, idx) => {
+          const color = deckColors[idx % deckColors.length];
+          const isSelected = selected?.filename === deck.filename;
+          const mainCount = deck.main.length;
+          const extraCount = deck.extra.length;
+          return (
+            <div
+              key={deck.filename}
+              className="cursor-pointer rounded p-4 transition-all"
+              style={{
+                background: isSelected ? `${color}11` : "var(--bg-panel)",
+                border: `1px solid ${isSelected ? color : "var(--border-dim)"}`,
+                boxShadow: isSelected ? `0 0 20px ${color}44` : "none",
+                transform: isSelected ? "translateY(-2px)" : "none",
+              }}
+              onClick={() => onSelect(deck)}
+            >
+              <div
+                className="text-lg font-bold mb-1"
+                style={{
+                  fontFamily: "'Orbitron', sans-serif",
+                  color,
+                  fontSize: "0.85rem",
+                  letterSpacing: "0.08em",
+                }}
+              >
+                {deck.name}
+              </div>
+              <div
+                className="text-xs"
+                style={{ fontFamily: "'Share Tech Mono', monospace", color, opacity: 0.7 }}
+              >
+                {extraCount > 0 ? `${mainCount} MAIN + ${extraCount} EXTRA` : `${mainCount} CARDS`}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

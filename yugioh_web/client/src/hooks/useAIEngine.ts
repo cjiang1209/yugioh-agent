@@ -12,6 +12,7 @@ import type {
   PlayerState,
   PlayerSide,
 } from "../../../shared/gameTypes";
+import type { DeckPayload } from "../../../shared/deckTypes";
 import type {
   EngineAction,
   EngineFieldCard,
@@ -29,7 +30,7 @@ export interface UseAIEngineReturn {
   eventLog: string[];
   status: AIEngineStatus;
   error: string | null;
-  reset: (seed?: number) => Promise<void>;
+  reset: (seed?: number, deck0?: DeckPayload, deck1?: DeckPayload) => Promise<void>;
   submitAction: (actionIndex: number) => Promise<void>;
 }
 
@@ -240,13 +241,15 @@ export function useAIEngine(apiUrl: string = "http://localhost:8000"): UseAIEngi
     }
   }, []);
 
-  const reset = useCallback(async (seed?: number) => {
+  const reset = useCallback(async (seed?: number, deck0?: DeckPayload, deck1?: DeckPayload) => {
     setStatus("loading");
     setError(null);
     logRef.current = [];
     try {
       const body: Record<string, unknown> = {};
       if (seed !== undefined) body.seed = seed;
+      if (deck0 !== undefined) body.deck0 = deck0;
+      if (deck1 !== undefined) body.deck1 = deck1;
       const res = await fetch(`${apiUrl}/api/web/reset`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
