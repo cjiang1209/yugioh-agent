@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { DuelBoard } from "../components/duel/DuelBoard";
 import { useAIEngine } from "../hooks/useAIEngine";
 import { DeckSelector } from "./DeckSelector";
@@ -11,17 +11,15 @@ const MODE_BUTTON_BASE = {
   backdropFilter: "blur(4px)",
 } as const;
 
-// ─── AI Mode wrapper ────────────────────────────────────────────────────────
-
 const ENGINE_API_URL = "http://localhost:8000";
 
-function AIModeDuel() {
-  const { state, engineActions, enginePrompt, status, error, reset, submitAction } = useAIEngine(ENGINE_API_URL);
+// ─── Page ────────────────────────────────────────────────────────────────────
+
+export default function Duel() {
   const [selectedDeck0, setSelectedDeck0] = useState<DeckPayload | null>(null);
   const [selectedDeck1, setSelectedDeck1] = useState<DeckPayload | null>(null);
-  const [hasStarted, setHasStarted] = useState(false);
 
-  // Phase 1: Deck selection
+  // Phase 1: Deck selection — scrollable page, no fixed wrapper
   if (!selectedDeck0 || !selectedDeck1) {
     return (
       <DeckSelector
@@ -34,11 +32,22 @@ function AIModeDuel() {
     );
   }
 
-  // Phase 2: Start duel with selected decks
-  if (!hasStarted) {
-    setHasStarted(true);
-    reset(Math.floor(Math.random() * 100000), selectedDeck0, selectedDeck1);
-  }
+  // Phase 2: Duel — fixed viewport
+  return (
+    <div className="fixed inset-0" style={{ background: "var(--bg-void)" }}>
+      <AIModeDuel deck0={selectedDeck0} deck1={selectedDeck1} />
+    </div>
+  );
+}
+
+// ─── AI Mode wrapper ────────────────────────────────────────────────────────
+
+function AIModeDuel({ deck0, deck1 }: { deck0: DeckPayload; deck1: DeckPayload }) {
+  const { state, engineActions, enginePrompt, status, error, reset, submitAction } = useAIEngine(ENGINE_API_URL);
+
+  useEffect(() => {
+    reset(Math.floor(Math.random() * 100000), deck0, deck1);
+  }, [deck0, deck1]);
 
   if (status === "loading" || (status === "idle" && !state)) {
     return <LoadingSpinner message="Connecting to engine..." />;
@@ -55,7 +64,7 @@ function AIModeDuel() {
             {error || "Failed to connect to Python engine. Is the server running?"}
           </div>
           <button
-            onClick={() => reset(Math.floor(Math.random() * 100000), selectedDeck0, selectedDeck1)}
+            onClick={() => reset(Math.floor(Math.random() * 100000), deck0, deck1)}
             className="px-4 py-2 rounded transition-all"
             style={{
               ...MODE_BUTTON_BASE,
@@ -72,18 +81,16 @@ function AIModeDuel() {
   }
 
   return (
-    <>
-      <DuelBoard
-        state={state}
-        mySide="player1"
-        onAction={() => {}}
-        engineMode
-        engineActions={engineActions}
-        enginePrompt={enginePrompt}
-        onEngineAction={submitAction}
-        onRestart={() => reset(Math.floor(Math.random() * 100000), selectedDeck0, selectedDeck1)}
-      />
-    </>
+    <DuelBoard
+      state={state}
+      mySide="player1"
+      onAction={() => {}}
+      engineMode
+      engineActions={engineActions}
+      enginePrompt={enginePrompt}
+      onEngineAction={submitAction}
+      onRestart={() => reset(Math.floor(Math.random() * 100000), deck0, deck1)}
+    />
   );
 }
 
@@ -124,42 +131,3 @@ function LoadingSpinner({ message }: { message: string }) {
   );
 }
 
-function OverlayBar({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      className="absolute top-0 left-1/2 z-30 flex items-center gap-2"
-      style={{ transform: "translateX(-50%)", paddingTop: "4px" }}
-      onClick={(e) => e.stopPropagation()}
-    >
-      {children}
-    </div>
-  );
-}
-
-function RestartButton({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="px-2 py-1 rounded transition-all opacity-40 hover:opacity-80"
-      style={{
-        ...MODE_BUTTON_BASE,
-        background: "rgba(0,0,0,0.7)",
-        border: "1px solid rgba(255,45,120,0.25)",
-        color: "var(--neon-pink)",
-      }}
-      title="Restart duel"
-    >
-      ↺ RESTART
-    </button>
-  );
-}
-
-// ─── Page ────────────────────────────────────────────────────────────────────
-
-export default function Duel() {
-  return (
-    <div className="fixed inset-0" style={{ background: "var(--bg-void)" }}>
-      <AIModeDuel />
-    </div>
-  );
-}
