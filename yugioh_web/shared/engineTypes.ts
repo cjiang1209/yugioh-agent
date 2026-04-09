@@ -143,6 +143,13 @@ export interface EnginePrompt {
   cards_selected?: number;
 }
 
+/** A snapshot of the board + events captured after one engine processing chunk. */
+export interface EventFrame {
+  events: string[];
+  board: EngineBoard;
+  game_state: EngineGameState;
+}
+
 /** Unified response shape from all /api/web/ endpoints. */
 export interface EngineResponse {
   board: EngineBoard;
@@ -152,4 +159,5 @@ export interface EngineResponse {
   event_log: string[];
   done: boolean;
   reward: number;
+  frames: EventFrame[];
 }
