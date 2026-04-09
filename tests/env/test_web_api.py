@@ -131,6 +131,17 @@ def test_state_matches_after_reset(web_client):
     assert state_data["done"] == reset_data["done"]
 
 
+def test_state_does_not_return_stale_frames(web_client):
+    """GET /state should return empty frames (it doesn't advance the duel)."""
+    _reset(web_client)
+
+    resp = web_client.get("/api/web/state")
+    assert resp.status_code == 200
+    state_data = resp.json()
+
+    assert state_data["frames"] == []
+
+
 def test_action_descriptions_nonempty(web_client):
     """Every action should have a non-empty description string."""
     data = _reset(web_client)
@@ -300,3 +311,137 @@ def test_reset_with_invalid_deck_returns_422(web_client):
         "deck0": {"main": [89631139] * 10, "extra": []},
     })
     assert resp.status_code == 422
+
+
+# ─── Frame snapshot tests ────────────────────────────────────────────────
+
+_VALID_PHASES = {"draw", "standby", "main1", "battle_start", "battle_step",
+                 "damage", "damage_calc", "battle", "main2", "end", "unknown"}
+
+
+def _assert_frame_structure(frame):
+    """Assert a single frame has the expected keys and types."""
+    assert "events" in frame
+    assert "board" in frame
+    assert "game_state" in frame
+
+    assert isinstance(frame["events"], list)
+    assert len(frame["events"]) > 0
+    for e in frame["events"]:
+        assert isinstance(e, str)
+
+    board = frame["board"]
+    assert "player" in board
+    assert "opponent" in board
+    assert isinstance(board["player"]["lp"], int)
+    assert isinstance(board["opponent"]["lp"], int)
+
+    gs = frame["game_state"]
+    assert isinstance(gs["turn"], int)
+    assert gs["turn"] >= 1
+    assert gs["phase"] in _VALID_PHASES
+    assert isinstance(gs["is_my_turn"], bool)
+    assert isinstance(gs["chain_count"], int)
+
+
+def test_reset_returns_frames(web_client):
+    """Reset should produce frames covering initial draw/phase events."""
+    data = _reset(web_client)
+
+    assert "frames" in data
+    frames = data["frames"]
+    assert isinstance(frames, list)
+    assert len(frames) >= 1, "Reset should produce at least one frame"
+
+    for frame in frames:
+        _assert_frame_structure(frame)
+
+    # Frame events should equal the flat event_log
+    flat = [e for f in frames for e in f["events"]]
+    assert flat == data["event_log"]
+
+
+def test_step_returns_frames_with_board_snapshots(web_client):
+    """Step should include frames with board snapshots matching event_log."""
+    _reset(web_client)
+    data = _step(web_client, action_index=0)
+
+    assert "frames" in data
+    frames = data["frames"]
+    assert isinstance(frames, list)
+
+    for frame in frames:
+        _assert_frame_structure(frame)
+
+    # Frame events should equal the flat event_log
+    flat = [e for f in frames for e in f["events"]]
+    assert flat == data["event_log"]
+
+
+def test_frames_game_state_structure(web_client):
+    """Each frame's game_state should have valid fields."""
+    data = _reset(web_client)
+
+    for _ in range(10):
+        if data["done"]:
+            break
+        data = _step(web_client, action_index=0)
+        for frame in data.get("frames", []):
+            gs = frame["game_state"]
+            assert gs["turn"] >= 1
+            assert gs["phase"] in _VALID_PHASES
+            assert isinstance(gs["is_my_turn"], bool)
+            assert isinstance(gs["chain_count"], int)
+
+
+def test_multi_select_step_returns_no_frames(web_client):
+    """Intermediate multi-select steps should return empty frames."""
+    for seed in range(42, 92):
+        data = _reset(web_client, seed=seed)
+        for _ in range(100):
+            if data["done"]:
+                break
+            prompt = data.get("prompt")
+            if prompt is None:
+                data = _step(web_client, action_index=0)
+                continue
+
+            is_multi = (
+                (prompt.get("type") == "select_card" and prompt.get("max", 1) > 1)
+                or (prompt.get("type") == "tribute" and prompt.get("max_cards", 1) > 1)
+            )
+            if is_multi:
+                # Take one intermediate pick
+                data = _step(web_client, action_index=0)
+                assert data["frames"] == [], "Intermediate multi-select should not return frames"
+                assert data["event_log"] == []
+                return  # Test passed
+
+            data = _step(web_client, action_index=0)
+
+    pytest.skip("No multi-select prompt encountered in test seeds")
+
+
+def test_frames_board_changes_across_steps(web_client):
+    """At least one step should produce frames with differing board states."""
+    data = _reset(web_client)
+    found_different = False
+
+    for _ in range(50):
+        if data["done"]:
+            break
+        data = _step(web_client, action_index=0)
+        frames = data.get("frames", [])
+        if len(frames) >= 2:
+            # Compare LP or monster zones between first and last frame
+            first_board = frames[0]["board"]
+            last_board = frames[-1]["board"]
+            if (first_board["player"]["lp"] != last_board["player"]["lp"]
+                    or first_board["opponent"]["lp"] != last_board["opponent"]["lp"]
+                    or first_board["player"]["monsters"] != last_board["player"]["monsters"]
+                    or first_board["opponent"]["monsters"] != last_board["opponent"]["monsters"]):
+                found_different = True
+                break
+
+    if not found_different:
+        pytest.skip("No multi-frame step with differing board states in test seeds")

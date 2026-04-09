@@ -23,6 +23,9 @@ from yugioh_core.constants import (
     LOCATION_EXTRA,
     PHASE_BATTLE,
     PHASE_BATTLE_START,
+    PHASE_BATTLE_STEP,
+    PHASE_DAMAGE,
+    PHASE_DAMAGE_CAL,
     PHASE_DRAW,
     PHASE_END,
     PHASE_MAIN1,
@@ -36,6 +39,7 @@ from yugioh_env.lib_loader import load_library
 from yugioh_env.models import YuGiOhAction, YuGiOhObservation, YuGiOhState
 from yugioh_env.observation import build_observation
 from yugioh_env.opponent import Opponent, RandomOpponent
+from yugioh_env.server.board_state import build_board_state
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +49,9 @@ _API_PHASE_NAMES = {
     PHASE_STANDBY: "standby",
     PHASE_MAIN1: "main1",
     PHASE_BATTLE_START: "battle_start",
+    PHASE_BATTLE_STEP: "battle_step",
+    PHASE_DAMAGE: "damage",
+    PHASE_DAMAGE_CAL: "damage_calc",
     PHASE_BATTLE: "battle",
     PHASE_MAIN2: "main2",
     PHASE_END: "end",
@@ -145,6 +152,13 @@ class YuGiOhEnvironment(Environment):
         self._card_sel: list[int] = []
         # Persistent field tracker for event log card-code resolution
         self._field_tracker = FieldTracker()
+        # Intermediate board snapshots captured during _process_to_agent_choice()
+        self._last_frames: list[dict] = []
+
+    @property
+    def last_frames(self) -> list[dict]:
+        """Intermediate board snapshots captured during the last process cycle."""
+        return self._last_frames
 
     @staticmethod
     def _validate_deck(deck: dict, label: str) -> None:
@@ -241,6 +255,7 @@ class YuGiOhEnvironment(Environment):
         if self._duel is None or self._duel.is_finished:
             return self._make_terminal_observation()
 
+        self._last_frames = []
         self._step_count += 1
 
         # Convert action to response
@@ -287,17 +302,51 @@ class YuGiOhEnvironment(Environment):
             opp_hand_count=gs.hand_count[1 - self._agent_player],
         )
 
+    def _build_game_state_dict(self) -> dict:
+        """Build a game_state dict from the current duel state."""
+        gs = self._duel.game_state if self._duel else None
+        if gs is None:
+            return {"turn": 0, "phase": "unknown", "is_my_turn": False, "chain_count": 0}
+        return {
+            "turn": gs.turn_count,
+            "phase": _API_PHASE_NAMES.get(gs.phase, "unknown"),
+            "is_my_turn": gs.current_player == self._agent_player,
+            "chain_count": gs.chain_count,
+        }
+
+    def _capture_frame(self, events: list[dict]) -> None:
+        """Format events and snapshot the board into a frame."""
+        if not events:
+            return
+        chunk_log = format_events(
+            events, self._agent_player,
+            self._card_db.get_card_name, self._field_tracker,
+        )
+        if chunk_log:
+            self._last_frames.append({
+                "events": chunk_log,
+                "board": build_board_state(self),
+                "game_state": self._build_game_state_dict(),
+            })
+
+    def _flatten_frame_events(self) -> list[str]:
+        """Collect all formatted event strings from captured frames."""
+        return [e for f in self._last_frames for e in f["events"]]
+
     def _process_to_agent_choice(self) -> YuGiOhObservation:
         """Process the duel, auto-play opponent turns, until agent must decide."""
-        all_events: list[dict] = []
+        self._last_frames = []
         while True:
             msg, gs, events = self._duel.process_until_choice()
-            all_events.extend(events)
+
+            # Capture frame from this chunk's events
+            self._capture_frame(events)
 
             if msg is None:
                 # Game ended or error
-                event_log = format_events(all_events, self._agent_player, self._card_db.get_card_name, self._field_tracker)
-                return self._make_terminal_observation(event_log=event_log)
+                return self._make_terminal_observation(
+                    event_log=self._flatten_frame_events(),
+                )
 
             msg_type = msg.get("msg_type")
             player = msg.get("player", -1)
@@ -307,8 +356,9 @@ class YuGiOhEnvironment(Environment):
                 self._current_msg = msg
                 self._card_sel.clear()
                 self._mapper.update(msg)
-                event_log = format_events(all_events, self._agent_player, self._card_db.get_card_name, self._field_tracker)
-                return self._make_observation(event_log=event_log)
+                return self._make_observation(
+                    event_log=self._flatten_frame_events(),
+                )
 
             elif player != self._agent_player and msg_type in SELECT_MSGS:
                 # Opponent's turn - auto-play (loop for multi-step selections)
@@ -338,12 +388,14 @@ class YuGiOhEnvironment(Environment):
                         self._duel.send_response(response)
                 else:
                     logger.warning("Opponent has no actions for msg_type=%d", msg_type)
-                    event_log = format_events(all_events, self._agent_player, self._card_db.get_card_name, self._field_tracker)
-                    return self._make_terminal_observation(event_log=event_log)
+                    return self._make_terminal_observation(
+                        event_log=self._flatten_frame_events(),
+                    )
             else:
                 # Unknown message, try continuing
-                event_log = format_events(all_events, self._agent_player, self._card_db.get_card_name, self._field_tracker)
-                return self._make_terminal_observation(event_log=event_log)
+                return self._make_terminal_observation(
+                    event_log=self._flatten_frame_events(),
+                )
 
     def _make_observation(self, event_log: list[str] | None = None) -> YuGiOhObservation:
         """Build observation from current state."""

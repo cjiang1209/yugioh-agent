@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
-
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
@@ -35,23 +33,28 @@ class StepRequest(BaseModel):
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
 
-_API_PHASE_NAMES = {
-    0x01: "draw",
-    0x02: "standby",
-    0x04: "main1",
-    0x08: "battle_start",
-    0x10: "battle_step",
-    0x20: "damage",
-    0x40: "damage_calc",
-    0x80: "battle",
-    0x100: "main2",
-    0x200: "end",
-}
 
+def _build_response(
+    env: YuGiOhEnvironment,
+    event_log: list[str],
+    done: bool,
+    reward: float,
+    *,
+    include_frames: bool = False,
+) -> dict:
+    """Build the unified JSON response from current env state.
 
-def _build_response(env: YuGiOhEnvironment, event_log: list[str], done: bool, reward: float) -> dict:
-    """Build the unified JSON response from current env state."""
-    board = build_board_state(env)
+    Args:
+        include_frames: When True, attach env.last_frames (only set this after
+            reset/step calls that ran _process_to_agent_choice, so the frames
+            match event_log).  GET /state and multi-select steps must leave
+            this False to avoid returning stale frames from a prior action.
+    """
+    frames = env.last_frames if include_frames else []
+
+    # Reuse the last frame's board if available (avoids redundant FFI call)
+    board = frames[-1]["board"] if frames else build_board_state(env)
+
     actions = describe_actions(env._mapper, env._card_db) if not done else []
     prompt = describe_prompt(env._mapper, env._card_db) if not done else None
 
@@ -60,25 +63,15 @@ def _build_response(env: YuGiOhEnvironment, event_log: list[str], done: bool, re
     for a in actions:
         a["side"] = "mine" if a.pop("controller") == agent else "opp"
 
-    gs = env._duel.game_state if env._duel else None
-
-    game_state: dict[str, Any] = {}
-    if gs:
-        game_state = {
-            "turn": gs.turn_count,
-            "phase": _API_PHASE_NAMES.get(gs.phase, "unknown"),
-            "is_my_turn": gs.current_player == agent,
-            "chain_count": gs.chain_count,
-        }
-
     return {
         "board": board,
-        "game_state": game_state,
+        "game_state": env._build_game_state_dict(),
         "actions": actions,
         "prompt": prompt,
         "event_log": event_log,
         "done": done,
         "reward": reward,
+        "frames": frames,
     }
 
 
@@ -97,7 +90,7 @@ def reset_duel(body: ResetRequest, request: Request) -> dict:
         obs = env.reset(seed=body.seed, deck0=body.deck0, deck1=body.deck1)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    return _build_response(env, obs.event_log, obs.done, obs.reward)
+    return _build_response(env, obs.event_log, obs.done, obs.reward, include_frames=True)
 
 
 @web_router.get("/decks")
@@ -139,7 +132,7 @@ def step_duel(body: StepRequest, request: Request) -> dict:
     if env._duel is None:
         return _build_response(env, ["No active duel. Call /reset first."], True, 0.0)
     obs = env.step(YuGiOhAction(action_index=body.action_index))
-    return _build_response(env, obs.event_log, obs.done, obs.reward)
+    return _build_response(env, obs.event_log, obs.done, obs.reward, include_frames=True)
 
 
 @web_router.get("/state")
