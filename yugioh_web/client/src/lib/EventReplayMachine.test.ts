@@ -56,13 +56,13 @@ describe("EventReplayMachine", () => {
     // Before any tick — only prior log (empty)
     expect(cb.onEventReveal).toHaveBeenLastCalledWith([]);
 
-    vi.advanceTimersByTime(300);
+    vi.advanceTimersByTime(1200);
     expect(cb.onEventReveal).toHaveBeenLastCalledWith(["e1"]);
 
-    vi.advanceTimersByTime(300);
+    vi.advanceTimersByTime(1200);
     expect(cb.onEventReveal).toHaveBeenLastCalledWith(["e1", "e2"]);
 
-    vi.advanceTimersByTime(300);
+    vi.advanceTimersByTime(1200);
     expect(cb.onEventReveal).toHaveBeenLastCalledWith(["e1", "e2", "e3"]);
   });
 
@@ -76,13 +76,13 @@ describe("EventReplayMachine", () => {
     expect(cb.onFrameChange).not.toHaveBeenCalled();
 
     // Reveal "a" (300ms) — frame 1 complete → board updates to f1's snapshot
-    vi.advanceTimersByTime(300);
+    vi.advanceTimersByTime(1200);
     expect(cb.onEventReveal).toHaveBeenLastCalledWith(["a"]);
     expect(cb.onFrameChange).toHaveBeenCalledTimes(1);
     expect(cb.onFrameChange).toHaveBeenCalledWith(f1.board, f1.game_state);
 
     // Inter-frame pause (150ms) → reveal "b" (300ms) → frame 2 complete → f2 board
-    vi.advanceTimersByTime(150 + 300);
+    vi.advanceTimersByTime(600 + 1200);
     expect(cb.onFrameChange).toHaveBeenCalledTimes(2);
     expect(cb.onFrameChange).toHaveBeenLastCalledWith(f2.board, f2.game_state);
   });
@@ -94,11 +94,11 @@ describe("EventReplayMachine", () => {
     machine.start([], [f1, f2], cb);
 
     // Frame 1 event
-    vi.advanceTimersByTime(300);
+    vi.advanceTimersByTime(1200);
     expect(cb.onComplete).not.toHaveBeenCalled();
 
     // Inter-frame pause + frame 2 event
-    vi.advanceTimersByTime(150 + 300);
+    vi.advanceTimersByTime(600 + 1200);
     expect(cb.onComplete).toHaveBeenCalledTimes(1);
   });
 
@@ -106,7 +106,7 @@ describe("EventReplayMachine", () => {
     const cb = makeCallbacks();
     machine.start([], [makeFrame(["a", "b"])], cb);
 
-    vi.advanceTimersByTime(300); // reveal "a"
+    vi.advanceTimersByTime(1200); // reveal "a"
     machine.reset();
 
     expect(machine.active).toBe(false);
@@ -148,11 +148,11 @@ describe("EventReplayMachine", () => {
     expect(cb.onEventReveal).toHaveBeenCalledWith(["old event"]);
 
     // After first tick: prior + first event
-    vi.advanceTimersByTime(300);
+    vi.advanceTimersByTime(1200);
     expect(cb.onEventReveal).toHaveBeenLastCalledWith(["old event", "e1"]);
 
     // After second tick: prior + both events
-    vi.advanceTimersByTime(300);
+    vi.advanceTimersByTime(1200);
     expect(cb.onEventReveal).toHaveBeenLastCalledWith(["old event", "e1", "e2"]);
   });
 
@@ -165,7 +165,7 @@ describe("EventReplayMachine", () => {
     expect(cb.onFrameChange).not.toHaveBeenCalled();
 
     // After the event is revealed, board updates
-    vi.advanceTimersByTime(300);
+    vi.advanceTimersByTime(1200);
     expect(cb.onFrameChange).toHaveBeenCalledTimes(1);
     expect(cb.onFrameChange).toHaveBeenCalledWith(frame.board, frame.game_state);
   });
@@ -177,11 +177,11 @@ describe("EventReplayMachine", () => {
     machine.start(["prior"], [f1, f2], cb);
 
     // Reveal f1 event
-    vi.advanceTimersByTime(300);
+    vi.advanceTimersByTime(1200);
     expect(cb.onEventReveal).toHaveBeenLastCalledWith(["prior", "a"]);
 
     // Inter-frame pause + reveal f2 event
-    vi.advanceTimersByTime(150 + 300);
+    vi.advanceTimersByTime(600 + 1200);
     expect(cb.onEventReveal).toHaveBeenLastCalledWith(["prior", "a", "b"]);
   });
 });

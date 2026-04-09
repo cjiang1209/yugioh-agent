@@ -8,8 +8,8 @@ export type ReplayCallbacks = {
   onComplete: () => void;
 };
 
-const EVENT_DELAY_MS = 300;
-const FRAME_PAUSE_MS = 150;
+const EVENT_DELAY_MS = 1200;
+const FRAME_PAUSE_MS = 600;
 
 export class EventReplayMachine {
   private frames: EventFrame[] = [];

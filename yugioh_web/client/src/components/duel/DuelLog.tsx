@@ -2,13 +2,21 @@ import { useEffect, useRef } from "react";
 
 interface DuelLogProps {
   logs: string[];
+  isReplaying?: boolean;
 }
 
-export function DuelLog({ logs }: DuelLogProps) {
+export function DuelLog({ logs, isReplaying }: DuelLogProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const prevLenRef = useRef(0);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [logs]);
+
+  // Track the boundary between old and new entries for animation
+  const animateFrom = prevLenRef.current;
+  useEffect(() => {
+    prevLenRef.current = logs.length;
   }, [logs]);
 
   return (
@@ -18,7 +26,7 @@ export function DuelLog({ logs }: DuelLogProps) {
         {logs.map((log, i) => (
           <div
             key={i}
-            className="leading-relaxed"
+            className={`leading-relaxed${isReplaying && i >= animateFrom ? " log-entry-reveal" : ""}`}
             style={{
               fontFamily: "'Rajdhani', sans-serif",
               fontSize: "0.82rem",

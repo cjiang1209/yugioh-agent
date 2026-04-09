@@ -29,6 +29,8 @@ interface DuelBoardProps {
   enginePrompt?: EnginePrompt | null;
   onEngineAction?: (actionIndex: number) => void;
   onRestart?: () => void;
+  visibleLog?: string[];
+  isReplaying?: boolean;
 }
 
 type SelectionMode =
@@ -70,7 +72,7 @@ function requiredTributes(level: number) {
   return 2;
 }
 
-export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, enginePrompt, onEngineAction, onRestart }: DuelBoardProps) {
+export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, enginePrompt, onEngineAction, onRestart, visibleLog, isReplaying }: DuelBoardProps) {
   const [selection, setSelection] = useState<SelectionMode>({ type: "none" });
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [bottomTab, setBottomTab] = useState<"actions" | "log">(engineMode ? "actions" : "log");
@@ -1202,7 +1204,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
             {iWon ? "VICTORY" : "DEFEAT"}
           </div>
           <div className="text-lg opacity-60" style={{ color: "var(--text-secondary)" }}>
-            {state.log[state.log.length - 1]}
+            {(() => { const log = visibleLog ?? state.log; return log[log.length - 1]; })()}
           </div>
         </div>
       </div>
@@ -1587,18 +1589,19 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
                     {tab === "actions" ? `ACTIONS (${engineActions?.length ?? 0})` : "LOG"}
                   </button>
                 ))}
+
               </div>
               {/* Tab content */}
               <div className="flex-1" style={{ minHeight: 0 }}>
-                {bottomTab === "actions" && engineActions && onEngineAction ? (
+                {bottomTab === "actions" && engineActions && engineActions.length > 0 && onEngineAction ? (
                   <EnginePromptRouter actions={engineActions} prompt={enginePrompt ?? null} onAction={onEngineAction} />
                 ) : (
-                  <DuelLog logs={state.log} />
+                  <DuelLog logs={visibleLog ?? state.log} isReplaying={isReplaying} />
                 )}
               </div>
             </>
           ) : (
-            <DuelLog logs={state.log} />
+            <DuelLog logs={visibleLog ?? state.log} isReplaying={isReplaying} />
           )}
         </div>
       </div>

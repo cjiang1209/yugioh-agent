@@ -292,3 +292,13 @@ body {
 .zone-shake {
   animation: zone-shake 0.45s ease-out forwards !important;
 }
+
+/* ── Event replay animations ───────────────────────────────────── */
+@keyframes log-entry-reveal {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.log-entry-reveal {
+  animation: log-entry-reveal 0.2s ease-out forwards;
+}
+

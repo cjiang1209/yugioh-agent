@@ -43,7 +43,7 @@ export default function Duel() {
 // ─── AI Mode wrapper ────────────────────────────────────────────────────────
 
 function AIModeDuel({ deck0, deck1 }: { deck0: DeckPayload; deck1: DeckPayload }) {
-  const { state, engineActions, enginePrompt, status, error, reset, submitAction } = useAIEngine(ENGINE_API_URL);
+  const { state, engineActions, enginePrompt, visibleLog, isReplaying, status, error, reset, submitAction } = useAIEngine(ENGINE_API_URL);
 
   useEffect(() => {
     reset(Math.floor(Math.random() * 100000), deck0, deck1);
@@ -90,6 +90,8 @@ function AIModeDuel({ deck0, deck1 }: { deck0: DeckPayload; deck1: DeckPayload }
       enginePrompt={enginePrompt}
       onEngineAction={submitAction}
       onRestart={() => reset(Math.floor(Math.random() * 100000), deck0, deck1)}
+      visibleLog={visibleLog}
+      isReplaying={isReplaying}
     />
   );
 }

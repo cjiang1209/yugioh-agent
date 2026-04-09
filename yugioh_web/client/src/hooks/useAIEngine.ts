@@ -2,7 +2,7 @@
 // Connects to the Python FastAPI backend (/api/web/*) and maps responses
 // to the existing DuelState shape consumed by DuelBoard.
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   DuelState,
   GameCard,
@@ -15,11 +15,14 @@ import type {
 import type { DeckPayload } from "../../../shared/deckTypes";
 import type {
   EngineAction,
+  EngineBoard,
   EngineFieldCard,
+  EngineGameState,
   EngineHandCard,
   EnginePrompt,
   EngineResponse,
 } from "../../../shared/engineTypes";
+import { useEventReplay } from "./useEventReplay";
 
 export type AIEngineStatus = "idle" | "loading" | "dueling" | "ended" | "error";
 
@@ -27,7 +30,8 @@ export interface UseAIEngineReturn {
   state: DuelState | null;
   engineActions: EngineAction[];
   enginePrompt: EnginePrompt | null;
-  eventLog: string[];
+  visibleLog: string[];
+  isReplaying: boolean;
   status: AIEngineStatus;
   error: string | null;
   reset: (seed?: number, deck0?: DeckPayload, deck1?: DeckPayload) => Promise<void>;
@@ -126,8 +130,13 @@ function makeFaceDownCard(side: "mine" | "opp", zone: string, index: number): Ga
   };
 }
 
-function engineResponseToDuelState(resp: EngineResponse, log: string[]): DuelState {
-  const { board, game_state } = resp;
+function buildDuelState(
+  board: EngineBoard,
+  game_state: EngineGameState,
+  done: boolean,
+  reward: number,
+  log: string[],
+): DuelState {
 
   // Player (human, always player1 / bottom)
   const playerMonsters: (FieldCard | null)[] = (board.player.monsters ?? []).map(
@@ -190,10 +199,10 @@ function engineResponseToDuelState(resp: EngineResponse, log: string[]): DuelSta
     activePlayer: game_state.is_my_turn ? "player1" : "player2",
     player1: player,
     player2: opponent,
-    winner: resp.done
-      ? resp.reward > 0
+    winner: done
+      ? reward > 0
         ? "player1"
-        : resp.reward < 0
+        : reward < 0
           ? "player2"
           : null
       : null,
@@ -202,47 +211,85 @@ function engineResponseToDuelState(resp: EngineResponse, log: string[]): DuelSta
   };
 }
 
+const EMPTY_PLAYER: PlayerState = {
+  id: "player1", name: "You", lifePoints: 8000,
+  hand: [], deck: [], graveyard: [], banished: [], extraDeck: [],
+  monsterZones: [null, null, null, null, null],
+  spellTrapZones: [null, null, null, null, null],
+  fieldZone: null, extraMonsterZone: null,
+  hasNormalSummoned: false, hasDrawn: false,
+};
+
+const INITIAL_DUEL_STATE: DuelState = {
+  roomId: "engine", phase: "DRAW", turnNumber: 1, activePlayer: "player1",
+  player1: { ...EMPTY_PLAYER },
+  player2: { ...EMPTY_PLAYER, id: "player2", name: "Opponent" },
+  winner: null, battleStep: null, log: [],
+};
+
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
 export function useAIEngine(apiUrl: string = "http://localhost:8000"): UseAIEngineReturn {
   const [state, setState] = useState<DuelState | null>(null);
   const [engineActions, setEngineActions] = useState<EngineAction[]>([]);
   const [enginePrompt, setEnginePrompt] = useState<EnginePrompt | null>(null);
-  const [eventLog, setEventLog] = useState<string[]>([]);
   const [status, setStatus] = useState<AIEngineStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const logRef = useRef<string[]>([]);
 
+  const { visibleLog: replayLog, currentBoard, currentGameState, isReplaying, startReplay, resetReplay } = useEventReplay();
+
   const submitRef = useRef<(index: number) => Promise<void>>(undefined);
 
+  // During replay, update DuelState from the replay machine's intermediate board snapshots.
+  // replayLog is intentionally excluded — log display uses visibleLog, not state.log.
+  useEffect(() => {
+    if (isReplaying && currentBoard && currentGameState) {
+      setState(buildDuelState(currentBoard, currentGameState, false, 0, []));
+    }
+  }, [isReplaying, currentBoard, currentGameState]);
+
   const applyResponse = useCallback((resp: EngineResponse) => {
-    // Append new events to the running log
-    const newLog = [...logRef.current, ...resp.event_log];
-    logRef.current = newLog;
-    setEventLog(newLog);
-    setState(engineResponseToDuelState(resp, newLog));
     setStatus(resp.done ? "ended" : "dueling");
     setError(null);
-    setEnginePrompt(resp.prompt ?? null);
 
-    // Auto-pass: if the only action is pass/no-chain, submit it automatically
-    if (
-      !resp.done &&
-      resp.actions.length === 1 &&
-      AUTO_PASS_CATEGORIES.has(resp.actions[0].category)
-    ) {
-      setEngineActions([]);  // hide from UI during auto-pass
-      setEnginePrompt(null); // hide prompt during auto-pass
-      setTimeout(() => submitRef.current?.(resp.actions[0].index), 0);
+    const finalize = () => {
+      // Update the cumulative log
+      const newLog = [...logRef.current, ...resp.event_log];
+      logRef.current = newLog;
+      setState(buildDuelState(resp.board, resp.game_state, resp.done, resp.reward, newLog));
+      setEnginePrompt(resp.prompt ?? null);
+
+      // Auto-pass or show actions
+      if (
+        !resp.done &&
+        resp.actions.length === 1 &&
+        AUTO_PASS_CATEGORIES.has(resp.actions[0].category)
+      ) {
+        setEngineActions([]);
+        setEnginePrompt(null);
+        setTimeout(() => submitRef.current?.(resp.actions[0].index), 0);
+      } else {
+        setEngineActions(resp.actions);
+      }
+    };
+
+    // If frames are available, replay them before finalizing
+    if (resp.frames && resp.frames.length > 0) {
+      setEngineActions([]);
+      setEnginePrompt(null);
+      startReplay(logRef.current, resp.frames, finalize);
     } else {
-      setEngineActions(resp.actions);
+      finalize();
     }
-  }, []);
+  }, [startReplay]);
 
   const reset = useCallback(async (seed?: number, deck0?: DeckPayload, deck1?: DeckPayload) => {
     setStatus("loading");
     setError(null);
+    resetReplay();
     logRef.current = [];
+    setState(INITIAL_DUEL_STATE);
     try {
       const body: Record<string, unknown> = {};
       if (seed !== undefined) body.seed = seed;
@@ -260,7 +307,7 @@ export function useAIEngine(apiUrl: string = "http://localhost:8000"): UseAIEngi
       setError(e instanceof Error ? e.message : "Reset failed");
       setStatus("error");
     }
-  }, [apiUrl, applyResponse]);
+  }, [apiUrl, applyResponse, resetReplay]);
 
   const submitAction = useCallback(async (actionIndex: number) => {
     setError(null);
@@ -281,5 +328,7 @@ export function useAIEngine(apiUrl: string = "http://localhost:8000"): UseAIEngi
 
   submitRef.current = submitAction;
 
-  return { state, engineActions, enginePrompt, eventLog, status, error, reset, submitAction };
+  const visibleLog = isReplaying ? replayLog : (state?.log ?? []);
+
+  return { state, engineActions, enginePrompt, visibleLog, isReplaying, status, error, reset, submitAction };
 }
