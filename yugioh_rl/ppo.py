@@ -15,7 +15,7 @@ import torch.nn.functional as F
 from torch.distributions import Categorical
 
 from yugioh_rl.config import TrainingConfig
-from yugioh_rl.env_wrapper import SubprocVecEnv, TrainingEnv
+from yugioh_rl.env_wrapper import SubprocVecEnv, TrainingEnv, parse_deck_pool
 from yugioh_rl.network import YuGiOhNet
 
 logger = logging.getLogger(__name__)
@@ -173,6 +173,7 @@ class PPOTrainer:
         self._episode_rewards: list[float] = []
         self._episode_lengths: list[int] = []
         self._episode_wins: list[float] = []
+        self._deck_wins: dict[int, list[float]] = {}
 
         if config.resume_checkpoint:
             self._resume_update, self._resume_global_step = self._load_resume_checkpoint()
@@ -197,6 +198,9 @@ class PPOTrainer:
 
         # Rollout buffer
         self.buffer = RolloutBuffer(config.rollout_steps, config.num_envs)
+
+        # Deck pool (pre-parsed once; passed to env workers)
+        self._deck_pool = parse_deck_pool(config.deck_paths)
 
         # TensorBoard writer (optional)
         self._writer = None
@@ -240,6 +244,16 @@ class PPOTrainer:
         self._episode_rewards = list(ckpt.get("episode_rewards", []))
         self._episode_lengths = list(ckpt.get("episode_lengths", []))
         self._episode_wins = list(ckpt.get("episode_wins", []))
+        self._deck_wins = {
+            int(k): list(v) for k, v in ckpt.get("deck_wins", {}).items()
+        }
+
+        # Restore deck_paths from checkpoint so index-keyed _deck_wins maps
+        # to the correct deck names.  The CLI default would be wrong if the
+        # user resumes without re-specifying --deck-paths.
+        ckpt_config = ckpt.get("config")
+        if ckpt_config is not None and hasattr(ckpt_config, "deck_paths"):
+            config.deck_paths = list(ckpt_config.deck_paths)
 
         update = ckpt.get("update", 0)
         global_step = ckpt.get("global_step", 0)
@@ -318,7 +332,7 @@ class PPOTrainer:
 
         vec_env = SubprocVecEnv(
             num_envs=config.num_envs,
-            deck_path=config.deck_path,
+            deck_pool=self._deck_pool,
             opponent=config.opponent,
             reward_shaping=config.reward_shaping,
             shaping_lp_weight=config.shaping_lp_weight,
@@ -362,7 +376,10 @@ class PPOTrainer:
                         if "terminal_reward" in info:
                             self._episode_rewards.append(info["terminal_reward"])
                             self._episode_lengths.append(info.get("episode_length", 0))
-                            self._episode_wins.append(1.0 if info["terminal_reward"] > 0 else 0.0)
+                            win = 1.0 if info["terminal_reward"] > 0 else 0.0
+                            self._episode_wins.append(win)
+                            if "agent_deck_idx" in info:
+                                self._deck_wins.setdefault(info["agent_deck_idx"], []).append(win)
 
                     obs = next_obs
                     global_step += config.num_envs
@@ -462,6 +479,14 @@ class PPOTrainer:
                             self._writer.add_scalar("episode/reward", np.mean(recent), global_step)
                             self._writer.add_scalar("episode/win_rate", np.mean(recent_wins), global_step)
                             self._writer.add_scalar("episode/length", np.mean(recent_lens), global_step)
+                        for deck_idx, wins_list in self._deck_wins.items():
+                            if wins_list:
+                                deck_name = Path(self.config.deck_paths[deck_idx]).stem
+                                self._writer.add_scalar(
+                                    f"episode/win_rate_deck_{deck_name}",
+                                    np.mean(wins_list[-100:]),
+                                    global_step,
+                                )
 
                 # --- Evaluation ---
                 if update % config.eval_interval == 0:
@@ -494,6 +519,38 @@ class PPOTrainer:
             return "model", spec[len("model:"):]
         return spec, ""
 
+    def _run_eval_episodes(
+        self, env: TrainingEnv, num_episodes: int,
+    ) -> tuple[int, dict[int, list[float]]]:
+        """Run evaluation episodes and return wins + per-deck breakdown.
+
+        Returns:
+            total_wins: number of episodes the agent won
+            per_deck: {agent_deck_idx: [1.0/0.0, ...]} win records
+        """
+        total_wins = 0
+        per_deck: dict[int, list[float]] = {}
+        for _ in range(num_episodes):
+            obs = env.reset()
+            done = False
+            while not done:
+                with torch.no_grad():
+                    t_cards = torch.from_numpy(obs["cards"]).unsqueeze(0).to(self.device)
+                    t_global = torch.from_numpy(obs["global_state"]).unsqueeze(0).to(self.device)
+                    t_actions = torch.from_numpy(obs["actions"]).unsqueeze(0).to(self.device)
+                    t_mask = torch.from_numpy(obs["action_mask"]).unsqueeze(0).to(self.device)
+
+                    logits, _ = self.network(t_cards, t_global, t_actions, t_mask)
+                    action = logits.argmax(dim=-1).item()
+
+                obs, reward, done, info = env.step(action)
+                if done:
+                    win = 1.0 if info.get("terminal_reward", 0) > 0 else 0.0
+                    total_wins += int(win)
+                    deck_idx = info.get("agent_deck_idx", 0)
+                    per_deck.setdefault(deck_idx, []).append(win)
+        return total_wins, per_deck
+
     def _evaluate(self, num_episodes: int, global_step: int) -> None:
         """Evaluate the agent against configured opponents."""
         self.network.eval()
@@ -502,9 +559,6 @@ class PPOTrainer:
             opp_type, opp_checkpoint = self._parse_opponent_spec(spec)
 
             # Build a human-readable label for logging / TensorBoard.
-            # Include the parent dir to disambiguate checkpoints with the
-            # same filename in different runs (e.g. run1/ckpt_100.pt vs
-            # run2/ckpt_100.pt → model_run1_ckpt_100 vs model_run2_ckpt_100).
             if opp_type == "model":
                 p = Path(opp_checkpoint)
                 parent = p.parent.name
@@ -512,33 +566,15 @@ class PPOTrainer:
             else:
                 label = opp_type
 
-            env_kwargs: dict = dict(
-                deck_path=self.config.deck_path,
+            env = TrainingEnv(
+                deck_pool=self._deck_pool,
                 opponent=spec,
                 reward_shaping=False,
                 seed=self.config.seed + 999999,
                 agent_player=self.config.agent_player,
             )
-
-            wins = 0
-            env = TrainingEnv(**env_kwargs)
             try:
-                for ep in range(num_episodes):
-                    obs = env.reset()
-                    done = False
-                    while not done:
-                        with torch.no_grad():
-                            t_cards = torch.from_numpy(obs["cards"]).unsqueeze(0).to(self.device)
-                            t_global = torch.from_numpy(obs["global_state"]).unsqueeze(0).to(self.device)
-                            t_actions = torch.from_numpy(obs["actions"]).unsqueeze(0).to(self.device)
-                            t_mask = torch.from_numpy(obs["action_mask"]).unsqueeze(0).to(self.device)
-
-                            logits, _ = self.network(t_cards, t_global, t_actions, t_mask)
-                            action = logits.argmax(dim=-1).item()
-
-                        obs, reward, done, info = env.step(action)
-                        if done and info.get("terminal_reward", 0) > 0:
-                            wins += 1
+                wins, per_deck = self._run_eval_episodes(env, num_episodes)
             finally:
                 env.close()
 
@@ -547,6 +583,20 @@ class PPOTrainer:
 
             if self._writer is not None:
                 self._writer.add_scalar(f"eval/win_rate_vs_{label}", win_rate, global_step)
+
+            # Per-deck breakdown
+            for deck_idx, deck_results in per_deck.items():
+                deck_name = Path(self.config.deck_paths[deck_idx]).stem
+                deck_wr = np.mean(deck_results)
+                logger.info(
+                    "  deck %s: %d/%d wins (%.1f%%)",
+                    deck_name, int(sum(deck_results)), len(deck_results), deck_wr * 100,
+                )
+                if self._writer is not None:
+                    self._writer.add_scalar(
+                        f"eval/win_rate_vs_{label}_deck_{deck_name}",
+                        deck_wr, global_step,
+                    )
 
         self.network.train()
 
@@ -565,6 +615,7 @@ class PPOTrainer:
             "episode_rewards": self._episode_rewards[-1000:],
             "episode_lengths": self._episode_lengths[-1000:],
             "episode_wins": self._episode_wins[-1000:],
+            "deck_wins": {k: v[-1000:] for k, v in self._deck_wins.items()},
         }, path)
 
         latest = save_dir / "checkpoint_latest.pt"

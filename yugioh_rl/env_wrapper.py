@@ -3,10 +3,25 @@
 from __future__ import annotations
 
 import multiprocessing as mp
-import numpy as np
+import random as stdlib_random
+from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from yugioh_env.models import YuGiOhAction
+
+DeckDict = dict[str, list[int]]  # {"main": [int, ...], "extra": [int, ...]}
+
+
+def parse_deck_pool(deck_paths: list[str]) -> list[DeckDict]:
+    """Pre-parse .ydk files into dicts for passing to worker processes.
+
+    Called once in the main process; the resulting list is picklable and
+    can be sent to TrainingEnv workers without further file I/O.
+    """
+    from yugioh_env.deck_parser import parse_ydk
+    return [parse_ydk(p) for p in deck_paths]
 
 
 def _obs_to_numpy(obs) -> dict[str, np.ndarray]:
@@ -28,7 +43,7 @@ class TrainingEnv:
 
     def __init__(
         self,
-        deck_path: str = "assets/decks/starter.ydk",
+        deck_pool: list[DeckDict],
         opponent: str = "greedy",
         reward_shaping: bool = True,
         shaping_lp_weight: float = 0.01,
@@ -36,6 +51,8 @@ class TrainingEnv:
         seed: int = 42,
         agent_player: str = "random",
     ) -> None:
+        if not deck_pool:
+            raise ValueError("deck_pool must not be empty")
         from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
 
         # Map config strings to environment values
@@ -43,7 +60,6 @@ class TrainingEnv:
         self._agent_player_setting = agent_player_map.get(agent_player, agent_player)
 
         env_config: dict[str, Any] = {
-            "deck_path": deck_path,
             "opponent": opponent,
             "agent_player": self._agent_player_setting,
         }
@@ -55,6 +71,12 @@ class TrainingEnv:
         self._seed = seed
         self._episode_count = 0
 
+        # Deck pool and sampling RNG (independent from duel RNG)
+        self._deck_pool = deck_pool
+        self._deck_rng = stdlib_random.Random(seed)
+        self._player_rng = stdlib_random.Random()
+        self._last_agent_deck_idx = -1
+
         # State for reward shaping
         self._prev_my_lp = 0
         self._prev_opp_lp = 0
@@ -63,9 +85,35 @@ class TrainingEnv:
     def reset(self) -> dict[str, np.ndarray]:
         """Reset the environment and return initial observation."""
         self._episode_count += 1
+        episode_seed = self._seed + self._episode_count
+
+        # Pre-resolve agent_player so we can map decks to correct engine
+        # positions (must match the environment's resolution logic).
+        if self._agent_player_setting == "random":
+            self._player_rng.seed(episode_seed)
+            resolved_player = self._player_rng.randint(0, 1)
+        else:
+            resolved_player = int(self._agent_player_setting)
+
+        # Sample agent and opponent decks independently
+        agent_deck_idx = self._deck_rng.randrange(len(self._deck_pool))
+        opp_deck_idx = self._deck_rng.randrange(len(self._deck_pool))
+        agent_deck = self._deck_pool[agent_deck_idx]
+        opp_deck = self._deck_pool[opp_deck_idx]
+
+        # Map agent/opponent to engine player 0/1
+        if resolved_player == 0:
+            deck0, deck1 = agent_deck, opp_deck
+        else:
+            deck0, deck1 = opp_deck, agent_deck
+
+        self._last_agent_deck_idx = agent_deck_idx
+
         obs = self._env.reset(
-            seed=self._seed + self._episode_count,
-            agent_player=self._agent_player_setting,
+            seed=episode_seed,
+            deck0=deck0,
+            deck1=deck1,
+            agent_player=resolved_player,
         )
         np_obs = _obs_to_numpy(obs)
 
@@ -96,6 +144,7 @@ class TrainingEnv:
         if done:
             info["terminal_reward"] = reward
             info["episode_length"] = self._env._step_count
+            info["agent_deck_idx"] = self._last_agent_deck_idx
 
             # Auto-reset: return first obs of new episode
             np_obs = self.reset()
@@ -106,15 +155,9 @@ class TrainingEnv:
 
     def _compute_advantage(self, gs: np.ndarray) -> int:
         """Compute card advantage from global state zone counts."""
-        # bytes 10=my_hand, 9=my_deck is not useful; use hand + field
-        my_hand = int(gs[10])
-        my_field = int(gs[11]) + int(gs[12])  # Actually: 9=deck,10=hand,11=grave...
         # Correct mapping from observation.py global state layout:
         # 9=my_deck, 10=my_hand, 11=my_grave, 12=my_banished, 13=my_extra
         # 14=opp_deck, 15=opp_hand, 16=opp_grave, 17=opp_banished, 18=opp_extra
-        # We approximate "field" cards from LP - deck - hand - grave - banished - extra
-        # Actually, zone counts in global state don't include mzone/szone directly.
-        # But we do have hand counts. Let's use hand differential as a simpler proxy.
         my_hand = int(gs[10])
         opp_hand = int(gs[15])
         return my_hand - opp_hand
@@ -177,7 +220,7 @@ class SubprocVecEnv:
     def __init__(
         self,
         num_envs: int,
-        deck_path: str = "assets/decks/starter.ydk",
+        deck_pool: list[DeckDict],
         opponent: str = "greedy",
         reward_shaping: bool = True,
         shaping_lp_weight: float = 0.01,
@@ -195,7 +238,7 @@ class SubprocVecEnv:
         for i in range(num_envs):
             parent_conn, child_conn = ctx.Pipe()
             env_kwargs = {
-                "deck_path": deck_path,
+                "deck_pool": deck_pool,
                 "opponent": opponent,
                 "reward_shaping": reward_shaping,
                 "shaping_lp_weight": shaping_lp_weight,

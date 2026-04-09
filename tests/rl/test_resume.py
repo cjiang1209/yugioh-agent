@@ -20,6 +20,7 @@ def _make_checkpoint(
     episode_rewards: list[float] | None = None,
     episode_lengths: list[int] | None = None,
     episode_wins: list[float] | None = None,
+    deck_wins: dict[int, list[float]] | None = None,
     omit_lists: bool = False,
 ) -> YuGiOhNet:
     """Create a checkpoint and return the network used to build it."""
@@ -51,6 +52,8 @@ def _make_checkpoint(
     if not omit_lists:
         data["episode_lengths"] = episode_lengths or [10, 20, 30]
         data["episode_wins"] = episode_wins or [1.0, 0.0, 1.0]
+    if deck_wins is not None:
+        data["deck_wins"] = deck_wins
 
     torch.save(data, path)
     return net
@@ -219,3 +222,52 @@ def test_resume_early_return_when_training_complete(tmp_path, caplog):
         trainer.train()
 
     assert "training already complete" in caplog.text
+
+
+def test_resume_restores_deck_wins(tmp_path):
+    """Per-deck win history should be restored from checkpoint."""
+    ckpt_path = str(tmp_path / "ckpt.pt")
+    saved_deck_wins = {0: [1.0, 0.0, 1.0], 1: [0.0, 0.0, 1.0]}
+    _make_checkpoint(ckpt_path, deck_wins=saved_deck_wins)
+
+    config = TrainingConfig(
+        save_dir=str(tmp_path),
+        num_envs=1,
+        resume_checkpoint=ckpt_path,
+    )
+    trainer = PPOTrainer(config)
+
+    assert trainer._deck_wins == saved_deck_wins
+
+
+def test_resume_backward_compat_missing_deck_wins(tmp_path):
+    """Old checkpoints without deck_wins should resume with empty dict."""
+    ckpt_path = str(tmp_path / "ckpt.pt")
+    _make_checkpoint(ckpt_path)  # no deck_wins
+
+    config = TrainingConfig(
+        save_dir=str(tmp_path),
+        num_envs=1,
+        resume_checkpoint=ckpt_path,
+    )
+    trainer = PPOTrainer(config)
+
+    assert trainer._deck_wins == {}
+
+
+def test_resume_restores_deck_paths(tmp_path):
+    """deck_paths should be restored from the checkpoint, not the CLI default."""
+    ckpt_path = str(tmp_path / "ckpt.pt")
+    original_paths = ["assets/decks/starter.ydk", "assets/decks/blue_eyes.ydk"]
+    ckpt_config = TrainingConfig(deck_paths=original_paths)
+    _make_checkpoint(ckpt_path, config=ckpt_config)
+
+    # Simulate resuming without re-specifying --deck-paths (CLI default)
+    resume_config = TrainingConfig(
+        save_dir=str(tmp_path),
+        num_envs=1,
+        resume_checkpoint=ckpt_path,
+    )
+    trainer = PPOTrainer(resume_config)
+
+    assert trainer.config.deck_paths == original_paths

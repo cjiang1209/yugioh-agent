@@ -63,6 +63,8 @@ def _make_trainer_stub(config: TrainingConfig) -> PPOTrainer:
     trainer.network = _FakeNetwork()
     trainer._episode_rewards = []
     trainer._writer = None
+    trainer._deck_pool = [{"main": list(range(1, 41)), "extra": []}]
+    trainer._deck_wins = {}
     return trainer
 
 
@@ -99,7 +101,7 @@ class TestEvaluatePassesCheckpoint:
             def step(self, action):
                 self._step += 1
                 done = self._step >= 2
-                info = {"terminal_reward": 1.0} if done else {}
+                info = {"terminal_reward": 1.0, "agent_deck_idx": 0} if done else {}
                 return _dummy_obs(), 0.0, done, info
 
             def close(self):
@@ -139,7 +141,7 @@ class TestEvaluatePassesCheckpoint:
                 return _dummy_obs()
 
             def step(self, action):
-                return _dummy_obs(), 0.0, True, {"terminal_reward": 1.0}
+                return _dummy_obs(), 0.0, True, {"terminal_reward": 1.0, "agent_deck_idx": 0}
 
             def close(self):
                 pass

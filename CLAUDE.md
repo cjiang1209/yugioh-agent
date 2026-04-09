@@ -79,6 +79,7 @@ Tests auto-skip when prerequisites are missing:
 - `tests/rl/test_card_embeddings.py`: TextEmbeddingLookup/network tests skip if `torch` not installed; `test_build_embeddings_output_structure` skips if `sentence-transformers` not installed
 - `tests/rl/test_checkpoint_init.py`: skips if `torch` not installed
 - `tests/rl/test_eval_opponents.py`: skips if `torch` not installed
+- `tests/rl/test_multi_deck.py`: skips if `torch` not installed
 - `tests/rl/test_resume.py`: skips if `torch` not installed
 - `tests/mud/test_protocol.py`: pure unit tests (uses FakeConnection), no external deps
 - `tests/mud/test_text_parser.py`: pure unit tests for duel prompt/event parsing, no external deps
@@ -204,7 +205,7 @@ pip install -e ".[embed]"  # adds sentence-transformers (for building card text 
 ### Running Training
 
 ```bash
-scripts/train.sh                                           # default: 8 envs, 1M steps, greedy opponent
+scripts/train.sh                                           # default: 8 envs, 1M steps, greedy opponent, starter deck
 scripts/train.sh --num-envs 4 --total-timesteps 500000     # fewer envs, shorter run
 scripts/train.sh --opponent random --no-reward-shaping      # sparse rewards only
 scripts/train.sh --opponent model:checkpoints/latest.pt    # self-play
@@ -220,6 +221,10 @@ scripts/train.sh --resume checkpoints/run1/checkpoint_100.pt --total-timesteps 2
 scripts/train.sh --eval-opponents greedy random                        # default eval opponents
 scripts/train.sh --eval-opponents greedy model:checkpoints/run1/latest.pt  # eval vs model checkpoint
 scripts/train.sh --eval-opponents greedy model:checkpoints/v1/latest.pt model:checkpoints/v2/latest.pt  # multiple models
+
+# Multi-deck training (agent and opponent each sample a deck from the pool per episode)
+scripts/train.sh --deck-paths assets/decks/starter.ydk assets/decks/blue_eyes.ydk assets/decks/dark_magician.ydk
+scripts/train.sh --deck-paths assets/decks/*.ydk           # glob all decks in the directory
 
 # Build card text embeddings (requires sentence-transformers)
 scripts/build_card_embeddings.sh                           # default: assets/cards.cdb → assets/card_text_embeddings.pt
@@ -268,6 +273,7 @@ Disable with `--no-reward-shaping`.
 7. **Semantic card embeddings (optional)**: The network supports two card embedding modes — **symbolic** (default: cards are arbitrary tokens, modulo-hashed into a learned embedding) and **semantic** (`--card-embeddings`: cards carry meaning from effect text). In semantic mode, `TextEmbeddingLookup` loads pre-computed sentence-transformer embeddings and uses `torch.searchsorted` for vectorized lookup by passcode. Frozen text vectors are projected via trainable `nn.Linear` and concatenated with a collision-free learned embedding. The embeddings file lives only in the trainer process — `SubprocVecEnv` workers never load it.
 8. **Incremental training from checkpoint**: `--init-checkpoint PATH` starts a new run (fresh directory, counters at 0) with model weights initialized from an existing checkpoint instead of random init. `--resume-optimizer` additionally loads optimizer state (momentum/variance), with LR overridden from the CLI. Architecture dimensions must match between checkpoint and CLI config; `PPOTrainer._validate_checkpoint_compat` checks this at startup. Text embedding mode must also be compatible (cannot add text embeddings to a symbolic checkpoint).
 9. **Resume interrupted training**: `--resume PATH` restores full training state (model weights, optimizer, update/step counters, episode tracking) and continues in the same run directory. The `--total-timesteps` CLI value is always recomputed — pass a higher value to extend training or a lower value (triggers early return if already past). `--resume` and `--init-checkpoint` are mutually exclusive. TensorBoard logs continue seamlessly via `purge_step`. **Known limitation — episode seed divergence**: on resume, `SubprocVecEnv` is created with the original `config.seed` and `vec_env.reset()` replays the episode seed sequence from the beginning, not from where the interrupted run left off. Training is unaffected (the model still learns), but the exact episode ordering will differ from a single uninterrupted run. Saving and restoring per-env RNG state is impractical given the multi-process architecture.
+10. **Multi-deck training**: `--deck-paths` accepts multiple `.ydk` files. The deck pool is pre-parsed once and sent to workers via pickle. Each episode, agent and opponent decks are sampled independently from the pool using a per-worker `random.Random(seed)` RNG (separate from the duel RNG). `TrainingEnv.reset()` pre-resolves the `agent_player` coin flip before assigning decks to engine player 0/1, so per-deck metrics are correctly attributed to the agent's deck regardless of turn order. Eval uses the same independent sampling, with per-deck and aggregate win rates logged to TensorBoard.
 
 ## MUD Server (yugioh-game)
 

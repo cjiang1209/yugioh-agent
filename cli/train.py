@@ -20,8 +20,9 @@ def parse_args() -> argparse.Namespace:
     env = parser.add_argument_group("environment")
     env.add_argument("--num-envs", type=int, default=8,
                      help="Number of parallel environments (default: 8)")
-    env.add_argument("--deck-path", type=str, default="assets/decks/starter.ydk",
-                     help="Path to .ydk deck file used for both players (default: assets/decks/starter.ydk)")
+    env.add_argument("--deck-paths", nargs="+", default=["assets/decks/starter.ydk"],
+                     help="One or more .ydk deck files; agent and opponent sample from this pool "
+                          "each episode (default: assets/decks/starter.ydk)")
     env.add_argument("--opponent", type=str, default="greedy",
                      help="Opponent spec: 'random', 'greedy', or 'model:path/to/checkpoint.pt' "
                           "(default: greedy)")
@@ -169,6 +170,13 @@ def validate_args(args: argparse.Namespace) -> None:
                 "--shaping-card-weight has no effect with --no-reward-shaping"
             )
 
+    # --deck-paths validation
+    for dp in args.deck_paths:
+        if not Path(dp).exists():
+            _fatal(f"deck file not found: {dp}")
+        if not dp.endswith(".ydk"):
+            _fatal(f"deck file must end with .ydk: {dp}")
+
     # --opponent validation
     _validate_opponent_spec(args.opponent, "--opponent")
 
@@ -204,7 +212,7 @@ def main() -> None:
 
     config = TrainingConfig(
         num_envs=args.num_envs,
-        deck_path=args.deck_path,
+        deck_paths=args.deck_paths,
         opponent=args.opponent,
         agent_player=args.agent_player,
         reward_shaping=not args.no_reward_shaping,
@@ -247,6 +255,9 @@ def main() -> None:
     with open(run_dir / "config.json", "w") as f:
         json.dump(asdict(config), f, indent=2)
     logger.info("Run directory: %s", run_dir)
+    if len(config.deck_paths) > 1:
+        logger.info("Multi-deck training: %d decks — %s", len(config.deck_paths),
+                     ", ".join(config.deck_paths))
 
     # Set random seeds
     random.seed(config.seed)
