@@ -37,16 +37,16 @@ export interface UseAIEngineReturn {
 // ─── Mapping helpers ─────────────────────────────────────────────────────────
 
 const CARD_IMAGE_BASE = "https://images.ygoprodeck.com/images/cards_small";
-
-let _instanceCounter = 0;
+const AUTO_PASS_CATEGORIES = new Set(["pass", "no"]);
 
 function engineCardToGameCard(
   card: EngineHandCard | EngineFieldCard,
+  side: "mine" | "opp",
   zone: string,
   seq: number,
 ): GameCard {
   const id = card.code || 0;
-  const instanceId = `e-${id}-${zone}-${seq}-${_instanceCounter++}`;
+  const instanceId = `${id}-${side}-${zone}-${seq}`;
   return {
     id,
     instanceId,
@@ -85,12 +85,13 @@ function mapPosition(pos: string): CardPosition {
 
 function engineFieldCardToFieldCard(
   card: EngineFieldCard,
+  side: "mine" | "opp",
   zone: string,
   seq: number,
 ): FieldCard {
   const position = mapPosition(card.position);
   return {
-    card: engineCardToGameCard(card, zone, seq),
+    card: engineCardToGameCard(card, side, zone, seq),
     position,
     faceDown: position === "FACE_DOWN_DEF" || position === "FACE_DOWN_ATK",
   };
@@ -113,10 +114,10 @@ function mapPhase(phase: string): Phase {
   }
 }
 
-function makeFaceDownHandCard(index: number): GameCard {
+function makeFaceDownCard(side: "mine" | "opp", zone: string, index: number): GameCard {
   return {
     id: 0,
-    instanceId: `e-opp-hand-${index}-${_instanceCounter++}`,
+    instanceId: `0-${side}-${zone}-${index}`,
     name: "Card",
     type: "Effect Monster",
     frameType: "effect",
@@ -130,25 +131,25 @@ function engineResponseToDuelState(resp: EngineResponse, log: string[]): DuelSta
 
   // Player (human, always player1 / bottom)
   const playerMonsters: (FieldCard | null)[] = (board.player.monsters ?? []).map(
-    (m, i) => m ? engineFieldCardToFieldCard(m, "mzone", i) : null,
+    (m, i) => m ? engineFieldCardToFieldCard(m, "mine", "mzone", i) : null,
   );
   const playerST: (FieldCard | null)[] = (board.player.spells_traps ?? []).map(
-    (m, i) => m ? engineFieldCardToFieldCard(m, "szone", i) : null,
+    (m, i) => m ? engineFieldCardToFieldCard(m, "mine", "szone", i) : null,
   );
 
   const player: PlayerState = {
     id: "player1",
     name: "You",
     lifePoints: board.player.lp,
-    hand: (board.player.hand ?? []).map((c, i) => engineCardToGameCard(c, "hand", i)),
-    deck: Array.from({ length: board.player.deck_count }, (_, i) => makeFaceDownHandCard(i)),
-    graveyard: (board.player.graveyard ?? []).map((c, i) => engineCardToGameCard(c, "grave", i)),
-    banished: (board.player.banished ?? []).map((c, i) => engineCardToGameCard(c, "banished", i)),
-    extraDeck: (board.player.extra_deck ?? []).map((c, i) => engineCardToGameCard(c, "extra", i)),
+    hand: (board.player.hand ?? []).map((c, i) => engineCardToGameCard(c, "mine", "hand", i)),
+    deck: Array.from({ length: board.player.deck_count }, (_, i) => makeFaceDownCard("mine", "deck", i)),
+    graveyard: (board.player.graveyard ?? []).map((c, i) => engineCardToGameCard(c, "mine", "grave", i)),
+    banished: (board.player.banished ?? []).map((c, i) => engineCardToGameCard(c, "mine", "banished", i)),
+    extraDeck: (board.player.extra_deck ?? []).map((c, i) => engineCardToGameCard(c, "mine", "extra", i)),
     monsterZones: playerMonsters,
     spellTrapZones: playerST,
     fieldZone: board.player.field_zone
-      ? engineFieldCardToFieldCard(board.player.field_zone, "field", 0)
+      ? engineFieldCardToFieldCard(board.player.field_zone, "mine", "field", 0)
       : null,
     extraMonsterZone: null,
     hasNormalSummoned: false,
@@ -157,25 +158,25 @@ function engineResponseToDuelState(resp: EngineResponse, log: string[]): DuelSta
 
   // Opponent (always player2 / top)
   const oppMonsters: (FieldCard | null)[] = (board.opponent.monsters ?? []).map(
-    (m, i) => m ? engineFieldCardToFieldCard(m, "opp-mzone", i) : null,
+    (m, i) => m ? engineFieldCardToFieldCard(m, "opp", "mzone", i) : null,
   );
   const oppST: (FieldCard | null)[] = (board.opponent.spells_traps ?? []).map(
-    (m, i) => m ? engineFieldCardToFieldCard(m, "opp-szone", i) : null,
+    (m, i) => m ? engineFieldCardToFieldCard(m, "opp", "szone", i) : null,
   );
 
   const opponent: PlayerState = {
     id: "player2",
     name: "Opponent",
     lifePoints: board.opponent.lp,
-    hand: Array.from({ length: board.opponent.hand_count }, (_, i) => makeFaceDownHandCard(i)),
-    deck: Array.from({ length: board.opponent.deck_count }, (_, i) => makeFaceDownHandCard(i)),
-    graveyard: (board.opponent.graveyard ?? []).map((c, i) => engineCardToGameCard(c, "opp-grave", i)),
-    banished: (board.opponent.banished ?? []).map((c, i) => engineCardToGameCard(c, "opp-banished", i)),
-    extraDeck: Array.from({ length: board.opponent.extra_deck_count }, (_, i) => makeFaceDownHandCard(i)),
+    hand: Array.from({ length: board.opponent.hand_count }, (_, i) => makeFaceDownCard("opp", "hand", i)),
+    deck: Array.from({ length: board.opponent.deck_count }, (_, i) => makeFaceDownCard("opp", "deck", i)),
+    graveyard: (board.opponent.graveyard ?? []).map((c, i) => engineCardToGameCard(c, "opp", "grave", i)),
+    banished: (board.opponent.banished ?? []).map((c, i) => engineCardToGameCard(c, "opp", "banished", i)),
+    extraDeck: Array.from({ length: board.opponent.extra_deck_count }, (_, i) => makeFaceDownCard("opp", "extra", i)),
     monsterZones: oppMonsters,
     spellTrapZones: oppST,
     fieldZone: board.opponent.field_zone
-      ? engineFieldCardToFieldCard(board.opponent.field_zone, "opp-field", 0)
+      ? engineFieldCardToFieldCard(board.opponent.field_zone, "opp", "field", 0)
       : null,
     extraMonsterZone: null,
     hasNormalSummoned: false,
@@ -211,9 +212,6 @@ export function useAIEngine(apiUrl: string = "http://localhost:8000"): UseAIEngi
   const [status, setStatus] = useState<AIEngineStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const logRef = useRef<string[]>([]);
-
-  // Auto-pass categories that should be submitted without prompting
-  const AUTO_PASS_CATEGORIES = new Set(["pass", "no"]);
 
   const submitRef = useRef<(index: number) => Promise<void>>(undefined);
 

@@ -43,7 +43,7 @@ interface ContextMenuState {
   items: { label: string; action: () => void; color?: string; disabled?: boolean }[];
 }
 
-/** Stable card locator — survives state refreshes (unlike instanceId). */
+/** Stable card locator — matches card.instanceId format from useAIEngine. */
 type BoardZone = "hand" | "mzone" | "szone" | "emz" | "field";
 type CardLocator = { cardCode: number; side: "mine" | "opp"; zone: BoardZone; seq: number };
 
