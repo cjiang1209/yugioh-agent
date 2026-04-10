@@ -71,7 +71,10 @@ body {
 
 .flex { min-width: 0; min-height: 0; }
 
-.card-zone {
+/* ── Zone base styles ─────────────────────────────────────────────────── */
+.card-zone,
+.card-zone-field,
+.card-zone-emz {
   position: relative;
   display: flex;
   align-items: center;
@@ -79,15 +82,38 @@ body {
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.15s ease;
-  border: 1px solid rgba(0, 245, 255, 0.35);
-  background: rgba(0, 245, 255, 0.05);
   flex-shrink: 0;
 }
-.card-zone:hover {
+.card-zone-field,
+.card-zone-emz {
+  width: 100px;
+  height: 140px;
+}
+.card-zone {
+  border: 1px solid rgba(0, 245, 255, 0.35);
+  background: rgba(0, 245, 255, 0.05);
+}
+.card-zone-field {
+  border-radius: 0.3rem;
+  border: 1px dashed rgba(0, 245, 255, 0.3);
+  background: rgba(0, 245, 255, 0.04);
+}
+.card-zone-emz {
+  border: 1px dashed rgba(255, 215, 0, 0.4);
+  background: rgba(255, 215, 0, 0.04);
+}
+.card-zone:hover,
+.card-zone-field:hover {
   border-color: rgba(0, 245, 255, 0.7);
   background: rgba(0, 245, 255, 0.1);
   box-shadow: 0 0 14px rgba(0, 245, 255, 0.35);
 }
+.card-zone-emz:hover {
+  border-color: rgba(255, 215, 0, 0.8);
+  background: rgba(255, 215, 0, 0.1);
+  box-shadow: 0 0 14px rgba(255, 215, 0, 0.35);
+}
+/* ── Zone state classes (after base styles so they win the cascade) ──── */
 .card-highlight {
   border: 2px solid rgb(var(--hl-rgb, 0 245 255));
   box-shadow: 0 0 12px rgb(var(--hl-rgb, 0 245 255) / 0.6);
@@ -103,18 +129,18 @@ body {
   from { box-shadow: 0 0 4px rgb(var(--hl-rgb, 0 245 255) / 0.15); }
   to   { box-shadow: 0 0 20px rgb(var(--hl-rgb, 0 245 255) / 0.8); }
 }
-.card-zone.selected {
+.selected {
   border-color: var(--neon-pink);
   background: rgba(255, 45, 120, 0.1);
   box-shadow: 0 0 16px rgba(255, 45, 120, 0.5);
 }
-.card-zone.valid-target {
+.valid-target {
   border-color: var(--neon-yellow);
   background: rgba(245, 230, 66, 0.08);
   box-shadow: 0 0 14px rgba(245, 230, 66, 0.4);
   animation: pulse-target 0.8s ease-in-out infinite alternate;
 }
-.card-zone.can-place {
+.can-place {
   border-color: var(--neon-green);
   background: rgba(57, 255, 20, 0.06);
   box-shadow: 0 0 10px rgba(57, 255, 20, 0.3);

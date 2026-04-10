@@ -17,7 +17,7 @@ interface CardZoneProps {
   showLabel?: boolean;
 }
 
-const CARD_BACK_URL = "https://images.ygoprodeck.com/images/cards/back_high.jpg";
+export const CARD_BACK_URL = "https://images.ygoprodeck.com/images/cards/back_high.jpg";
 
 // Natural card dimensions — always displayed at true size
 const CARD_SIZES = {

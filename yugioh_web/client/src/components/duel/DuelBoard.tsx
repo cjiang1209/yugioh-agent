@@ -10,7 +10,7 @@ import {
 } from "../../../../shared/gameTypes";
 import { ActionMenu } from "./ActionMenu";
 import { CardTooltip } from "./CardTooltip";
-import { CardZone, HandCard } from "./CardZone";
+import { CARD_BACK_URL, CardZone, HandCard } from "./CardZone";
 import { DuelLog } from "./DuelLog";
 import { ZoneViewer } from "./ZoneViewer";
 import { LifePoints } from "./LifePoints";
@@ -599,44 +599,36 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
     const actionHighlighted = isActionableSlot && !!slot;
     return (
       <div
-        className={[highlighted ? "card-highlight" : "", actionHighlighted ? "actionable" : ""].filter(Boolean).join(" ")}
+        className={[
+          "card-zone-emz",
+          highlighted ? "card-highlight" : "",
+          actionHighlighted ? "actionable" : "",
+          canPlace ? "can-place" : "",
+        ].filter(Boolean).join(" ")}
         onClick={onClick}
         title={slot ? slot.card.name : "Extra Monster Zone"}
-        style={{
-          width: "100px",
-          height: "140px",
-          borderRadius: "0.3rem",
-          overflow: "visible",
-          border: (highlighted || actionHighlighted) ? undefined : canPlace
-            ? "2px solid var(--neon-cyan)"
-            : slot
-            ? "2px solid rgba(255,215,0,0.8)"
-            : "1px dashed rgba(255,215,0,0.4)",
-          background: slot ? "transparent" : "rgba(255,215,0,0.04)",
-          boxShadow: (highlighted || actionHighlighted) ? undefined : slot
-            ? "0 0 12px rgba(255,215,0,0.5), inset 0 0 8px rgba(255,215,0,0.1)"
-            : canPlace
-            ? "0 0 8px rgba(0,245,255,0.5)"
-            : "0 0 6px rgba(255,215,0,0.15)",
-          cursor: "pointer",
-          flexShrink: 0,
-          position: "relative",
-        }}
+        style={{ overflow: "visible" }}
       >
         {slot ? (
-          <div style={{ width: "100%", height: "100%", position: "relative" }}>
-            <img
-              src={`https://images.ygoprodeck.com/images/cards_small/${slot.card.id}.jpg`}
-              alt={slot.card.name}
+          <div className="w-full h-full relative">
+            <div
+              className="w-full h-full"
               style={{
-                width: slot.position === "DEF" ? "140px" : "100%",
-                height: slot.position === "DEF" ? "100px" : "100%",
-                objectFit: "cover",
-                transform: slot.position === "DEF" ? "rotate(90deg) translateX(-20px) translateY(20px)" : "none",
-                transformOrigin: "center center",
+                transform: (slot.position === "DEF" || slot.position === "FACE_DOWN_DEF") ? "rotate(90deg)" : "none",
+                transition: "transform 0.2s ease",
               }}
-              onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-            />
+            >
+              {slot.faceDown ? (
+                <div className="card-back w-full h-full" />
+              ) : (
+                <img
+                  src={`https://images.ygoprodeck.com/images/cards_small/${slot.card.id}.jpg`}
+                  alt={slot.card.name}
+                  className="w-full h-full object-cover rounded-sm"
+                  onError={(e) => { (e.target as HTMLImageElement).src = CARD_BACK_URL; }}
+                />
+              )}
+            </div>
             <div
               style={{
                 position: "absolute",
@@ -925,7 +917,6 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
     const fieldSide = isMine ? "mine" : "opp";
     const isDetailSel = isLocatorMatch(fieldCard?.card.id, fieldSide, "field", 0);
     const isFieldActionable = isActionable(fieldCard?.card.id, fieldSide, "field", 0);
-    const fieldHighlight = isDetailSel || isFieldActionable;
 
     const handleFieldClick = isMine ? handleMyFieldZoneClick : () => {
       if (fieldCard && !fieldCard.faceDown) selectCardForDetail(fieldCard.card, "opp", "field", 0);
@@ -933,39 +924,27 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
 
     return (
       <div
-        className={[isDetailSel ? "card-highlight" : "", isFieldActionable ? "actionable" : ""].filter(Boolean).join(" ")}
+        className={[
+          "card-zone-field",
+          isDetailSel ? "card-highlight" : "",
+          isFieldActionable ? "actionable" : "",
+          canPlaceField ? "can-place" : "",
+        ].filter(Boolean).join(" ")}
         onClick={handleFieldClick}
         title={fieldCard ? fieldCard.card.name : "Field Zone"}
-        style={{
-          width: "100px",
-          height: "140px",
-          borderRadius: "0.3rem",
-          overflow: "hidden",
-          border: fieldHighlight ? undefined : canPlaceField
-            ? "2px solid var(--neon-cyan)"
-            : fieldCard
-            ? "2px solid rgba(0,245,255,0.7)"
-            : "1px dashed rgba(0,245,255,0.3)",
-          background: fieldCard
-            ? "transparent"
-            : "rgba(0,245,255,0.04)",
-          boxShadow: fieldHighlight ? undefined : fieldCard
-            ? "0 0 10px rgba(0,245,255,0.4), inset 0 0 8px rgba(0,245,255,0.1)"
-            : canPlaceField
-            ? "0 0 8px rgba(0,245,255,0.5)"
-            : "none",
-          cursor: "pointer",
-          flexShrink: 0,
-          position: "relative",
-        }}
+        style={{ overflow: "hidden" }}
       >
         {fieldCard ? (
-          <img
-            src={`https://images.ygoprodeck.com/images/cards_small/${fieldCard.card.id}.jpg`}
-            alt={fieldCard.card.name}
-            className="w-full h-full object-cover"
-            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-          />
+          fieldCard.faceDown ? (
+            <div className="card-back w-full h-full" />
+          ) : (
+            <img
+              src={`https://images.ygoprodeck.com/images/cards_small/${fieldCard.card.id}.jpg`}
+              alt={fieldCard.card.name}
+              className="w-full h-full object-cover"
+              onError={(e) => { (e.target as HTMLImageElement).src = CARD_BACK_URL; }}
+            />
+          )
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center gap-0.5">
             <span style={{ fontSize: "clamp(0.7rem, 1.4vw, 1.2rem)", opacity: 0.5 }}>🌐</span>
