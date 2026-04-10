@@ -277,26 +277,27 @@ body {
 /* Natural card size — no overrides on small screens; board scrolls horizontally */
 
 /* ── Board center alignment ────────────────────────────────────────────────
-   Both player areas use .board-center-row so the 5 zone columns are always
-   on the same horizontal axis. The field zone slots (.board-field-left /
-   .board-field-right) have a fixed width equal to the field zone card width
-   so the zone grid is always centered at the same position.
+   All zone rows (monster, S/T, EMZ) use .board-center-row so the 5 zone
+   columns stay on the same horizontal axis. Flank columns are fixed at
+   212px = GY(100) + gap(12) + Banished(100). Single-zone flanks edge-align
+   toward the center grid.
 */
 .board-center-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 32px;
 }
 
-.board-field-left,
-.board-field-right {
-  /* Match the field zone card width so the grid stays centered */
-  width: 100px;
+.board-flank-left,
+.board-flank-right {
+  width: 212px;          /* GY(100) + gap(12) + Banished(100) */
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 12px;
 }
+.board-flank-left  { justify-content: flex-end; }
+.board-flank-right { justify-content: flex-start; }
 
 /* ── Damage step animations ─────────────────────────────────────── */
 @keyframes lp-damage-flash {

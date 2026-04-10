@@ -706,12 +706,12 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
     };
 
     return (
-      // Wrap in the same board-center-row + field spacers as the zone grid rows
+      // Wrap in board-center-row + 204px flank spacers matching zone grid rows
       // so horizontal centering is identical.
       <div className="flex justify-center">
         <div className="board-center-row">
-          {/* field-left spacer (matches opponent's empty field-left) */}
-          <div style={{ width: "100px", flexShrink: 0 }} />
+          {/* flank-left spacer (matches 212px flank columns) */}
+          <div style={{ width: "212px", flexShrink: 0 }} />
 
           {/* 5-column grid:
                col 1 = my EMZ (2nd zone from my left = screen col 1)
@@ -734,8 +734,8 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
             <div style={{ width: `${CARD_W}px`, flexShrink: 0 }} />
           </div>
 
-          {/* field-right spacer (matches my empty field-right) */}
-          <div style={{ width: "100px", flexShrink: 0 }} />
+          {/* flank-right spacer (matches 212px flank columns) */}
+          <div style={{ width: "212px", flexShrink: 0 }} />
         </div>
       </div>
     );
@@ -773,11 +773,10 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
   // ─── Render helpers ─────────────────────────────────────────────────────────
 
   /**
-   * Renders both monster row and spell/trap row in a single aligned grid,
-   * with each column (0-4) sharing the same horizontal position.
-   * The field zone is placed outside this grid.
+   * Returns the monster row and spell/trap row as separate elements so the
+   * parent can wrap each in its own board-center-row with different flanks.
    */
-  function renderZoneGrid(player: PlayerState, side: "mine" | "opponent") {
+  function renderZoneRows(player: PlayerState, side: "mine" | "opponent") {
     const isMine = side === "mine";
 
     const monsterRow = (
@@ -850,13 +849,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
       </div>
     );
 
-    return (
-      <div className="flex flex-col items-center" style={{ gap: "8px" }}>
-        {/* Opponent: S/T on top, Monster below. Player: Monster on top, S/T below. */}
-        {isMine ? monsterRow : spellTrapRow}
-        {isMine ? spellTrapRow : monsterRow}
-      </div>
-    );
+    return { monsterRow, spellTrapRow };
   }
 
   // ─── Field Zone ────────────────────────────────────────────────────────────
@@ -923,57 +916,54 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
     );
   }
 
-  function renderDeckZone(player: PlayerState, label: string, isMine = false) {
+  function renderDeckZone(player: PlayerState, isMine = false) {
     const showDrawPrompt = isMine && isMyTurn && phase === "DRAW" && player.deck.length > 0 && !player.hasDrawn;
     return (
       <div
-        className="flex flex-col items-center gap-0.5 cursor-pointer"
-        title={showDrawPrompt ? "Click to draw a card" : `${label}: ${player.deck.length} cards`}
-        style={{ position: "relative" }}
+        className="relative rounded overflow-hidden cursor-pointer"
+        title={showDrawPrompt ? "Click to draw a card" : `Deck: ${player.deck.length} cards`}
+        style={{
+          width: "100px",
+          height: "140px",
+          flexShrink: 0,
+          border: showDrawPrompt ? "1px solid rgba(0,245,255,0.8)" : "1px solid rgba(0,245,255,0.35)",
+          boxShadow: showDrawPrompt ? "0 0 14px rgba(0,245,255,0.7), 0 0 28px rgba(0,245,255,0.3)" : "0 0 6px rgba(0,245,255,0.15)",
+          transition: "box-shadow 0.2s ease",
+        }}
         onClick={showDrawPrompt ? () => onAction({ type: "DRAW_CARD" }) : undefined}
       >
-        <div style={{ position: "relative" }}>
+        <div
+          className="card-back w-full h-full"
+          style={{ opacity: player.deck.length > 0 ? 1 : 0.2 }}
+        />
+        {showDrawPrompt && (
           <div
-            className="card-back rounded"
+            className="draw-icon-blink"
             style={{
-              width: "71px",
-              height: "100px",
-              opacity: player.deck.length > 0 ? 1 : 0.2,
-              boxShadow: showDrawPrompt ? "0 0 14px rgba(0,245,255,0.7), 0 0 28px rgba(0,245,255,0.3)" : undefined,
-              border: showDrawPrompt ? "1px solid rgba(0,245,255,0.8)" : undefined,
-              transition: "box-shadow 0.2s ease",
+              position: "absolute",
+              inset: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "clamp(1rem, 2.2vw, 1.6rem)",
+              color: "var(--neon-cyan)",
+              pointerEvents: "none",
             }}
-          />
-          {showDrawPrompt && (
-            <div
-              className="draw-icon-blink"
-              style={{
-                position: "absolute",
-                inset: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "clamp(1rem, 2.2vw, 1.6rem)",
-                color: "var(--neon-cyan)",
-                pointerEvents: "none",
-              }}
-            >
-              ✦
-            </div>
-          )}
-        </div>
-        <span
+          >
+            ✦
+          </div>
+        )}
+        <div
+          className="absolute bottom-0 left-0 right-0 text-center font-bold"
           style={{
-            fontFamily: "'Share Tech Mono', monospace",
-            fontSize: "clamp(0.55rem, 1.1vw, 0.85rem)",
-            fontWeight: 700,
+            fontSize: "0.65rem",
+            paddingBlock: "2px",
+            background: "rgba(0,0,0,0.8)",
             color: "var(--neon-cyan)",
-            textShadow: "0 0 6px rgba(0,245,255,0.8), 0 0 12px rgba(0,245,255,0.4)",
-            letterSpacing: "0.05em",
           }}
         >
           {player.deck.length}
-        </span>
+        </div>
       </div>
     );
   }
@@ -981,97 +971,81 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
   function renderGraveyardZone(player: PlayerState, side: PlayerSide) {
     const relSide = side === mySide ? "mine" : "opp";
     const topCard = player.graveyard[player.graveyard.length - 1];
-    const topBanished = player.banished[player.banished.length - 1];
     const gyActionable = actionableZones.has(`${relSide}-grave`);
+    return (
+      <div
+        className={`relative rounded overflow-hidden cursor-pointer${gyActionable ? " actionable" : ""}`}
+        title={`Graveyard: ${player.graveyard.length} cards`}
+        onClick={() => setZoneViewer({ side, tab: "graveyard" })}
+        style={{
+          width: "100px",
+          height: "140px",
+          flexShrink: 0,
+          "--hl-rgb": "255 45 120",
+          border: gyActionable ? undefined : "1px solid rgba(255,45,120,0.6)",
+          background: "rgba(255,45,120,0.08)",
+          boxShadow: gyActionable ? undefined : "0 0 6px rgba(255,45,120,0.2)",
+        } as React.CSSProperties}
+      >
+        {topCard ? (
+          <img
+            src={`https://images.ygoprodeck.com/images/cards_small/${topCard.id}.jpg`}
+            alt={topCard.name}
+            className="w-full h-full object-cover opacity-70"
+            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <span style={{ color: "var(--neon-pink)", fontSize: "1.2rem", opacity: 0.6, textShadow: "0 0 6px rgba(255,45,120,0.5)" }}>⚰</span>
+          </div>
+        )}
+        <div
+          className="absolute bottom-0 left-0 right-0 text-center font-bold"
+          style={{ fontSize: "0.65rem", paddingBlock: "2px", background: "rgba(0,0,0,0.8)", color: "var(--neon-pink)" }}
+        >
+          {player.graveyard.length}
+        </div>
+      </div>
+    );
+  }
+
+  function renderBanishedZone(player: PlayerState, side: PlayerSide) {
+    const relSide = side === mySide ? "mine" : "opp";
+    const topBanished = player.banished[player.banished.length - 1];
     const banActionable = actionableZones.has(`${relSide}-banished`);
     return (
-      <div className="flex items-end gap-1">
-        {/* Graveyard */}
-        <div
-          className="flex flex-col items-center gap-0.5 cursor-pointer"
-          title={`Graveyard: ${player.graveyard.length} cards`}
-          onClick={() => setZoneViewer({ side, tab: "graveyard" })}
-        >
-          <div
-            className={`rounded overflow-hidden${gyActionable ? " actionable" : ""}`}
-            style={{
-              width: "71px",
-              height: "100px",
-              "--hl-rgb": "255 45 120",
-              border: gyActionable ? undefined : "1px solid rgba(255,45,120,0.6)",
-              background: "rgba(255,45,120,0.08)",
-              boxShadow: gyActionable ? undefined : "0 0 6px rgba(255,45,120,0.2)",
-            } as React.CSSProperties}
-          >
-            {topCard ? (
-              <img
-                src={`https://images.ygoprodeck.com/images/cards_small/${topCard.id}.jpg`}
-                alt={topCard.name}
-                className="w-full h-full object-cover opacity-70"
-                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center">
-                <span style={{ color: "var(--neon-pink)", fontSize: "1rem", opacity: 0.6, textShadow: "0 0 6px rgba(255,45,120,0.5)" }}>⚰</span>
-              </div>
-            )}
+      <div
+        className={`relative rounded overflow-hidden cursor-pointer${banActionable ? " actionable" : ""}`}
+        title={`Banished: ${player.banished.length} cards`}
+        onClick={() => setZoneViewer({ side, tab: "banished" })}
+        style={{
+          width: "100px",
+          height: "140px",
+          flexShrink: 0,
+          "--hl-rgb": "180 79 255",
+          border: banActionable ? undefined : "1px solid rgba(180,79,255,0.6)",
+          background: "rgba(180,79,255,0.08)",
+          boxShadow: banActionable ? undefined : "0 0 6px rgba(180,79,255,0.2)",
+        } as React.CSSProperties}
+      >
+        {topBanished ? (
+          <img
+            src={`https://images.ygoprodeck.com/images/cards_small/${topBanished.id}.jpg`}
+            alt={topBanished.name}
+            className="w-full h-full object-cover opacity-70"
+            style={{ filter: "hue-rotate(60deg) brightness(0.8)" }}
+            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <span style={{ color: "#b44fff", fontSize: "1.1rem", opacity: 0.6, textShadow: "0 0 6px rgba(180,79,255,0.5)" }}>✦</span>
           </div>
-          <span
-            style={{
-              fontFamily: "'Share Tech Mono', monospace",
-              fontSize: "clamp(0.55rem, 1.1vw, 0.85rem)",
-              fontWeight: 700,
-              color: "var(--neon-pink)",
-              textShadow: "0 0 6px rgba(255,45,120,0.8), 0 0 12px rgba(255,45,120,0.4)",
-              letterSpacing: "0.05em",
-            }}
-          >
-            {player.graveyard.length}
-          </span>
-        </div>
-        {/* Banished */}
+        )}
         <div
-          className="flex flex-col items-center gap-0.5 cursor-pointer"
-          title={`Banished: ${player.banished.length} cards`}
-          onClick={() => setZoneViewer({ side, tab: "banished" })}
+          className="absolute bottom-0 left-0 right-0 text-center font-bold"
+          style={{ fontSize: "0.65rem", paddingBlock: "2px", background: "rgba(0,0,0,0.8)", color: "#b44fff" }}
         >
-          <div
-            className={`rounded overflow-hidden${banActionable ? " actionable" : ""}`}
-            style={{
-              width: "71px",
-              height: "100px",
-              "--hl-rgb": "180 79 255",
-              border: banActionable ? undefined : "1px solid rgba(180,79,255,0.6)",
-              background: "rgba(180,79,255,0.08)",
-              boxShadow: banActionable ? undefined : "0 0 6px rgba(180,79,255,0.2)",
-            } as React.CSSProperties}
-          >
-            {topBanished ? (
-              <img
-                src={`https://images.ygoprodeck.com/images/cards_small/${topBanished.id}.jpg`}
-                alt={topBanished.name}
-                className="w-full h-full object-cover opacity-70"
-                style={{ filter: "hue-rotate(60deg) brightness(0.8)" }}
-                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center">
-                <span style={{ color: "#b44fff", fontSize: "0.9rem", opacity: 0.6, textShadow: "0 0 6px rgba(180,79,255,0.5)" }}>✦</span>
-              </div>
-            )}
-          </div>
-          <span
-            style={{
-              fontFamily: "'Share Tech Mono', monospace",
-              fontSize: "clamp(0.55rem, 1.1vw, 0.85rem)",
-              fontWeight: 700,
-              color: "#b44fff",
-              textShadow: "0 0 6px rgba(180,79,255,0.8), 0 0 12px rgba(180,79,255,0.4)",
-              letterSpacing: "0.05em",
-            }}
-          >
-            {player.banished.length}
-          </span>
+          {player.banished.length}
         </div>
       </div>
     );
@@ -1083,38 +1057,29 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
     const count = player.extraDeck.length;
     return (
       <div
-        className="flex flex-col items-center gap-0.5 cursor-pointer"
+        className={`relative rounded overflow-hidden cursor-pointer${extraActionable ? " actionable" : ""}`}
         title={`Extra Deck: ${count} cards`}
         onClick={() => setZoneViewer({ side, tab: "extra" })}
+        style={{
+          width: "100px",
+          height: "140px",
+          flexShrink: 0,
+          "--hl-rgb": "255 215 0",
+          border: extraActionable ? undefined : "1px solid rgba(255,215,0,0.6)",
+          background: "rgba(255,215,0,0.08)",
+          boxShadow: extraActionable ? undefined : "0 0 6px rgba(255,215,0,0.2)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        } as React.CSSProperties}
       >
+        <span style={{ color: "#ffd700", fontSize: "1.2rem", opacity: count > 0 ? 0.85 : 0.3, textShadow: "0 0 6px rgba(255,215,0,0.5)" }}>★</span>
         <div
-          className={`rounded overflow-hidden${extraActionable ? " actionable" : ""}`}
-          style={{
-            width: "71px",
-            height: "100px",
-            "--hl-rgb": "255 215 0",
-            border: extraActionable ? undefined : "1px solid rgba(255,215,0,0.6)",
-            background: "rgba(255,215,0,0.08)",
-            boxShadow: extraActionable ? undefined : "0 0 6px rgba(255,215,0,0.2)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          } as React.CSSProperties}
-        >
-          <span style={{ color: "#ffd700", fontSize: "1rem", opacity: count > 0 ? 0.85 : 0.3, textShadow: "0 0 6px rgba(255,215,0,0.5)" }}>★</span>
-        </div>
-        <span
-          style={{
-            fontFamily: "'Share Tech Mono', monospace",
-            fontSize: "clamp(0.55rem, 1.1vw, 0.85rem)",
-            fontWeight: 700,
-            color: "#ffd700",
-            textShadow: "0 0 6px rgba(255,215,0,0.8), 0 0 12px rgba(255,215,0,0.4)",
-            letterSpacing: "0.05em",
-          }}
+          className="absolute bottom-0 left-0 right-0 text-center font-bold"
+          style={{ fontSize: "0.65rem", paddingBlock: "2px", background: "rgba(0,0,0,0.8)", color: "#ffd700" }}
         >
           {count}
-        </span>
+        </div>
       </div>
     );
   }
@@ -1148,6 +1113,9 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
 
   // ─── Main render ────────────────────────────────────────────────────────────
 
+  const oppRows = renderZoneRows(opponentPlayer, "opponent");
+  const myRows = renderZoneRows(myPlayer, "mine");
+
   return (
     <div
       className="flex h-full w-full"
@@ -1168,8 +1136,8 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
           className="flex flex-col flex-shrink-0"
           style={{ borderBottom: "1px solid rgba(255,45,120,0.35)" }}
         >
-          {/* Opponent info bar */}
-          <div className="flex items-center justify-between px-3 py-1.5 flex-shrink-0">
+          {/* Opponent info bar (LP only) */}
+          <div className="flex items-center px-3 py-1.5 flex-shrink-0">
             <LifePoints
               name={opponentPlayer.name}
               lp={opponentPlayer.lifePoints}
@@ -1177,20 +1145,14 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
               isOpponent
               flash={lpFlash.opp}
             />
-            <div className="flex items-center gap-2">
-              {renderExtraDeckZone(opponentPlayer, opponentSide)}
-              {renderGraveyardZone(opponentPlayer, opponentSide)}
-              {renderDeckZone(opponentPlayer, "Deck")}
-            </div>
           </div>
 
           {/* Opponent hand */}
           {(() => {
             const oppHand = opponentPlayer.hand;
             const oppPile = oppHand.length >= 10;
-            const PILE_W = 932; // fixed container width = 9-card spread (9×100 + 8×4)
+            const PILE_W = 932;
             const CARD_W = 100;
-            // Maximize spread: fill the full container width, tighten with more cards
             const oppStep = oppPile && oppHand.length > 1
               ? Math.floor((PILE_W - CARD_W) / (oppHand.length - 1))
               : CARD_W;
@@ -1216,13 +1178,26 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
             );
           })()}
 
-
-          {/* Opponent zones — field zone RIGHT, grid CENTER */}
-          <div className="py-1.5 flex-shrink-0 flex justify-center">
+          {/* Opponent zones — official mat layout (mirrored) */}
+          <div className="py-1.5 flex-shrink-0 flex flex-col items-center" style={{ gap: "8px" }}>
+            {/* S/T row (top for opponent) */}
             <div className="board-center-row">
-              <div className="board-field-left" />{/* empty spacer to mirror player side */}
-              {renderZoneGrid(opponentPlayer, "opponent")}
-              <div className="board-field-right">
+              <div className="board-flank-left">
+                {renderDeckZone(opponentPlayer)}
+              </div>
+              {oppRows.spellTrapRow}
+              <div className="board-flank-right">
+                {renderExtraDeckZone(opponentPlayer, opponentSide)}
+              </div>
+            </div>
+            {/* Monster row (bottom, closer to center) */}
+            <div className="board-center-row">
+              <div className="board-flank-left">
+                {renderBanishedZone(opponentPlayer, opponentSide)}
+                {renderGraveyardZone(opponentPlayer, opponentSide)}
+              </div>
+              {oppRows.monsterRow}
+              <div className="board-flank-right">
                 {renderFieldZone(opponentPlayer, "opponent")}
               </div>
             </div>
@@ -1326,14 +1301,28 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
 
         {/* My area — compact, no stretching */}
         <div className="flex flex-col flex-shrink-0">
-          {/* My zones — field zone LEFT, grid CENTER */}
-          <div className="py-1.5 flex-shrink-0 flex justify-center">
+          {/* My zones — official mat layout */}
+          <div className="py-1.5 flex-shrink-0 flex flex-col items-center" style={{ gap: "8px" }}>
+            {/* Monster row */}
             <div className="board-center-row">
-              <div className="board-field-left">
+              <div className="board-flank-left">
                 {renderFieldZone(myPlayer, "mine")}
               </div>
-              {renderZoneGrid(myPlayer, "mine")}
-              <div className="board-field-right" />{/* empty spacer to mirror opponent side */}
+              {myRows.monsterRow}
+              <div className="board-flank-right">
+                {renderGraveyardZone(myPlayer, mySide)}
+                {renderBanishedZone(myPlayer, mySide)}
+              </div>
+            </div>
+            {/* S/T row */}
+            <div className="board-center-row">
+              <div className="board-flank-left">
+                {renderExtraDeckZone(myPlayer, mySide)}
+              </div>
+              {myRows.spellTrapRow}
+              <div className="board-flank-right">
+                {renderDeckZone(myPlayer, true)}
+              </div>
             </div>
           </div>
 
@@ -1341,7 +1330,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
           {(() => {
             const myHand = myPlayer.hand;
             const myPile = myHand.length >= 10;
-            const PILE_W = 932; // fixed container width = 9-card spread (9×100 + 8×4)
+            const PILE_W = 932;
             const CARD_W = 100;
             const myStep = myPile && myHand.length > 1
               ? Math.floor((PILE_W - CARD_W) / (myHand.length - 1))
@@ -1382,19 +1371,14 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
             );
           })()}
 
-          {/* My info bar */}
-          <div className="flex items-center justify-between px-3 py-1.5 flex-shrink-0">
+          {/* My info bar (LP only) */}
+          <div className="flex items-center px-3 py-1.5 flex-shrink-0">
             <LifePoints
               name={myPlayer.name}
               lp={myPlayer.lifePoints}
               isActive={isMyTurn}
               flash={lpFlash.my}
             />
-            <div className="flex items-center gap-2">
-              {renderExtraDeckZone(myPlayer, mySide)}
-              {renderGraveyardZone(myPlayer, mySide)}
-              {renderDeckZone(myPlayer, "Deck", true)}
-            </div>
           </div>
         </div>
 
