@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   DuelState,
   FieldCard,
@@ -10,7 +10,7 @@ import {
 } from "../../../../shared/gameTypes";
 import { ActionMenu } from "./ActionMenu";
 import { CardTooltip } from "./CardTooltip";
-import { CARD_BACK_URL, CardZone, HandCard } from "./CardZone";
+import { CardZone, HandCard } from "./CardZone";
 import { DuelLog } from "./DuelLog";
 import { ZoneViewer } from "./ZoneViewer";
 import { LifePoints } from "./LifePoints";
@@ -71,6 +71,54 @@ function requiredTributes(level: number) {
   if (level <= 6) return 1;
   return 2;
 }
+
+// ─── Empty zone placeholders ─────────────────────────────────────────────────
+
+function ZoneLabel({ icon, children, color }: { icon: string; children: React.ReactNode; color?: string }) {
+  return (
+    <div className="w-full h-full flex flex-col items-center justify-center gap-0.5">
+      <span style={{ fontSize: "clamp(0.7rem, 1.4vw, 1.2rem)", opacity: 0.5 }}>{icon}</span>
+      <span
+        style={{
+          fontFamily: "'Orbitron', sans-serif",
+          fontSize: "clamp(0.3rem, 0.55vw, 0.45rem)",
+          color: color ?? "var(--neon-cyan)",
+          opacity: 0.6,
+          letterSpacing: "0.05em",
+          textAlign: "center",
+          lineHeight: 1.2,
+        }}
+      >
+        {children}
+      </span>
+    </div>
+  );
+}
+
+const MONSTER_EMPTY = <ZoneLabel icon="⚔️">MONSTER</ZoneLabel>;
+const SPELL_TRAP_EMPTY = <ZoneLabel icon="✨">SPELL<br />TRAP</ZoneLabel>;
+const FIELD_EMPTY = <ZoneLabel icon="⛰️">FIELD</ZoneLabel>;
+const EMZ_EMPTY = <ZoneLabel icon="⚡" color="rgba(255,215,0,0.7)">EXTRA<br />MONSTER</ZoneLabel>;
+
+const EMZ_BADGE = (
+  <div
+    style={{
+      position: "absolute",
+      top: "2px",
+      right: "2px",
+      background: "rgba(255,215,0,0.85)",
+      borderRadius: "2px",
+      padding: "1px 3px",
+      fontSize: "0.35rem",
+      fontFamily: "'Orbitron', sans-serif",
+      color: "#000",
+      fontWeight: 700,
+      letterSpacing: "0.03em",
+    }}
+  >
+    EMZ
+  </div>
+);
 
 export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, enginePrompt, onEngineAction, onRestart, visibleLog, isReplaying }: DuelBoardProps) {
   const [selection, setSelection] = useState<SelectionMode>({ type: "none" });
@@ -589,84 +637,22 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
 
   function renderEMZSlot(
     slot: FieldCard | null,
-    isMine: boolean,
     canPlace: boolean,
     isDetailSelected: boolean,
     isActionableSlot: boolean,
     onClick: (e: React.MouseEvent) => void
   ) {
-    const highlighted = isDetailSelected && !!slot;
-    const actionHighlighted = isActionableSlot && !!slot;
     return (
-      <div
-        className={[
-          "card-zone-emz",
-          highlighted ? "card-highlight" : "",
-          actionHighlighted ? "actionable" : "",
-          canPlace ? "can-place" : "",
-        ].filter(Boolean).join(" ")}
+      <CardZone
+        slot={slot}
+        variant="extra-monster"
+        isDetailSelected={isDetailSelected}
+        isActionable={isActionableSlot}
+        canPlace={canPlace}
         onClick={onClick}
-        title={slot ? slot.card.name : "Extra Monster Zone"}
-        style={{ overflow: "visible" }}
-      >
-        {slot ? (
-          <div className="w-full h-full relative">
-            <div
-              className="w-full h-full"
-              style={{
-                transform: (slot.position === "DEF" || slot.position === "FACE_DOWN_DEF") ? "rotate(90deg)" : "none",
-                transition: "transform 0.2s ease",
-              }}
-            >
-              {slot.faceDown ? (
-                <div className="card-back w-full h-full" />
-              ) : (
-                <img
-                  src={`https://images.ygoprodeck.com/images/cards_small/${slot.card.id}.jpg`}
-                  alt={slot.card.name}
-                  className="w-full h-full object-cover rounded-sm"
-                  onError={(e) => { (e.target as HTMLImageElement).src = CARD_BACK_URL; }}
-                />
-              )}
-            </div>
-            <div
-              style={{
-                position: "absolute",
-                top: "2px",
-                right: "2px",
-                background: "rgba(255,215,0,0.85)",
-                borderRadius: "2px",
-                padding: "1px 3px",
-                fontSize: "0.35rem",
-                fontFamily: "'Orbitron', sans-serif",
-                color: "#000",
-                fontWeight: 700,
-                letterSpacing: "0.03em",
-              }}
-            >
-              EMZ
-            </div>
-          </div>
-        ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-0.5">
-            <span style={{ fontSize: "1.2rem", opacity: 0.5 }}>★</span>
-            <span
-              style={{
-                fontFamily: "'Orbitron', sans-serif",
-                fontSize: "0.35rem",
-                color: "rgba(255,215,0,0.7)",
-                letterSpacing: "0.05em",
-                textAlign: "center",
-                lineHeight: 1.2,
-              }}
-            >
-              EXTRA
-              <br />
-              MONSTER
-            </span>
-          </div>
-        )}
-      </div>
+        badge={EMZ_BADGE}
+        emptyContent={EMZ_EMPTY}
+      />
     );
   }
 
@@ -736,13 +722,13 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
             <div style={{ width: `${CARD_W}px`, flexShrink: 0 }} />
 
             {/* col 1: my EMZ */}
-            {renderEMZSlot(mySlot, true, canPlaceMine, isLocatorMatch(mySlot?.card.id, "mine", "emz", 0), isActionable(mySlot?.card.id, "mine", "emz", 0), handleMyEMZClick)}
+            {renderEMZSlot(mySlot, canPlaceMine, isLocatorMatch(mySlot?.card.id, "mine", "emz", 0), isActionable(mySlot?.card.id, "mine", "emz", 0), handleMyEMZClick)}
 
             {/* col 2: empty spacer */}
             <div style={{ width: `${CARD_W}px`, flexShrink: 0 }} />
 
             {/* col 3: opponent EMZ */}
-            {renderEMZSlot(oppSlot, false, false, isLocatorMatch(oppSlot?.card.id, "opp", "emz", 0), isActionable(oppSlot?.card.id, "opp", "emz", 0), oppEMZClick)}
+            {renderEMZSlot(oppSlot, false, isLocatorMatch(oppSlot?.card.id, "opp", "emz", 0), isActionable(oppSlot?.card.id, "opp", "emz", 0), oppEMZClick)}
 
             {/* col 4: empty spacer */}
             <div style={{ width: `${CARD_W}px`, flexShrink: 0 }} />
@@ -815,8 +801,9 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
             <CardZone
               key={i}
               slot={slot}
-              label="MONSTER"
+              variant="monster"
               size="md"
+              emptyContent={MONSTER_EMPTY}
               isSelected={isAttacker || isTributeSelected}
               isDetailSelected={isLocatorMatch(slot?.card.id, isMine ? "mine" : "opp", "mzone", i)}
               isActionable={isActionable(slot?.card.id, isMine ? "mine" : "opp", "mzone", i)}
@@ -843,8 +830,9 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
             <CardZone
               key={i}
               slot={slot}
-              label="S/T"
+              variant="spell-trap"
               size="md"
+              emptyContent={SPELL_TRAP_EMPTY}
               isDetailSelected={isLocatorMatch(slot?.card.id, isMine ? "mine" : "opp", "szone", i)}
               isActionable={isActionable(slot?.card.id, isMine ? "mine" : "opp", "szone", i)}
               canPlace={canPlace}
@@ -923,47 +911,15 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
     };
 
     return (
-      <div
-        className={[
-          "card-zone-field",
-          isDetailSel ? "card-highlight" : "",
-          isFieldActionable ? "actionable" : "",
-          canPlaceField ? "can-place" : "",
-        ].filter(Boolean).join(" ")}
+      <CardZone
+        slot={fieldCard}
+        variant="field"
+        isDetailSelected={isDetailSel}
+        isActionable={isFieldActionable}
+        canPlace={canPlaceField}
         onClick={handleFieldClick}
-        title={fieldCard ? fieldCard.card.name : "Field Zone"}
-        style={{ overflow: "hidden" }}
-      >
-        {fieldCard ? (
-          fieldCard.faceDown ? (
-            <div className="card-back w-full h-full" />
-          ) : (
-            <img
-              src={`https://images.ygoprodeck.com/images/cards_small/${fieldCard.card.id}.jpg`}
-              alt={fieldCard.card.name}
-              className="w-full h-full object-cover"
-              onError={(e) => { (e.target as HTMLImageElement).src = CARD_BACK_URL; }}
-            />
-          )
-        ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-0.5">
-            <span style={{ fontSize: "clamp(0.7rem, 1.4vw, 1.2rem)", opacity: 0.5 }}>🌐</span>
-            <span
-              style={{
-                fontFamily: "'Orbitron', sans-serif",
-                fontSize: "clamp(0.3rem, 0.55vw, 0.45rem)",
-                color: "var(--neon-cyan)",
-                opacity: 0.6,
-                letterSpacing: "0.05em",
-                textAlign: "center",
-                lineHeight: 1.2,
-              }}
-            >
-              FIELD
-            </span>
-          </div>
-        )}
-      </div>
+        emptyContent={FIELD_EMPTY}
+      />
     );
   }
 

@@ -1,20 +1,37 @@
 import React, { useState } from "react";
 import { FieldCard, GameCard } from "../../../../shared/gameTypes";
 
+type ZoneVariant = "monster" | "spell-trap" | "field" | "extra-monster";
+
+const VARIANT_CSS: Record<ZoneVariant, string> = {
+  "monster": "card-zone",
+  "spell-trap": "card-zone",
+  "field": "card-zone-field",
+  "extra-monster": "card-zone-extra-monster",
+};
+
+const VARIANT_TITLE: Record<ZoneVariant, string> = {
+  "monster": "Monster Zone",
+  "spell-trap": "Spell/Trap Zone",
+  "field": "Field Zone",
+  "extra-monster": "Extra Monster Zone",
+};
+
 interface CardZoneProps {
   slot: FieldCard | null;
-  label?: string;
+  variant?: ZoneVariant;
   size?: "sm" | "md" | "lg";
+  emptyContent?: React.ReactNode;
+  badge?: React.ReactNode;
   isSelected?: boolean;
   isDetailSelected?: boolean;
   isActionable?: boolean;
   isValidTarget?: boolean;
   canPlace?: boolean;
   isOpponent?: boolean;
-  onClick?: () => void;
+  onClick?: (e: React.MouseEvent) => void;
   onContextMenu?: (e: React.MouseEvent) => void;
   className?: string;
-  showLabel?: boolean;
 }
 
 export const CARD_BACK_URL = "https://images.ygoprodeck.com/images/cards/back_high.jpg";
@@ -37,8 +54,10 @@ const CARD_SIZES = {
 
 export function CardZone({
   slot,
-  label,
+  variant = "monster",
   size = "md",
+  emptyContent,
+  badge,
   isSelected,
   isDetailSelected,
   isActionable,
@@ -48,12 +67,11 @@ export function CardZone({
   onClick,
   onContextMenu,
   className = "",
-  showLabel = true,
 }: CardZoneProps) {
   const dims = CARD_SIZES[size];
 
   const zoneClass = [
-    "card-zone",
+    VARIANT_CSS[variant],
     isSelected ? "selected" : "",
     isDetailSelected && !isSelected ? "card-highlight" : "",
     isActionable && !isSelected ? "actionable" : "",
@@ -67,16 +85,13 @@ export function CardZone({
   const isDefPos = slot?.position === "DEF" || slot?.position === "FACE_DOWN_DEF";
   const isFaceDown = slot?.faceDown;
 
-  // Face-down DEF cards are rotated 90° and displayed at full natural size.
-  // They intentionally overflow the zone boundaries — this matches the physical card game look.
-
   return (
     <div
       className={zoneClass}
       style={{ width: dims.width, height: dims.height, flexShrink: 0, overflow: "visible" }}
       onClick={onClick}
       onContextMenu={onContextMenu}
-      title={slot?.card.name ?? label}
+      title={slot?.card.name ?? VARIANT_TITLE[variant]}
     >
       {slot ? (
         <>
@@ -105,7 +120,7 @@ export function CardZone({
             )}
           </div>
           {/* ATK/DEF badge — outside rotated container so it stays at the bottom */}
-          {label === "MONSTER" && slot.card.atk !== undefined && !isFaceDown && (
+          {variant === "monster" && slot.card.atk !== undefined && !isFaceDown && (
             <div
               className="absolute bottom-0 left-0 right-0 text-center font-bold"
               style={{
@@ -119,22 +134,10 @@ export function CardZone({
               {slot.position === "ATK" ? slot.card.atk : slot.card.def}
             </div>
           )}
+          {badge}
         </>
       ) : (
-        showLabel && label ? (
-          <span
-            className="text-center leading-tight"
-            style={{
-              fontFamily: "'Orbitron', sans-serif",
-              fontSize: "0.6rem",
-              color: "var(--neon-cyan)",
-              opacity: 0.7,
-              textShadow: "0 0 4px rgba(0,245,255,0.4)",
-            }}
-          >
-            {label}
-          </span>
-        ) : null
+        emptyContent ?? null
       )}
     </div>
   );

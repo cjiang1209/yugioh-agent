@@ -74,7 +74,7 @@ body {
 /* ── Zone base styles ─────────────────────────────────────────────────── */
 .card-zone,
 .card-zone-field,
-.card-zone-emz {
+.card-zone-extra-monster {
   position: relative;
   display: flex;
   align-items: center;
@@ -85,7 +85,7 @@ body {
   flex-shrink: 0;
 }
 .card-zone-field,
-.card-zone-emz {
+.card-zone-extra-monster {
   width: 100px;
   height: 140px;
 }
@@ -98,7 +98,7 @@ body {
   border: 1px dashed rgba(0, 245, 255, 0.3);
   background: rgba(0, 245, 255, 0.04);
 }
-.card-zone-emz {
+.card-zone-extra-monster {
   border: 1px dashed rgba(255, 215, 0, 0.4);
   background: rgba(255, 215, 0, 0.04);
 }
@@ -108,7 +108,7 @@ body {
   background: rgba(0, 245, 255, 0.1);
   box-shadow: 0 0 14px rgba(0, 245, 255, 0.35);
 }
-.card-zone-emz:hover {
+.card-zone-extra-monster:hover {
   border-color: rgba(255, 215, 0, 0.8);
   background: rgba(255, 215, 0, 0.1);
   box-shadow: 0 0 14px rgba(255, 215, 0, 0.35);
