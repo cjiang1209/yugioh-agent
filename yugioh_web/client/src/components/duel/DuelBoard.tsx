@@ -53,11 +53,15 @@ function locatorKey(cardCode: number, side: string, zone: string, seq: number): 
   return `${cardCode}-${side}-${zone}-${seq}`;
 }
 
+/** Engine location constants. */
+const LOCATION_MZONE = 0x04;
+const LOCATION_SZONE = 0x08;
+
 /** Map engine location constants to BoardZone names. */
 const LOCATION_TO_ZONE: Record<number, string> = {
   0x02: "hand",
-  0x04: "mzone",
-  0x08: "szone",
+  [LOCATION_MZONE]: "mzone",
+  [LOCATION_SZONE]: "szone",
   0x10: "grave",
   0x20: "banished",
   0x40: "extra",
@@ -65,6 +69,15 @@ const LOCATION_TO_ZONE: Record<number, string> = {
 
 // Module-level cache for card descriptions fetched from YGOProDeck API
 const descCache = new Map<number, string>();
+
+function isExtraDeckType(cardType: string | undefined): boolean {
+  return !!cardType && (
+    cardType.includes("Fusion") ||
+    cardType.includes("Synchro") ||
+    cardType.includes("XYZ") ||
+    cardType.includes("Link")
+  );
+}
 
 function requiredTributes(level: number) {
   if (level <= 4) return 0;
@@ -144,10 +157,12 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
   if (engineActions) {
     for (const a of engineActions) {
       if (a.card_code && a.side && a.location !== undefined && a.sequence !== undefined) {
-        // Field zone: engine uses SZONE seq 5 (LOCATION_FZONE 0x100 can't appear on wire — location is u8)
-        if (a.location === 0x08 && a.sequence === 5) {
+        if (a.location === LOCATION_SZONE && a.sequence === 5) {
           actionableKeys.add(locatorKey(a.card_code, a.side, "field", 0));
           actionableZones.add(`${a.side}-field`);
+        } else if (a.location === LOCATION_MZONE && a.sequence >= 5) {
+          actionableKeys.add(locatorKey(a.card_code, a.side, "emz", a.sequence - 5));
+          actionableZones.add(`${a.side}-emz`);
         } else {
           const zone = LOCATION_TO_ZONE[a.location];
           if (zone) {
@@ -571,22 +586,16 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
 
   // ─── Extra Monster Zone click ────────────────────────────────────────────────
 
-  function handleMyEMZClick(e: React.MouseEvent) {
+  function handleMyEMZClick(slotIndex: number, e: React.MouseEvent) {
     e.stopPropagation();
-    const slot = myPlayer.extraMonsterZone;
-    if (slot) selectCardForDetail(slot.card, "mine", "emz", 0);
+    const slot = myPlayer.extraMonsterZones[slotIndex] ?? null;
+    if (slot) selectCardForDetail(slot.card, "mine", "emz", slotIndex);
 
-    // Place Extra Deck card from hand
-    if (selection.type === "hand" && !slot) {
-      const card = selection.card;
-      const isExtra =
-        card.type?.includes("Fusion") ||
-        card.type?.includes("Synchro") ||
-        card.type?.includes("XYZ") ||
-        card.type?.includes("Link");
-      if (isExtra && canAct && (phase === "MAIN1" || phase === "MAIN2")) {
-        // Use EMZ rect for the animation (col 1 of my monster row)
-        fireSummon(1, myMonsterRowRef, "special", { type: "SUMMON_TO_EMZ", handIndex: selection.index });
+    const anyOccupied = myPlayer.extraMonsterZones.some((s) => s !== null);
+    if (selection.type === "hand" && !anyOccupied) {
+      if (isExtraDeckType(selection.card.type) && canAct && (phase === "MAIN1" || phase === "MAIN2")) {
+        const animCol = slotIndex === 0 ? 1 : 3;
+        fireSummon(animCol, myMonsterRowRef, "special", { type: "SUMMON_TO_EMZ", handIndex: selection.index });
       }
       return;
     }
@@ -604,18 +613,15 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
       if (canAttack && !slot.faceDown && slot.position === "ATK") {
         items.push({
           label: "⚔ Declare Attack",
-          action: () => setSelection({ type: "attacker", zone: -1 }), // -1 = EMZ attacker
+          action: () => setSelection({ type: "attacker", zone: -1 }),
         });
         const hasOpponentMonsters =
           opponentPlayer.monsterZones.some((z) => z !== null) ||
-          opponentPlayer.extraMonsterZone !== null;
+          opponentPlayer.extraMonsterZones.some((s) => s !== null);
         if (!hasOpponentMonsters) {
           items.push({
             label: "⚡ Direct Attack",
-            action: () => {
-              // EMZ direct attack: send as zone -1
-              fireAttack(-1, null, { type: "DIRECT_ATTACK", attackerZone: -1 });
-            },
+            action: () => fireAttack(-1, null, { type: "DIRECT_ATTACK", attackerZone: -1 }),
           });
         }
       }
@@ -656,85 +662,70 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
     );
   }
 
-  function renderEMZRow() {
-    const mySlot = myPlayer.extraMonsterZone;
-    const oppSlot = opponentPlayer.extraMonsterZone;
+  /** Resolve a physical EMZ slot: who owns it and what locator seq to use.
+   *  mySeq/oppSeq are indices into extraMonsterZones (0=seq5, 1=seq6). */
+  function resolveEMZ(mySeq: number, oppSeq: number): { slot: FieldCard | null; side: "mine" | "opp"; seq: number } {
+    const mine = myPlayer.extraMonsterZones[mySeq] ?? null;
+    if (mine) return { slot: mine, side: "mine", seq: mySeq };
+    const opp = opponentPlayer.extraMonsterZones[oppSeq] ?? null;
+    if (opp) return { slot: opp, side: "opp", seq: oppSeq };
+    return { slot: null, side: "mine", seq: mySeq };
+  }
 
+  function renderEMZRow() {
+    // Physical EMZ positions (from screen / bottom-player perspective):
+    //   col 1 (screen-left):  my seq5 OR opp seq6
+    //   col 3 (screen-right): my seq6 OR opp seq5
+    const left = resolveEMZ(0, 1);
+    const right = resolveEMZ(1, 0);
+
+    const anyMineOccupied = myPlayer.extraMonsterZones.some((s) => s !== null);
     const canPlaceMine =
       selection.type === "hand" &&
-      !mySlot &&
+      !anyMineOccupied &&
       canAct &&
       (phase === "MAIN1" || phase === "MAIN2") &&
-      (selection.card.type?.includes("Fusion") ||
-        selection.card.type?.includes("Synchro") ||
-        selection.card.type?.includes("XYZ") ||
-        selection.card.type?.includes("Link"));
+      isExtraDeckType(selection.card.type);
 
-    /**
-     * Both player zone grids are centered in the same horizontal space.
-     * The zone grid is a flex row of 5 cards (100px) with gap 44px.
-     * Total grid width = 5*100 + 4*44 = 676px.
-     *
-     * From the viewer's perspective:
-     *   - Opponent's zone grid: col 0 = leftmost, col 4 = rightmost
-     *   - My zone grid: col 0 = leftmost (my left = screen left), col 4 = rightmost
-     *     BUT my board is oriented so my "second zone from my left" = col 1 from my left
-     *     = col 1 from screen left as well (same orientation).
-     *
-     * The two EMZ slots should be:
-     *   - Opponent EMZ: at column 1 of the shared grid (second from left)
-     *   - My EMZ: at column 3 of the shared grid (second from right = my col 1 from my right)
-     *
-     * We use a single 5-column flex row (same structure as the zone grid rows)
-     * centered the same way as the zone grids, with the field-zone spacers on each side.
-     * This guarantees pixel-perfect alignment at any viewport size.
-     */
     const CARD_W = 100;
     const GAP = 44;
 
-    const oppEMZClick = (e: React.MouseEvent) => {
-      e.stopPropagation();
-      if (oppSlot && !oppSlot.faceDown) selectCardForDetail(oppSlot.card, "opp", "emz", 0);
-      if (selection.type === "attacker") {
-        fireAttack(selection.zone, null, {
-          type: "DECLARE_ATTACK",
-          attackerZone: selection.zone,
-          targetZone: -2,
-          targetSide: opponentSide,
-        });
-      }
-    };
+    function handleEMZClick(resolved: typeof left) {
+      return (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (resolved.side === "mine") {
+          handleMyEMZClick(resolved.seq, e);
+        } else {
+          if (resolved.slot && !resolved.slot.faceDown) selectCardForDetail(resolved.slot.card, "opp", "emz", resolved.seq);
+          if (selection.type === "attacker") {
+            fireAttack(selection.zone, null, {
+              type: "DECLARE_ATTACK",
+              attackerZone: selection.zone,
+              targetZone: -2,
+              targetSide: opponentSide,
+            });
+          }
+        }
+      };
+    }
 
     return (
-      // Wrap in board-center-row + 204px flank spacers matching zone grid rows
-      // so horizontal centering is identical.
       <div className="flex justify-center">
         <div className="board-center-row">
-          {/* flank-left spacer (matches 212px flank columns) */}
           <div style={{ width: "212px", flexShrink: 0 }} />
 
-          {/* 5-column grid:
-               col 1 = my EMZ (2nd zone from my left = screen col 1)
-               col 3 = opponent EMZ (2nd zone from opponent's left = screen col 3, mirrored)
-          */}
           <div className="flex" style={{ gap: `${GAP}px` }}>
-            {/* col 0: empty spacer */}
             <div style={{ width: `${CARD_W}px`, flexShrink: 0 }} />
 
-            {/* col 1: my EMZ */}
-            {renderEMZSlot(mySlot, canPlaceMine, isLocatorMatch(mySlot?.card.id, "mine", "emz", 0), isActionable(mySlot?.card.id, "mine", "emz", 0), handleMyEMZClick)}
+            {renderEMZSlot(left.slot, canPlaceMine, isLocatorMatch(left.slot?.card.id, left.side, "emz", left.seq), isActionable(left.slot?.card.id, left.side, "emz", left.seq), handleEMZClick(left))}
 
-            {/* col 2: empty spacer */}
             <div style={{ width: `${CARD_W}px`, flexShrink: 0 }} />
 
-            {/* col 3: opponent EMZ */}
-            {renderEMZSlot(oppSlot, false, isLocatorMatch(oppSlot?.card.id, "opp", "emz", 0), isActionable(oppSlot?.card.id, "opp", "emz", 0), oppEMZClick)}
+            {renderEMZSlot(right.slot, false, isLocatorMatch(right.slot?.card.id, right.side, "emz", right.seq), isActionable(right.slot?.card.id, right.side, "emz", right.seq), handleEMZClick(right))}
 
-            {/* col 4: empty spacer */}
             <div style={{ width: `${CARD_W}px`, flexShrink: 0 }} />
           </div>
 
-          {/* flank-right spacer (matches 212px flank columns) */}
           <div style={{ width: "212px", flexShrink: 0 }} />
         </div>
       </div>

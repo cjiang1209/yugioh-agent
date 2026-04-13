@@ -309,11 +309,13 @@ def build_board_state(env: YuGiOhEnvironment) -> dict:
 
     # Build agent side (full info)
     agent_st_zone = _build_zone(agent_st, card_db, 6)
+    agent_monsters_full = _build_zone(agent_monsters, card_db, 7)
     player = {
         "hand": [_build_card_info(c, card_db) for c in agent_hand if c.get("code")],
-        "monsters": _build_zone(agent_monsters, card_db, 5),
+        "monsters": agent_monsters_full[:5],
         "spells_traps": agent_st_zone[:5],
         "field_zone": agent_st_zone[5],
+        "extra_monster_zone": [agent_monsters_full[5], agent_monsters_full[6]],
         "graveyard": [_build_card(c, card_db) for c in agent_grave if c.get("code")],
         "banished": [_build_card(c, card_db) for c in agent_banished if c.get("code")],
         "extra_deck": [_build_card_info(c, card_db) for c in agent_extra if c.get("code")],
@@ -323,11 +325,13 @@ def build_board_state(env: YuGiOhEnvironment) -> dict:
 
     # Build opponent side (face-down cards hidden)
     opp_st_zone = _build_zone(opp_st, card_db, 6, hidden=True)
+    opp_monsters_full = _build_zone(opp_monsters, card_db, 7, hidden=True)
     opponent = {
         "hand_count": gs.hand_count[opp],
-        "monsters": _build_zone(opp_monsters, card_db, 5, hidden=True),
+        "monsters": opp_monsters_full[:5],
         "spells_traps": opp_st_zone[:5],
         "field_zone": opp_st_zone[5],
+        "extra_monster_zone": [opp_monsters_full[5], opp_monsters_full[6]],
         "graveyard": [_build_card(c, card_db) for c in opp_grave if c.get("code")],
         "banished": [_build_card(c, card_db) for c in opp_banished if c.get("code")],
         "extra_deck_count": gs.extra_count[opp],

@@ -74,7 +74,7 @@ export interface PlayerState {
   monsterZones: (FieldCard | null)[];   // 5 slots
   spellTrapZones: (FieldCard | null)[]; // 5 slots
   fieldZone: FieldCard | null;
-  extraMonsterZone: FieldCard | null;   // 1 EMZ slot per player
+  extraMonsterZones: (FieldCard | null)[];  // 2 EMZ slots [seq5, seq6]
   hasNormalSummoned: boolean;
   hasDrawn: boolean;
 }

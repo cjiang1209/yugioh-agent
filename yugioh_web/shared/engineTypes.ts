@@ -32,6 +32,7 @@ export interface EnginePlayerBoard {
   monsters: (EngineFieldCard | null)[]; // 5 slots
   spells_traps: (EngineFieldCard | null)[]; // 5 slots
   field_zone: EngineFieldCard | null;
+  extra_monster_zone: (EngineFieldCard | null)[]; // [seq5, seq6]
   graveyard: EngineFieldCard[];
   banished: EngineFieldCard[];
   extra_deck: EngineHandCard[];
@@ -45,6 +46,7 @@ export interface EngineOpponentBoard {
   monsters: (EngineFieldCard | null)[]; // 5 slots
   spells_traps: (EngineFieldCard | null)[]; // 5 slots
   field_zone: EngineFieldCard | null;
+  extra_monster_zone: (EngineFieldCard | null)[]; // [seq5, seq6]
   graveyard: EngineFieldCard[];
   banished: EngineFieldCard[];
   extra_deck_count: number;

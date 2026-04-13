@@ -99,6 +99,7 @@ body {
   background: rgba(0, 245, 255, 0.04);
 }
 .card-zone-extra-monster {
+  --hl-rgb: 255 215 0;
   border: 1px dashed rgba(255, 215, 0, 0.4);
   background: rgba(255, 215, 0, 0.04);
 }

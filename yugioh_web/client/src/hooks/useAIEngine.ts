@@ -42,6 +42,7 @@ export interface UseAIEngineReturn {
 
 const CARD_IMAGE_BASE = "https://images.ygoprodeck.com/images/cards_small";
 const AUTO_PASS_CATEGORIES = new Set(["pass", "no"]);
+const EMPTY_EMZ: [null, null] = [null, null];
 
 function engineCardToGameCard(
   card: EngineHandCard | EngineFieldCard,
@@ -160,7 +161,9 @@ function buildDuelState(
     fieldZone: board.player.field_zone
       ? engineFieldCardToFieldCard(board.player.field_zone, "mine", "field", 0)
       : null,
-    extraMonsterZone: null,
+    extraMonsterZones: (board.player.extra_monster_zone ?? EMPTY_EMZ).map(
+      (emz, i) => emz ? engineFieldCardToFieldCard(emz, "mine", "emz", i) : null,
+    ),
     hasNormalSummoned: false,
     hasDrawn: false,
   };
@@ -187,7 +190,9 @@ function buildDuelState(
     fieldZone: board.opponent.field_zone
       ? engineFieldCardToFieldCard(board.opponent.field_zone, "opp", "field", 0)
       : null,
-    extraMonsterZone: null,
+    extraMonsterZones: (board.opponent.extra_monster_zone ?? EMPTY_EMZ).map(
+      (emz, i) => emz ? engineFieldCardToFieldCard(emz, "opp", "emz", i) : null,
+    ),
     hasNormalSummoned: false,
     hasDrawn: false,
   };
@@ -216,7 +221,7 @@ const EMPTY_PLAYER: PlayerState = {
   hand: [], deck: [], graveyard: [], banished: [], extraDeck: [],
   monsterZones: [null, null, null, null, null],
   spellTrapZones: [null, null, null, null, null],
-  fieldZone: null, extraMonsterZone: null,
+  fieldZone: null, extraMonsterZones: [null, null],
   hasNormalSummoned: false, hasDrawn: false,
 };
 
