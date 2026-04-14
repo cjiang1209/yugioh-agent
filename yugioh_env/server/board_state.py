@@ -282,8 +282,14 @@ def _build_zone(cards: list[dict], card_db, num_slots: int, hidden: bool = False
     return zone
 
 
-def build_board_state(env: YuGiOhEnvironment) -> dict:
-    """Build the full board state dict from a live environment."""
+def build_board_state(env: YuGiOhEnvironment, *, open_cards: bool = False) -> dict:
+    """Build the full board state dict from a live environment.
+
+    Args:
+        open_cards: When True, the ``opponent`` dict includes full card data
+            (unhidden face-down cards, hand contents, extra deck contents)
+            for UI display.  Game logic never consumes this dict.
+    """
     duel = env._duel
     card_db = env._card_db
     agent = env._agent_player
@@ -323,10 +329,10 @@ def build_board_state(env: YuGiOhEnvironment) -> dict:
         "lp": gs.lp[agent],
     }
 
-    # Build opponent side (face-down cards hidden)
-    opp_st_zone = _build_zone(opp_st, card_db, 6, hidden=True)
-    opp_monsters_full = _build_zone(opp_monsters, card_db, 7, hidden=True)
-    opponent = {
+    # Build opponent side
+    opp_st_zone = _build_zone(opp_st, card_db, 6, hidden=not open_cards)
+    opp_monsters_full = _build_zone(opp_monsters, card_db, 7, hidden=not open_cards)
+    opponent: dict = {
         "hand_count": gs.hand_count[opp],
         "monsters": opp_monsters_full[:5],
         "spells_traps": opp_st_zone[:5],
@@ -338,5 +344,11 @@ def build_board_state(env: YuGiOhEnvironment) -> dict:
         "deck_count": gs.deck_count[opp],
         "lp": gs.lp[opp],
     }
+
+    if open_cards:
+        opp_hand = _query_location(duel, opp, LOCATION_HAND)
+        opp_extra = _query_location(duel, opp, LOCATION_EXTRA)
+        opponent["hand"] = [_build_card_info(c, card_db) for c in opp_hand if c.get("code")]
+        opponent["extra_deck"] = [_build_card_info(c, card_db) for c in opp_extra if c.get("code")]
 
     return {"player": player, "opponent": opponent}

@@ -36,6 +36,21 @@ interface CardZoneProps {
 
 export const CARD_BACK_URL = "https://images.ygoprodeck.com/images/cards/back_high.jpg";
 
+/** Renders a card image with the open-facedown overlay (striped + gold border). */
+function OpenCardImage({ cardId, cardName }: { cardId: number; cardName: string }) {
+  return (
+    <div className="card-open-facedown w-full h-full">
+      <img
+        src={`https://images.ygoprodeck.com/images/cards_small/${cardId}.jpg`}
+        alt={cardName}
+        className="w-full h-full object-cover rounded-sm"
+        style={{ opacity: 0.75 }}
+        onError={(e) => { (e.target as HTMLImageElement).src = CARD_BACK_URL; }}
+      />
+    </div>
+  );
+}
+
 // Natural card dimensions — always displayed at true size
 const CARD_SIZES = {
   sm: {
@@ -103,7 +118,11 @@ export function CardZone({
             }}
           >
             {isFaceDown ? (
-              <div className="card-back w-full h-full" />
+              isOpponent && slot.card.id ? (
+                <OpenCardImage cardId={slot.card.id} cardName={slot.card.name} />
+              ) : (
+                <div className="card-back w-full h-full" />
+              )
             ) : (
               <img
                 src={
@@ -120,7 +139,7 @@ export function CardZone({
             )}
           </div>
           {/* ATK/DEF badge — outside rotated container so it stays at the bottom */}
-          {variant === "monster" && slot.card.atk !== undefined && !isFaceDown && (
+          {variant === "monster" && slot.card.atk !== undefined && (!isFaceDown || (isOpponent && slot.card.id > 0)) && (
             <div
               className="absolute bottom-0 left-0 right-0 text-center font-bold"
               style={{
@@ -166,10 +185,16 @@ export function HandCard({ card, index, isSelected, isDetailSelected, isActionab
   const isActionHighlighted = isActionable && !isSelected;
 
   if (isOpponentCard) {
+    const hasOpenData = card.id > 0;
+    const cardContent = hasOpenData
+      ? <OpenCardImage cardId={card.id} cardName={card.name} />
+      : <div className="card-back w-full h-full" />;
+    const cursor = onClick ? "cursor-pointer" : "cursor-default";
+
     if (pileMode) {
       return (
         <div
-          className="absolute flex-shrink-0 cursor-default transition-all duration-150"
+          className={`absolute flex-shrink-0 ${cursor} transition-all duration-150`}
           style={{
             width: w,
             height: h,
@@ -179,17 +204,21 @@ export function HandCard({ card, index, isSelected, isDetailSelected, isActionab
             borderRadius: "4px",
             boxShadow: "0 2px 8px rgba(0,0,0,0.6)",
           }}
+          onClick={onClick}
+          title={hasOpenData ? card.name : undefined}
         >
-          <div className="card-back w-full h-full" />
+          {cardContent}
         </div>
       );
     }
     return (
       <div
-        className="relative flex-shrink-0 cursor-default"
+        className={`relative flex-shrink-0 ${cursor}`}
         style={{ width: w, height: h }}
+        onClick={onClick}
+        title={hasOpenData ? card.name : undefined}
       >
-        <div className="card-back w-full h-full" />
+        {cardContent}
       </div>
     );
   }

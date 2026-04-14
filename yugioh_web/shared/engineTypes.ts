@@ -40,9 +40,11 @@ export interface EnginePlayerBoard {
   lp: number;
 }
 
-/** The opponent's board (face-down cards hidden). */
+/** The opponent's board. Face-down cards hidden by default; in open-cards mode
+ *  the server sends unhidden zones plus ``hand`` and ``extra_deck`` arrays. */
 export interface EngineOpponentBoard {
   hand_count: number;
+  hand?: EngineHandCard[];           // present in open-cards mode
   monsters: (EngineFieldCard | null)[]; // 5 slots
   spells_traps: (EngineFieldCard | null)[]; // 5 slots
   field_zone: EngineFieldCard | null;
@@ -50,6 +52,7 @@ export interface EngineOpponentBoard {
   graveyard: EngineFieldCard[];
   banished: EngineFieldCard[];
   extra_deck_count: number;
+  extra_deck?: EngineHandCard[];     // present in open-cards mode
   deck_count: number;
   lp: number;
 }

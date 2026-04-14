@@ -169,28 +169,38 @@ function buildDuelState(
   };
 
   // Opponent (always player2 / top)
-  const oppMonsters: (FieldCard | null)[] = (board.opponent.monsters ?? []).map(
+  // In open-cards mode the server sends unhidden zones + hand/extra_deck arrays.
+  const opp = board.opponent;
+  const oppMonsters: (FieldCard | null)[] = (opp.monsters ?? []).map(
     (m, i) => m ? engineFieldCardToFieldCard(m, "opp", "mzone", i) : null,
   );
-  const oppST: (FieldCard | null)[] = (board.opponent.spells_traps ?? []).map(
+  const oppST: (FieldCard | null)[] = (opp.spells_traps ?? []).map(
     (m, i) => m ? engineFieldCardToFieldCard(m, "opp", "szone", i) : null,
   );
+
+  const oppHand = opp.hand
+    ? opp.hand.map((c, i) => engineCardToGameCard(c, "opp", "hand", i))
+    : Array.from({ length: opp.hand_count }, (_, i) => makeFaceDownCard("opp", "hand", i));
+
+  const oppExtraDeck = opp.extra_deck
+    ? opp.extra_deck.map((c, i) => engineCardToGameCard(c, "opp", "extra", i))
+    : Array.from({ length: opp.extra_deck_count }, (_, i) => makeFaceDownCard("opp", "extra", i));
 
   const opponent: PlayerState = {
     id: "player2",
     name: "Opponent",
-    lifePoints: board.opponent.lp,
-    hand: Array.from({ length: board.opponent.hand_count }, (_, i) => makeFaceDownCard("opp", "hand", i)),
-    deck: Array.from({ length: board.opponent.deck_count }, (_, i) => makeFaceDownCard("opp", "deck", i)),
-    graveyard: (board.opponent.graveyard ?? []).map((c, i) => engineCardToGameCard(c, "opp", "grave", i)),
-    banished: (board.opponent.banished ?? []).map((c, i) => engineCardToGameCard(c, "opp", "banished", i)),
-    extraDeck: Array.from({ length: board.opponent.extra_deck_count }, (_, i) => makeFaceDownCard("opp", "extra", i)),
+    lifePoints: opp.lp,
+    hand: oppHand,
+    deck: Array.from({ length: opp.deck_count }, (_, i) => makeFaceDownCard("opp", "deck", i)),
+    graveyard: (opp.graveyard ?? []).map((c, i) => engineCardToGameCard(c, "opp", "grave", i)),
+    banished: (opp.banished ?? []).map((c, i) => engineCardToGameCard(c, "opp", "banished", i)),
+    extraDeck: oppExtraDeck,
     monsterZones: oppMonsters,
     spellTrapZones: oppST,
-    fieldZone: board.opponent.field_zone
-      ? engineFieldCardToFieldCard(board.opponent.field_zone, "opp", "field", 0)
+    fieldZone: opp.field_zone
+      ? engineFieldCardToFieldCard(opp.field_zone, "opp", "field", 0)
       : null,
-    extraMonsterZones: (board.opponent.extra_monster_zone ?? EMPTY_EMZ).map(
+    extraMonsterZones: (opp.extra_monster_zone ?? EMPTY_EMZ).map(
       (emz, i) => emz ? engineFieldCardToFieldCard(emz, "opp", "emz", i) : null,
     ),
     hasNormalSummoned: false,
@@ -234,7 +244,7 @@ const INITIAL_DUEL_STATE: DuelState = {
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
-export function useAIEngine(apiUrl: string = "http://localhost:8000"): UseAIEngineReturn {
+export function useAIEngine(apiUrl: string = "http://localhost:8000", openCards: boolean = false): UseAIEngineReturn {
   const [state, setState] = useState<DuelState | null>(null);
   const [engineActions, setEngineActions] = useState<EngineAction[]>([]);
   const [enginePrompt, setEnginePrompt] = useState<EnginePrompt | null>(null);
@@ -300,6 +310,7 @@ export function useAIEngine(apiUrl: string = "http://localhost:8000"): UseAIEngi
       if (seed !== undefined) body.seed = seed;
       if (deck0 !== undefined) body.deck0 = deck0;
       if (deck1 !== undefined) body.deck1 = deck1;
+      if (openCards) body.open_cards = true;
       const res = await fetch(`${apiUrl}/api/web/reset`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -312,7 +323,7 @@ export function useAIEngine(apiUrl: string = "http://localhost:8000"): UseAIEngi
       setError(e instanceof Error ? e.message : "Reset failed");
       setStatus("error");
     }
-  }, [apiUrl, applyResponse, resetReplay]);
+  }, [apiUrl, applyResponse, resetReplay, openCards]);
 
   const submitAction = useCallback(async (actionIndex: number) => {
     setError(null);

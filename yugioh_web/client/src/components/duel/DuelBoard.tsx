@@ -31,6 +31,7 @@ interface DuelBoardProps {
   onRestart?: () => void;
   visibleLog?: string[];
   isReplaying?: boolean;
+  openCards?: boolean;
 }
 
 type SelectionMode =
@@ -133,12 +134,16 @@ const EMZ_BADGE = (
   </div>
 );
 
-export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, enginePrompt, onEngineAction, onRestart, visibleLog, isReplaying }: DuelBoardProps) {
+export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, enginePrompt, onEngineAction, onRestart, visibleLog, isReplaying, openCards }: DuelBoardProps) {
   const [selection, setSelection] = useState<SelectionMode>({ type: "none" });
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [bottomTab, setBottomTab] = useState<"actions" | "log">(engineMode ? "actions" : "log");
   const [selectedCardDetail, setSelectedCardDetail] = useState<GameCard | null>(null);
   const [selectedLocator, setSelectedLocator] = useState<string | null>(null);
+
+  /** True when an opponent's card has visible data (face-up, or face-down in open-cards mode). */
+  const canShowOppDetail = (slot: FieldCard) =>
+    !slot.faceDown || (openCards && slot.card.id > 0);
 
   function selectCardForDetail(card: GameCard, side: "mine" | "opp", zone: BoardZone, seq: number) {
     setSelectedCardDetail(card);
@@ -498,8 +503,8 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
 
   function handleOpponentMonsterZoneClick(zoneIndex: number) {
     const oppSlot = opponentPlayer.monsterZones[zoneIndex];
-    // Never reveal face-down opponent cards
-    if (oppSlot && !oppSlot.faceDown) selectCardForDetail(oppSlot.card, "opp", "mzone", zoneIndex);
+    // Allow detail view for face-up cards, or face-down cards in open-cards mode
+    if (oppSlot && canShowOppDetail(oppSlot)) selectCardForDetail(oppSlot.card, "opp", "mzone", zoneIndex);
     if (selection.type === "attacker") {
       fireAttack(selection.zone, zoneIndex, {
         type: "DECLARE_ATTACK",
@@ -696,7 +701,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
         if (resolved.side === "mine") {
           handleMyEMZClick(resolved.seq, e);
         } else {
-          if (resolved.slot && !resolved.slot.faceDown) selectCardForDetail(resolved.slot.card, "opp", "emz", resolved.seq);
+          if (resolved.slot && canShowOppDetail(resolved.slot)) selectCardForDetail(resolved.slot.card, "opp", "emz", resolved.seq);
           if (selection.type === "attacker") {
             fireAttack(selection.zone, null, {
               type: "DECLARE_ATTACK",
@@ -830,7 +835,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
               onClick={() => {
                 if (isMine) {
                   handleMySpellTrapZoneClick(i);
-                } else if (slot && !slot.faceDown) {
+                } else if (slot && canShowOppDetail(slot)) {
                   selectCardForDetail(slot.card, "opp", "szone", i);
                 }
               }}
@@ -891,7 +896,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
     const isFieldActionable = isActionable(fieldCard?.card.id, fieldSide, "field", 0);
 
     const handleFieldClick = isMine ? handleMyFieldZoneClick : () => {
-      if (fieldCard && !fieldCard.faceDown) selectCardForDetail(fieldCard.card, "opp", "field", 0);
+      if (fieldCard && canShowOppDetail(fieldCard)) selectCardForDetail(fieldCard.card, "opp", "field", 0);
     };
 
     return (
@@ -1155,14 +1160,18 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
                   : { gap: "4px" }
                 }
               >
-                {oppHand.map((_, i) => (
+                {oppHand.map((c, i) => (
                   <HandCard
                     key={i}
-                    card={_ as GameCard}
+                    card={c as GameCard}
                     index={i}
                     isOpponentCard
                     pileMode={oppPile}
                     pileOffset={oppPile ? i * oppStep : undefined}
+                    onClick={openCards && (c.id || 0) > 0 ? () => {
+                      setSelectedCardDetail(c as GameCard);
+                      setSelectedLocator(null);
+                    } : undefined}
                   />
                 ))}
               </div>

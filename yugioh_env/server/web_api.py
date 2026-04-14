@@ -25,6 +25,7 @@ class ResetRequest(BaseModel):
     opponent: str | None = None
     deck0: dict | None = None  # {"main": [int, ...], "extra": [int, ...]}
     deck1: dict | None = None
+    open_cards: bool = False
 
 
 class StepRequest(BaseModel):
@@ -53,7 +54,7 @@ def _build_response(
     frames = env.last_frames if include_frames else []
 
     # Reuse the last frame's board if available (avoids redundant FFI call)
-    board = frames[-1]["board"] if frames else build_board_state(env)
+    board = frames[-1]["board"] if frames else build_board_state(env, open_cards=env._open_cards)
 
     actions = describe_actions(env._mapper, env._card_db) if not done else []
     prompt = describe_prompt(env._mapper, env._card_db) if not done else None
@@ -87,7 +88,7 @@ def reset_duel(body: ResetRequest, request: Request) -> dict:
     """Reset (or create) a duel and return the initial state."""
     env: YuGiOhEnvironment = request.app.state.web_env
     try:
-        obs = env.reset(seed=body.seed, deck0=body.deck0, deck1=body.deck1)
+        obs = env.reset(seed=body.seed, deck0=body.deck0, deck1=body.deck1, open_cards=body.open_cards)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     return _build_response(env, obs.event_log, obs.done, obs.reward, include_frames=True)

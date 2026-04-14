@@ -18,15 +18,17 @@ const ENGINE_API_URL = "http://localhost:8000";
 export default function Duel() {
   const [selectedDeck0, setSelectedDeck0] = useState<DeckPayload | null>(null);
   const [selectedDeck1, setSelectedDeck1] = useState<DeckPayload | null>(null);
+  const [openCards, setOpenCards] = useState(false);
 
   // Phase 1: Deck selection — scrollable page, no fixed wrapper
   if (!selectedDeck0 || !selectedDeck1) {
     return (
       <DeckSelector
         apiUrl={ENGINE_API_URL}
-        onDeckSelected={(myDeck, oppDeck) => {
+        onDeckSelected={(myDeck, oppDeck, oc) => {
           setSelectedDeck0(myDeck);
           setSelectedDeck1(oppDeck);
+          setOpenCards(oc);
         }}
       />
     );
@@ -35,15 +37,15 @@ export default function Duel() {
   // Phase 2: Duel — fixed viewport
   return (
     <div className="fixed inset-0" style={{ background: "var(--bg-void)" }}>
-      <AIModeDuel deck0={selectedDeck0} deck1={selectedDeck1} />
+      <AIModeDuel deck0={selectedDeck0} deck1={selectedDeck1} openCards={openCards} />
     </div>
   );
 }
 
 // ─── AI Mode wrapper ────────────────────────────────────────────────────────
 
-function AIModeDuel({ deck0, deck1 }: { deck0: DeckPayload; deck1: DeckPayload }) {
-  const { state, engineActions, enginePrompt, visibleLog, isReplaying, status, error, reset, submitAction } = useAIEngine(ENGINE_API_URL);
+function AIModeDuel({ deck0, deck1, openCards }: { deck0: DeckPayload; deck1: DeckPayload; openCards: boolean }) {
+  const { state, engineActions, enginePrompt, visibleLog, isReplaying, status, error, reset, submitAction } = useAIEngine(ENGINE_API_URL, openCards);
 
   useEffect(() => {
     reset(Math.floor(Math.random() * 100000), deck0, deck1);
@@ -92,6 +94,7 @@ function AIModeDuel({ deck0, deck1 }: { deck0: DeckPayload; deck1: DeckPayload }
       onRestart={() => reset(Math.floor(Math.random() * 100000), deck0, deck1)}
       visibleLog={visibleLog}
       isReplaying={isReplaying}
+      openCards={openCards}
     />
   );
 }

@@ -154,6 +154,8 @@ class YuGiOhEnvironment(Environment):
         self._field_tracker = FieldTracker()
         # Intermediate board snapshots captured during _process_to_agent_choice()
         self._last_frames: list[dict] = []
+        # When True, board snapshots include unhidden opponent card data
+        self._open_cards: bool = False
 
     @property
     def last_frames(self) -> list[dict]:
@@ -189,6 +191,7 @@ class YuGiOhEnvironment(Environment):
         deck0: Optional[dict[str, list[int]]] = None,
         deck1: Optional[dict[str, list[int]]] = None,
         agent_player: Optional[int | str] = None,
+        open_cards: bool = False,
         **kwargs: Any,
     ) -> YuGiOhObservation:
         """Start a new duel and return the initial observation.
@@ -204,7 +207,13 @@ class YuGiOhEnvironment(Environment):
             agent_player: Override which player the agent controls for this episode.
                           0 = go first, 1 = go second, "random" = coin flip.
                           If None, uses the value from config.
+            open_cards: When True, board snapshots include full opponent card
+                        data (unhidden) in the ``opponent`` dict (UI-only,
+                        does not affect game logic).  Defaults to False.
         """
+        # Apply open_cards before processing so frames include the data
+        self._open_cards = open_cards
+
         # Clean up previous duel
         if self._duel is not None:
             self._duel.destroy()
@@ -325,7 +334,7 @@ class YuGiOhEnvironment(Environment):
         if chunk_log:
             self._last_frames.append({
                 "events": chunk_log,
-                "board": build_board_state(self),
+                "board": build_board_state(self, open_cards=self._open_cards),
                 "game_state": self._build_game_state_dict(),
             })
 

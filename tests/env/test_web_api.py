@@ -445,3 +445,79 @@ def test_frames_board_changes_across_steps(web_client):
 
     if not found_different:
         pytest.skip("No multi-frame step with differing board states in test seeds")
+
+
+# ─── Open cards tests ─────────────────────────────────────────────────────
+
+
+def _reset_open(client, seed=42):
+    resp = client.post("/api/web/reset", json={"seed": seed, "open_cards": True})
+    assert resp.status_code == 200
+    return resp.json()
+
+
+def test_reset_open_cards_false_no_hand(web_client):
+    """Default reset (open_cards=False) should not include hand/extra_deck in opponent."""
+    data = _reset(web_client)
+    opp = data["board"]["opponent"]
+    assert "hand" not in opp
+    assert "extra_deck" not in opp
+
+
+def test_reset_open_cards_true_has_hand_and_extra(web_client):
+    """Reset with open_cards=True should include hand and extra_deck arrays in opponent."""
+    data = _reset_open(web_client)
+    opp = data["board"]["opponent"]
+    assert isinstance(opp["hand"], list)
+    assert isinstance(opp["extra_deck"], list)
+    # Standard fields still present
+    assert isinstance(opp["monsters"], list)
+    assert len(opp["monsters"]) == 5
+    assert isinstance(opp["spells_traps"], list)
+    assert len(opp["spells_traps"]) == 5
+
+
+def test_open_cards_hand_has_real_codes(web_client):
+    """In open_cards mode, opponent hand cards should have real codes."""
+    data = _reset_open(web_client)
+    opp = data["board"]["opponent"]
+    assert len(opp["hand"]) > 0
+    for card in opp["hand"]:
+        assert card["code"] > 0, "Open opponent hand card should have a real code"
+        assert card["name"] != "Face-down card"
+
+
+def test_open_cards_face_down_has_real_code(web_client):
+    """Face-down opponent monsters should have real codes when open_cards=True."""
+    for seed in range(42, 62):
+        data = _reset_open(web_client, seed=seed)
+        for _ in range(50):
+            if data["done"]:
+                break
+            data = _step(web_client, action_index=0)
+            opp_monsters = data["board"]["opponent"]["monsters"]
+            for m in opp_monsters:
+                if m is not None and m.get("position") in ("FACE_DOWN_DEF", "FACE_DOWN_ATK"):
+                    assert m["code"] > 0, "Open face-down should have real code"
+                    return  # Test passed
+
+    pytest.skip("No face-down opponent monster encountered in test seeds")
+
+
+def test_open_cards_frames_include_hand(web_client):
+    """Frames captured during open_cards reset should include hand in opponent."""
+    data = _reset_open(web_client)
+    frames = data.get("frames", [])
+    assert len(frames) >= 1
+    for frame in frames:
+        opp = frame["board"]["opponent"]
+        assert isinstance(opp["hand"], list), "Frame opponent should include hand"
+
+
+def test_step_preserves_open_cards(web_client):
+    """After open_cards reset, subsequent steps should also include hand in opponent."""
+    data = _reset_open(web_client)
+    if data["done"]:
+        pytest.skip("Duel ended at reset")
+    data = _step(web_client, action_index=0)
+    assert "hand" in data["board"]["opponent"], "Step opponent should include hand"

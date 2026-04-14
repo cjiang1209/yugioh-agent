@@ -7,7 +7,7 @@ const CARD_BACK = "https://images.ygoprodeck.com/images/cards/back_high.jpg";
 
 interface DeckSelectorProps {
   apiUrl?: string;
-  onDeckSelected: (myDeck: DeckPayload, oppDeck: DeckPayload) => void;
+  onDeckSelected: (myDeck: DeckPayload, oppDeck: DeckPayload, openCards: boolean) => void;
 }
 
 function toPayload(deck: DeckDefinition): DeckPayload {
@@ -23,6 +23,7 @@ export function DeckSelector({ apiUrl = "http://localhost:8000", onDeckSelected 
   const [error, setError] = useState<string | null>(null);
   const [myDeck, setMyDeck] = useState<DeckDefinition | null>(null);
   const [oppDeck, setOppDeck] = useState<DeckDefinition | null>(null);
+  const [openCards, setOpenCards] = useState(false);
 
   useEffect(() => {
     fetch(`${apiUrl}/api/web/decks`)
@@ -145,12 +146,38 @@ export function DeckSelector({ apiUrl = "http://localhost:8000", onDeckSelected 
         <DeckPreview labelColor="var(--neon-pink)" deck={oppDeck} />
       </div>
 
+      {/* Open cards toggle */}
+      <div className="flex flex-col items-center mb-6">
+        <button
+          onClick={() => setOpenCards((v) => !v)}
+          className="flex items-center gap-2 px-4 py-2 rounded transition-all"
+          style={{
+            fontFamily: "'Orbitron', sans-serif",
+            fontSize: "0.6rem",
+            letterSpacing: "0.1em",
+            background: openCards ? "rgba(255,215,0,0.1)" : "rgba(255,255,255,0.03)",
+            border: `1px solid ${openCards ? "rgba(255,215,0,0.8)" : "var(--border-dim)"}`,
+            color: openCards ? "rgba(255,215,0,1)" : "var(--text-muted)",
+            boxShadow: openCards ? "0 0 12px rgba(255,215,0,0.25)" : "none",
+          }}
+        >
+          <span style={{ fontSize: "0.85rem" }}>{openCards ? "\u{1F441}" : "\u{1F441}\u200D\u{1F5E8}"}</span>
+          {openCards ? "OPEN CARDS: ON" : "OPEN CARDS: OFF"}
+        </button>
+        <span
+          className="mt-1 opacity-40"
+          style={{ color: "var(--text-secondary)", fontFamily: "'Share Tech Mono', monospace", fontSize: "0.5rem" }}
+        >
+          Show opponent hidden cards
+        </span>
+      </div>
+
       {/* Confirm button */}
       <button
         disabled={!canStart}
         onClick={() => {
           if (myDeck && oppDeck) {
-            onDeckSelected(toPayload(myDeck), toPayload(oppDeck));
+            onDeckSelected(toPayload(myDeck), toPayload(oppDeck), openCards);
           }
         }}
         className="px-8 py-3 rounded font-bold text-sm transition-all"
