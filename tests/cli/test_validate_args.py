@@ -107,7 +107,7 @@ def test_resume_with_base_dir_warns(tmp_path):
     assert "--base-dir has no effect with --resume" in result.stderr
 
 
-def test_shaping_lp_weight_ignored_without_shaping():
+def test_shaping_lp_weight_ignored_without_shaping(tmp_path):
     """--shaping-lp-weight should warn when --no-reward-shaping is set."""
     result = subprocess.run(
         [
@@ -115,13 +115,14 @@ def test_shaping_lp_weight_ignored_without_shaping():
             "--no-reward-shaping",
             "--shaping-lp-weight", "0.05",
             "--total-timesteps", "0",
+            "--base-dir", str(tmp_path),
         ],
         capture_output=True, text=True, timeout=30,
     )
     assert "--shaping-lp-weight has no effect with --no-reward-shaping" in result.stderr
 
 
-def test_shaping_card_weight_ignored_without_shaping():
+def test_shaping_card_weight_ignored_without_shaping(tmp_path):
     """--shaping-card-weight should warn when --no-reward-shaping is set."""
     result = subprocess.run(
         [
@@ -129,19 +130,21 @@ def test_shaping_card_weight_ignored_without_shaping():
             "--no-reward-shaping",
             "--shaping-card-weight", "0.05",
             "--total-timesteps", "0",
+            "--base-dir", str(tmp_path),
         ],
         capture_output=True, text=True, timeout=30,
     )
     assert "--shaping-card-weight has no effect with --no-reward-shaping" in result.stderr
 
 
-def test_no_reward_shaping_alone_no_warning():
+def test_no_reward_shaping_alone_no_warning(tmp_path):
     """--no-reward-shaping alone should NOT warn about shaping weights."""
     result = subprocess.run(
         [
             sys.executable, "-m", "cli.train",
             "--no-reward-shaping",
             "--total-timesteps", "0",
+            "--base-dir", str(tmp_path),
         ],
         capture_output=True, text=True, timeout=30,
     )
