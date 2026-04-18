@@ -248,13 +248,6 @@ class PPOTrainer:
             int(k): list(v) for k, v in ckpt.get("deck_wins", {}).items()
         }
 
-        # Restore deck_paths from checkpoint so index-keyed _deck_wins maps
-        # to the correct deck names.  The CLI default would be wrong if the
-        # user resumes without re-specifying --deck-paths.
-        ckpt_config = ckpt.get("config")
-        if ckpt_config is not None and hasattr(ckpt_config, "deck_paths"):
-            config.deck_paths = list(ckpt_config.deck_paths)
-
         update = ckpt.get("update", 0)
         global_step = ckpt.get("global_step", 0)
         logger.info(
@@ -294,6 +287,21 @@ class PPOTrainer:
             raise ValueError(
                 "Architecture mismatch between checkpoint and CLI config:\n"
                 + "\n".join(mismatches)
+            )
+
+        # deck_paths must match: the index-keyed _deck_wins map was saved
+        # using the checkpoint's deck_paths ordering; resuming with a
+        # different list silently attributes wins to the wrong deck names.
+        # CLI resumes load deck_paths from ckpt["config"] before constructing
+        # the trainer, so this check is defensive for direct callers who
+        # build TrainingConfig(resume_checkpoint=...) without first merging.
+        ckpt_decks = getattr(ckpt_config, "deck_paths", None)
+        if ckpt_decks is not None and list(ckpt_decks) != list(config.deck_paths):
+            raise ValueError(
+                "deck_paths mismatch between checkpoint and config "
+                "(index-keyed per-deck metrics would misalign):\n"
+                f"  checkpoint: {list(ckpt_decks)}\n"
+                f"  config:     {list(config.deck_paths)}"
             )
 
         # Text embedding mode: from_state_dict auto-detects from keys,

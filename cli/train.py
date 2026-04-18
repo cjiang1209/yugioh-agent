@@ -7,11 +7,55 @@ import json
 import logging
 import random
 import sys
-from dataclasses import asdict
+from dataclasses import asdict, fields
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
+
+from yugioh_rl.config import TrainingConfig
+
+
+# Flags whose values may override the checkpoint's stored config on --resume.
+# Map CLI flag → TrainingConfig field name.
+_RESUME_OVERRIDE_ALLOWLIST: dict[str, str] = {
+    "--total-timesteps": "total_timesteps",
+    "--learning-rate": "learning_rate",
+    "--device": "device",
+    "--log-interval": "log_interval",
+    "--eval-interval": "eval_interval",
+    "--eval-episodes": "eval_episodes",
+    "--eval-opponents": "eval_opponents",
+    "--save-interval": "save_interval",
+    "--opponent": "opponent",
+}
+
+# Flags that are legal alongside --resume but do not correspond to a
+# TrainingConfig override. --base-dir is tolerated with a warning in
+# validate_cli_args; the others are session-scoped meta controls.
+_RESUME_META_FLAGS: frozenset[str] = frozenset({
+    "--resume", "--init-checkpoint", "--resume-optimizer", "--base-dir",
+})
+
+# TrainingConfig fields that are session-scoped; drop from ckpt_config on merge.
+_META_FIELDS: frozenset[str] = frozenset(
+    {"resume_checkpoint", "init_checkpoint", "resume_optimizer", "save_dir"}
+)
+
+
+def _provided_flags() -> list[str]:
+    """Return the flag names the user explicitly passed on the command line.
+
+    Scans ``sys.argv`` for ``--foo`` / ``--foo=bar`` tokens. Relies on
+    argparse having already accepted the argv (so every ``--foo`` we see is
+    a known, valid flag) — this function must only be called after
+    ``parse_args()``.
+    """
+    flags = []
+    for arg in sys.argv[1:]:
+        if arg.startswith("--"):
+            flags.append(arg.split("=", 1)[0])
+    return flags
 
 
 def parse_args() -> argparse.Namespace:
@@ -132,12 +176,23 @@ def _validate_opponent_spec(spec: str, flag: str) -> None:
         _fatal(f"unknown opponent: {spec}")
 
 
-def validate_args(args: argparse.Namespace) -> None:
-    """Validate CLI argument constraints that argparse cannot express.
+def _validate_deck_paths(paths: list[str], flag: str = "--deck-paths") -> None:
+    """Validate that every deck file exists and has the .ydk extension."""
+    for dp in paths:
+        if not Path(dp).exists():
+            _fatal(f"{flag}: deck file not found: {dp}")
+        if not dp.endswith(".ydk"):
+            _fatal(f"{flag}: deck file must end with .ydk: {dp}")
 
-    Logs warnings for arguments that have no effect given the other
-    arguments provided.  Fatal constraint violations call ``_fatal``
-    (and never return).
+
+def validate_cli_args(args: argparse.Namespace) -> None:
+    """Validate CLI args that do not depend on the resumed-config merge.
+
+    Handles: --resume / --init-checkpoint mutual exclusion and path existence,
+    --resume-optimizer legality, and "ignored flag" warnings.  Field-value
+    checks (deck existence, opponent specs) run later against the effective
+    TrainingConfig so that on --resume they see checkpoint values, not the
+    discarded CLI args.
     """
     logger = logging.getLogger(__name__)
 
@@ -170,47 +225,18 @@ def validate_args(args: argparse.Namespace) -> None:
                 "--shaping-card-weight has no effect with --no-reward-shaping"
             )
 
-    # --deck-paths validation
-    for dp in args.deck_paths:
-        if not Path(dp).exists():
-            _fatal(f"deck file not found: {dp}")
-        if not dp.endswith(".ydk"):
-            _fatal(f"deck file must end with .ydk: {dp}")
 
-    # --opponent validation
-    _validate_opponent_spec(args.opponent, "--opponent")
-
-    # --eval-opponents validation
-    for spec in args.eval_opponents:
+def validate_effective_config(config: "TrainingConfig") -> None:  # noqa: F821
+    """Validate per-field values on the final merged TrainingConfig."""
+    _validate_deck_paths(config.deck_paths)
+    _validate_opponent_spec(config.opponent, "--opponent")
+    for spec in config.eval_opponents:
         _validate_opponent_spec(spec, "--eval-opponents")
 
 
-def main() -> None:
-    args = parse_args()
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        datefmt="%H:%M:%S",
-    )
-    logger = logging.getLogger(__name__)
-
-    validate_args(args)
-
-    # Derive save_dir: resume continues in the same run directory
-    if args.resume:
-        save_dir = str(Path(args.resume).resolve().parent)
-    else:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        run_name = f"{timestamp}_seed{args.seed}"
-        save_dir = str(Path(args.base_dir) / run_name)
-
-    # Lazy import so --help is fast even without torch installed
-    import torch
-    from yugioh_rl.config import TrainingConfig
-    from yugioh_rl.ppo import PPOTrainer
-
-    config = TrainingConfig(
+def _build_fresh_config(args: argparse.Namespace, save_dir: str) -> TrainingConfig:
+    """Build TrainingConfig directly from CLI args (fresh / --init-checkpoint)."""
+    return TrainingConfig(
         num_envs=args.num_envs,
         deck_paths=args.deck_paths,
         opponent=args.opponent,
@@ -249,12 +275,139 @@ def main() -> None:
         device=args.device,
     )
 
-    # Create run directory and write config snapshot
+
+def _build_resume_config(args: argparse.Namespace, save_dir: str) -> TrainingConfig:
+    """Load ``ckpt["config"]``, merge CLI allowlist overrides, return a
+    TrainingConfig ready for PPOTrainer.
+
+    Hard-errors if the user passed any non-allowlisted override flag or if
+    the checkpoint config's field set has drifted from the current
+    ``TrainingConfig`` schema.
+    """
+    provided = set(_provided_flags())
+
+    # Reject non-allowlist CLI overrides before any expensive I/O so the
+    # user sees a clear "this flag isn't overridable" error first.
+    disallowed = sorted(
+        provided - set(_RESUME_OVERRIDE_ALLOWLIST) - _RESUME_META_FLAGS
+    )
+    if disallowed:
+        allowlist_str = ", ".join(sorted(_RESUME_OVERRIDE_ALLOWLIST.keys()))
+        _fatal(
+            "these flags cannot be overridden on --resume: "
+            + ", ".join(disallowed)
+            + f"; allowed: {allowlist_str}"
+        )
+
+    import torch
+
+    ckpt = torch.load(args.resume, map_location="cpu", weights_only=False)
+    ckpt_config = ckpt.get("config")
+    if ckpt_config is None:
+        _fatal(f"resume checkpoint has no stored config: {args.resume}")
+    if not isinstance(ckpt_config, TrainingConfig):
+        _fatal(
+            f"resume checkpoint config is not a TrainingConfig: "
+            f"{type(ckpt_config).__name__}"
+        )
+
+    # Schema-drift detection: compare pickled instance attrs (what was
+    # actually stored) against the current TrainingConfig field set.
+    # Using vars() rather than asdict().keys() so extras survive the check —
+    # asdict walks the current class's fields() and would silently drop them.
+    ckpt_attrs = set(vars(ckpt_config).keys())
+    current_fields = {f.name for f in fields(TrainingConfig)}
+    missing = current_fields - ckpt_attrs
+    extra = ckpt_attrs - current_fields
+    if missing or extra:
+        parts = []
+        if missing:
+            parts.append(f"missing: {sorted(missing)}")
+        if extra:
+            parts.append(f"unknown: {sorted(extra)}")
+        _fatal(
+            "resume checkpoint config does not match current TrainingConfig "
+            "schema (" + "; ".join(parts)
+            + "). Use a matching codebase version."
+        )
+
+    # Start from the checkpoint's stored values; drop session-scoped fields
+    # (they must come from the current CLI invocation, not the old run).
+    merged = {k: v for k, v in asdict(ckpt_config).items() if k not in _META_FIELDS}
+
+    # Apply allowlisted CLI overrides (only when the user explicitly passed
+    # the flag — otherwise keep the checkpoint's value).  The dict's values
+    # match argparse's default dest for each flag, so they're both the
+    # TrainingConfig field name and the attribute on `args`.
+    for flag, field_name in _RESUME_OVERRIDE_ALLOWLIST.items():
+        if flag in provided:
+            merged[field_name] = getattr(args, field_name)
+
+    # Meta fields come from the CLI invocation.
+    merged["resume_checkpoint"] = args.resume
+    merged["init_checkpoint"] = ""
+    merged["resume_optimizer"] = False
+    merged["save_dir"] = save_dir
+
+    return TrainingConfig(**merged)
+
+
+def _write_config_snapshot(config: TrainingConfig) -> Path:
+    """Write ``config_{timestamp}.json`` into ``config.save_dir`` and repoint
+    the ``config.json`` symlink at it."""
+    run_dir = Path(config.save_dir)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    snapshot_name = f"config_{timestamp}.json"
+    snapshot_path = run_dir / snapshot_name
+    with open(snapshot_path, "w") as f:
+        json.dump(asdict(config), f, indent=2)
+
+    latest = run_dir / "config.json"
+    latest.unlink(missing_ok=True)
+    latest.symlink_to(snapshot_name)
+    return snapshot_path
+
+
+def main() -> None:
+    args = parse_args()
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    logger = logging.getLogger(__name__)
+
+    validate_cli_args(args)
+
+    # Derive save_dir: resume continues in the same run directory
+    if args.resume:
+        save_dir = str(Path(args.resume).resolve().parent)
+    else:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_name = f"{timestamp}_seed{args.seed}"
+        save_dir = str(Path(args.base_dir) / run_name)
+
+    # On fresh runs, validate effective config before importing torch so
+    # bad --opponent / --deck-paths fail fast without paying torch's
+    # import cost.  Resume requires torch.load to read ckpt["config"]
+    # before we can validate — _build_resume_config imports torch itself.
+    if args.resume:
+        config = _build_resume_config(args, save_dir)
+    else:
+        config = _build_fresh_config(args, save_dir)
+    validate_effective_config(config)
+
+    import torch
+    from yugioh_rl.ppo import PPOTrainer
+
+    # Create run directory and write a timestamped config snapshot; update
+    # `config.json` symlink to point at it.
     run_dir = Path(config.save_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
-    with open(run_dir / "config.json", "w") as f:
-        json.dump(asdict(config), f, indent=2)
+    snapshot_path = _write_config_snapshot(config)
     logger.info("Run directory: %s", run_dir)
+    logger.info("Config snapshot: %s", snapshot_path.name)
     if len(config.deck_paths) > 1:
         logger.info("Multi-deck training: %d decks — %s", len(config.deck_paths),
                      ", ".join(config.deck_paths))
