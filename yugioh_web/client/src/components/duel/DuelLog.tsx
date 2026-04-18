@@ -8,14 +8,14 @@ interface DuelLogProps {
 export function DuelLog({ logs, isReplaying }: DuelLogProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevLenRef = useRef(0);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [logs]);
-
-  // Track the boundary between old and new entries for animation
   const animateFrom = prevLenRef.current;
+
   useEffect(() => {
+    if (logs.length > prevLenRef.current) {
+      bottomRef.current?.scrollIntoView({
+        behavior: prevLenRef.current === 0 ? "auto" : "smooth",
+      });
+    }
     prevLenRef.current = logs.length;
   }, [logs]);
 

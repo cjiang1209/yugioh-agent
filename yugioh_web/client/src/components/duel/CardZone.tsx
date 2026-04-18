@@ -139,7 +139,7 @@ export function CardZone({
             )}
           </div>
           {/* ATK/DEF badge — outside rotated container so it stays at the bottom */}
-          {variant === "monster" && slot.card.atk !== undefined && (!isFaceDown || (isOpponent && slot.card.id > 0)) && (
+          {(variant === "monster" || variant === "extra-monster") && slot.card.atk !== undefined && (!isFaceDown || (isOpponent && slot.card.id > 0)) && (
             <div
               className="absolute bottom-0 left-0 right-0 text-center font-bold"
               style={{
