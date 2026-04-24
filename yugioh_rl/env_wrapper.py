@@ -50,6 +50,7 @@ class TrainingEnv:
         shaping_card_weight: float = 0.005,
         seed: int = 42,
         agent_player: str = "random",
+        opponent_device: str | None = None,
     ) -> None:
         if not deck_pool:
             raise ValueError("deck_pool must not be empty")
@@ -63,6 +64,9 @@ class TrainingEnv:
             "opponent": opponent,
             "agent_player": self._agent_player_setting,
         }
+        # Absent key lets YUGIOH_OPPONENT_DEVICE win; see _resolve_opponent_device.
+        if opponent_device is not None:
+            env_config["opponent_device"] = opponent_device
 
         self._env = YuGiOhEnvironment(config=env_config)
         self._reward_shaping = reward_shaping
@@ -183,6 +187,14 @@ class TrainingEnv:
 
         return shaped
 
+    @property
+    def current_msg(self) -> dict | None:
+        return self._env.current_msg
+
+    @property
+    def num_actions(self) -> int:
+        return self._env.num_actions
+
     def close(self) -> None:
         self._env.close()
 
@@ -227,6 +239,7 @@ class SubprocVecEnv:
         shaping_card_weight: float = 0.005,
         seed: int = 42,
         agent_player: str = "random",
+        opponent_device: str | None = None,
     ) -> None:
         self.num_envs = num_envs
         self._closed = False
@@ -245,6 +258,7 @@ class SubprocVecEnv:
                 "shaping_card_weight": shaping_card_weight,
                 "seed": seed + i * 10000,
                 "agent_player": agent_player,
+                "opponent_device": opponent_device,
             }
             p = ctx.Process(target=_worker, args=(child_conn, env_kwargs), daemon=True)
             p.start()

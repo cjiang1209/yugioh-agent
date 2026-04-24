@@ -1,30 +1,34 @@
-"""Opponent policies for automatic play as Player 1."""
+"""Opponent policies for automatic play as Player 1.
+
+Also exposes:
+- ``parse_opponent_spec(spec)`` — split "greedy" / "random" / "model:path" strings.
+- ``make_opponent(spec, seed, device)`` — factory used by both the HTTP server
+  (``YuGiOhEnvironment.__init__``) and the eval module.
+
+The ``select_action`` ABC takes ``num_actions: int`` rather than the full
+``ActionMapper`` because every subclass only ever needs the count to clamp its
+chosen index — exposing more of the mapper was over-scoped.
+"""
 
 from __future__ import annotations
 
 import random
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
 
 import numpy as np
 
-from yugioh_env.action_space import ActionMapper
 from yugioh_core.constants import (
     MSG_SELECT_BATTLECMD,
     MSG_SELECT_IDLECMD,
-    POS_FACEUP_ATTACK,
 )
-
-if TYPE_CHECKING:
-    pass
 
 
 class Opponent(ABC):
     """Base class for opponent policies."""
 
     @abstractmethod
-    def select_action(self, msg: dict, mapper: ActionMapper) -> int:
-        """Select an action index given the current message and mapper."""
+    def select_action(self, msg: dict, num_actions: int) -> int:
+        """Select an action index in ``[0, num_actions)`` given the current message."""
         ...
 
     @property
@@ -51,11 +55,10 @@ class RandomOpponent(Opponent):
     def reseed(self, seed: int) -> None:
         self._rng = random.Random(seed)
 
-    def select_action(self, msg: dict, mapper: ActionMapper) -> int:
-        n = mapper.num_actions
-        if n == 0:
+    def select_action(self, msg: dict, num_actions: int) -> int:
+        if num_actions == 0:
             return 0
-        return self._rng.randint(0, n - 1)
+        return self._rng.randint(0, num_actions - 1)
 
 
 class GreedyOpponent(Opponent):
@@ -67,48 +70,38 @@ class GreedyOpponent(Opponent):
     - For other messages: pick first valid option
     """
 
-    def select_action(self, msg: dict, mapper: ActionMapper) -> int:
-        n = mapper.num_actions
-        if n == 0:
+    def select_action(self, msg: dict, num_actions: int) -> int:
+        if num_actions == 0:
             return 0
-        if n == 1:
+        if num_actions == 1:
             return 0
 
         msg_type = msg.get("msg_type")
 
         if msg_type == MSG_SELECT_IDLECMD:
-            return self._greedy_idle(msg, mapper)
+            return self._greedy_idle(msg, num_actions)
         elif msg_type == MSG_SELECT_BATTLECMD:
-            return self._greedy_battle(msg, mapper)
+            return self._greedy_battle(msg, num_actions)
         else:
             return 0
 
-    def _greedy_idle(self, msg: dict, mapper: ActionMapper) -> int:
-        """Greedy idle: summon best monster > set S/T > activate > go to BP > end."""
-        # Try to summon the monster with highest ATK
-        summonable = msg.get("summonable", [])
-        if summonable:
-            best_idx = 0
-            # First summonable action in the mapper
+    def _greedy_idle(self, msg: dict, num_actions: int) -> int:
+        """Greedy idle: summon > set S/T > go to BP > end."""
+        if msg.get("summonable"):
             return 0
 
-        # Try special summon
         if msg.get("sp_summonable"):
-            sp_start = len(msg.get("summonable", []))
-            return sp_start
+            return len(msg.get("summonable", []))
 
-        # Try setting spells/traps
-        sset = msg.get("sset", [])
-        if sset:
+        if msg.get("sset"):
             offset = (
                 len(msg.get("summonable", []))
                 + len(msg.get("sp_summonable", []))
                 + len(msg.get("repositionable", []))
                 + len(msg.get("mset", []))
             )
-            return min(offset, mapper.num_actions - 1)
+            return min(offset, num_actions - 1)
 
-        # Try to enter battle phase
         activatable_count = (
             len(msg.get("summonable", []))
             + len(msg.get("sp_summonable", []))
@@ -118,37 +111,32 @@ class GreedyOpponent(Opponent):
             + len(msg.get("activatable", []))
         )
         if msg.get("to_bp"):
-            return min(activatable_count, mapper.num_actions - 1)
+            return min(activatable_count, num_actions - 1)
 
-        # End phase
-        return mapper.num_actions - 1
+        return num_actions - 1
 
-    def _greedy_battle(self, msg: dict, mapper: ActionMapper) -> int:
+    def _greedy_battle(self, msg: dict, num_actions: int) -> int:
         """Greedy battle: attack if possible, then end."""
-        attackable = msg.get("attackable", [])
         act_count = len(msg.get("activatable", []))
-        if attackable:
-            return act_count  # First attack action
-        # Go to M2 or EP
-        return mapper.num_actions - 1
+        if msg.get("attackable"):
+            return act_count
+        return num_actions - 1
 
 
-class ModelOpponent(Opponent):
-    """Opponent that uses a trained YuGiOhNet checkpoint to select actions.
+class NetworkOpponent(Opponent):
+    """Opponent that uses an already-loaded ``YuGiOhNet`` for greedy argmax inference.
+
+    Used by in-training eval (the trainer passes ``self.network`` directly,
+    avoiding a per-cycle checkpoint load) and by ``ModelOpponent`` (which loads
+    a checkpoint from disk and delegates here).
 
     Requires torch and yugioh_rl to be installed (``pip install -e ".[train]"``).
     """
 
-    def __init__(self, checkpoint_path: str, device: str = "cpu") -> None:
+    def __init__(self, network, device: str = "cpu") -> None:
         import torch
-        from yugioh_rl.config import TrainingConfig
-        from yugioh_rl.network import YuGiOhNet
 
-        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
-        config: TrainingConfig = checkpoint["config"]
-        self._network = YuGiOhNet.from_state_dict(config, checkpoint["model_state_dict"])
-        self._network.to(device)
-        self._network.eval()
+        self._network = network
         self._device = torch.device(device)
         self._obs: dict[str, np.ndarray] | None = None
 
@@ -159,7 +147,7 @@ class ModelOpponent(Opponent):
     def set_observation(self, obs: dict[str, np.ndarray]) -> None:
         self._obs = obs
 
-    def select_action(self, msg: dict, mapper: ActionMapper) -> int:
+    def select_action(self, msg: dict, num_actions: int) -> int:
         import torch
 
         if self._obs is None:
@@ -175,7 +163,88 @@ class ModelOpponent(Opponent):
             logits, _ = self._network(t_cards, t_global, t_actions, t_mask)
             action = logits.argmax(dim=-1).item()
 
-        return min(action, mapper.num_actions - 1)
+        return min(action, num_actions - 1)
 
     def reseed(self, seed: int) -> None:
         pass  # Deterministic policy
+
+
+class ModelOpponent(Opponent):
+    """Opponent that loads a trained ``YuGiOhNet`` checkpoint and delegates to ``NetworkOpponent``.
+
+    Requires torch and yugioh_rl to be installed (``pip install -e ".[train]"``).
+    """
+
+    def __init__(self, checkpoint_path: str, device: str = "cpu") -> None:
+        import torch
+        from yugioh_rl.network import YuGiOhNet
+
+        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+        config = checkpoint["config"]
+        network = YuGiOhNet.from_state_dict(config, checkpoint["model_state_dict"])
+        network.to(device)
+        network.eval()
+        self._impl = NetworkOpponent(network, device=device)
+
+    @property
+    def needs_observation(self) -> bool:
+        return True
+
+    def set_observation(self, obs: dict[str, np.ndarray]) -> None:
+        self._impl.set_observation(obs)
+
+    def select_action(self, msg: dict, num_actions: int) -> int:
+        return self._impl.select_action(msg, num_actions)
+
+    def reseed(self, seed: int) -> None:
+        self._impl.reseed(seed)
+
+
+# ---------------------------------------------------------------------------
+# Opponent-spec parsing and factory
+# ---------------------------------------------------------------------------
+
+def parse_opponent_spec(spec: str) -> tuple[str, str]:
+    """Parse an opponent spec string.
+
+    Returns ``(opponent_type, checkpoint_path)``:
+    - ``"greedy"`` → ``("greedy", "")``
+    - ``"random"`` → ``("random", "")``
+    - ``"model:/p.pt"`` → ``("model", "/p.pt")``
+
+    Does not validate that checkpoint files exist — that's a CLI-layer concern.
+    """
+    if spec.startswith("model:"):
+        return "model", spec[len("model:"):]
+    return spec, ""
+
+
+def make_opponent(
+    spec: str,
+    *,
+    seed: int | None = None,
+    device: str = "cpu",
+) -> Opponent:
+    """Construct an ``Opponent`` from a spec string.
+
+    - ``"greedy"`` → ``GreedyOpponent()``
+    - ``"random"`` → ``RandomOpponent(seed=seed)``
+    - ``"model:path.pt"`` → ``ModelOpponent(path, device=device)``
+
+    Raises ``ValueError`` on empty model path or unknown kind. Checkpoint
+    file-existence is not validated here — callers that want a clean CLI error
+    message should validate the path before calling this factory.
+    """
+    opponent_type, checkpoint = parse_opponent_spec(spec)
+    if opponent_type == "model":
+        if not checkpoint:
+            raise ValueError(
+                "model opponent requires a checkpoint path "
+                "(e.g. 'model:path/to/ckpt.pt')"
+            )
+        return ModelOpponent(checkpoint, device=device)
+    if opponent_type == "greedy":
+        return GreedyOpponent()
+    if opponent_type == "random":
+        return RandomOpponent(seed=seed)
+    raise ValueError(f"unknown opponent: {spec!r}")

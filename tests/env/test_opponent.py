@@ -25,7 +25,7 @@ def test_random_opponent_deterministic_with_seed():
     for _ in range(2):
         opp = RandomOpponent(seed=42)
         mapper = _make_yesno_mapper()
-        actions = [opp.select_action(msg, mapper) for _ in range(20)]
+        actions = [opp.select_action(msg, mapper.num_actions) for _ in range(20)]
         results.append(actions)
     assert results[0] == results[1]
 
@@ -37,11 +37,11 @@ def test_random_opponent_reseed_restores_determinism():
     mapper = _make_yesno_mapper()
 
     # Generate a sequence
-    run1 = [opp.select_action(msg, mapper) for _ in range(20)]
+    run1 = [opp.select_action(msg, mapper.num_actions) for _ in range(20)]
 
     # Reseed and generate again
     opp.reseed(99)
-    run2 = [opp.select_action(msg, mapper) for _ in range(20)]
+    run2 = [opp.select_action(msg, mapper.num_actions) for _ in range(20)]
 
     assert run1 == run2
 
@@ -53,8 +53,8 @@ def test_random_opponent_different_seeds_differ():
 
     opp1 = RandomOpponent(seed=1)
     opp2 = RandomOpponent(seed=2)
-    run1 = [opp1.select_action(msg, mapper) for _ in range(50)]
-    run2 = [opp2.select_action(msg, mapper) for _ in range(50)]
+    run1 = [opp1.select_action(msg, mapper.num_actions) for _ in range(50)]
+    run2 = [opp2.select_action(msg, mapper.num_actions) for _ in range(50)]
 
     assert run1 != run2
 
@@ -154,7 +154,7 @@ def test_model_opponent_construction():
         _make_synthetic_checkpoint(f.name)
         opp = ModelOpponent(f.name, device="cpu")
         assert opp.needs_observation is True
-        assert not opp._network.training
+        assert not opp._impl._network.training
 
 
 def test_model_opponent_select_action():
@@ -170,7 +170,7 @@ def test_model_opponent_select_action():
 
         msg = {"msg_type": MSG_SELECT_YESNO, "player": 1, "desc": 0}
         mapper = _make_yesno_mapper()
-        action = opp.select_action(msg, mapper)
+        action = opp.select_action(msg, mapper.num_actions)
         assert 0 <= action < mapper.num_actions
 
 
@@ -187,9 +187,9 @@ def test_model_opponent_deterministic():
         mapper = _make_yesno_mapper()
 
         opp.set_observation(obs)
-        a1 = opp.select_action(msg, mapper)
+        a1 = opp.select_action(msg, mapper.num_actions)
         opp.set_observation(obs)
-        a2 = opp.select_action(msg, mapper)
+        a2 = opp.select_action(msg, mapper.num_actions)
         assert a1 == a2
 
 
@@ -213,7 +213,7 @@ def test_model_opponent_no_obs_returns_zero():
 
         msg = {"msg_type": MSG_SELECT_YESNO, "player": 1, "desc": 0}
         mapper = _make_yesno_mapper()
-        action = opp.select_action(msg, mapper)
+        action = opp.select_action(msg, mapper.num_actions)
         assert action == 0
 
 
@@ -250,14 +250,14 @@ def test_model_opponent_semantic_checkpoint():
     # Load ModelOpponent — should NOT attempt to read an embeddings file
     opp = ModelOpponent(ckpt_path, device="cpu")
     assert opp.needs_observation is True
-    assert opp._network.text_lookup is not None
+    assert opp._impl._network.text_lookup is not None
 
     # Verify select_action works
     obs = _dummy_obs()
     opp.set_observation(obs)
     msg = {"msg_type": MSG_SELECT_YESNO, "player": 1, "desc": 0}
     mapper = _make_yesno_mapper()
-    action = opp.select_action(msg, mapper)
+    action = opp.select_action(msg, mapper.num_actions)
     assert 0 <= action < mapper.num_actions
 
     import os

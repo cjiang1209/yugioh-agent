@@ -38,7 +38,7 @@ from yugioh_env.duel import Duel
 from yugioh_env.lib_loader import load_library
 from yugioh_env.models import YuGiOhAction, YuGiOhObservation, YuGiOhState
 from yugioh_env.observation import build_observation
-from yugioh_env.opponent import Opponent, RandomOpponent
+from yugioh_env.opponent import Opponent, make_opponent
 from yugioh_env.server.board_state import build_board_state
 
 logger = logging.getLogger(__name__)
@@ -56,6 +56,17 @@ _API_PHASE_NAMES = {
     PHASE_MAIN2: "main2",
     PHASE_END: "end",
 }
+
+
+def _resolve_opponent_device(config: dict[str, Any]) -> str:
+    """Resolve the device for a model opponent.
+
+    Config key wins over the ``YUGIOH_OPPONENT_DEVICE`` env var, default ``"cpu"``.
+    Extracted so it can be unit-tested without booting the engine.
+    """
+    return config.get("opponent_device") or os.environ.get(
+        "YUGIOH_OPPONENT_DEVICE", "cpu"
+    )
 
 
 class YuGiOhEnvironment(Environment):
@@ -117,30 +128,11 @@ class YuGiOhEnvironment(Environment):
         opponent_spec = config.get("opponent") or os.environ.get(
             "YUGIOH_OPPONENT", "random"
         )
-        if opponent_spec.startswith("model:"):
-            opponent_type = "model"
-            opponent_checkpoint = opponent_spec[len("model:"):]
-        else:
-            opponent_type = opponent_spec
-            opponent_checkpoint = ""
-
         opponent_seed = config.get("opponent_seed")
-        if opponent_type == "model":
-            from yugioh_env.opponent import ModelOpponent
-            if not opponent_checkpoint:
-                raise ValueError(
-                    "model opponent requires a checkpoint path "
-                    "(e.g. opponent='model:path/to/ckpt.pt')"
-                )
-            opponent_device = config.get("opponent_device") or os.environ.get(
-                "YUGIOH_OPPONENT_DEVICE", "cpu"
-            )
-            self._opponent: Opponent = ModelOpponent(opponent_checkpoint, device=opponent_device)
-        elif opponent_type == "greedy":
-            from yugioh_env.opponent import GreedyOpponent
-            self._opponent = GreedyOpponent()
-        else:
-            self._opponent = RandomOpponent(seed=opponent_seed)
+        opponent_device = _resolve_opponent_device(config)
+        self._opponent: Opponent = make_opponent(
+            opponent_spec, seed=opponent_seed, device=opponent_device
+        )
 
         # Duel state
         self._duel: Duel | None = None
@@ -161,6 +153,22 @@ class YuGiOhEnvironment(Environment):
     def last_frames(self) -> list[dict]:
         """Intermediate board snapshots captured during the last process cycle."""
         return self._last_frames
+
+    @property
+    def current_msg(self) -> dict | None:
+        """Active MSG_SELECT_* prompt, or None between prompts.
+
+        In multi-step card selection this carries the accumulated `_selected`
+        indices so readers see the narrowed prompt, not the original.
+        """
+        return self._current_msg
+
+    @property
+    def num_actions(self) -> int:
+        """Legal action count for the active prompt (0 when none)."""
+        if self._current_msg is None:
+            return 0
+        return self._mapper.num_actions
 
     @staticmethod
     def _validate_deck(deck: dict, label: str) -> None:
@@ -279,11 +287,13 @@ class YuGiOhEnvironment(Environment):
                 return self._make_terminal_observation()
 
         if response is None:
-            # Multi-step: accumulate picked card, re-present with updated msg
+            # Multi-step: accumulate picked card, re-present with updated msg.
+            # _current_msg must track the mapper update so current_msg/num_actions stay consistent.
             card_idx = self._mapper.get_action_index(action.action_index)
             self._card_sel.append(card_idx)
             updated_msg = {**self._current_msg, "_selected": list(self._card_sel)}
             self._mapper.update(updated_msg)
+            self._current_msg = updated_msg
             return self._make_observation()
 
         self._card_sel.clear()
@@ -387,7 +397,7 @@ class YuGiOhEnvironment(Environment):
                             opp_obs["actions"] = opp_mapper.get_action_features()
                             opp_obs["action_mask"] = opp_mapper.get_action_mask()
                             self._opponent.set_observation(opp_obs)
-                        opp_action = self._opponent.select_action(msg, opp_mapper)
+                        opp_action = self._opponent.select_action(msg, opp_mapper.num_actions)
                         opp_action = min(opp_action, opp_mapper.num_actions - 1)
                         response = opp_mapper.action_to_response(opp_action)
                         if response is None:
@@ -434,6 +444,10 @@ class YuGiOhEnvironment(Environment):
 
     def _make_terminal_observation(self, event_log: list[str] | None = None) -> YuGiOhObservation:
         """Build terminal observation with reward."""
+        # No active prompt past this point; keeps current_msg/num_actions in sync with action_mask=0.
+        self._current_msg = None
+        self._card_sel.clear()
+
         reward = 0.0
         if self._duel and self._duel.game_state.is_finished:
             winner = self._duel.game_state.winner
