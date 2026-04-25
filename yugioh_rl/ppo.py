@@ -14,8 +14,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Categorical
 
+from yugioh_env.opponent import NetworkOpponent
 from yugioh_rl.config import TrainingConfig
 from yugioh_rl.env_wrapper import SubprocVecEnv, TrainingEnv, parse_deck_pool
+from yugioh_rl.eval import evaluate, log_results_to_tensorboard
 from yugioh_rl.network import YuGiOhNet
 
 logger = logging.getLogger(__name__)
@@ -515,98 +517,41 @@ class PPOTrainer:
 
         logger.info("Training complete. Total steps: %d", global_step)
 
-    @staticmethod
-    def _parse_opponent_spec(spec: str) -> tuple[str, str]:
-        """Parse an opponent spec string.
-
-        Returns (opponent_type, checkpoint_path).
-        ``"greedy"`` → ``("greedy", "")``,
-        ``"model:/path/to/ckpt.pt"`` → ``("model", "/path/to/ckpt.pt")``.
-        """
-        if spec.startswith("model:"):
-            return "model", spec[len("model:"):]
-        return spec, ""
-
-    def _run_eval_episodes(
-        self, env: TrainingEnv, num_episodes: int,
-    ) -> tuple[int, dict[int, list[float]]]:
-        """Run evaluation episodes and return wins + per-deck breakdown.
-
-        Returns:
-            total_wins: number of episodes the agent won
-            per_deck: {agent_deck_idx: [1.0/0.0, ...]} win records
-        """
-        total_wins = 0
-        per_deck: dict[int, list[float]] = {}
-        for _ in range(num_episodes):
-            obs = env.reset()
-            done = False
-            while not done:
-                with torch.no_grad():
-                    t_cards = torch.from_numpy(obs["cards"]).unsqueeze(0).to(self.device)
-                    t_global = torch.from_numpy(obs["global_state"]).unsqueeze(0).to(self.device)
-                    t_actions = torch.from_numpy(obs["actions"]).unsqueeze(0).to(self.device)
-                    t_mask = torch.from_numpy(obs["action_mask"]).unsqueeze(0).to(self.device)
-
-                    logits, _ = self.network(t_cards, t_global, t_actions, t_mask)
-                    action = logits.argmax(dim=-1).item()
-
-                obs, reward, done, info = env.step(action)
-                if done:
-                    win = 1.0 if info.get("terminal_reward", 0) > 0 else 0.0
-                    total_wins += int(win)
-                    deck_idx = info.get("agent_deck_idx", 0)
-                    per_deck.setdefault(deck_idx, []).append(win)
-        return total_wins, per_deck
-
     def _evaluate(self, num_episodes: int, global_step: int) -> None:
-        """Evaluate the agent against configured opponents."""
+        """Evaluate the live network against configured opponents."""
         self.network.eval()
-
-        for spec in self.config.eval_opponents:
-            opp_type, opp_checkpoint = self._parse_opponent_spec(spec)
-
-            # Build a human-readable label for logging / TensorBoard.
-            if opp_type == "model":
-                p = Path(opp_checkpoint)
-                parent = p.parent.name
-                label = f"model_{parent}_{p.stem}" if parent else f"model_{p.stem}"
-            else:
-                label = opp_type
-
-            env = TrainingEnv(
+        try:
+            agent = NetworkOpponent(self.network, device=str(self.device))
+            # opponent_device left None so YUGIOH_OPPONENT_DEVICE / "cpu" default
+            # still wins for eval-side model opponents. Forcing the trainer's
+            # GPU here would silently override an explicit env-var opt-out and
+            # can OOM on memory-constrained GPUs.
+            results = evaluate(
+                agent,
                 deck_pool=self._deck_pool,
-                opponent=spec,
-                reward_shaping=False,
+                opponent_specs=self.config.eval_opponents,
+                num_episodes=num_episodes,
                 seed=self.config.seed + 999999,
                 agent_player=self.config.agent_player,
             )
-            try:
-                wins, per_deck = self._run_eval_episodes(env, num_episodes)
-            finally:
-                env.close()
-
-            win_rate = wins / max(num_episodes, 1)
-            logger.info("Eval vs %s: %d/%d wins (%.1f%%)", label, wins, num_episodes, win_rate * 100)
-
-            if self._writer is not None:
-                self._writer.add_scalar(f"eval/win_rate_vs_{label}", win_rate, global_step)
-
-            # Per-deck breakdown
-            for deck_idx, deck_results in per_deck.items():
-                deck_name = Path(self.config.deck_paths[deck_idx]).stem
-                deck_wr = np.mean(deck_results)
+            for r in results:
                 logger.info(
-                    "  deck %s: %d/%d wins (%.1f%%)",
-                    deck_name, int(sum(deck_results)), len(deck_results), deck_wr * 100,
+                    "Eval vs %s: %d/%d wins (%.1f%%)",
+                    r.opponent_label, r.wins, r.episodes, r.win_rate * 100,
                 )
-                if self._writer is not None:
-                    self._writer.add_scalar(
-                        f"eval/win_rate_vs_{label}_deck_{deck_name}",
-                        deck_wr, global_step,
+                for deck_idx, deck_results in r.per_deck_wins.items():
+                    deck_name = Path(self.config.deck_paths[deck_idx]).stem
+                    logger.info(
+                        "  deck %s: %d/%d wins (%.1f%%)",
+                        deck_name, int(sum(deck_results)), len(deck_results),
+                        float(np.mean(deck_results)) * 100,
                     )
-
-        self.network.train()
+            if self._writer is not None:
+                log_results_to_tensorboard(
+                    self._writer, results, self.config.deck_paths, global_step,
+                )
+        finally:
+            self.network.train()
 
     def _save_checkpoint(self, update: int, global_step: int) -> None:
         """Save model checkpoint and update latest.pt symlink."""

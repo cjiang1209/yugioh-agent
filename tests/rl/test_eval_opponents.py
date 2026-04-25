@@ -1,4 +1,15 @@
-"""Tests for configurable evaluation opponents."""
+"""Tests for the trainer-side eval wrapper.
+
+These pin the contract that ``PPOTrainer._evaluate`` is a faithful, thin
+wrapper around ``yugioh_rl.eval.evaluate``: forwarding the right kwargs,
+constructing a ``NetworkOpponent`` from ``self.network``, gating the
+TensorBoard write on ``self._writer``, and toggling ``network.eval()`` /
+``.train()`` around the call.
+
+Eval-module internals (TrainingEnv construction, label derivation, win
+counting) are covered by ``tests/rl/test_eval_module.py`` so the two layers
+fail independently.
+"""
 
 from __future__ import annotations
 
@@ -8,59 +19,21 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-import numpy as np
-
 from yugioh_rl.config import TrainingConfig
+from yugioh_rl.eval import EvalResult
 from yugioh_rl.ppo import PPOTrainer
 
 
 # ---------------------------------------------------------------------------
-# Parsing helper
+# Trainer wrapper integration — patch yugioh_rl.ppo.evaluate
 # ---------------------------------------------------------------------------
-
-class TestParseEvalOpponent:
-    def test_greedy(self):
-        assert PPOTrainer._parse_opponent_spec("greedy") == ("greedy", "")
-
-    def test_random(self):
-        assert PPOTrainer._parse_opponent_spec("random") == ("random", "")
-
-    def test_model_with_path(self):
-        assert PPOTrainer._parse_opponent_spec("model:/path/to/ckpt.pt") == (
-            "model", "/path/to/ckpt.pt",
-        )
-
-    def test_model_relative_path(self):
-        assert PPOTrainer._parse_opponent_spec("model:checkpoints/run1/latest.pt") == (
-            "model", "checkpoints/run1/latest.pt",
-        )
-
-
-# ---------------------------------------------------------------------------
-# Helpers to build a minimal trainer without the full PPOTrainer __init__
-# ---------------------------------------------------------------------------
-
-def _dummy_obs():
-    return {
-        "cards": np.zeros((200, 42), dtype=np.uint8),
-        "global_state": np.zeros(20, dtype=np.uint8),
-        "actions": np.zeros((32, 12), dtype=np.uint8),
-        "action_mask": np.ones(32, dtype=np.int8),
-    }
-
-
-class _FakeNetwork(torch.nn.Module):
-    def forward(self, cards, glob, actions, mask):
-        B = cards.shape[0]
-        return torch.zeros(B, 32), torch.zeros(B)
-
 
 def _make_trainer_stub(config: TrainingConfig) -> PPOTrainer:
-    """Build a PPOTrainer-like object without heavy init (no real network/optimizer)."""
+    """Build a PPOTrainer-like object without running __init__."""
     trainer = object.__new__(PPOTrainer)
     trainer.config = config
     trainer.device = torch.device("cpu")
-    trainer.network = _FakeNetwork()
+    trainer.network = MagicMock()
     trainer._episode_rewards = []
     trainer._writer = None
     trainer._deck_pool = [{"main": list(range(1, 41)), "extra": []}]
@@ -68,90 +41,112 @@ def _make_trainer_stub(config: TrainingConfig) -> PPOTrainer:
     return trainer
 
 
-# ---------------------------------------------------------------------------
-# _evaluate integration (mocked environment)
-# ---------------------------------------------------------------------------
-
-class TestEvaluatePassesCheckpoint:
-    def test_passes_checkpoint_to_env(self, tmp_path):
-        """_evaluate should pass opponent_checkpoint for model specs."""
+class TestEvaluateWrapper:
+    def test_forwards_expected_kwargs_to_evaluate(self, tmp_path):
         config = TrainingConfig(
             save_dir=str(tmp_path / "run"),
             num_envs=1,
-            eval_episodes=2,
-            eval_opponents=[
-                "greedy",
-                "model:/fake/checkpoint_100.pt",
-                "model:/fake/v2/best.pt",
-            ],
+            seed=7,
+            agent_player="random",
+            eval_episodes=5,
+            eval_opponents=["greedy", "model:/fake/v1/best.pt"],
         )
         trainer = _make_trainer_stub(config)
 
-        env_calls: list[dict] = []
+        captured: dict = {}
 
-        class FakeEnv:
-            def __init__(self, **kwargs):
-                env_calls.append(kwargs)
-                self._step = 0
+        def _fake_evaluate(agent, **kwargs):
+            captured["agent"] = agent
+            captured.update(kwargs)
+            return []
 
-            def reset(self):
-                self._step = 0
-                return _dummy_obs()
+        with patch("yugioh_rl.ppo.evaluate", _fake_evaluate):
+            trainer._evaluate(num_episodes=5, global_step=1000)
 
-            def step(self, action):
-                self._step += 1
-                done = self._step >= 2
-                info = {"terminal_reward": 1.0, "agent_deck_idx": 0} if done else {}
-                return _dummy_obs(), 0.0, done, info
+        assert captured["deck_pool"] is trainer._deck_pool
+        assert captured["opponent_specs"] is trainer.config.eval_opponents
+        assert captured["num_episodes"] == 5
+        assert captured["seed"] == 7 + 999999
+        assert captured["agent_player"] == "random"
+        # opponent_device deliberately not forwarded so YUGIOH_OPPONENT_DEVICE
+        # (and the CPU default) still controls eval-side model opponents.
+        assert "opponent_device" not in captured
 
-            def close(self):
-                pass
-
-        with patch("yugioh_rl.ppo.TrainingEnv", FakeEnv):
-            trainer._evaluate(config.eval_episodes, global_step=1000)
-
-        assert len(env_calls) == 3
-
-        # greedy
-        assert env_calls[0]["opponent"] == "greedy"
-
-        # model entries — spec includes checkpoint path
-        assert env_calls[1]["opponent"] == "model:/fake/checkpoint_100.pt"
-        assert env_calls[2]["opponent"] == "model:/fake/v2/best.pt"
-
-    def test_tensorboard_label_includes_parent_and_stem(self, tmp_path):
-        """TensorBoard scalar keys should include parent dir + stem to avoid collisions."""
+    def test_wraps_network_in_NetworkOpponent_with_trainer_device(self, tmp_path):
         config = TrainingConfig(
             save_dir=str(tmp_path / "run"),
             num_envs=1,
             eval_episodes=1,
-            eval_opponents=[
-                "model:/path/to/checkpoint_100.pt",
-                "model:checkpoint_200.pt",  # no parent dir
-            ],
+            eval_opponents=["greedy"],
+        )
+        trainer = _make_trainer_stub(config)
+
+        ctor_calls: list[tuple] = []
+
+        class _FakeNetworkOpponent:
+            def __init__(self, network, device: str = "cpu"):
+                ctor_calls.append((network, device))
+
+        with patch("yugioh_rl.ppo.NetworkOpponent", _FakeNetworkOpponent), \
+             patch("yugioh_rl.ppo.evaluate", return_value=[]):
+            trainer._evaluate(num_episodes=1, global_step=0)
+
+        assert len(ctor_calls) == 1
+        net, device = ctor_calls[0]
+        assert net is trainer.network
+        assert device == "cpu"
+
+    def test_toggles_network_eval_and_train_around_evaluate(self, tmp_path):
+        config = TrainingConfig(
+            save_dir=str(tmp_path / "run"),
+            num_envs=1,
+            eval_episodes=1,
+            eval_opponents=["greedy"],
+        )
+        trainer = _make_trainer_stub(config)
+
+        with patch("yugioh_rl.ppo.evaluate", return_value=[]):
+            trainer._evaluate(num_episodes=1, global_step=0)
+
+        # network.eval() called before, .train() called after.
+        method_names = [c[0] for c in trainer.network.method_calls]
+        assert "eval" in method_names
+        assert "train" in method_names
+        assert method_names.index("eval") < method_names.index("train")
+
+    def test_skips_tensorboard_when_writer_is_none(self, tmp_path):
+        config = TrainingConfig(
+            save_dir=str(tmp_path / "run"),
+            num_envs=1,
+            eval_episodes=1,
+            eval_opponents=["greedy"],
+        )
+        trainer = _make_trainer_stub(config)
+        assert trainer._writer is None
+
+        results = [EvalResult("greedy", 1, 1, 1.0, {0: [1.0]})]
+        with patch("yugioh_rl.ppo.evaluate", return_value=results), \
+             patch("yugioh_rl.ppo.log_results_to_tensorboard") as log_mock:
+            trainer._evaluate(num_episodes=1, global_step=0)
+
+        log_mock.assert_not_called()
+
+    def test_logs_to_tensorboard_when_writer_present(self, tmp_path):
+        config = TrainingConfig(
+            save_dir=str(tmp_path / "run"),
+            num_envs=1,
+            eval_episodes=1,
+            eval_opponents=["greedy"],
+            deck_paths=["assets/decks/starter.ydk"],
         )
         trainer = _make_trainer_stub(config)
         trainer._writer = MagicMock()
 
-        class FakeEnv:
-            def __init__(self, **kwargs):
-                pass
+        results = [EvalResult("greedy", 1, 1, 1.0, {0: [1.0]})]
+        with patch("yugioh_rl.ppo.evaluate", return_value=results), \
+             patch("yugioh_rl.ppo.log_results_to_tensorboard") as log_mock:
+            trainer._evaluate(num_episodes=1, global_step=42)
 
-            def reset(self):
-                return _dummy_obs()
-
-            def step(self, action):
-                return _dummy_obs(), 0.0, True, {"terminal_reward": 1.0, "agent_deck_idx": 0}
-
-            def close(self):
-                pass
-
-        with patch("yugioh_rl.ppo.TrainingEnv", FakeEnv):
-            trainer._evaluate(1, global_step=5000)
-
-        calls = trainer._writer.add_scalar.call_args_list
-        keys = [c[0][0] for c in calls]
-        # parent "to" + stem "checkpoint_100"
-        assert "eval/win_rate_vs_model_to_checkpoint_100" in keys
-        # no parent → just stem
-        assert "eval/win_rate_vs_model_checkpoint_200" in keys
+        log_mock.assert_called_once_with(
+            trainer._writer, results, trainer.config.deck_paths, 42,
+        )
