@@ -5,4 +5,4 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 source "$PROJECT_DIR/.venv/bin/activate"
-exec env PYTHONPATH="$PROJECT_DIR${PYTHONPATH:+:$PYTHONPATH}" python -m cli.train "$@"
+exec env PYTHONPATH="$PROJECT_DIR${PYTHONPATH:+:$PYTHONPATH}" python -m cli.eval "$@"

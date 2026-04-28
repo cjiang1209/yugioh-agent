@@ -13,6 +13,12 @@ from pathlib import Path
 
 import numpy as np
 
+from cli.utils import (
+    fatal,
+    validate_deck_paths,
+    validate_opponent_spec,
+    was_provided,
+)
 from yugioh_rl.config import TrainingConfig
 
 
@@ -150,41 +156,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _fatal(msg: str) -> None:
-    """Print an error message to stderr and exit."""
-    print(f"error: {msg}", file=sys.stderr)
-    raise SystemExit(2)
-
-
-def _was_provided(name: str) -> bool:
-    """Check whether a CLI flag was explicitly passed by the user.
-
-    Handles both ``--flag value`` and ``--flag=value`` forms.
-    """
-    return any(arg == name or arg.startswith(name + "=") for arg in sys.argv[1:])
-
-
-def _validate_opponent_spec(spec: str, flag: str) -> None:
-    """Validate an opponent spec string like 'greedy' or 'model:path.pt'."""
-    if spec.startswith("model:"):
-        path = spec[len("model:"):]
-        if not path:
-            _fatal(f"{flag} model: entries must include a checkpoint path")
-        if not Path(path).exists():
-            _fatal(f"{flag} opponent checkpoint not found: {path}")
-    elif spec not in ("greedy", "random"):
-        _fatal(f"unknown opponent: {spec}")
-
-
-def _validate_deck_paths(paths: list[str], flag: str = "--deck-paths") -> None:
-    """Validate that every deck file exists and has the .ydk extension."""
-    for dp in paths:
-        if not Path(dp).exists():
-            _fatal(f"{flag}: deck file not found: {dp}")
-        if not dp.endswith(".ydk"):
-            _fatal(f"{flag}: deck file must end with .ydk: {dp}")
-
-
 def validate_cli_args(args: argparse.Namespace) -> None:
     """Validate CLI args that do not depend on the resumed-config merge.
 
@@ -199,12 +170,12 @@ def validate_cli_args(args: argparse.Namespace) -> None:
     # --resume is mutually exclusive with --init-checkpoint and --resume-optimizer
     if args.resume:
         if args.init_checkpoint:
-            _fatal("--resume and --init-checkpoint are mutually exclusive")
+            fatal("--resume and --init-checkpoint are mutually exclusive")
         if args.resume_optimizer:
-            _fatal("--resume-optimizer is for use with --init-checkpoint, not --resume")
+            fatal("--resume-optimizer is for use with --init-checkpoint, not --resume")
         if not Path(args.resume).exists():
-            _fatal(f"resume checkpoint not found: {args.resume}")
-        if _was_provided("--base-dir"):
+            fatal(f"resume checkpoint not found: {args.resume}")
+        if was_provided("--base-dir"):
             logger.warning(
                 "--base-dir has no effect with --resume "
                 "(save directory is inferred from checkpoint path)"
@@ -212,15 +183,15 @@ def validate_cli_args(args: argparse.Namespace) -> None:
 
     # --resume-optimizer requires --init-checkpoint (when not using --resume)
     if args.resume_optimizer and not args.init_checkpoint:
-        _fatal("--resume-optimizer requires --init-checkpoint")
+        fatal("--resume-optimizer requires --init-checkpoint")
 
     # --no-reward-shaping voids shaping weight arguments
     if args.no_reward_shaping:
-        if _was_provided("--shaping-lp-weight"):
+        if was_provided("--shaping-lp-weight"):
             logger.warning(
                 "--shaping-lp-weight has no effect with --no-reward-shaping"
             )
-        if _was_provided("--shaping-card-weight"):
+        if was_provided("--shaping-card-weight"):
             logger.warning(
                 "--shaping-card-weight has no effect with --no-reward-shaping"
             )
@@ -228,10 +199,10 @@ def validate_cli_args(args: argparse.Namespace) -> None:
 
 def validate_effective_config(config: "TrainingConfig") -> None:  # noqa: F821
     """Validate per-field values on the final merged TrainingConfig."""
-    _validate_deck_paths(config.deck_paths)
-    _validate_opponent_spec(config.opponent, "--opponent")
+    validate_deck_paths(config.deck_paths)
+    validate_opponent_spec(config.opponent, "--opponent")
     for spec in config.eval_opponents:
-        _validate_opponent_spec(spec, "--eval-opponents")
+        validate_opponent_spec(spec, "--eval-opponents")
 
 
 def _build_fresh_config(args: argparse.Namespace, save_dir: str) -> TrainingConfig:
@@ -293,7 +264,7 @@ def _build_resume_config(args: argparse.Namespace, save_dir: str) -> TrainingCon
     )
     if disallowed:
         allowlist_str = ", ".join(sorted(_RESUME_OVERRIDE_ALLOWLIST.keys()))
-        _fatal(
+        fatal(
             "these flags cannot be overridden on --resume: "
             + ", ".join(disallowed)
             + f"; allowed: {allowlist_str}"
@@ -304,9 +275,9 @@ def _build_resume_config(args: argparse.Namespace, save_dir: str) -> TrainingCon
     ckpt = torch.load(args.resume, map_location="cpu", weights_only=False)
     ckpt_config = ckpt.get("config")
     if ckpt_config is None:
-        _fatal(f"resume checkpoint has no stored config: {args.resume}")
+        fatal(f"resume checkpoint has no stored config: {args.resume}")
     if not isinstance(ckpt_config, TrainingConfig):
-        _fatal(
+        fatal(
             f"resume checkpoint config is not a TrainingConfig: "
             f"{type(ckpt_config).__name__}"
         )
@@ -325,7 +296,7 @@ def _build_resume_config(args: argparse.Namespace, save_dir: str) -> TrainingCon
             parts.append(f"missing: {sorted(missing)}")
         if extra:
             parts.append(f"unknown: {sorted(extra)}")
-        _fatal(
+        fatal(
             "resume checkpoint config does not match current TrainingConfig "
             "schema (" + "; ".join(parts)
             + "). Use a matching codebase version."

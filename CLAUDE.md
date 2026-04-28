@@ -235,6 +235,24 @@ See all options: `scripts/train.sh --help`
 
 Each run auto-creates a timestamped subdirectory under `--base-dir` (e.g. `checkpoints/20260311_143000_seed42/`) containing `config.json`, checkpoints, and TensorBoard logs. This prevents runs from overwriting each other.
 
+### Standalone Evaluation
+
+`scripts/eval.sh` runs the same evaluation primitive `PPOTrainer._evaluate` uses, but without a training loop. Useful for measuring training progress between checkpoints, sanity-checking heuristics, and picking the better of two models.
+
+```bash
+scripts/eval.sh --agent greedy --opponents random greedy --episodes 100 \
+    --deck-paths assets/decks/starter.ydk
+scripts/eval.sh --agent model:checkpoints/v1/latest.pt \
+    --opponents random greedy model:checkpoints/v2/latest.pt --episodes 500 \
+    --deck-paths assets/decks/*.ydk --json results.json
+scripts/eval.sh --agent greedy --opponents random --episodes 50 \
+    --deck-paths assets/decks/starter.ydk --device cuda  # routes both sides onto GPU
+```
+
+The agent is reseeded from `--seed` at the start of each opponent's match so cross-opponent win rates compare against an identical seeded trajectory. `--device` threads to **both** the agent-side and the env-side `model:` opponents (overriding `YUGIOH_OPPONENT_DEVICE` for the eval session). Both `cli/eval.py` and `cli/train.py` share validators in `cli/utils.py`, so spec rejection (empty `model:`, unknown kind, missing checkpoint) produces identical error strings.
+
+`PPOTrainer._evaluate` is a thin wrapper around `yugioh_rl.eval.evaluate(...)`; TensorBoard scalar keys (`eval/win_rate_vs_{label}`, `eval/win_rate_vs_{label}_deck_{deck_name}`) and console log format are preserved byte-identical to pre-refactor output.
+
 ### Module Layout
 
 ```
@@ -243,9 +261,13 @@ yugioh_rl/
 ├── features.py      — Decode uint8 observations → float tensors for neural net
 ├── network.py       — YuGiOhNet: card encoder + zone pooling + dot-product policy head + value head
 ├── env_wrapper.py   — TrainingEnv (single, in-process) + SubprocVecEnv (multiprocessing)
+├── eval.py          — Reusable eval primitives (run_match, evaluate, log_results_to_tensorboard)
 ├── ppo.py           — RolloutBuffer + PPOTrainer (GAE, clipped surrogate, eval, checkpoints)
-cli/train.py         — CLI entry point (argparse → TrainingConfig → PPOTrainer.train())
-scripts/train.sh     — Shell wrapper (activates venv, forwards args)
+cli/train.py         — Training CLI (argparse → TrainingConfig → PPOTrainer.train())
+cli/eval.py          — Standalone eval CLI (argparse → yugioh_rl.eval.evaluate())
+cli/utils.py         — Shared CLI helpers (validators, --device resolution)
+scripts/train.sh     — Shell wrapper for cli.train
+scripts/eval.sh      — Shell wrapper for cli.eval
 ```
 
 ### Network Architecture
@@ -341,4 +363,4 @@ scripts/mud_bot.sh         — Shell wrapper (activates venv, forwards args)
 - `YUGIOH_LIB_PATH` — path to `libocgcore.dylib/.so` (auto-detected from `build/` if unset)
 - `YUGIOH_DB_PATH` — path to `cards.cdb` (default: `assets/cards.cdb`)
 - `YUGIOH_OPPONENT` — opponent spec: `random`, `greedy`, or `model:path/to/checkpoint.pt` (default: `random`)
-- `YUGIOH_OPPONENT_DEVICE` — device for model opponent inference: `cpu` or `cuda` (default: `cpu`)
+- `YUGIOH_OPPONENT_DEVICE` — device for model opponent inference: `cpu` or `cuda` (default: `cpu`). Read by the FastAPI server (`scripts/start_server.sh`), the training rollout (`SubprocVecEnv` workers), and in-training eval (`PPOTrainer._evaluate`). **Not** read by the standalone eval CLI — `scripts/eval.sh --device` is the explicit override there.
