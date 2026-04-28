@@ -37,7 +37,7 @@ def _make_checkpoint(
         actions = torch.zeros(1, 32, 12, dtype=torch.uint8)
         mask = torch.ones(1, 32, dtype=torch.int8)
         for _ in range(3):
-            logits, value = net(cards, glob, actions, mask)
+            logits, value, _ = net(cards, glob, actions, mask)
             loss = -logits.mean() + value.mean()
             optimizer.zero_grad()
             loss.backward()
@@ -397,24 +397,24 @@ def test_resume_validates_effective_config(tmp_path, monkeypatch, capsys):
     assert missing_deck in err
 
 
-def test_resume_schema_drift_missing_field_errors(tmp_path, monkeypatch, capsys):
-    """Ckpt_config whose __dict__ is missing a current field should _fatal."""
+def test_resume_legacy_missing_field_silently_backfilled(tmp_path, monkeypatch):
+    """Pre-existing ckpt whose __dict__ is missing a field added later should
+    resume cleanly, with the missing field back-filled to its dataclass default.
+
+    Replaces the old strict schema-drift check on additive fields — see
+    yugioh_rl/config.normalize_legacy_config.
+    """
     from cli.train import _build_resume_config, parse_args
 
     ckpt_path = str(tmp_path / "ckpt.pt")
     ckpt_config = TrainingConfig()
-    # Simulate a pre-agent_player checkpoint by removing the attribute from
-    # the pickled instance state.
     del ckpt_config.__dict__["agent_player"]
     _make_checkpoint(ckpt_path, config=ckpt_config)
 
     monkeypatch.setattr(sys, "argv", ["cli.train", "--resume", ckpt_path])
     args = parse_args()
-    with pytest.raises(SystemExit):
-        _build_resume_config(args, str(tmp_path))
-    err = capsys.readouterr().err
-    assert "schema" in err
-    assert "agent_player" in err
+    cfg = _build_resume_config(args, str(tmp_path))
+    assert cfg.agent_player == "random"
 
 
 def test_resume_schema_drift_extra_field_errors(tmp_path, monkeypatch, capsys):

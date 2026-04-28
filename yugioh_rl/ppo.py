@@ -368,7 +368,7 @@ class PPOTrainer:
                         t_actions = torch.from_numpy(obs["actions"]).to(self.device)
                         t_mask = torch.from_numpy(obs["action_mask"]).to(self.device)
 
-                        logits, values = self.network(t_cards, t_global, t_actions, t_mask)
+                        logits, values, _ = self.network(t_cards, t_global, t_actions, t_mask)
                         dist = Categorical(logits=logits)
                         actions = dist.sample()
                         log_probs = dist.log_prob(actions)
@@ -400,7 +400,7 @@ class PPOTrainer:
                     t_global = torch.from_numpy(obs["global_state"]).to(self.device)
                     t_actions = torch.from_numpy(obs["actions"]).to(self.device)
                     t_mask = torch.from_numpy(obs["action_mask"]).to(self.device)
-                    _, last_values = self.network(t_cards, t_global, t_actions, t_mask)
+                    _, last_values, _ = self.network(t_cards, t_global, t_actions, t_mask)
                     last_values_np = last_values.cpu().numpy()
 
                 self.buffer.compute_advantages(last_values_np, config.gamma, config.gae_lambda)
@@ -413,7 +413,7 @@ class PPOTrainer:
 
                 for epoch in range(config.num_epochs):
                     for batch in self.buffer.get_batches(config.minibatch_size, self.device):
-                        logits, values = self.network(
+                        logits, values, _ = self.network(
                             batch.obs_cards, batch.obs_global,
                             batch.obs_actions, batch.action_mask,
                         )

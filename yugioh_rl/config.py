@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import MISSING, dataclass, field, fields
+from typing import Literal
 
 
 @dataclass
@@ -40,6 +41,12 @@ class TrainingConfig:
     text_embed_dim: int = 64  # frozen text embedding projection dim (only when enabled)
     learned_embed_dim: int = 8  # trainable per-card embedding dim (Mode B only)
 
+    # Recurrent policy (default "none" = feed-forward, byte-identical to pre-RNN)
+    rnn_type: Literal["none", "lstm", "gru"] = "none"
+    rnn_hidden_dim: int = 256
+    rnn_num_layers: int = 1
+    bptt_chunk_len: int = 16  # must divide rollout_steps when rnn_type != "none"
+
     # Infrastructure
     init_checkpoint: str = ""       # Path to .pt checkpoint to init weights from (new run)
     resume_checkpoint: str = ""     # Path to checkpoint to resume training from
@@ -52,3 +59,28 @@ class TrainingConfig:
     save_interval: int = 100
     save_dir: str = "checkpoints"  # Exact run directory (CLI builds this from --base-dir + timestamp)
     device: str = "auto"
+
+
+def normalize_legacy_config(cfg: TrainingConfig) -> TrainingConfig:
+    """Back-fill new fields missing on a pickled TrainingConfig with their
+    dataclass defaults. Mutates in place and returns the same instance.
+
+    Single source of truth for forward-compatibility when loading older
+    checkpoints. Must be called at every site that unpickles
+    ``checkpoint["config"]`` before any code that uses ``vars()`` /
+    ``cfg.__dict__`` (e.g. schema-drift detection, ``asdict`` consumers
+    that round-trip through dicts).
+
+    Membership is tested against ``cfg.__dict__`` rather than ``hasattr``
+    because dataclass defaults live as class attributes — ``hasattr``
+    would return True via class fallback even when the field is absent
+    from the pickled instance state.
+    """
+    for f in fields(TrainingConfig):
+        if f.name in cfg.__dict__:
+            continue
+        if f.default is not MISSING:
+            setattr(cfg, f.name, f.default)
+        elif f.default_factory is not MISSING:  # type: ignore[misc]
+            setattr(cfg, f.name, f.default_factory())
+    return cfg

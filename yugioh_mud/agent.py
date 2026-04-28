@@ -227,14 +227,14 @@ class ModelAgent:
         device: str = "cpu",
     ) -> None:
         import torch
-        from yugioh_rl.config import TrainingConfig
+        from yugioh_rl.config import TrainingConfig, normalize_legacy_config
         from yugioh_rl.network import YuGiOhNet
 
         from yugioh_core.card_database import CardDatabase
         from yugioh_mud.observation import MUDObservationBuilder
 
         checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
-        config: TrainingConfig = checkpoint["config"]
+        config: TrainingConfig = normalize_legacy_config(checkpoint["config"])
         self._network = YuGiOhNet.from_state_dict(config, checkpoint["model_state_dict"])
         self._network.to(device)
         self._network.eval()
@@ -262,7 +262,7 @@ class ModelAgent:
         t_mask = torch.from_numpy(obs["action_mask"]).unsqueeze(0).to(self._device)
 
         with torch.no_grad():
-            logits, _ = self._network(t_cards, t_global, t_actions, t_mask)
+            logits, _, _ = self._network(t_cards, t_global, t_actions, t_mask)
             action_idx = logits.argmax(dim=-1).item()
 
         return map_model_action(action_idx, prompt)

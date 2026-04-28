@@ -161,7 +161,7 @@ class TestSymbolicMode:
 
         net = YuGiOhNet.from_config(config)
         obs_cards, obs_global, obs_actions, action_mask = _make_dummy_obs(batch_size=2)
-        logits, values = net(obs_cards, obs_global, obs_actions, action_mask)
+        logits, values, _ = net(obs_cards, obs_global, obs_actions, action_mask)
 
         assert logits.shape == (2, 32)
         assert values.shape == (2,)
@@ -184,7 +184,7 @@ class TestSemanticMode:
         )
         net = YuGiOhNet.from_config(config)
         obs_cards, obs_global, obs_actions, action_mask = _make_dummy_obs(batch_size=2)
-        logits, values = net(obs_cards, obs_global, obs_actions, action_mask)
+        logits, values, _ = net(obs_cards, obs_global, obs_actions, action_mask)
 
         assert logits.shape == (2, 32)
         assert values.shape == (2,)
@@ -231,7 +231,7 @@ class TestSemanticMode:
         net = YuGiOhNet.from_config(config)
 
         obs_cards, obs_global, obs_actions, action_mask = _make_dummy_obs(batch_size=4)
-        logits, values = net(obs_cards, obs_global, obs_actions, action_mask)
+        logits, values, _ = net(obs_cards, obs_global, obs_actions, action_mask)
 
         loss = values.mean() + logits[:, 0].mean()
         loss.backward()
@@ -257,8 +257,8 @@ class TestSemanticMode:
 
         obs_cards, obs_global, obs_actions, action_mask = _make_dummy_obs(batch_size=2)
         with torch.no_grad():
-            logits_orig, values_orig = net_orig(obs_cards, obs_global, obs_actions, action_mask)
-            logits_copy, values_copy = net_copy(obs_cards, obs_global, obs_actions, action_mask)
+            logits_orig, values_orig, _ = net_orig(obs_cards, obs_global, obs_actions, action_mask)
+            logits_copy, values_copy, _ = net_copy(obs_cards, obs_global, obs_actions, action_mask)
 
         assert torch.allclose(logits_orig, logits_copy, atol=1e-6)
         assert torch.allclose(values_orig, values_copy, atol=1e-6)

@@ -185,16 +185,31 @@ class YuGiOhNet(nn.Module):
         board_input_dim = _NUM_ZONES * config.card_embed_dim + config.global_embed_dim
         self.board_mlp = _mlp(board_input_dim, config.board_hidden_dim, config.board_hidden_dim)
 
+        # rnn_type="none" leaves self.rnn=None and head_in_dim=board_hidden_dim,
+        # so the state dict stays byte-identical to pre-RNN checkpoints.
+        if config.rnn_type == "none":
+            self.rnn = None
+            head_in_dim = config.board_hidden_dim
+        else:
+            rnn_cls = nn.LSTM if config.rnn_type == "lstm" else nn.GRU
+            self.rnn = rnn_cls(
+                input_size=config.board_hidden_dim,
+                hidden_size=config.rnn_hidden_dim,
+                num_layers=config.rnn_num_layers,
+                batch_first=False,
+            )
+            head_in_dim = config.rnn_hidden_dim
+
         # Action encoder
         action_input_dim = embed_dim + ACTION_FEAT_DIM
         self.action_encoder = _mlp(action_input_dim, config.action_embed_dim, config.action_embed_dim)
 
-        # Policy head: project board → action_embed_dim for dot product
-        self.board_proj = nn.Linear(config.board_hidden_dim, config.action_embed_dim)
+        # Policy head: project board (or RNN output) → action_embed_dim for dot product
+        self.board_proj = nn.Linear(head_in_dim, config.action_embed_dim)
 
         # Value head
         self.value_head = nn.Sequential(
-            nn.Linear(config.board_hidden_dim, 64),
+            nn.Linear(head_in_dim, 64),
             nn.ReLU(),
             nn.Linear(64, 1),
         )
@@ -223,9 +238,52 @@ class YuGiOhNet(nn.Module):
             text_lookup = TextEmbeddingLookup.from_state_dict_shapes(
                 config.text_embed_dim, text_sd)
 
+        has_rnn_keys = any(k.startswith("rnn.") for k in state_dict)
+        config_has_rnn = config.rnn_type != "none"
+        if has_rnn_keys != config_has_rnn:
+            raise ValueError(
+                f"checkpoint state_dict / config mismatch: "
+                f"rnn.* keys present={has_rnn_keys} but "
+                f"config.rnn_type={config.rnn_type!r}"
+            )
+
         net = cls(config, text_lookup)
         net.load_state_dict(state_dict)
         return net
+
+    def init_hx(
+        self, batch_size: int, device,
+    ) -> tuple[torch.Tensor, torch.Tensor] | torch.Tensor | None:
+        """Zero hidden state shaped ``(num_layers, batch_size, rnn_hidden_dim)``.
+
+        Returns ``(h, c)`` for LSTM, ``h`` for GRU, ``None`` when no RNN.
+        """
+        if self.rnn is None:
+            return None
+        h = torch.zeros(
+            self.rnn.num_layers, batch_size, self.rnn.hidden_size, device=device
+        )
+        if isinstance(self.rnn, nn.LSTM):
+            return (h, torch.zeros_like(h))
+        return h
+
+    @staticmethod
+    def mask_hx(
+        hx: tuple[torch.Tensor, torch.Tensor] | torch.Tensor | None,
+        dones: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor] | torch.Tensor | None:
+        """Zero hidden state entries for envs where ``dones[i]`` is True.
+
+        ``dones`` is a 1-D ``(N,)`` tensor; it broadcasts to ``(1, N, 1)``
+        against the ``(num_layers, N, hidden)`` hx layout.
+        """
+        if hx is None:
+            return None
+        keep = (1.0 - dones.to(dtype=torch.float32)).view(1, -1, 1)
+        if isinstance(hx, tuple):
+            h, c = hx
+            return (h * keep, c * keep)
+        return hx * keep
 
     def _embed_codes(self, codes: torch.Tensor) -> torch.Tensor:
         """Embed card codes using symbolic or semantic mode.
@@ -249,18 +307,32 @@ class YuGiOhNet(nn.Module):
         obs_global: torch.Tensor,
         obs_actions: torch.Tensor,
         action_mask: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        """Forward pass producing action logits and state value.
+        hx: tuple[torch.Tensor, torch.Tensor] | torch.Tensor | None = None,
+        seq_shape: tuple[int, int] | None = None,
+        dones: torch.Tensor | None = None,
+    ) -> tuple[
+        torch.Tensor,
+        torch.Tensor,
+        tuple[torch.Tensor, torch.Tensor] | torch.Tensor | None,
+    ]:
+        """Action logits, state value, and the new recurrent hidden state.
+
+        ``seq_shape=None`` is the single-step path used by collection,
+        eval, and serving (B == N envs).  ``seq_shape=(T, N)`` activates
+        the TBPTT chunk path used by the PPO update — ``dones`` of shape
+        ``(T, N)`` is required there to mask hx between micro-steps.
+        Single-step / collection callers apply ``mask_hx`` themselves
+        between env steps.
 
         Args:
-            obs_cards: (B, 200, 42) uint8
+            obs_cards: (B, 200, 42) uint8 — B is N or T*N depending on path.
             obs_global: (B, 20) uint8
             obs_actions: (B, 32, 12) uint8
-            action_mask: (B, 32) int8 — 1=legal, 0=illegal
+            action_mask: (B, 32) int8 — 1=legal, 0=illegal.
+            hx: LSTM tuple, GRU tensor, or ``None``.
 
-        Returns:
-            logits: (B, 32) float — masked action logits
-            values: (B,) float — state value estimates
+        Returns ``(logits (B,32), values (B,), new_hx)``; ``new_hx`` matches
+        the structure of ``hx`` (or ``None`` if no RNN).
         """
         # --- Decode observations ---
         card_ids, card_feats = decode_cards(obs_cards)      # (B,200), (B,200,F_card)
@@ -298,19 +370,40 @@ class YuGiOhNet(nn.Module):
         board_input = torch.cat([zone_flat, global_enc], dim=-1)
         board = self.board_mlp(board_input)  # (B, board_hidden_dim)
 
+        # --- Recurrent layer (optional) ---
+        if self.rnn is None:
+            head_input = board
+            new_hx = None
+        elif seq_shape is None:
+            step_out, new_hx = self.rnn(board.unsqueeze(0), hx)
+            head_input = step_out.squeeze(0)
+        else:
+            T, N = seq_shape
+            assert dones is not None, "TBPTT path requires `dones`"
+            seq = board.view(T, N, -1)
+            outs = []
+            cur_hx = hx
+            for t in range(T):
+                step_out, cur_hx = self.rnn(seq[t : t + 1], cur_hx)
+                outs.append(step_out)
+                # Mask AFTER emitting step t so step t still sees pre-done hx.
+                cur_hx = self.mask_hx(cur_hx, dones[t])
+            head_input = torch.cat(outs, dim=0).reshape(T * N, -1)
+            new_hx = cur_hx
+
         # --- Action encoding ---
         act_embed = self._embed_codes(action_codes)  # (B, 32, embed_dim)
         act_input = torch.cat([act_embed, action_feats], dim=-1)
         act_enc = self.action_encoder(act_input)  # (B, 32, action_embed_dim)
 
         # --- Policy head: dot product ---
-        board_p = self.board_proj(board)  # (B, action_embed_dim)
+        board_p = self.board_proj(head_input)  # (B, action_embed_dim)
         logits = (act_enc * board_p.unsqueeze(1)).sum(dim=-1)  # (B, 32)
 
         # Mask illegal actions
         logits = logits.masked_fill(action_mask == 0, float("-inf"))
 
         # --- Value head ---
-        values = self.value_head(board).squeeze(-1)  # (B,)
+        values = self.value_head(head_input).squeeze(-1)  # (B,)
 
-        return logits, values
+        return logits, values, new_hx

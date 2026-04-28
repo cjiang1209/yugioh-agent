@@ -160,7 +160,7 @@ class NetworkOpponent(Opponent):
         t_mask = torch.from_numpy(obs["action_mask"]).unsqueeze(0).to(self._device)
 
         with torch.no_grad():
-            logits, _ = self._network(t_cards, t_global, t_actions, t_mask)
+            logits, _, _ = self._network(t_cards, t_global, t_actions, t_mask)
             action = logits.argmax(dim=-1).item()
 
         return min(action, num_actions - 1)
@@ -177,10 +177,11 @@ class ModelOpponent(Opponent):
 
     def __init__(self, checkpoint_path: str, device: str = "cpu") -> None:
         import torch
+        from yugioh_rl.config import normalize_legacy_config
         from yugioh_rl.network import YuGiOhNet
 
         checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
-        config = checkpoint["config"]
+        config = normalize_legacy_config(checkpoint["config"])
         network = YuGiOhNet.from_state_dict(config, checkpoint["model_state_dict"])
         network.to(device)
         network.eval()

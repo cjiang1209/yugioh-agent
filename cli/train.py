@@ -19,7 +19,7 @@ from cli.utils import (
     validate_opponent_spec,
     was_provided,
 )
-from yugioh_rl.config import TrainingConfig
+from yugioh_rl.config import TrainingConfig, normalize_legacy_config
 
 
 # Flags whose values may override the checkpoint's stored config on --resume.
@@ -281,6 +281,11 @@ def _build_resume_config(args: argparse.Namespace, save_dir: str) -> TrainingCon
             f"resume checkpoint config is not a TrainingConfig: "
             f"{type(ckpt_config).__name__}"
         )
+
+    # Back-fill any fields the pickled config is missing (added since the
+    # checkpoint was saved). Lets the schema-drift check below silently
+    # accept additive changes while still catching renames/removals.
+    normalize_legacy_config(ckpt_config)
 
     # Schema-drift detection: compare pickled instance attrs (what was
     # actually stored) against the current TrainingConfig field set.

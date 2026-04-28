@@ -25,7 +25,7 @@ def _make_checkpoint(path: str, config: TrainingConfig | None = None,
         actions = torch.zeros(1, 32, 12, dtype=torch.uint8)
         mask = torch.ones(1, 32, dtype=torch.int8)
         for _ in range(3):
-            logits, value = net(cards, glob, actions, mask)
+            logits, value, _ = net(cards, glob, actions, mask)
             loss = -logits.mean() + value.mean()
             optimizer.zero_grad()
             loss.backward()
