@@ -60,6 +60,11 @@ class TrainingConfig:
     save_dir: str = "checkpoints"  # Exact run directory (CLI builds this from --base-dir + timestamp)
     device: str = "auto"
 
+    @property
+    def is_recurrent(self) -> bool:
+        """Whether the network has an RNN module — drives TBPTT vs feed-forward."""
+        return self.rnn_type != "none"
+
 
 def normalize_legacy_config(cfg: TrainingConfig) -> TrainingConfig:
     """Back-fill new fields missing on a pickled TrainingConfig with their

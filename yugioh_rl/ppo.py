@@ -27,9 +27,15 @@ logger = logging.getLogger(__name__)
 # Rollout buffer
 # ---------------------------------------------------------------------------
 
+def _to_tensor(arr: np.ndarray, device: torch.device, *, long: bool = False) -> torch.Tensor:
+    """``np.ndarray`` → ``torch.Tensor`` on ``device``, with optional cast to int64."""
+    t = torch.from_numpy(arr).to(device)
+    return t.long() if long else t
+
+
 @dataclass
 class MiniBatch:
-    """A single minibatch of training data."""
+    """A single minibatch of training data (feed-forward path)."""
 
     obs_cards: torch.Tensor      # (M, 200, 42)
     obs_global: torch.Tensor     # (M, 20)
@@ -39,6 +45,28 @@ class MiniBatch:
     old_log_probs: torch.Tensor  # (M,)
     advantages: torch.Tensor     # (M,)
     returns: torch.Tensor        # (M,)
+
+
+@dataclass
+class RecurrentMiniBatch:
+    """A single TBPTT minibatch: full T-step rollout slice for env_mb envs.
+
+    The PPO update walks chunks of length L through the leading T axis,
+    threading hx with a detach() between chunks.  Shapes are (T, env_mb, ...)
+    not (M, ...) — the chunk loop reshapes per-chunk to (L*env_mb, ...) for
+    the network forward.
+    """
+
+    obs_cards: torch.Tensor      # (T, env_mb, 200, 42)
+    obs_global: torch.Tensor     # (T, env_mb, 20)
+    obs_actions: torch.Tensor    # (T, env_mb, 32, 12)
+    action_mask: torch.Tensor    # (T, env_mb, 32)
+    actions: torch.Tensor        # (T, env_mb)
+    old_log_probs: torch.Tensor  # (T, env_mb)
+    advantages: torch.Tensor     # (T, env_mb)
+    returns: torch.Tensor        # (T, env_mb)
+    dones: torch.Tensor          # (T, env_mb)
+    hx_initial: tuple[torch.Tensor, torch.Tensor] | torch.Tensor | None
 
 
 class RolloutBuffer:
@@ -146,14 +174,60 @@ class RolloutBuffer:
             idx = indices[start:end]
 
             yield MiniBatch(
-                obs_cards=torch.from_numpy(flat_cards[idx]).to(device),
-                obs_global=torch.from_numpy(flat_global[idx]).to(device),
-                obs_actions=torch.from_numpy(flat_actions_obs[idx]).to(device),
-                action_mask=torch.from_numpy(flat_mask[idx]).to(device),
-                actions=torch.from_numpy(flat_actions[idx]).long().to(device),
-                old_log_probs=torch.from_numpy(flat_log_probs[idx]).to(device),
-                advantages=torch.from_numpy(flat_advantages[idx]).to(device),
-                returns=torch.from_numpy(flat_returns[idx]).to(device),
+                obs_cards=_to_tensor(flat_cards[idx], device),
+                obs_global=_to_tensor(flat_global[idx], device),
+                obs_actions=_to_tensor(flat_actions_obs[idx], device),
+                action_mask=_to_tensor(flat_mask[idx], device),
+                actions=_to_tensor(flat_actions[idx], device, long=True),
+                old_log_probs=_to_tensor(flat_log_probs[idx], device),
+                advantages=_to_tensor(flat_advantages[idx], device),
+                returns=_to_tensor(flat_returns[idx], device),
+            )
+
+    def get_recurrent_batches(
+        self,
+        minibatch_size: int,
+        device: torch.device,
+    ) -> Iterator[RecurrentMiniBatch]:
+        """Yield env-grouped TBPTT minibatches.
+
+        ``envs_per_minibatch = minibatch_size // rollout_steps`` envs per
+        minibatch; each minibatch carries the full T-step rollout for those
+        envs plus the rollout-start ``hx_initial`` slice.  Advantage
+        normalization is over the full rollout so cross-minibatch scaling
+        is preserved.
+
+        ``validate_effective_config`` enforces that ``num_envs`` is divisible
+        by ``envs_per_minibatch``, so every minibatch has the same env_mb.
+        """
+        T, N = self.rollout_steps, self.num_envs
+        envs_per_minibatch = minibatch_size // T
+
+        # Normalize over the full rollout (matches the feed-forward path's
+        # global normalization rather than per-minibatch).
+        flat_adv = self.advantages.reshape(-1)
+        adv_mean = flat_adv.mean()
+        adv_std = flat_adv.std() + 1e-8
+        norm_adv = (self.advantages - adv_mean) / adv_std
+
+        env_indices = np.arange(N)
+        np.random.shuffle(env_indices)
+
+        for start in range(0, N, envs_per_minibatch):
+            env_idx_np = env_indices[start : start + envs_per_minibatch]
+            env_idx_t = torch.from_numpy(env_idx_np).long().to(device)
+
+            yield RecurrentMiniBatch(
+                obs_cards=_to_tensor(self.obs_cards[:, env_idx_np], device),
+                obs_global=_to_tensor(self.obs_global[:, env_idx_np], device),
+                obs_actions=_to_tensor(self.obs_actions[:, env_idx_np], device),
+                action_mask=_to_tensor(self.obs_mask[:, env_idx_np], device),
+                actions=_to_tensor(self.actions[:, env_idx_np], device, long=True),
+                old_log_probs=_to_tensor(self.log_probs[:, env_idx_np], device),
+                advantages=_to_tensor(norm_adv[:, env_idx_np], device),
+                returns=_to_tensor(self.returns[:, env_idx_np], device),
+                dones=_to_tensor(self.dones[:, env_idx_np], device),
+                hx_initial=YuGiOhNet.slice_hx(self.hx_initial, env_idx_t),
             )
 
 
@@ -165,22 +239,6 @@ class PPOTrainer:
     """PPO training loop for Yu-Gi-Oh! agent."""
 
     def __init__(self, config: TrainingConfig) -> None:
-        # The PPO update loop currently shuffles observations into single-step
-        # minibatches with no hidden state, while collection runs the network
-        # recurrently.  Comparing recurrent old_log_probs/values against
-        # feed-forward re-evaluations breaks the on-policy assumption — fail
-        # closed until the TBPTT update path lands.  Inference (NetworkOpponent /
-        # ModelOpponent / ModelAgent) handles RNN ckpts correctly today.
-        if config.rnn_type != "none":
-            raise NotImplementedError(
-                f"Training with rnn_type={config.rnn_type!r} is not yet supported. "
-                "The PPO update loop replays observations feed-forward, so a "
-                "recurrent rollout's old_log_probs and values would be compared "
-                "against feed-forward re-evaluations of the same obs — silently "
-                "off-policy.  Use rnn_type='none' for now; inference still works "
-                "with RNN checkpoints."
-            )
-
         self.config = config
 
         # Resolve device
@@ -288,20 +346,49 @@ class PPOTrainer:
             logger.warning("Checkpoint has no saved config — skipping compatibility check")
             return
 
-        # Architecture fields that determine layer shapes — must match exactly
+        # Architecture fields that always determine layer shapes — must
+        # match exactly.  rnn_type defaults to "none" so a pre-RNN
+        # checkpoint resumed by post-RNN code compares cleanly; any
+        # mismatch means the user is hot-adding or hot-removing a
+        # recurrent layer, which would silently corrupt trained weights.
         arch_fields = [
             "card_embed_dim", "global_embed_dim", "board_hidden_dim",
             "action_embed_dim", "text_embed_dim", "learned_embed_dim",
+            "rnn_type",
         ]
+        arch_defaults = {"rnn_type": "none"}
         mismatches = []
         missing = []
+        sentinel = object()
         for field in arch_fields:
-            ckpt_val = getattr(ckpt_config, field, None)
+            ckpt_val = getattr(ckpt_config, field, sentinel)
             cli_val = getattr(config, field)
-            if ckpt_val is None:
-                missing.append(field)
-            elif ckpt_val != cli_val:
+            if ckpt_val is sentinel:
+                if field in arch_defaults:
+                    ckpt_val = arch_defaults[field]
+                else:
+                    missing.append(field)
+                    continue
+            if ckpt_val != cli_val:
                 mismatches.append(f"  {field}: checkpoint={ckpt_val}, cli={cli_val}")
+
+        # rnn_hidden_dim and rnn_num_layers only shape weights when both
+        # sides actually instantiate an RNN module.  When either side is
+        # rnn_type="none" those values are placeholders that never touch
+        # the state dict — comparing them would reject feed-forward
+        # checkpoints whose saved placeholders drift from CLI defaults.
+        # If rnn_type itself mismatches, the check above already fires.
+        ckpt_rnn_type = getattr(ckpt_config, "rnn_type", "none")
+        if config.is_recurrent and ckpt_rnn_type != "none":
+            for field in ("rnn_hidden_dim", "rnn_num_layers"):
+                ckpt_val = getattr(ckpt_config, field, None)
+                cli_val = getattr(config, field)
+                if ckpt_val is None:
+                    missing.append(field)
+                elif ckpt_val != cli_val:
+                    mismatches.append(
+                        f"  {field}: checkpoint={ckpt_val}, cli={cli_val}"
+                    )
         if missing:
             logger.warning(
                 "Checkpoint config missing fields (older version?): %s",
@@ -453,43 +540,11 @@ class PPOTrainer:
                 total_entropy = 0.0
                 num_batches = 0
 
-                for epoch in range(config.num_epochs):
-                    for batch in self.buffer.get_batches(config.minibatch_size, self.device):
-                        logits, values, _ = self.network(
-                            batch.obs_cards, batch.obs_global,
-                            batch.obs_actions, batch.action_mask,
-                        )
-                        dist = Categorical(logits=logits)
-                        log_probs = dist.log_prob(batch.actions)
-                        entropy = dist.entropy()
-
-                        # Clipped surrogate objective
-                        ratio = (log_probs - batch.old_log_probs).exp()
-                        surr1 = ratio * batch.advantages
-                        surr2 = ratio.clamp(1.0 - config.clip_range, 1.0 + config.clip_range) * batch.advantages
-                        policy_loss = -torch.min(surr1, surr2).mean()
-
-                        # Value loss
-                        value_loss = F.mse_loss(values, batch.returns)
-
-                        # Entropy bonus
-                        entropy_loss = -entropy.mean()
-
-                        loss = (
-                            policy_loss
-                            + config.value_loss_coef * value_loss
-                            + config.entropy_coef * entropy_loss
-                        )
-
-                        self.optimizer.zero_grad()
-                        loss.backward()
-                        nn.utils.clip_grad_norm_(self.network.parameters(), config.max_grad_norm)
-                        self.optimizer.step()
-
-                        total_policy_loss += policy_loss.item()
-                        total_value_loss += value_loss.item()
-                        total_entropy += entropy.mean().item()
-                        num_batches += 1
+                if config.is_recurrent:
+                    update_stats = self._run_update_tbptt()
+                else:
+                    update_stats = self._run_update_feedforward()
+                total_policy_loss, total_value_loss, total_entropy, num_batches = update_stats
 
                 # --- Logging ---
                 if update % config.log_interval == 0 and num_batches > 0:
@@ -558,6 +613,175 @@ class PPOTrainer:
                 self._writer.close()
 
         logger.info("Training complete. Total steps: %d", global_step)
+
+    def _ppo_loss_terms_unreduced(
+        self,
+        logits: torch.Tensor,
+        values: torch.Tensor,
+        actions: torch.Tensor,
+        old_log_probs: torch.Tensor,
+        advantages: torch.Tensor,
+        returns: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Per-sample policy / value / entropy-loss terms (no reduction).
+
+        Returns ``(pg, v, ent_loss, entropy)``.  Caller .mean()s the first
+        three exactly once per minibatch — concatenating across TBPTT chunks
+        first if needed — so gradient magnitude matches a single .mean()
+        across the full sample budget.  ``entropy`` is for logging only.
+        """
+        config = self.config
+        dist = Categorical(logits=logits)
+        log_probs = dist.log_prob(actions)
+        entropy = dist.entropy()
+
+        ratio = (log_probs - old_log_probs).exp()
+        surr1 = ratio * advantages
+        surr2 = (
+            ratio.clamp(1.0 - config.clip_range, 1.0 + config.clip_range) * advantages
+        )
+        pg = -torch.min(surr1, surr2)
+        v = (values - returns) ** 2
+        ent_loss = -entropy
+        return pg, v, ent_loss, entropy
+
+    def _step_optimizer(
+        self,
+        policy_loss: torch.Tensor,
+        value_loss: torch.Tensor,
+        entropy_loss: torch.Tensor,
+    ) -> None:
+        """Combine the three reduced losses, backward, clip, step."""
+        config = self.config
+        loss = (
+            policy_loss
+            + config.value_loss_coef * value_loss
+            + config.entropy_coef * entropy_loss
+        )
+        self.optimizer.zero_grad()
+        loss.backward()
+        nn.utils.clip_grad_norm_(self.network.parameters(), config.max_grad_norm)
+        self.optimizer.step()
+
+    def _run_update_feedforward(self) -> tuple[float, float, float, int]:
+        """Feed-forward PPO update (default; ``rnn_type == 'none'``)."""
+        config = self.config
+        total_policy_loss = 0.0
+        total_value_loss = 0.0
+        total_entropy = 0.0
+        num_batches = 0
+
+        for _ in range(config.num_epochs):
+            for batch in self.buffer.get_batches(config.minibatch_size, self.device):
+                logits, values, _ = self.network(
+                    batch.obs_cards, batch.obs_global,
+                    batch.obs_actions, batch.action_mask,
+                )
+                pg, v, ent_loss, entropy = self._ppo_loss_terms_unreduced(
+                    logits, values, batch.actions,
+                    batch.old_log_probs, batch.advantages, batch.returns,
+                )
+                policy_loss = pg.mean()
+                value_loss = v.mean()
+                entropy_loss = ent_loss.mean()
+
+                self._step_optimizer(policy_loss, value_loss, entropy_loss)
+
+                total_policy_loss += policy_loss.item()
+                total_value_loss += value_loss.item()
+                total_entropy += entropy.mean().item()
+                num_batches += 1
+
+        return total_policy_loss, total_value_loss, total_entropy, num_batches
+
+    def _run_update_tbptt(self) -> tuple[float, float, float, int]:
+        """TBPTT PPO update for recurrent policies.
+
+        Each minibatch is one (T, env_mb, ...) slice of the rollout.  The
+        chunk loop walks T in steps of L = ``bptt_chunk_len``, threading
+        hx with ``detach()`` between chunks so backprop is bounded to L.
+
+        ``backward()`` runs PER chunk so the autograd graph for each
+        chunk is freed before the next forward — peak activation memory
+        is bounded by ``L * env_mb``, not ``T * env_mb``.  Each chunk's
+        loss is scaled by ``L / T`` so the gradient accumulated into
+        ``param.grad`` over all chunks equals a single ``.mean()`` over
+        ``T * env_mb`` samples in the feed-forward path.
+        """
+        config = self.config
+        T = config.rollout_steps
+        L = config.bptt_chunk_len
+        scale = L / T
+
+        total_policy_loss = 0.0
+        total_value_loss = 0.0
+        total_entropy = 0.0
+        num_batches = 0
+
+        for _ in range(config.num_epochs):
+            for batch in self.buffer.get_recurrent_batches(
+                config.minibatch_size, self.device,
+            ):
+                env_mb = batch.obs_cards.shape[1]
+                self.optimizer.zero_grad()
+
+                hx = batch.hx_initial
+                # Accumulate metrics as device tensors so we sync once per
+                # minibatch instead of 3× per chunk.  At T=256 / L=16 that's
+                # the difference between ~50 and ~1500 device-host syncs per
+                # PPO update.
+                mb_policy_loss = torch.zeros((), device=self.device)
+                mb_value_loss = torch.zeros((), device=self.device)
+                mb_entropy = torch.zeros((), device=self.device)
+
+                for chunk_start in range(0, T, L):
+                    chunk = slice(chunk_start, chunk_start + L)
+                    flat = L * env_mb
+
+                    logits, values, hx_new = self.network(
+                        batch.obs_cards[chunk].reshape(flat, 200, 42),
+                        batch.obs_global[chunk].reshape(flat, 20),
+                        batch.obs_actions[chunk].reshape(flat, 32, 12),
+                        batch.action_mask[chunk].reshape(flat, 32),
+                        hx=hx,
+                        seq_shape=(L, env_mb),
+                        dones=batch.dones[chunk],
+                    )
+
+                    pg, v, ent_loss, entropy = self._ppo_loss_terms_unreduced(
+                        logits, values,
+                        batch.actions[chunk].reshape(flat),
+                        batch.old_log_probs[chunk].reshape(flat),
+                        batch.advantages[chunk].reshape(flat),
+                        batch.returns[chunk].reshape(flat),
+                    )
+
+                    chunk_loss = (
+                        pg.mean()
+                        + config.value_loss_coef * v.mean()
+                        + config.entropy_coef * ent_loss.mean()
+                    ) * scale
+                    chunk_loss.backward()
+
+                    hx = YuGiOhNet.detach_hx(hx_new)
+
+                    # Detach so the metric tensors don't hold this chunk's
+                    # autograd graph past .backward().
+                    mb_policy_loss += pg.detach().mean() * scale
+                    mb_value_loss += v.detach().mean() * scale
+                    mb_entropy += entropy.detach().mean() * scale
+
+                nn.utils.clip_grad_norm_(
+                    self.network.parameters(), config.max_grad_norm,
+                )
+                self.optimizer.step()
+
+                total_policy_loss += mb_policy_loss.item()
+                total_value_loss += mb_value_loss.item()
+                total_entropy += mb_entropy.item()
+                num_batches += 1
+
+        return total_policy_loss, total_value_loss, total_entropy, num_batches
 
     def _evaluate(self, num_episodes: int, global_step: int) -> None:
         """Evaluate the live network against configured opponents."""

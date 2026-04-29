@@ -126,6 +126,17 @@ def parse_args() -> argparse.Namespace:
                      help="Projected text embedding dimension (default: 64)")
     net.add_argument("--learned-embed-dim", type=int, default=8,
                      help="Collision-free learned embedding dimension in text mode (default: 8)")
+    net.add_argument("--rnn-type", type=str, default="none",
+                     choices=["none", "lstm", "gru"],
+                     help="Recurrent layer between board MLP and the policy/value heads "
+                          "(default: none = feed-forward)")
+    net.add_argument("--rnn-hidden-dim", type=int, default=256,
+                     help="Hidden size of the recurrent layer (default: 256)")
+    net.add_argument("--rnn-num-layers", type=int, default=1,
+                     help="Number of stacked recurrent layers (default: 1)")
+    net.add_argument("--bptt-chunk-len", type=int, default=16,
+                     help="Truncated-BPTT chunk length; must divide rollout_steps when an RNN "
+                          "is enabled (default: 16). Ignored when --rnn-type=none.")
 
     infra = parser.add_argument_group("infrastructure")
     infra.add_argument("--resume", type=str, default="",
@@ -204,6 +215,50 @@ def validate_effective_config(config: "TrainingConfig") -> None:  # noqa: F821
     for spec in config.eval_opponents:
         validate_opponent_spec(spec, "--eval-opponents")
 
+    if config.bptt_chunk_len < 1:
+        fatal(f"--bptt-chunk-len must be >= 1 (got {config.bptt_chunk_len})")
+
+    if not config.is_recurrent:
+        return
+
+    # TBPTT invariants — derived from the envs-as-unit batching algorithm
+    # in RolloutBuffer.get_recurrent_batches.  Each one names the conflicting
+    # fields so the user can see exactly what to drop.
+    if config.rollout_steps % config.bptt_chunk_len != 0:
+        fatal(
+            f"with --rnn-type={config.rnn_type}, --rollout-steps "
+            f"({config.rollout_steps}) must be divisible by --bptt-chunk-len "
+            f"({config.bptt_chunk_len}) so the rollout splits into whole chunks"
+        )
+    if config.minibatch_size < config.rollout_steps:
+        fatal(
+            f"with --rnn-type={config.rnn_type}, --minibatch-size "
+            f"({config.minibatch_size}) must be >= --rollout-steps "
+            f"({config.rollout_steps}); minibatches are env-grouped, not "
+            f"flattened. Try --minibatch-size {config.rollout_steps}."
+        )
+    if config.minibatch_size % config.rollout_steps != 0:
+        fatal(
+            f"with --rnn-type={config.rnn_type}, --minibatch-size "
+            f"({config.minibatch_size}) must be divisible by --rollout-steps "
+            f"({config.rollout_steps}) so envs_per_minibatch is an integer."
+        )
+    if config.num_envs * config.rollout_steps < config.minibatch_size:
+        fatal(
+            f"--minibatch-size ({config.minibatch_size}) > "
+            f"--num-envs * --rollout-steps "
+            f"({config.num_envs * config.rollout_steps}); the rollout has "
+            f"fewer total samples than one minibatch."
+        )
+    envs_per_minibatch = config.minibatch_size // config.rollout_steps
+    if config.num_envs % envs_per_minibatch != 0:
+        fatal(
+            f"--num-envs ({config.num_envs}) must be divisible by "
+            f"envs_per_minibatch ({envs_per_minibatch}, derived from "
+            f"--minibatch-size / --rollout-steps) so every epoch yields "
+            f"equal-sized minibatches."
+        )
+
 
 def _build_fresh_config(args: argparse.Namespace, save_dir: str) -> TrainingConfig:
     """Build TrainingConfig directly from CLI args (fresh / --init-checkpoint)."""
@@ -233,6 +288,10 @@ def _build_fresh_config(args: argparse.Namespace, save_dir: str) -> TrainingConf
         card_embeddings_path=args.card_embeddings,
         text_embed_dim=args.text_embed_dim,
         learned_embed_dim=args.learned_embed_dim,
+        rnn_type=args.rnn_type,
+        rnn_hidden_dim=args.rnn_hidden_dim,
+        rnn_num_layers=args.rnn_num_layers,
+        bptt_chunk_len=args.bptt_chunk_len,
         init_checkpoint=args.init_checkpoint,
         resume_checkpoint=args.resume,
         resume_optimizer=args.resume_optimizer,

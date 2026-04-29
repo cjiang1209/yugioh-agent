@@ -340,22 +340,328 @@ def test_rollout_loop_resets_hx_per_rollout():
     )
 
 
-@pytest.mark.parametrize("rnn_type", ["lstm", "gru"])
-def test_ppo_trainer_refuses_recurrent_training(tmp_path, rnn_type):
-    """Until the TBPTT update path lands, PPOTrainer must hard-error on
-    rnn_type != 'none'.  The rollout collects recurrently but the update
-    replays feed-forward — silently off-policy if we let it run.
+# ---------------------------------------------------------------------------
+# Phase 4: TBPTT update path + checkpoint compat + config validation
+# ---------------------------------------------------------------------------
+
+
+def _make_tbptt_trainer(*, rollout_steps: int, num_envs: int, **overrides):
+    """Build a PPOTrainer in RNN mode with a populated random rollout buffer.
+
+    Used by tests that exercise ``_run_update_tbptt`` directly without
+    spinning up a vec env.  Default overrides give ``minibatch_size ==
+    rollout_steps`` (one minibatch per env) and ``num_epochs=1``; pass
+    them in ``overrides`` to change either.
     """
     from yugioh_rl.ppo import PPOTrainer
 
-    config = TrainingConfig(
-        rnn_type=rnn_type,
-        rnn_hidden_dim=64,
-        save_dir=str(tmp_path),
-        num_envs=1,
+    defaults = {
+        "rnn_type": "lstm", "rnn_hidden_dim": 64, "rnn_num_layers": 1,
+        "bptt_chunk_len": 8,
+        "rollout_steps": rollout_steps,
+        "num_envs": num_envs,
+        "minibatch_size": rollout_steps,
+        "num_epochs": 1,
+    }
+    config = TrainingConfig(**{**defaults, **overrides})
+    trainer = PPOTrainer(config)
+    hx_initial = trainer.network.init_hx(config.num_envs, trainer.device)
+    _populate_buffer_with_random_rollout(trainer.buffer, hx_initial)
+    return trainer
+
+
+def _populate_buffer_with_random_rollout(buffer, hx_initial, seed: int = 0) -> None:
+    """Fill a RolloutBuffer with synthetic rollout data and run advantages."""
+    rng = np.random.default_rng(seed)
+    T, N = buffer.rollout_steps, buffer.num_envs
+    buffer.obs_cards[:] = rng.integers(0, 256, buffer.obs_cards.shape, dtype=np.uint8)
+    buffer.obs_global[:] = rng.integers(0, 256, buffer.obs_global.shape, dtype=np.uint8)
+    buffer.obs_actions[:] = rng.integers(0, 256, buffer.obs_actions.shape, dtype=np.uint8)
+    buffer.obs_mask[:] = 1
+    buffer.actions[:] = rng.integers(0, 32, (T, N), dtype=np.int64)
+    buffer.log_probs[:] = rng.standard_normal((T, N)).astype(np.float32)
+    buffer.rewards[:] = rng.standard_normal((T, N)).astype(np.float32)
+    buffer.dones[:] = 0.0
+    buffer.values[:] = rng.standard_normal((T, N)).astype(np.float32)
+    buffer.advantages[:] = rng.standard_normal((T, N)).astype(np.float32)
+    buffer.returns[:] = buffer.advantages + buffer.values
+    buffer.hx_initial = hx_initial
+    buffer._ptr = T
+
+
+def test_recurrent_minibatch_shape_and_count():
+    """Plan test #4 (shape half).  With T=32, L=8, num_envs=4,
+    minibatch_size=32: envs_per_minibatch=1, four minibatches per epoch,
+    each shape (T=32, env_mb=1, ...)."""
+    from yugioh_rl.ppo import RolloutBuffer
+
+    buffer = RolloutBuffer(rollout_steps=32, num_envs=4)
+    hx_initial = (torch.zeros(1, 4, 64), torch.zeros(1, 4, 64))
+    _populate_buffer_with_random_rollout(buffer, hx_initial)
+
+    batches = list(buffer.get_recurrent_batches(minibatch_size=32, device=torch.device("cpu")))
+    assert len(batches) == 4
+    for b in batches:
+        assert b.obs_cards.shape == (32, 1, 200, 42)
+        assert b.obs_global.shape == (32, 1, 20)
+        assert b.actions.shape == (32, 1)
+        assert b.dones.shape == (32, 1)
+        h, c = b.hx_initial
+        assert h.shape == (1, 1, 64)
+        assert c.shape == (1, 1, 64)
+
+
+def test_recurrent_chunk_walk_calls_forward_T_over_L_times(monkeypatch):
+    """Plan test #4 (chunk-walk half).  The TBPTT update should call
+    network.forward exactly T/L times per minibatch, each with the
+    chunk's seq_shape and dones."""
+    trainer = _make_tbptt_trainer(rollout_steps=32, num_envs=4)
+
+    seen: list[tuple[int, tuple[int, int]]] = []
+    real_forward = trainer.network.forward
+
+    def spy(*args, **kwargs):
+        seen.append((args[0].shape[0], kwargs.get("seq_shape")))
+        return real_forward(*args, **kwargs)
+
+    monkeypatch.setattr(trainer.network, "forward", spy)
+    trainer._run_update_tbptt()
+
+    # 4 minibatches per epoch × T/L = 4 chunks per minibatch = 16 calls
+    assert len(seen) == 16
+    for batch_dim, seq_shape in seen:
+        assert seq_shape == (8, 1)
+        assert batch_dim == 8 * 1  # L * env_mb
+
+
+def test_tbptt_per_chunk_backward_matches_single_backward():
+    """Plan test #10 (aggregation half).  Per-chunk weighted backward — the
+    memory-bounded TBPTT path — must accumulate into the same total
+    gradient as a single .backward() of .mean() over T*env_mb samples.
+
+    Guards the two scaling bugs the plan called out:
+    - Per-chunk .mean() summed without scale → grad scales by T/L.
+    - Per-chunk .sum() summed → grad scales by T*env_mb.
+    """
+    torch.manual_seed(0)
+    L, env_mb, n_chunks = 8, 2, 4
+    T = L * n_chunks
+    total = T * env_mb
+    scale = L / T
+
+    x = torch.randn(total)
+
+    # Reference: single .mean() backward through a parameter.
+    w_ref = torch.tensor(1.0, requires_grad=True)
+    (x * w_ref).mean().backward()
+
+    # TBPTT: per-chunk weighted backward, accumulating into w.grad.
+    w_tbp = torch.tensor(1.0, requires_grad=True)
+    chunks = [x[i * L * env_mb : (i + 1) * L * env_mb] for i in range(n_chunks)]
+    for chunk in chunks:
+        ((chunk * w_tbp).mean() * scale).backward()
+
+    assert torch.allclose(w_ref.grad, w_tbp.grad)
+
+
+def test_tbptt_releases_chunk_graph_each_iteration(monkeypatch):
+    """The TBPTT loop must call .backward() inside the chunk for-loop so
+    each chunk's autograd graph is freed before the next forward.
+    Accumulating grad-tracking tensors and only calling .backward() at
+    the end keeps every chunk's activations alive simultaneously,
+    defeating the TBPTT memory bound.
+    """
+    trainer = _make_tbptt_trainer(rollout_steps=32, num_envs=4)
+
+    # Record the order of forward / backward calls.  A correct TBPTT loop
+    # interleaves them: forward, backward, forward, backward, ...  A wrong
+    # one does forward × T/L then backward × 1.
+    events: list[str] = []
+    real_forward = trainer.network.forward
+
+    def spy_forward(*args, **kwargs):
+        events.append("forward")
+        return real_forward(*args, **kwargs)
+
+    monkeypatch.setattr(trainer.network, "forward", spy_forward)
+
+    real_backward = torch.Tensor.backward
+
+    def spy_backward(self, *args, **kwargs):
+        events.append("backward")
+        return real_backward(self, *args, **kwargs)
+
+    monkeypatch.setattr(torch.Tensor, "backward", spy_backward)
+
+    trainer._run_update_tbptt()
+
+    # Per minibatch: 4 chunks → expect alternating fwd/bwd (8 events).
+    # 4 minibatches per epoch → 32 events total.
+    assert len(events) == 32
+    for i in range(0, 32, 2):
+        assert events[i] == "forward", (
+            f"event {i} should be a forward (interleaved per chunk); "
+            f"got: {events[i:i+2]}"
+        )
+        assert events[i + 1] == "backward", (
+            f"event {i+1} should be a backward immediately after the chunk "
+            f"forward; got: {events[i:i+2]}"
+        )
+
+
+def test_tbptt_update_changes_network_weights(tmp_path):
+    """Plan test #5 (real training half).  Run one TBPTT update and verify
+    network parameters actually move — exercises the full chunk loop with
+    backward + optimizer.step."""
+    trainer = _make_tbptt_trainer(rollout_steps=16, num_envs=2)
+
+    before = {k: v.clone() for k, v in trainer.network.state_dict().items()}
+    trainer._run_update_tbptt()
+    after = trainer.network.state_dict()
+
+    assert any(
+        not torch.allclose(before[k], after[k])
+        for k in before
+        if before[k].dtype.is_floating_point
+    ), "TBPTT update must move at least one parameter"
+
+
+def test_tbptt_checkpoint_roundtrip_after_training(tmp_path):
+    """Plan test #5 (round-trip half).  Train two TBPTT updates, save, reload
+    via from_state_dict, forward on the same input — outputs must match."""
+    trainer = _make_tbptt_trainer(rollout_steps=16, num_envs=2, num_epochs=2)
+    trainer._run_update_tbptt()
+    trainer.network.eval()
+
+    cards, glob, actions, mask = _dummy_obs_tensors(batch=2)
+    hx_test = trainer.network.init_hx(2, trainer.device)
+    with torch.no_grad():
+        logits_ref, values_ref, _ = trainer.network(cards, glob, actions, mask, hx=hx_test)
+
+    ckpt_path = str(tmp_path / "trained_rnn.pt")
+    torch.save(
+        {"config": trainer.config, "model_state_dict": trainer.network.state_dict()},
+        ckpt_path,
     )
-    with pytest.raises(NotImplementedError, match="rnn_type"):
-        PPOTrainer(config)
+    blob = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    reloaded = YuGiOhNet.from_state_dict(blob["config"], blob["model_state_dict"])
+    reloaded.eval()
+    with torch.no_grad():
+        logits_new, values_new, _ = reloaded(cards, glob, actions, mask, hx=hx_test)
+
+    assert torch.allclose(logits_ref, logits_new)
+    assert torch.allclose(values_ref, values_new)
+
+
+def test_checkpoint_compat_rejects_rnn_type_mismatch(tmp_path):
+    """Plan test #2.  Loading a 'none' ckpt with CLI rnn_type='lstm' (or
+    vice versa) must raise — RNN cannot be hot-added or hot-removed
+    relative to trained weights."""
+    from yugioh_rl.ppo import PPOTrainer
+
+    none_ckpt = str(tmp_path / "none.pt")
+    _save_minimal_checkpoint(none_ckpt, TrainingConfig())
+
+    cli_with_rnn = TrainingConfig(
+        rnn_type="lstm", rnn_hidden_dim=64,
+        init_checkpoint=none_ckpt, save_dir=str(tmp_path / "run1"),
+    )
+    with pytest.raises(ValueError, match="rnn_type"):
+        PPOTrainer(cli_with_rnn)
+
+    rnn_ckpt = str(tmp_path / "lstm.pt")
+    _make_rnn_checkpoint(rnn_ckpt, rnn_type="lstm")
+    cli_without_rnn = TrainingConfig(
+        rnn_hidden_dim=64,  # match ckpt to isolate rnn_type as the only mismatch
+        init_checkpoint=rnn_ckpt, save_dir=str(tmp_path / "run2"),
+    )
+    with pytest.raises(ValueError, match="rnn_type"):
+        PPOTrainer(cli_without_rnn)
+
+
+def test_checkpoint_compat_rejects_rnn_hidden_dim_mismatch(tmp_path):
+    """When both sides instantiate an RNN, hidden-dim mismatch must reject."""
+    from yugioh_rl.ppo import PPOTrainer
+
+    ckpt_path = str(tmp_path / "lstm64.pt")
+    _make_rnn_checkpoint(ckpt_path, rnn_type="lstm")  # rnn_hidden_dim=64 from helper
+
+    cli = TrainingConfig(
+        rnn_type="lstm", rnn_hidden_dim=128,
+        init_checkpoint=ckpt_path, save_dir=str(tmp_path / "run"),
+    )
+    with pytest.raises(ValueError, match="rnn_hidden_dim"):
+        PPOTrainer(cli)
+
+
+def test_checkpoint_compat_ignores_rnn_dims_when_both_feed_forward(tmp_path):
+    """Feed-forward ckpts (rnn_type='none' on both sides) must load even
+    when rnn_hidden_dim / rnn_num_layers placeholder values disagree —
+    those fields don't shape any tensor in feed-forward mode.
+    """
+    from yugioh_rl.ppo import PPOTrainer
+
+    ckpt_config = TrainingConfig(rnn_type="none", rnn_hidden_dim=512, rnn_num_layers=3)
+    ckpt_path = str(tmp_path / "ff_with_drift.pt")
+    _save_minimal_checkpoint(ckpt_path, ckpt_config)
+
+    # CLI carries today's defaults (256 / 1) — different from the saved ckpt.
+    cli = TrainingConfig(
+        rnn_type="none", rnn_hidden_dim=256, rnn_num_layers=1,
+        init_checkpoint=ckpt_path, save_dir=str(tmp_path / "run"),
+    )
+    PPOTrainer(cli)  # should not raise
+
+
+def test_validate_effective_config_tbptt_invariants(monkeypatch, capsys, tmp_path):
+    """Plan test #11.  Each TBPTT invariant should fail with a useful
+    message when violated; the default RNN combination should pass."""
+    from cli.train import validate_effective_config
+
+    deck = str(tmp_path / "starter.ydk")
+    # validate_deck_paths needs a real-looking file; use the real one.
+    real_deck = "assets/decks/starter.ydk"
+
+    def cfg(**overrides):
+        return TrainingConfig(
+            deck_paths=[real_deck], rnn_type="lstm",
+            rnn_hidden_dim=64, **overrides,
+        )
+
+    cases = [
+        # (overrides, expected substring in stderr)
+        (dict(rollout_steps=10, bptt_chunk_len=3, minibatch_size=10, num_envs=8), "bptt-chunk-len"),
+        (dict(rollout_steps=16, bptt_chunk_len=8, minibatch_size=8, num_envs=8), ">= --rollout-steps"),
+        (dict(rollout_steps=16, bptt_chunk_len=8, minibatch_size=24, num_envs=8), "must be divisible by --rollout-steps"),
+        (dict(rollout_steps=16, bptt_chunk_len=8, minibatch_size=128, num_envs=4), "fewer total samples"),
+        (dict(rollout_steps=16, bptt_chunk_len=8, minibatch_size=48, num_envs=8), "envs_per_minibatch"),
+    ]
+    for overrides, expected in cases:
+        with pytest.raises(SystemExit):
+            validate_effective_config(cfg(**overrides))
+        err = capsys.readouterr().err
+        assert expected in err, f"{overrides} did not produce '{expected}' in stderr; got: {err}"
+
+    # Default RNN combination should pass cleanly.
+    validate_effective_config(cfg(
+        rollout_steps=256, bptt_chunk_len=16,
+        minibatch_size=256, num_envs=8,
+    ))
+
+
+def test_validate_effective_config_skips_tbptt_invariants_when_rnn_none(tmp_path):
+    """rnn_type='none' must skip the TBPTT checks entirely so existing
+    feed-forward configs with non-divisible minibatch_size keep working."""
+    from cli.train import validate_effective_config
+
+    config = TrainingConfig(
+        deck_paths=["assets/decks/starter.ydk"],
+        rnn_type="none",
+        # These would all fail TBPTT invariants but should be ignored at "none".
+        rollout_steps=256, bptt_chunk_len=7,
+        minibatch_size=200, num_envs=8,
+    )
+    validate_effective_config(config)
 
 
 def test_rnn_state_dict_mismatch_rejected_by_from_state_dict():

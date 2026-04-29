@@ -239,8 +239,7 @@ class YuGiOhNet(nn.Module):
                 config.text_embed_dim, text_sd)
 
         has_rnn_keys = any(k.startswith("rnn.") for k in state_dict)
-        config_has_rnn = config.rnn_type != "none"
-        if has_rnn_keys != config_has_rnn:
+        if has_rnn_keys != config.is_recurrent:
             raise ValueError(
                 f"checkpoint state_dict / config mismatch: "
                 f"rnn.* keys present={has_rnn_keys} but "
@@ -284,6 +283,34 @@ class YuGiOhNet(nn.Module):
             h, c = hx
             return (h * keep, c * keep)
         return hx * keep
+
+    @staticmethod
+    def detach_hx(
+        hx: tuple[torch.Tensor, torch.Tensor] | torch.Tensor | None,
+    ) -> tuple[torch.Tensor, torch.Tensor] | torch.Tensor | None:
+        """Stop gradient flow through hx.
+
+        Used at TBPTT chunk boundaries: each chunk's backward should only
+        see the L steps it ran; carrying a grad-tracking hx into the next
+        chunk would walk gradients all the way back to t=0.
+        """
+        if hx is None:
+            return None
+        if isinstance(hx, tuple):
+            return tuple(t.detach() for t in hx)
+        return hx.detach()
+
+    @staticmethod
+    def slice_hx(
+        hx: tuple[torch.Tensor, torch.Tensor] | torch.Tensor | None,
+        env_idx: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor] | torch.Tensor | None:
+        """Index hx along the env dimension (dim 1)."""
+        if hx is None:
+            return None
+        if isinstance(hx, tuple):
+            return tuple(t[:, env_idx] for t in hx)
+        return hx[:, env_idx]
 
     def _embed_codes(self, codes: torch.Tensor) -> torch.Tensor:
         """Embed card codes using symbolic or semantic mode.
