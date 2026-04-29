@@ -110,6 +110,32 @@ def test_resume_restores_optimizer_state(tmp_path):
     assert len(trainer.optimizer.state) > 0, "Optimizer state should be populated"
 
 
+@pytest.mark.parametrize("rnn_type", ["lstm", "gru"])
+def test_resume_restores_recurrent_weights(tmp_path, rnn_type):
+    """Resume must round-trip the RNN module, not just the feed-forward
+    layers.  Probes ``rnn.weight_ih_l0`` directly — ``next(iter(net
+    .parameters()))`` returns ``card_embedding.weight`` regardless of
+    rnn_type, so it would silently pass even if a regression dropped or
+    re-initialised the recurrent layer.
+    """
+    import dataclasses
+
+    ckpt_path = str(tmp_path / "ckpt.pt")
+    config = TrainingConfig(
+        save_dir=str(tmp_path), num_envs=1,
+        rnn_type=rnn_type, rnn_hidden_dim=64, rnn_num_layers=1,
+        bptt_chunk_len=8, rollout_steps=8, minibatch_size=8,
+    )
+    net = _make_checkpoint(ckpt_path, config, run_backward=True)
+    ref_param = net.state_dict()["rnn.weight_ih_l0"].detach().clone()
+
+    trainer = PPOTrainer(dataclasses.replace(config, resume_checkpoint=ckpt_path))
+    loaded_param = trainer.network.state_dict()["rnn.weight_ih_l0"].detach()
+
+    assert torch.allclose(ref_param, loaded_param)
+    assert len(trainer.optimizer.state) > 0
+
+
 def test_resume_restores_episode_tracking(tmp_path):
     """Episode tracking lists should be restored from checkpoint."""
     ckpt_path = str(tmp_path / "ckpt.pt")

@@ -241,6 +241,30 @@ class TestSemanticMode:
         # Learned embedding should have gradients
         assert net.card_embedding.weight.grad is not None
 
+    @pytest.mark.parametrize("rnn_type", ["none", "lstm", "gru"])
+    def test_text_embeddings_coexist_with_rnn(self, tmp_path, rnn_type):
+        """Semantic card embeddings + RNN policy must compose: forward
+        produces finite outputs and the rnn module is built (or absent)
+        according to ``rnn_type``."""
+        codes = list(range(1, 51))
+        path = _make_embeddings_file(codes, dim=384, path=str(tmp_path / "emb.pt"))
+
+        config = TrainingConfig(
+            card_embeddings_path=path, text_embed_dim=32, learned_embed_dim=8,
+            rnn_type=rnn_type, rnn_hidden_dim=64, rnn_num_layers=1,
+        )
+        net = YuGiOhNet.from_config(config)
+        if rnn_type == "none":
+            assert net.rnn is None
+        else:
+            assert net.rnn is not None
+
+        obs_cards, obs_global, obs_actions, action_mask = _make_dummy_obs(batch_size=2)
+        logits, values, _ = net(obs_cards, obs_global, obs_actions, action_mask)
+        assert logits.shape == (2, 32)
+        assert values.shape == (2,)
+        assert torch.isfinite(values).all()
+
     def test_from_state_dict_roundtrip(self, tmp_path):
         """from_path → state_dict → from_state_dict → outputs match."""
         codes = list(range(1, 51))
