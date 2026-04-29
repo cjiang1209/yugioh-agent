@@ -239,11 +239,20 @@ class ModelAgent:
         self._network.to(device)
         self._network.eval()
         self._device = torch.device(device)
+        self._hx = self._network.init_hx(1, self._device)
 
         card_db = CardDatabase(db_path)
         self._obs_builder = MUDObservationBuilder(card_db)
         self._fallback = PassiveAgent()
         self._log = logging.getLogger(__name__)
+
+    def reset_hidden_state(self) -> None:
+        """Re-zero recurrent state at the start of a new duel.
+
+        Called by ``MUDProtocol`` on entry to ``State.DUEL``.  No-op for
+        feed-forward networks (``init_hx`` returns ``None``).
+        """
+        self._hx = self._network.init_hx(1, self._device)
 
     def choose(
         self,
@@ -262,7 +271,9 @@ class ModelAgent:
         t_mask = torch.from_numpy(obs["action_mask"]).unsqueeze(0).to(self._device)
 
         with torch.no_grad():
-            logits, _, _ = self._network(t_cards, t_global, t_actions, t_mask)
+            logits, _, self._hx = self._network(
+                t_cards, t_global, t_actions, t_mask, hx=self._hx,
+            )
             action_idx = logits.argmax(dim=-1).item()
 
         return map_model_action(action_idx, prompt)

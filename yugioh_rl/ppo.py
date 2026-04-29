@@ -64,8 +64,14 @@ class RolloutBuffer:
         self.advantages = np.zeros((T, N), dtype=np.float32)
         self.returns = np.zeros((T, N), dtype=np.float32)
 
+        # Single snapshot of the recurrent hidden state at t=0, set by the
+        # trainer right before the rollout loop runs.  Stored but unused by
+        # the current update loop; the TBPTT path will consume it.
+        self.hx_initial: tuple[torch.Tensor, torch.Tensor] | torch.Tensor | None = None
+
     def reset(self) -> None:
         self._ptr = 0
+        self.hx_initial = None
 
     def add(
         self,
@@ -159,6 +165,22 @@ class PPOTrainer:
     """PPO training loop for Yu-Gi-Oh! agent."""
 
     def __init__(self, config: TrainingConfig) -> None:
+        # The PPO update loop currently shuffles observations into single-step
+        # minibatches with no hidden state, while collection runs the network
+        # recurrently.  Comparing recurrent old_log_probs/values against
+        # feed-forward re-evaluations breaks the on-policy assumption — fail
+        # closed until the TBPTT update path lands.  Inference (NetworkOpponent /
+        # ModelOpponent / ModelAgent) handles RNN ckpts correctly today.
+        if config.rnn_type != "none":
+            raise NotImplementedError(
+                f"Training with rnn_type={config.rnn_type!r} is not yet supported. "
+                "The PPO update loop replays observations feed-forward, so a "
+                "recurrent rollout's old_log_probs and values would be compared "
+                "against feed-forward re-evaluations of the same obs — silently "
+                "off-policy.  Use rnn_type='none' for now; inference still works "
+                "with RNN checkpoints."
+            )
+
         self.config = config
 
         # Resolve device
@@ -360,6 +382,17 @@ class PPOTrainer:
                 update_start = time.time()
                 self.buffer.reset()
 
+                # Reset hx at every rollout boundary.  Carrying it across
+                # would feed a hx produced by the previous weights into
+                # the just-updated network on step 0, making action
+                # sampling and the value bootstrap inconsistent with the
+                # current policy.  This drops mid-episode memory at the
+                # boundary but keeps the rollout self-consistent.
+                hx = self.network.init_hx(config.num_envs, self.device)
+                # Plain ref is safe: init_hx returns fresh zero tensors and
+                # the loop only rebinds `hx`, never mutates the snapshot.
+                self.buffer.hx_initial = hx
+
                 # --- Collect rollout ---
                 for step in range(config.rollout_steps):
                     with torch.no_grad():
@@ -368,7 +401,9 @@ class PPOTrainer:
                         t_actions = torch.from_numpy(obs["actions"]).to(self.device)
                         t_mask = torch.from_numpy(obs["action_mask"]).to(self.device)
 
-                        logits, values, _ = self.network(t_cards, t_global, t_actions, t_mask)
+                        logits, values, hx_new = self.network(
+                            t_cards, t_global, t_actions, t_mask, hx=hx,
+                        )
                         dist = Categorical(logits=logits)
                         actions = dist.sample()
                         log_probs = dist.log_prob(actions)
@@ -378,8 +413,13 @@ class PPOTrainer:
                     values_np = values.cpu().numpy()
 
                     next_obs, rewards, dones, infos = vec_env.step(actions_np)
+                    dones_f = dones.astype(np.float32)
 
-                    self.buffer.add(obs, actions_np, log_probs_np, rewards, dones.astype(np.float32), values_np)
+                    self.buffer.add(obs, actions_np, log_probs_np, rewards, dones_f, values_np)
+
+                    # vec_env auto-resets on done — zero hx for those envs to match.
+                    dones_t = torch.from_numpy(dones_f).to(self.device)
+                    hx = self.network.mask_hx(hx_new, dones_t)
 
                     # Track completed episodes
                     for info in infos:
@@ -400,7 +440,9 @@ class PPOTrainer:
                     t_global = torch.from_numpy(obs["global_state"]).to(self.device)
                     t_actions = torch.from_numpy(obs["actions"]).to(self.device)
                     t_mask = torch.from_numpy(obs["action_mask"]).to(self.device)
-                    _, last_values, _ = self.network(t_cards, t_global, t_actions, t_mask)
+                    _, last_values, _ = self.network(
+                        t_cards, t_global, t_actions, t_mask, hx=hx,
+                    )
                     last_values_np = last_values.cpu().numpy()
 
                 self.buffer.compute_advantages(last_values_np, config.gamma, config.gae_lambda)

@@ -199,7 +199,7 @@ class MUDProtocol:
             self.state = State.PRE_DUEL_DECISION
             await self._handle_decision(line)
         elif "Duel created." in line:
-            self.state = State.DUEL
+            self._enter_duel_state()
 
     # -- Decision (RPS winner only) --
 
@@ -207,7 +207,20 @@ class MUDProtocol:
         if line == "[1] Yes":
             await self._send("1")  # Always go first for now
         elif "Duel created." in line:
-            self.state = State.DUEL
+            self._enter_duel_state()
+
+    def _enter_duel_state(self) -> None:
+        """Single transition point into ``State.DUEL``.
+
+        Resets the agent's recurrent hidden state once per duel — agents
+        without an RNN (PassiveAgent, RandomAgent) don't expose
+        ``reset_hidden_state``, so the getattr keeps them untouched.
+        """
+        self.state = State.DUEL
+        if self._agent is not None:
+            reset = getattr(self._agent, "reset_hidden_state", None)
+            if reset is not None:
+                reset()
 
     # -- Duel --
 

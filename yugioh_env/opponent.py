@@ -139,6 +139,9 @@ class NetworkOpponent(Opponent):
         self._network = network
         self._device = torch.device(device)
         self._obs: dict[str, np.ndarray] | None = None
+        # Per-episode recurrent state.  reseed() — called per duel by both
+        # the HTTP env and the eval loop — re-zeros it.
+        self._hx = self._network.init_hx(1, self._device)
 
     @property
     def needs_observation(self) -> bool:
@@ -160,13 +163,16 @@ class NetworkOpponent(Opponent):
         t_mask = torch.from_numpy(obs["action_mask"]).unsqueeze(0).to(self._device)
 
         with torch.no_grad():
-            logits, _, _ = self._network(t_cards, t_global, t_actions, t_mask)
+            logits, _, self._hx = self._network(
+                t_cards, t_global, t_actions, t_mask, hx=self._hx,
+            )
             action = logits.argmax(dim=-1).item()
 
         return min(action, num_actions - 1)
 
     def reseed(self, seed: int) -> None:
-        pass  # Deterministic policy
+        # Argmax policy is deterministic; reseed only resets recurrent state.
+        self._hx = self._network.init_hx(1, self._device)
 
 
 class ModelOpponent(Opponent):
