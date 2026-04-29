@@ -28,7 +28,7 @@ def _param_l2(net: torch.nn.Module) -> float:
 @requires_engine
 @pytest.mark.parametrize("rnn_type", ["none", "lstm"])
 def test_actor_learner_matches_subproc_within_tolerance(tmp_path, rnn_type: str) -> None:
-    deck = "assets/decks/starter.ydk"
+    deck = "assets/decks/blue_eyes.ydk"
     if not Path(deck).exists():
         pytest.skip(f"{deck} not present")
 

@@ -35,7 +35,7 @@ def main() -> None:
     # Tiny crashing config — match the prior reproduction.
     cfg = TrainingConfig(
         num_envs=4,
-        deck_paths=["assets/decks/starter.ydk"],
+        deck_paths=["assets/decks/blue_eyes.ydk"],
         rollout_steps=8,
         bptt_chunk_len=8,
         num_epochs=1,

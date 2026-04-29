@@ -38,7 +38,7 @@ def parse_args() -> argparse.Namespace:
     room.add_argument("--join", type=str, default=None,
                       help="Nickname of host to join (guest profile only; default: Player1)")
     room.add_argument("--deck", type=str, default=None,
-                      help="Deck name loaded in MUD DB (default: starter)")
+                      help="Deck name loaded in MUD DB (default: blue_eyes)")
 
     play = parser.add_argument_group("play")
     play.add_argument("--mode", type=str, default=None,

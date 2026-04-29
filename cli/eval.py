@@ -8,7 +8,7 @@ better of two models.
 Examples::
 
     scripts/eval.sh --agent greedy --opponents random greedy --episodes 100 \\
-        --deck-paths assets/decks/starter.ydk
+        --deck-paths assets/decks/blue_eyes.ydk
 
     scripts/eval.sh --agent model:checkpoints/v1/latest.pt \\
         --opponents model:checkpoints/v2/latest.pt --episodes 500 \\

@@ -15,7 +15,7 @@ from tests.rl.conftest import requires_engine
 
 @requires_engine
 def test_actor_learner_ppo_runs_to_completion(tmp_path) -> None:
-    deck = "assets/decks/starter.ydk"
+    deck = "assets/decks/blue_eyes.ydk"
     if not Path(deck).exists():
         pytest.skip(f"{deck} not present")
 
@@ -63,7 +63,7 @@ def test_actor_learner_ppo_runs_to_completion(tmp_path) -> None:
 @requires_engine
 def test_actor_learner_ppo_runs_with_rnn(tmp_path) -> None:
     """End-to-end smoke: actor-learner + LSTM + TBPTT update."""
-    deck = "assets/decks/starter.ydk"
+    deck = "assets/decks/blue_eyes.ydk"
     if not Path(deck).exists():
         pytest.skip(f"{deck} not present")
 

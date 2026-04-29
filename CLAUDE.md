@@ -42,7 +42,7 @@ scripts/play_client.sh                        # interactive mode
 scripts/play_client.sh --mode random --seed 42
 scripts/play_client.sh --mode greedy --episodes 10 --quiet
 scripts/play_client.sh --deck assets/decks/blue_eyes.ydk --mode greedy
-scripts/play_client.sh --deck0 assets/decks/blue_eyes.ydk --deck1 assets/decks/starter.ydk
+scripts/play_client.sh --deck0 assets/decks/blue_eyes.ydk --deck1 assets/decks/dark_magician.ydk
 scripts/play_client.sh --go-second --mode greedy          # agent goes second (player 1)
 
 # Run the MUD bot client (MUD server must be running)
@@ -214,7 +214,7 @@ pip install -e ".[embed]"  # adds sentence-transformers (for building card text 
 ### Running Training
 
 ```bash
-scripts/train.sh                                           # default: 8 envs, 1M steps, greedy opponent, starter deck
+scripts/train.sh                                           # default: 8 envs, 1M steps, greedy opponent, blue_eyes deck
 scripts/train.sh --num-envs 4 --total-timesteps 500000     # fewer envs, shorter run
 scripts/train.sh --opponent random --no-reward-shaping      # sparse rewards only
 scripts/train.sh --opponent model:checkpoints/latest.pt    # self-play
@@ -232,7 +232,7 @@ scripts/train.sh --eval-opponents greedy model:checkpoints/run1/latest.pt  # eva
 scripts/train.sh --eval-opponents greedy model:checkpoints/v1/latest.pt model:checkpoints/v2/latest.pt  # multiple models
 
 # Multi-deck training (agent and opponent each sample a deck from the pool per episode)
-scripts/train.sh --deck-paths assets/decks/starter.ydk assets/decks/blue_eyes.ydk assets/decks/dark_magician.ydk
+scripts/train.sh --deck-paths assets/decks/blue_eyes.ydk assets/decks/dark_magician.ydk
 scripts/train.sh --deck-paths assets/decks/*.ydk           # glob all decks in the directory
 
 # Build card text embeddings (requires sentence-transformers)
@@ -250,12 +250,12 @@ Each run auto-creates a timestamped subdirectory under `--base-dir` (e.g. `check
 
 ```bash
 scripts/eval.sh --agent greedy --opponents random greedy --episodes 100 \
-    --deck-paths assets/decks/starter.ydk
+    --deck-paths assets/decks/blue_eyes.ydk
 scripts/eval.sh --agent model:checkpoints/v1/latest.pt \
     --opponents random greedy model:checkpoints/v2/latest.pt --episodes 500 \
     --deck-paths assets/decks/*.ydk --json results.json
 scripts/eval.sh --agent greedy --opponents random --episodes 50 \
-    --deck-paths assets/decks/starter.ydk --device cuda  # routes both sides onto GPU
+    --deck-paths assets/decks/blue_eyes.ydk --device cuda  # routes both sides onto GPU
 scripts/eval.sh --agent model:checkpoints/v1/latest.pt --opponents greedy random \
     --deck-paths assets/decks/*.ydk --episodes 500 --workers 4   # parallel opponents
 ```

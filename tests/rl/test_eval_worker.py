@@ -44,7 +44,7 @@ def _spawn_eval_worker(
 
 
 def _deck_pool_or_skip():
-    deck = "assets/decks/starter.ydk"
+    deck = "assets/decks/blue_eyes.ydk"
     if not Path(deck).exists():
         pytest.skip(f"{deck} not present")
     return parse_deck_pool([deck])

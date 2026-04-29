@@ -21,7 +21,7 @@ from tests.rl.conftest import requires_engine
 
 
 def _make_deck_pool() -> list[dict[str, list[int]]]:
-    deck_path = Path("assets/decks/starter.ydk")
+    deck_path = Path("assets/decks/blue_eyes.ydk")
     if not deck_path.exists():
         pytest.skip(f"missing deck: {deck_path}")
     # Two-deck pool so deck_rng draws can vary; both pointing at the same

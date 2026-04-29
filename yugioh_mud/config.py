@@ -18,7 +18,7 @@ class MUDBotConfig:
     # Room
     profile: str = ""  # "host" or "guest"
     join: str = ""     # host nickname to join (guest only)
-    deck: str = "starter"
+    deck: str = "blue_eyes"
 
     # Play
     mode: str = "random"

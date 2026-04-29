@@ -23,7 +23,7 @@ def assets_dir(project_root) -> Path:
 
 @pytest.fixture
 def deck_path(assets_dir) -> Path:
-    return assets_dir / "decks" / "starter.ydk"
+    return assets_dir / "decks" / "blue_eyes.ydk"
 
 
 @pytest.fixture

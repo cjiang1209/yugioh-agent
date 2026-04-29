@@ -16,7 +16,7 @@ class TrainingConfig:
 
     # Environment
     num_envs: int = 8
-    deck_paths: list[str] = field(default_factory=lambda: ["assets/decks/starter.ydk"])
+    deck_paths: list[str] = field(default_factory=lambda: ["assets/decks/blue_eyes.ydk"])
     opponent: str = "greedy"  # "random", "greedy", or "model:path/to/checkpoint.pt"
     agent_player: str = "random"  # "first" (player 0), "second" (player 1), or "random"
     reward_shaping: bool = True

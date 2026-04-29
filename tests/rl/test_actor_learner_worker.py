@@ -53,7 +53,7 @@ def _spawn_worker(deck_paths, config: TrainingConfig, rollout_steps: int):
 
 @requires_engine
 def test_worker_produces_valid_rollout() -> None:
-    deck = "assets/decks/starter.ydk"
+    deck = "assets/decks/blue_eyes.ydk"
     if not Path(deck).exists():
         pytest.skip(f"{deck} not present")
 
@@ -110,7 +110,7 @@ def test_worker_produces_valid_rollout() -> None:
 
 @requires_engine
 def test_worker_refreshes_on_new_version() -> None:
-    deck = "assets/decks/starter.ydk"
+    deck = "assets/decks/blue_eyes.ydk"
     if not Path(deck).exists():
         pytest.skip(f"{deck} not present")
 
@@ -141,7 +141,7 @@ def test_worker_refreshes_on_new_version() -> None:
 
 @requires_engine
 def test_worker_handles_shutdown() -> None:
-    deck = "assets/decks/starter.ydk"
+    deck = "assets/decks/blue_eyes.ydk"
     if not Path(deck).exists():
         pytest.skip(f"{deck} not present")
 
@@ -160,7 +160,7 @@ def test_worker_handles_shutdown() -> None:
 @requires_engine
 def test_worker_resets_on_done() -> None:
     """Worker must reset on done; the obs after a done must differ from the terminal obs."""
-    deck = "assets/decks/starter.ydk"
+    deck = "assets/decks/blue_eyes.ydk"
     if not Path(deck).exists():
         pytest.skip(f"{deck} not present")
 
@@ -202,7 +202,7 @@ def test_worker_resets_on_done() -> None:
 @requires_engine
 @pytest.mark.parametrize("rnn_type", ["lstm", "gru"])
 def test_worker_produces_valid_rollout_with_rnn(rnn_type: str) -> None:
-    deck = "assets/decks/starter.ydk"
+    deck = "assets/decks/blue_eyes.ydk"
     if not Path(deck).exists():
         pytest.skip(f"{deck} not present")
 

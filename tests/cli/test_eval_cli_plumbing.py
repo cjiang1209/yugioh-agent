@@ -129,8 +129,8 @@ def test_json_output_writes_expected_shape(stub_eval_pipeline, deck_path_str, tm
     assert greedy["episodes"] == 4
     assert greedy["wins"] == 3
     assert greedy["win_rate"] == 0.75
-    assert "starter" in greedy["per_deck"]
-    assert greedy["per_deck"]["starter"] == {"wins": 3, "episodes": 4, "win_rate": 0.75}
+    assert "blue_eyes" in greedy["per_deck"]
+    assert greedy["per_deck"]["blue_eyes"] == {"wins": 3, "episodes": 4, "win_rate": 0.75}
 
 
 def test_no_json_flag_skips_file_write(stub_eval_pipeline, deck_path_str, capsys):
@@ -159,7 +159,7 @@ def test_console_table_includes_per_deck(stub_eval_pipeline, deck_path_str, caps
     ])
     out = capsys.readouterr().out
     assert "vs greedy: 1/2 (50.0%)" in out
-    assert "deck starter:" in out
+    assert "deck blue_eyes:" in out
 
 
 # ---------------------------------------------------------------------------

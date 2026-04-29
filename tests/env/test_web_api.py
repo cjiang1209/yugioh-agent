@@ -261,7 +261,7 @@ def test_list_decks(web_client):
     assert len(decks) >= 1
 
     filenames = {d["filename"] for d in decks}
-    assert "starter.ydk" in filenames
+    assert "blue_eyes.ydk" in filenames
 
     for deck in decks:
         assert "name" in deck
@@ -280,9 +280,9 @@ def test_list_decks(web_client):
 
 def test_reset_with_custom_deck(web_client):
     """Reset with explicit deck0/deck1 should succeed."""
-    # Use the starter deck's card IDs inline
+    # Use a real deck's card IDs inline
     from yugioh_env.deck_parser import parse_ydk
-    deck = parse_ydk("assets/decks/starter.ydk")
+    deck = parse_ydk("assets/decks/blue_eyes.ydk")
     payload = {"main": deck["main"], "extra": deck.get("extra", [])}
 
     resp = web_client.post("/api/web/reset", json={

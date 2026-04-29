@@ -40,7 +40,7 @@ from yugioh_rl.env_wrapper import SubprocVecEnv, parse_deck_pool
 
 NUM_ENVS = 4
 SEED = 42
-DECK_PATH = "assets/decks/starter.ydk"
+DECK_PATH = "assets/decks/blue_eyes.ydk"
 OPPONENT = "random"
 REWARD_SHAPING = False
 MIN_DONE_EVENTS = 3

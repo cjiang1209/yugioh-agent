@@ -16,23 +16,23 @@ from tests.rl.conftest import requires_engine
 
 
 @pytest.fixture
-def starter_deck() -> str:
-    deck = "assets/decks/starter.ydk"
+def deck_path() -> str:
+    deck = "assets/decks/blue_eyes.ydk"
     if not Path(deck).exists():
         pytest.skip(f"{deck} not present")
     return deck
 
 
-def _make_vec(starter_deck: str, **overrides) -> tuple[ActorLearnerVecEnv, TrainingConfig]:
+def _make_vec(deck_path: str, **overrides) -> tuple[ActorLearnerVecEnv, TrainingConfig]:
     """Build a small ActorLearnerVecEnv suitable for integration tests."""
     cfg = TrainingConfig(
         num_envs=overrides.pop("num_envs", 2),
-        deck_paths=[starter_deck],
+        deck_paths=[deck_path],
         rollout_steps=overrides.pop("rollout_steps", 4),
         opponent="random",
         reward_shaping=False,
     )
-    deck_pool = [parse_ydk(starter_deck)]
+    deck_pool = [parse_ydk(deck_path)]
     master = YuGiOhNet.from_config(cfg)
     vec = ActorLearnerVecEnv(
         num_envs=cfg.num_envs,
@@ -52,8 +52,8 @@ def _make_vec(starter_deck: str, **overrides) -> tuple[ActorLearnerVecEnv, Train
 
 
 @requires_engine
-def test_collect_rollouts_returns_n_rollouts(starter_deck: str) -> None:
-    vec, cfg = _make_vec(starter_deck)
+def test_collect_rollouts_returns_n_rollouts(deck_path: str) -> None:
+    vec, cfg = _make_vec(deck_path)
     try:
         rollouts = vec.collect_rollouts()
         assert len(rollouts) == cfg.num_envs
@@ -65,9 +65,9 @@ def test_collect_rollouts_returns_n_rollouts(starter_deck: str) -> None:
 
 
 @requires_engine
-def test_collect_rollouts_multiple_cycles(starter_deck: str) -> None:
+def test_collect_rollouts_multiple_cycles(deck_path: str) -> None:
     """Two consecutive collect_rollouts calls succeed and don't leak pipe state."""
-    vec, cfg = _make_vec(starter_deck)
+    vec, cfg = _make_vec(deck_path)
     try:
         first = vec.collect_rollouts()
         assert len(first) == cfg.num_envs
@@ -81,9 +81,9 @@ def test_collect_rollouts_multiple_cycles(starter_deck: str) -> None:
 
 
 @requires_engine
-def test_publish_weights_propagates_to_workers(starter_deck: str) -> None:
+def test_publish_weights_propagates_to_workers(deck_path: str) -> None:
     """publish_weights bumps the version; workers tag the next rollout."""
-    vec, cfg = _make_vec(starter_deck)
+    vec, cfg = _make_vec(deck_path)
     try:
         first = vec.collect_rollouts()
         assert all(int(r["policy_version"]) == 1 for r in first)
@@ -99,8 +99,8 @@ def test_publish_weights_propagates_to_workers(starter_deck: str) -> None:
 
 
 @requires_engine
-def test_rollout_includes_final_obs_and_infos(starter_deck: str) -> None:
-    vec, cfg = _make_vec(starter_deck)
+def test_rollout_includes_final_obs_and_infos(deck_path: str) -> None:
+    vec, cfg = _make_vec(deck_path)
     try:
         rollouts = vec.collect_rollouts()
         for r in rollouts:

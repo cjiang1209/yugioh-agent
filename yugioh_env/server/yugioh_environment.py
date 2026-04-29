@@ -107,7 +107,7 @@ class YuGiOhEnvironment(Environment):
             project_root / "third_party" / "CardScripts" / "pre-release",
             project_root / "third_party" / "CardScripts",
         ]
-        deck_path = config.get("deck_path", str(project_root / "assets" / "decks" / "starter.ydk"))
+        deck_path = config.get("deck_path", str(project_root / "assets" / "decks" / "blue_eyes.ydk"))
         self._deck0_path = config.get("deck0_path", deck_path)
         self._deck1_path = config.get("deck1_path", deck_path)
         self._starting_lp = config.get("starting_lp", 8000)

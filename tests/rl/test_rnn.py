@@ -618,9 +618,8 @@ def test_validate_effective_config_tbptt_invariants(monkeypatch, capsys, tmp_pat
     message when violated; the default RNN combination should pass."""
     from cli.train import validate_effective_config
 
-    deck = str(tmp_path / "starter.ydk")
     # validate_deck_paths needs a real-looking file; use the real one.
-    real_deck = "assets/decks/starter.ydk"
+    real_deck = "assets/decks/blue_eyes.ydk"
 
     def cfg(**overrides):
         return TrainingConfig(
@@ -655,7 +654,7 @@ def test_validate_effective_config_skips_tbptt_invariants_when_rnn_none(tmp_path
     from cli.train import validate_effective_config
 
     config = TrainingConfig(
-        deck_paths=["assets/decks/starter.ydk"],
+        deck_paths=["assets/decks/blue_eyes.ydk"],
         rnn_type="none",
         # These would all fail TBPTT invariants but should be ignored at "none".
         rollout_steps=256, bptt_chunk_len=7,
@@ -693,7 +692,7 @@ def test_ppo_trainer_rejects_mps_lstm_combo():
 
     cfg = TrainingConfig(
         num_envs=2,
-        deck_paths=["assets/decks/starter.ydk"],
+        deck_paths=["assets/decks/blue_eyes.ydk"],
         rnn_type="lstm",
         device="mps",
     )
@@ -719,7 +718,7 @@ def test_ppo_trainer_allows_mps_gru_and_mps_none(tmp_path):
     for rnn_type in ("gru", "none"):
         cfg = TrainingConfig(
             num_envs=2,
-            deck_paths=["assets/decks/starter.ydk"],
+            deck_paths=["assets/decks/blue_eyes.ydk"],
             rnn_type=rnn_type,
             device="mps",
         )

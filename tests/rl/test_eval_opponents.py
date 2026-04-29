@@ -137,7 +137,7 @@ class TestEvaluateWrapper:
             num_envs=1,
             eval_episodes=1,
             eval_opponents=["greedy"],
-            deck_paths=["assets/decks/starter.ydk"],
+            deck_paths=["assets/decks/blue_eyes.ydk"],
         )
         trainer = _make_trainer_stub(config)
         trainer._writer = MagicMock()

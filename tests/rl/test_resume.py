@@ -184,7 +184,7 @@ def test_resume_deck_paths_mismatch_rejected(tmp_path):
     misattributing index-keyed _deck_wins to the wrong deck names."""
     ckpt_path = str(tmp_path / "ckpt.pt")
     ckpt_config = TrainingConfig(
-        deck_paths=["assets/decks/starter.ydk", "assets/decks/blue_eyes.ydk"],
+        deck_paths=["assets/decks/blue_eyes.ydk", "assets/decks/dark_magician.ydk"],
     )
     _make_checkpoint(ckpt_path, config=ckpt_config)
 
@@ -318,7 +318,7 @@ def test_resume_restores_deck_paths_via_cli(tmp_path, monkeypatch):
     from cli.train import _build_resume_config, parse_args
 
     ckpt_path = str(tmp_path / "ckpt.pt")
-    original_paths = ["assets/decks/starter.ydk", "assets/decks/blue_eyes.ydk"]
+    original_paths = ["assets/decks/blue_eyes.ydk", "assets/decks/dark_magician.ydk"]
     ckpt_config = TrainingConfig(deck_paths=original_paths)
     _make_checkpoint(ckpt_path, config=ckpt_config)
 

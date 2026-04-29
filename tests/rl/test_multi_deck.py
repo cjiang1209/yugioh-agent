@@ -24,8 +24,8 @@ def test_parse_deck_pool(assets_dir):
     """parse_deck_pool returns correct dicts for .ydk files."""
     from yugioh_rl.env_wrapper import parse_deck_pool
 
-    starter = str(assets_dir / "decks" / "starter.ydk")
-    pool = parse_deck_pool([starter])
+    deck = str(assets_dir / "decks" / "blue_eyes.ydk")
+    pool = parse_deck_pool([deck])
     assert len(pool) == 1
     assert "main" in pool[0]
     assert len(pool[0]["main"]) >= 40
@@ -37,8 +37,8 @@ def test_parse_deck_pool_multiple(assets_dir):
     from yugioh_rl.env_wrapper import parse_deck_pool
 
     paths = [
-        str(assets_dir / "decks" / "starter.ydk"),
         str(assets_dir / "decks" / "blue_eyes.ydk"),
+        str(assets_dir / "decks" / "dark_magician.ydk"),
     ]
     pool = parse_deck_pool(paths)
     assert len(pool) == 2
@@ -50,7 +50,7 @@ def test_parse_deck_pool_picklable(assets_dir):
     """Pre-parsed deck dicts must be picklable for multiprocessing."""
     from yugioh_rl.env_wrapper import parse_deck_pool
 
-    pool = parse_deck_pool([str(assets_dir / "decks" / "starter.ydk")])
+    pool = parse_deck_pool([str(assets_dir / "decks" / "blue_eyes.ydk")])
     roundtripped = pickle.loads(pickle.dumps(pool))
     assert roundtripped == pool
 

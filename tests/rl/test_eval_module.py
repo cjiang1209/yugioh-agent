@@ -489,14 +489,14 @@ class TestLogResultsToTensorboard:
                 per_deck_wins={0: [1.0, 1.0, 0.0], 1: [0.0, 1.0]},
             ),
         ]
-        deck_paths = ["assets/decks/starter.ydk", "assets/decks/blue_eyes.ydk"]
+        deck_paths = ["assets/decks/blue_eyes.ydk", "assets/decks/dark_magician.ydk"]
 
         log_results_to_tensorboard(writer, results, deck_paths, global_step=5000)
 
         keys = [c[0][0] for c in writer.add_scalar.call_args_list]
         assert "eval/win_rate_vs_greedy" in keys
-        assert "eval/win_rate_vs_greedy_deck_starter" in keys
         assert "eval/win_rate_vs_greedy_deck_blue_eyes" in keys
+        assert "eval/win_rate_vs_greedy_deck_dark_magician" in keys
 
     def test_top_level_value_is_win_rate(self):
         writer = MagicMock()
@@ -525,11 +525,11 @@ class TestLogResultsToTensorboard:
             ),
         ]
         log_results_to_tensorboard(
-            writer, results, deck_paths=["a/b/starter.ydk"], global_step=1,
+            writer, results, deck_paths=["a/b/blue_eyes.ydk"], global_step=1,
         )
         per_deck_calls = [
             c for c in writer.add_scalar.call_args_list
-            if c[0][0] == "eval/win_rate_vs_model_run1_latest_deck_starter"
+            if c[0][0] == "eval/win_rate_vs_model_run1_latest_deck_blue_eyes"
         ]
         assert len(per_deck_calls) == 1
         assert per_deck_calls[0][0][1] == pytest.approx(0.75)

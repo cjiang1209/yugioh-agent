@@ -71,9 +71,9 @@ def parse_args() -> argparse.Namespace:
     env = parser.add_argument_group("environment")
     env.add_argument("--num-envs", type=int, default=8,
                      help="Number of parallel environments (default: 8)")
-    env.add_argument("--deck-paths", nargs="+", default=["assets/decks/starter.ydk"],
+    env.add_argument("--deck-paths", nargs="+", default=["assets/decks/blue_eyes.ydk"],
                      help="One or more .ydk deck files; agent and opponent sample from this pool "
-                          "each episode (default: assets/decks/starter.ydk)")
+                          "each episode (default: assets/decks/blue_eyes.ydk)")
     env.add_argument("--opponent", type=str, default="greedy",
                      help="Opponent spec: 'random', 'greedy', or 'model:path/to/checkpoint.pt' "
                           "(default: greedy)")

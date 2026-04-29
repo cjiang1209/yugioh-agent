@@ -224,7 +224,7 @@ class TestGuestRoomSetup:
             *RPS_WIN_TO_DUEL,
         ]
         conn = FakeConnection(lines)
-        config = replace(GUEST_CONFIG, deck="starter")
+        config = replace(GUEST_CONFIG, deck="blue_eyes")
         proto = MUDProtocol(conn, config)
         _run(proto.run())
 
@@ -232,7 +232,7 @@ class TestGuestRoomSetup:
         assert conn.sent[1] == "player2pass"
         assert conn.sent[2] == "join Player1"
         assert conn.sent[3] == "move 2"
-        assert conn.sent[4] == "deck starter"
+        assert conn.sent[4] == "deck blue_eyes"
 
     def test_guest_joins_custom_host(self):
         lines = [

@@ -74,7 +74,7 @@ def test_training_rollout_numerics_unchanged() -> None:
     """
     if not BASELINE_PATH.exists():
         pytest.skip(f"missing baseline: {BASELINE_PATH}")
-    deck_path = Path("assets/decks/starter.ydk")
+    deck_path = Path("assets/decks/blue_eyes.ydk")
     if not deck_path.exists():
         pytest.skip(f"missing deck: {deck_path}")
 
@@ -149,7 +149,7 @@ def test_training_rollout_numerics_unchanged() -> None:
 @requires_engine
 def test_step_passes_terminal_obs_through() -> None:
     """``vec_env.step()`` returns the terminal obs on done (no implicit reset)."""
-    deck_path = Path("assets/decks/starter.ydk")
+    deck_path = Path("assets/decks/blue_eyes.ydk")
     if not deck_path.exists():
         pytest.skip(f"missing deck: {deck_path}")
     deck_pool = parse_deck_pool([str(deck_path)])
@@ -201,7 +201,7 @@ def test_reset_done_no_op_when_no_dones() -> None:
     a hash-only check while silently advancing ``_episode_count`` on
     every worker.
     """
-    deck_path = Path("assets/decks/starter.ydk")
+    deck_path = Path("assets/decks/blue_eyes.ydk")
     if not deck_path.exists():
         pytest.skip(f"missing deck: {deck_path}")
     deck_pool = parse_deck_pool([str(deck_path)])

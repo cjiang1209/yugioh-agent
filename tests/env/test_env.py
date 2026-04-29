@@ -91,7 +91,7 @@ def test_multiple_episodes(env):
 
 @pytest.fixture
 def inline_deck(deck_path):
-    """Parse the starter deck file into an inline dict."""
+    """Parse the default deck file into an inline dict."""
     return parse_ydk(deck_path)
 
 

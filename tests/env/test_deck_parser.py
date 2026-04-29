@@ -5,14 +5,14 @@ import pytest
 from yugioh_env.deck_parser import parse_ydk
 
 
-def test_parse_starter_deck(deck_path):
-    """Starter deck should have 40 main deck cards."""
+def test_parse_default_deck(deck_path):
+    """Default deck (blue_eyes) should have 40 main + 11 extra deck cards."""
     deck = parse_ydk(deck_path)
     assert "main" in deck
     assert "extra" in deck
     assert "side" in deck
     assert len(deck["main"]) == 40
-    assert len(deck["extra"]) == 0
+    assert len(deck["extra"]) == 11
     assert len(deck["side"]) == 0
 
 
