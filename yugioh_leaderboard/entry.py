@@ -9,6 +9,7 @@ prevents partial-write corruption.
 from __future__ import annotations
 
 import dataclasses
+import datetime as _dt
 import hashlib
 import json
 import os
@@ -16,6 +17,20 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+
+def now_iso() -> str:
+    """UTC ISO-8601 timestamp used by ``added_at`` and ``evaluated_at``."""
+    return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def atomic_write_text(path: Path | str, content: str) -> None:
+    """Write ``content`` to ``path`` via tmp + ``os.replace`` for crash safety."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(content)
+    os.replace(tmp, path)
 
 
 _CHECKPOINT_RE = re.compile(r"^checkpoint_(?P<suffix>\d+|latest)\.pt$")
@@ -114,12 +129,9 @@ def _entry_from_dict(d: dict[str, Any]) -> Entry:
 
 
 def write_entry(path: Path | str, entry: Entry) -> None:
-    """Write ``entry`` to ``path`` atomically (tmp + os.replace)."""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(dataclasses.asdict(entry), indent=2, sort_keys=True))
-    os.replace(tmp, path)
+    atomic_write_text(
+        path, json.dumps(dataclasses.asdict(entry), indent=2, sort_keys=True)
+    )
 
 
 def read_entry(path: Path | str) -> Entry:

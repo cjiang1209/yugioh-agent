@@ -61,6 +61,9 @@ def load_panel_config(path: Path | str) -> PanelConfig:
 
     _require_keys(raw, ("schema_version", "panel_version", "panel", "match"), "panel config")
 
+    if not raw["panel"]:
+        raise ValueError("panel config 'panel' must contain at least one opponent")
+
     panel = []
     seen_labels: set[str] = set()
     for i, item in enumerate(raw["panel"]):

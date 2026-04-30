@@ -116,3 +116,12 @@ def test_duplicate_panel_labels_rejected(tmp_path):
     p.write_text(json.dumps(d))
     with pytest.raises(ValueError, match="duplicate label"):
         load_panel_config(p)
+
+
+def test_empty_panel_rejected(tmp_path):
+    d = _sample_dict()
+    d["panel"] = []
+    p = tmp_path / "c.json"
+    p.write_text(json.dumps(d))
+    with pytest.raises(ValueError, match="at least one opponent"):
+        load_panel_config(p)
