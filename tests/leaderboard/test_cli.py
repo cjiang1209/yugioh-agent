@@ -51,3 +51,44 @@ def test_tags_default_none_distinct_from_clear_tags():
 
     cleared = parser.parse_args(["add", "/p.pt", "--clear-tags"])
     assert cleared.clear_tags is True
+
+
+def test_compare_subcommand_parses_filter():
+    parser = build_parser()
+    ns = parser.parse_args([
+        "compare", "--by", "rnn_type",
+        "--filter", "reward_shaping=true", "deck_paths=a,b",
+    ])
+    assert ns.command == "compare"
+    assert ns.by == "rnn_type"
+    assert ns.filter == ["reward_shaping=true", "deck_paths=a,b"]
+
+
+def test_compare_filter_bad_format_rejected():
+    parser = build_parser()
+    ns = parser.parse_args([
+        "compare", "--by", "rnn_type",
+        "--filter", "reward_shaping",
+    ])
+    with pytest.raises(SystemExit):
+        _validate_subcommand_args(ns)
+
+
+def test_compare_supports_include_stale_flag():
+    parser = build_parser()
+    ns = parser.parse_args(["compare", "--by", "rnn_type", "--include-stale"])
+    assert ns.include_stale is True
+
+
+def test_compare_by_unknown_field_rejected():
+    parser = build_parser()
+    ns = parser.parse_args(["compare", "--by", "definitely_not_a_field"])
+    with pytest.raises(SystemExit):
+        _validate_subcommand_args(ns)
+
+
+def test_compare_requires_by_or_by_tag():
+    parser = build_parser()
+    ns = parser.parse_args(["compare"])
+    with pytest.raises(SystemExit):
+        _validate_subcommand_args(ns)

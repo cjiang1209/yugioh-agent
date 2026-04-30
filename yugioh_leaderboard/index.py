@@ -11,7 +11,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable
 
+from yugioh_leaderboard.compare import compare_groups, format_comparison_table
 from yugioh_leaderboard.entry import Entry, atomic_write_text, now_iso
+from yugioh_leaderboard.features import GROUPING_FIELDS
 from yugioh_leaderboard.panel import PanelConfig
 
 
@@ -64,6 +66,18 @@ def _render_stale_section(stale: list[Entry], panel: PanelConfig) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _render_group_sections(fresh: list[Entry]) -> list[str]:
+    sections: list[str] = []
+    for field_name in GROUPING_FIELDS:
+        if field_name == "seed":
+            continue
+        result = compare_groups(fresh, by_field=field_name)
+        if result.skip_reason:
+            continue
+        sections.append(f"### By {field_name}\n{format_comparison_table(result)}")
+    return sections
+
+
 def render_index(entries: Iterable[Entry], panel: PanelConfig) -> str:
     """Render the full index.md content as a single string."""
     entries = list(entries)
@@ -78,6 +92,12 @@ def render_index(entries: Iterable[Entry], panel: PanelConfig) -> str:
         f"## Entries (sorted by win_rate vs {panel.panel[-1].label})",
         _render_entries_section(fresh, panel),
     ]
+
+    group_sections = _render_group_sections(fresh)
+    if group_sections:
+        parts.append("## Group comparisons (auto-generated where ≥2 seeds available)")
+        parts.extend(group_sections)
+
     if stale:
         parts.append("## Stale entries (panel version mismatch)")
         parts.append(_render_stale_section(stale, panel))

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from dataclasses import asdict, replace
 from pathlib import Path
 
 from cli.utils import fatal, validate_deck_paths
@@ -45,6 +46,20 @@ def build_parser() -> argparse.ArgumentParser:
     add_p.add_argument("--force", action="store_true",
                        help="Re-score and overwrite even when an entry with matching hash exists.")
 
+    cmp = sub.add_parser("compare", help="Compare entries grouped by a feature field.")
+    cmp.add_argument("--by", type=str, default=None,
+                     help="features field to group entries by (e.g. rnn_type)")
+    cmp.add_argument("--by-tag", nargs="+", default=None,
+                     help="alternative grouping by user-supplied tags")
+    cmp.add_argument("--filter", nargs="+", default=[],
+                     help="KEY=VALUE filters; entries matching all are included")
+    cmp.add_argument("--opponents", nargs="+", default=None,
+                     help="restrict report to specific panel opponent labels")
+    cmp.add_argument("--include-stale", action="store_true",
+                     help="include entries scored against an older panel_version")
+    cmp.add_argument("--json", action="store_true",
+                     help="emit JSON instead of formatted Markdown table")
+
     sub.add_parser("refresh-index", help="Regenerate leaderboard/index.md from entry files.")
 
     return parser
@@ -58,6 +73,23 @@ def _validate_subcommand_args(ns: argparse.Namespace) -> None:
             fatal(f"checkpoint not found: {ns.checkpoint_path}")
         if ns.decks is not None:
             validate_deck_paths(ns.decks, "--decks")
+
+    if ns.command == "compare":
+        if ns.by is None and ns.by_tag is None:
+            fatal("compare: must pass either --by or --by-tag")
+        for f in ns.filter:
+            if "=" not in f:
+                fatal(f"--filter: expected KEY=VALUE, got {f!r}")
+            k, v = f.split("=", 1)
+            if not k.strip() or not v.strip():
+                fatal(f"--filter: KEY and VALUE must be non-empty, got {f!r}")
+        if ns.by is not None:
+            from yugioh_leaderboard.features import GROUPING_FIELDS
+            if ns.by not in GROUPING_FIELDS:
+                fatal(
+                    f"--by: unknown feature field {ns.by!r}. Available: "
+                    + ", ".join(sorted(GROUPING_FIELDS))
+                )
 
 
 def _load_panel():
@@ -135,6 +167,65 @@ def _cmd_add(ns: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_compare(ns: argparse.Namespace) -> int:
+    import json as _json
+
+    from yugioh_leaderboard.compare import compare_groups, format_comparison_table, matches_filter
+
+    panel = _load_panel()
+    entries = _load_all_entries()
+    if not ns.include_stale:
+        entries = [e for e in entries if e.panel_version == panel.panel_version]
+
+    flt: dict[str, object] = {}
+    for raw in ns.filter:
+        k, v = raw.split("=", 1)
+        flt[k.strip()] = v.strip()
+
+    filtered = [e for e in entries if matches_filter(e, flt or None)]
+
+    deck_sets = {",".join(e.features.get("deck_paths") or []) for e in filtered}
+    if len(deck_sets) > 1:
+        print(
+            "WARNING: comparing across different deck pools — "
+            "results may not be apples-to-apples",
+            file=sys.stderr,
+        )
+    opponent_set = {e.features.get("training_opponent") for e in filtered}
+    if len(opponent_set) > 1 and ns.by != "training_opponent":
+        print(
+            "WARNING: training_opponent differs across entries — "
+            "groups may have trained against different opponents",
+            file=sys.stderr,
+        )
+
+    if ns.by_tag:
+        synthesized = [
+            replace(
+                e,
+                features={
+                    **e.features,
+                    "__tag_group__": ",".join(sorted(t for t in e.tags if t in ns.by_tag)),
+                },
+            )
+            for e in entries
+        ]
+        result = compare_groups(synthesized, by_field="__tag_group__", filter=flt or None,
+                                opponents=ns.opponents)
+    else:
+        result = compare_groups(entries, by_field=ns.by, filter=flt or None,
+                                opponents=ns.opponents)
+
+    if ns.json:
+        print(_json.dumps(asdict(result), indent=2, default=str))
+    else:
+        if result.skip_reason:
+            print(f"no comparison: {result.skip_reason}")
+            return 0
+        print(format_comparison_table(result))
+    return 0
+
+
 def _cmd_refresh_index(ns: argparse.Namespace) -> int:
     _refresh_index_file()
     print(f"wrote index: {INDEX_PATH}")
@@ -143,6 +234,7 @@ def _cmd_refresh_index(ns: argparse.Namespace) -> int:
 
 _DISPATCH = {
     "add": _cmd_add,
+    "compare": _cmd_compare,
     "refresh-index": _cmd_refresh_index,
 }
 
