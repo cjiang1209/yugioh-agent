@@ -33,7 +33,7 @@ mud = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["yugioh_core*", "yugioh_env*", "yugioh_rl*", "yugioh_mud*"]
+include = ["yugioh_core*", "yugioh_env*", "yugioh_rl*", "yugioh_mud*", "yugioh_leaderboard*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
