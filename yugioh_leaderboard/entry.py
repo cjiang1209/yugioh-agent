@@ -33,6 +33,22 @@ def atomic_write_text(path: Path | str, content: str) -> None:
     os.replace(tmp, path)
 
 
+def stable_seed(*parts: str) -> int:
+    """Deterministic uint32 seed from string parts. Re-running the same
+    inputs gives byte-identical eval results."""
+    h = hashlib.sha256("|".join(parts).encode()).digest()
+    return int.from_bytes(h[:4], "big")
+
+
+def deck_summary(wins: int, episodes: int) -> dict[str, float | int]:
+    """Per-deck stats row used in both panel and pairwise results."""
+    return {
+        "episodes": episodes,
+        "wins": wins,
+        "win_rate": wins / episodes if episodes else 0.0,
+    }
+
+
 _CHECKPOINT_RE = re.compile(r"^checkpoint_(?P<suffix>\d+|latest)\.pt$")
 
 

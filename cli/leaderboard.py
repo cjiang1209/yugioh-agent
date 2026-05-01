@@ -60,6 +60,16 @@ def build_parser() -> argparse.ArgumentParser:
     cmp.add_argument("--json", action="store_true",
                      help="emit JSON instead of formatted Markdown table")
 
+    pw = sub.add_parser("pairwise", help="Run a head-to-head match between two entries.")
+    pw.add_argument("entry_a_id", type=str, help="entry_id of the first checkpoint")
+    pw.add_argument("entry_b_id", type=str, help="entry_id of the second checkpoint")
+    pw.add_argument("--episodes", type=int, default=100,
+                    help="Number of episodes for the head-to-head match.")
+    pw.add_argument("--seed", type=int, default=None,
+                    help="Override the deterministic per-pair seed.")
+    pw.add_argument("--decks", nargs="+", default=None,
+                    help="Override the deck pool (default: intersection of both entries').")
+
     sub.add_parser("refresh-index", help="Regenerate leaderboard/index.md from entry files.")
 
     return parser
@@ -90,6 +100,12 @@ def _validate_subcommand_args(ns: argparse.Namespace) -> None:
                     f"--by: unknown feature field {ns.by!r}. Available: "
                     + ", ".join(sorted(GROUPING_FIELDS))
                 )
+
+    if ns.command == "pairwise":
+        if ns.episodes < 1:
+            fatal(f"--episodes: must be >= 1, got {ns.episodes}")
+        if ns.decks is not None:
+            validate_deck_paths(ns.decks, "--decks")
 
 
 def _load_panel():
@@ -226,6 +242,43 @@ def _cmd_compare(ns: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_pairwise(ns: argparse.Namespace) -> int:
+    from yugioh_leaderboard.entry import read_entry, write_entry
+    from yugioh_leaderboard.pairwise import NoSharedDecksError, run_pairwise
+
+    panel = _load_panel()
+    a_path = ENTRIES_DIR / f"{ns.entry_a_id}.json"
+    b_path = ENTRIES_DIR / f"{ns.entry_b_id}.json"
+    if not a_path.exists():
+        fatal(f"entry not found: {ns.entry_a_id}")
+    if not b_path.exists():
+        fatal(f"entry not found: {ns.entry_b_id}")
+
+    entry_a = read_entry(a_path)
+    entry_b = read_entry(b_path)
+    for entry in (entry_a, entry_b):
+        if not Path(entry.checkpoint_path).exists():
+            fatal(
+                f"entry {entry.entry_id} references missing checkpoint: "
+                f"{entry.checkpoint_path}"
+            )
+
+    try:
+        new_a, new_b = run_pairwise(
+            entry_a, entry_b, panel,
+            episodes=ns.episodes, seed=ns.seed, decks_override=ns.decks,
+        )
+    except NoSharedDecksError as e:
+        fatal(str(e))
+
+    write_entry(a_path, new_a)
+    write_entry(b_path, new_b)
+    _refresh_index_file(panel=panel)
+    rec = next(r for r in new_a.pairwise_results if r.vs_entry_id == ns.entry_b_id)
+    print(f"{ns.entry_a_id} vs {ns.entry_b_id}: {rec.wins}/{rec.episodes} ({rec.win_rate:.1%})")
+    return 0
+
+
 def _cmd_refresh_index(ns: argparse.Namespace) -> int:
     _refresh_index_file()
     print(f"wrote index: {INDEX_PATH}")
@@ -235,6 +288,7 @@ def _cmd_refresh_index(ns: argparse.Namespace) -> int:
 _DISPATCH = {
     "add": _cmd_add,
     "compare": _cmd_compare,
+    "pairwise": _cmd_pairwise,
     "refresh-index": _cmd_refresh_index,
 }
 

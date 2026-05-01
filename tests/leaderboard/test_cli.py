@@ -92,3 +92,19 @@ def test_compare_requires_by_or_by_tag():
     ns = parser.parse_args(["compare"])
     with pytest.raises(SystemExit):
         _validate_subcommand_args(ns)
+
+
+def test_pairwise_subcommand_parses():
+    parser = build_parser()
+    ns = parser.parse_args(["pairwise", "a_run_latest", "b_run_latest"])
+    assert ns.command == "pairwise"
+    assert ns.entry_a_id == "a_run_latest"
+    assert ns.entry_b_id == "b_run_latest"
+    assert ns.episodes == 100
+
+
+def test_pairwise_rejects_negative_episodes():
+    parser = build_parser()
+    ns = parser.parse_args(["pairwise", "a", "b", "--episodes", "-1"])
+    with pytest.raises(SystemExit):
+        _validate_subcommand_args(ns)

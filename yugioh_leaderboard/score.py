@@ -6,7 +6,6 @@ Does NOT regenerate ``index.md`` — that's the caller's responsibility
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import replace
 from pathlib import Path
 from typing import Optional
@@ -15,18 +14,13 @@ from yugioh_leaderboard.entry import (
     Entry,
     PanelMatchResult,
     compute_checkpoint_hash,
+    deck_summary,
     entry_id_for,
     now_iso,
+    stable_seed,
 )
 from yugioh_leaderboard.features import extract_features
 from yugioh_leaderboard.panel import PanelConfig
-
-
-def _matchup_seed(entry_id: str, opponent_label: str) -> int:
-    """Stable across runs so re-scoring the same (entry, opponent) pair
-    produces byte-identical results."""
-    h = hashlib.sha256(f"{entry_id}|{opponent_label}".encode()).digest()
-    return int.from_bytes(h[:4], "big")
 
 
 def score_checkpoint(
@@ -68,7 +62,7 @@ def score_checkpoint(
     deck_pool = parse_deck_pool(deck_paths)
 
     episodes = episodes_override if episodes_override is not None else panel.match.episodes
-    base_seed = seed_override if seed_override is not None else _matchup_seed(eid, "panel")
+    base_seed = seed_override if seed_override is not None else stable_seed(eid, "panel")
 
     agent = make_eval_agent(
         f"model:{checkpoint_path}", seed=base_seed, device=device
@@ -88,15 +82,10 @@ def score_checkpoint(
     deck_stems = [Path(p).stem for p in deck_paths]
     panel_results: list[PanelMatchResult] = []
     for label, r in zip(panel_labels, raw_results):
-        per_deck: dict[str, dict[str, float | int]] = {}
-        for deck_idx, wl in r.per_deck_wins.items():
-            wins = int(sum(wl))
-            n = len(wl)
-            per_deck[deck_stems[deck_idx]] = {
-                "episodes": n,
-                "wins": wins,
-                "win_rate": wins / n if n else 0.0,
-            }
+        per_deck = {
+            deck_stems[deck_idx]: deck_summary(int(sum(wl)), len(wl))
+            for deck_idx, wl in r.per_deck_wins.items()
+        }
         panel_results.append(
             PanelMatchResult(
                 opponent_label=label,
