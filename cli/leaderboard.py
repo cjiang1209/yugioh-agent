@@ -113,7 +113,7 @@ def _load_panel():
     if not PANEL_PATH.exists():
         fatal(
             f"panel config not found at {PANEL_PATH}. "
-            "Create it first — see docs/superpowers/specs/2026-04-29-rl-feature-evaluation-design.md §6.1"
+            "See the Leaderboard System section in CLAUDE.md for the schema."
         )
     return load_panel_config(PANEL_PATH)
 

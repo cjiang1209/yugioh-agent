@@ -54,6 +54,11 @@ scripts/mud_bot.sh --verbose                               # log all protocol li
 # Two-bot duel (run in separate terminals):
 #   scripts/mud_bot.sh --profile host --verbose
 #   scripts/mud_bot.sh --profile guest --verbose
+
+# Leaderboard CLI (after creating leaderboard/leaderboard.config.json — see CLAUDE.md)
+scripts/leaderboard.sh add checkpoints/<run>/checkpoint_latest.pt   # score against panel
+scripts/leaderboard.sh compare --by rnn_type                        # paired-bootstrap CI table
+scripts/leaderboard.sh pairwise <entry_a_id> <entry_b_id>           # head-to-head
 ```
 
 ## Prerequisites & Setup
@@ -68,7 +73,7 @@ scripts/mud_bot.sh --verbose                               # log all protocol li
 
 ## Test Skip Behavior
 
-Tests are organized into subdirectories by module (`tests/core/`, `tests/env/`, `tests/mud/`, `tests/rl/`, `tests/cli/`). Run a single module's tests with e.g. `python -m pytest tests/mud/ -v`.
+Tests are organized into subdirectories by module (`tests/core/`, `tests/env/`, `tests/mud/`, `tests/rl/`, `tests/cli/`, `tests/leaderboard/`). Run a single module's tests with e.g. `python -m pytest tests/mud/ -v`.
 
 Tests auto-skip when prerequisites are missing:
 - `lib` fixture (`tests/env/conftest.py`): skips if `libocgcore` not built (`make build`)
@@ -87,6 +92,10 @@ Tests auto-skip when prerequisites are missing:
 - `tests/mud/test_game_state.py`: pure unit tests (uses temp SQLite DB for CardNameLookup), no external deps
 - `tests/mud/test_observation.py`: pure unit tests (uses temp SQLite DB for CardDatabase), no external deps
 - `tests/mud/test_model_agent.py`: skips if `torch` not installed
+- `tests/leaderboard/test_entry.py`, `test_panel.py`, `test_compare.py`, `test_index.py`, `test_cli.py`: pure unit, no engine/torch dependency
+- `tests/leaderboard/test_features.py`: skips if `torch` not installed
+- `tests/leaderboard/test_pairwise.py`: pure unit tests (replace-or-append, commutative seed, exception subclassing) run unconditionally; `test_pairwise_mirrors_symmetrically` skips if `libocgcore` or `assets/cards.cdb` missing
+- `tests/leaderboard/test_score.py`: skips if `libocgcore` or `assets/cards.cdb` missing
 
 ## Architecture
 
@@ -296,6 +305,57 @@ Disable with `--no-reward-shaping`.
 8. **Incremental training from checkpoint**: `--init-checkpoint PATH` starts a new run (fresh directory, counters at 0) with model weights initialized from an existing checkpoint instead of random init. `--resume-optimizer` additionally loads optimizer state (momentum/variance), with LR overridden from the CLI. Architecture dimensions must match between checkpoint and CLI config; `PPOTrainer._validate_checkpoint_compat` checks this at startup. Text embedding mode must also be compatible (cannot add text embeddings to a symbolic checkpoint).
 9. **Resume interrupted training**: `--resume PATH` restores full training state (model weights, optimizer, update/step counters, episode tracking) and continues in the same run directory. The `--total-timesteps` CLI value is always recomputed — pass a higher value to extend training or a lower value (triggers early return if already past). `--resume` and `--init-checkpoint` are mutually exclusive. TensorBoard logs continue seamlessly via `purge_step`. **Known limitation — episode seed divergence**: on resume, `SubprocVecEnv` is created with the original `config.seed` and `vec_env.reset()` replays the episode seed sequence from the beginning, not from where the interrupted run left off. Training is unaffected (the model still learns), but the exact episode ordering will differ from a single uninterrupted run. Saving and restoring per-env RNG state is impractical given the multi-process architecture.
 10. **Multi-deck training**: `--deck-paths` accepts multiple `.ydk` files. The deck pool is pre-parsed once and sent to workers via pickle. Each episode, agent and opponent decks are sampled independently from the pool using a per-worker `random.Random(seed)` RNG (separate from the duel RNG). `TrainingEnv.reset()` pre-resolves the `agent_player` coin flip before assigning decks to engine player 0/1, so per-deck metrics are correctly attributed to the agent's deck regardless of turn order. Eval uses the same independent sampling, with per-deck and aggregate win rates logged to TensorBoard.
+
+## Leaderboard System (`yugioh_leaderboard/`)
+
+Score RL checkpoints against a versioned reference panel and run paired-bootstrap "is feature X better than feature Y?" comparisons. Downstream of `yugioh_rl/` — never modifies training code.
+
+### Setup
+
+Create `leaderboard/leaderboard.config.json` once. Required keys:
+- `schema_version` (1), `panel_version` (int)
+- `panel`: list of `{label, spec}` where spec is `random` / `greedy` / `model:path/to/checkpoint.pt`. Labels must be unique.
+- `match`: `{episodes, agent_player, device}` where `agent_player ∈ {first, second, random}` and `device ∈ {cpu, cuda, auto}`
+- `history`: list of retired panel snapshots (optional)
+
+Validation runs at load time — `scripts/leaderboard.sh refresh-index` errors loudly on bad config.
+
+### Commands
+
+```bash
+scripts/leaderboard.sh add <checkpoint.pt>             # score against panel, write entry file
+scripts/leaderboard.sh add <ckpt> --tags v2-shaper      # attach user-supplied tag(s)
+scripts/leaderboard.sh add <ckpt> --clear-tags          # wipe tags on re-score
+scripts/leaderboard.sh add <ckpt> --force               # re-score even with matching hash
+scripts/leaderboard.sh compare --by rnn_type            # group + paired-bootstrap CI table
+scripts/leaderboard.sh compare --by rnn_type --filter reward_shaping=true   # filter then group
+scripts/leaderboard.sh compare --by-tag v1-shaper v2-shaper                  # group by user tags
+scripts/leaderboard.sh compare --by rnn_type --json     # machine-readable output
+scripts/leaderboard.sh pairwise <entry_a_id> <entry_b_id>   # head-to-head match
+scripts/leaderboard.sh refresh-index                    # regenerate leaderboard/index.md
+```
+
+### Workflow: answering "does feature X help?"
+
+```bash
+for s in 42 43 44; do scripts/train.sh --seed $s --rnn-type none --total-timesteps 1000000; done
+for s in 42 43 44; do scripts/train.sh --seed $s --rnn-type lstm --total-timesteps 1000000; done
+for ckpt in checkpoints/*/checkpoint_latest.pt; do scripts/leaderboard.sh add "$ckpt"; done
+scripts/leaderboard.sh compare --by rnn_type
+```
+
+Compare output reports paired-bootstrap 95% CI per group; CI excluding 0 is bolded as a meaningful difference. Win-rate cells render as `mean [lo, hi]` so asymmetric CIs near 0/1 stay visible.
+
+### Constraints
+
+- **Single user, single process.** No file locks. Don't run two `add` commands in parallel — entries are safe (unique filenames) but the index regen is last-writer-wins.
+- **Entry deletion is `rm`.** No `delete` subcommand — by design (per-file storage chosen specifically to make `rm` natural).
+- **Panel changes are user-driven.** Edit `leaderboard.config.json` by hand to bump `panel_version` and move retired panels into `history`. Old entries get flagged "stale" in `index.md` and excluded from `compare` (use `--include-stale` to override).
+- **Pairwise re-runs are commutative.** `pairwise A B` and `pairwise B A` produce the same seed and overwrite the prior record (matched by `vs_entry_id`).
+- **Pairwise needs deck overlap.** Default decks are the intersection of both entries' deck pools; pass `--decks` to override when entries share none (otherwise `NoSharedDecksError`).
+- **Pairwise assumes no ties.** The mirror computes `b_wins = episodes - r.wins`, so ties would silently produce negative B-wins; the engine never returns ties in practice. `run_pairwise` only asserts the weaker `wins <= episodes` invariant as a sanity check.
+
+See "Test Skip Behavior" above for the per-file engine/torch requirements.
 
 ## MUD Server (yugioh-game)
 
