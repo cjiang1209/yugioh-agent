@@ -20,7 +20,7 @@ from cli.utils import (
     validate_opponent_spec,
     was_provided,
 )
-from yugioh_rl.config import TrainingConfig, normalize_legacy_config
+from yugioh_rl.config import VEC_ENV_TYPES, TrainingConfig, normalize_legacy_config
 
 
 # Flags whose values may override the checkpoint's stored config on --resume.
@@ -164,6 +164,11 @@ def parse_args() -> argparse.Namespace:
                             "subdirectory (default: checkpoints)")
     infra.add_argument("--device", type=str, default="auto", choices=DEVICE_CHOICES,
                        help="Compute device: 'auto' picks cuda if available, else mps, else cpu (default: auto).")
+    infra.add_argument("--vec-env-type", type=str, default="subproc",
+                       choices=VEC_ENV_TYPES,
+                       help="Vec-env transport: 'subproc' (synchronous IPC) or "
+                            "'sync_actor_learner' (workers hold a local policy and submit "
+                            "full rollouts; eliminates per-step round-trip).")
 
     return parser.parse_args()
 
@@ -304,6 +309,7 @@ def _build_fresh_config(args: argparse.Namespace, save_dir: str) -> TrainingConf
         save_interval=args.save_interval,
         save_dir=save_dir,
         device=args.device,
+        vec_env_type=args.vec_env_type,
     )
 
 

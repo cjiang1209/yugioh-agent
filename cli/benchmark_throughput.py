@@ -25,6 +25,7 @@ from datetime import datetime
 from pathlib import Path
 
 from cli.utils import DEVICE_CHOICES
+from yugioh_rl.config import VEC_ENV_TYPES
 
 ROOT = Path(__file__).resolve().parent.parent
 RESULTS_ROOT = ROOT / "benchmarks"
@@ -95,13 +96,16 @@ def main() -> int:
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--device", default="cpu", choices=DEVICE_CHOICES,
                    help="Forward to cli.train --device (default: cpu)")
+    p.add_argument("--vec-env-type", default="subproc", choices=VEC_ENV_TYPES,
+                   help="Forward to cli.train --vec-env-type (default: subproc)")
     args = p.parse_args()
 
     grid_id = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = RESULTS_ROOT / grid_id
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"opponent={args.opponent}, decks={args.deck_paths}, device={args.device}")
+    print(f"opponent={args.opponent}, decks={args.deck_paths}, "
+          f"device={args.device}, vec_env_type={args.vec_env_type}")
     print(f"grid: num_envs={args.num_envs} × rollout_steps={args.rollout_steps}")
     print(f"results -> {out_dir}\n", flush=True)
 
@@ -120,6 +124,7 @@ def main() -> int:
                 "--deck-paths", *args.deck_paths,
                 "--rnn-type", "none",
                 "--device", args.device,
+                "--vec-env-type", args.vec_env_type,
                 "--log-interval", str(args.log_interval),
                 "--seed", str(args.seed),
                 "--base-dir", str(base_dir),

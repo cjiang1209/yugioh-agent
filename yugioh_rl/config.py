@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import MISSING, dataclass, field, fields
-from typing import Literal
+from typing import Literal, get_args
+
+
+VecEnvType = Literal["subproc", "sync_actor_learner"]
+VEC_ENV_TYPES: tuple[str, ...] = get_args(VecEnvType)
 
 
 @dataclass
@@ -62,7 +66,7 @@ class TrainingConfig:
 
     # "sync_actor_learner": workers hold a local policy and submit full
     # rollouts, avoiding the per-step IPC round-trip of "subproc".
-    vec_env_type: Literal["subproc", "sync_actor_learner"] = "subproc"
+    vec_env_type: VecEnvType = "subproc"
 
     @property
     def is_recurrent(self) -> bool:
