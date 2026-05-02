@@ -123,6 +123,34 @@ class RolloutBuffer:
         self.values[t] = values
         self._ptr += 1
 
+    def ingest_rollouts(self, rollouts: list[dict]) -> dict[str, np.ndarray]:
+        """Bulk-load N actor-learner rollouts into the (T, N, ...) buffer.
+
+        Per-env assignment avoids the ~tens-of-MB intermediate ``np.stack``
+        would allocate. Returns the per-env final obs dict so the caller can
+        drive GAE bootstrap without re-deriving it from the rollout payloads.
+        """
+        T = self.rollout_steps
+        assert len(rollouts) == self.num_envs, (
+            f"expected {self.num_envs} rollouts, got {len(rollouts)}"
+        )
+        for i, r in enumerate(rollouts):
+            self.obs_cards[:T, i] = r["obs_cards"]
+            self.obs_global[:T, i] = r["obs_global"]
+            self.obs_actions[:T, i] = r["obs_actions"]
+            self.obs_mask[:T, i] = r["action_mask"]
+            self.actions[:T, i] = r["actions"]
+            self.log_probs[:T, i] = r["log_probs"]
+            self.values[:T, i] = r["values"]
+            self.rewards[:T, i] = r["rewards"]
+            self.dones[:T, i] = r["dones"].astype(np.float32)
+        return {
+            "cards":        np.stack([r["final_obs_cards"]   for r in rollouts]),
+            "global_state": np.stack([r["final_obs_global"]  for r in rollouts]),
+            "actions":      np.stack([r["final_obs_actions"] for r in rollouts]),
+            "action_mask":  np.stack([r["final_action_mask"] for r in rollouts]),
+        }
+
     def compute_advantages(
         self,
         last_values: np.ndarray,
@@ -449,19 +477,49 @@ class PPOTrainer:
             config.total_timesteps, num_updates, config.num_envs,
         )
 
-        vec_env = SubprocVecEnv(
-            num_envs=config.num_envs,
-            deck_pool=self._deck_pool,
-            opponent=config.opponent,
-            reward_shaping=config.reward_shaping,
-            shaping_lp_weight=config.shaping_lp_weight,
-            shaping_card_weight=config.shaping_card_weight,
-            seed=config.seed,
-            agent_player=config.agent_player,
-        )
+        if config.is_recurrent and config.vec_env_type == "sync_actor_learner":
+            # Workers don't yet thread hx between steps; the trainer raises here
+            # so users get a clean error rather than N spawned workers each
+            # raising NotImplementedError on construction.
+            raise NotImplementedError(
+                "vec_env_type='sync_actor_learner' does not yet support "
+                f"rnn_type={config.rnn_type!r}; use vec_env_type='subproc'"
+            )
+
+        if config.vec_env_type == "sync_actor_learner":
+            from yugioh_rl.actor_learner import ActorLearnerVecEnv
+            vec_env = ActorLearnerVecEnv(
+                num_envs=config.num_envs,
+                deck_pool=self._deck_pool,
+                opponent=config.opponent,
+                reward_shaping=config.reward_shaping,
+                shaping_lp_weight=config.shaping_lp_weight,
+                shaping_card_weight=config.shaping_card_weight,
+                seed=config.seed,
+                agent_player=config.agent_player,
+                opponent_device=None,  # workers use TrainingEnv's default resolution
+                master_model=self.network,
+                config=config,
+                rollout_steps=config.rollout_steps,
+            )
+        else:
+            vec_env = SubprocVecEnv(
+                num_envs=config.num_envs,
+                deck_pool=self._deck_pool,
+                opponent=config.opponent,
+                reward_shaping=config.reward_shaping,
+                shaping_lp_weight=config.shaping_lp_weight,
+                shaping_card_weight=config.shaping_card_weight,
+                seed=config.seed,
+                agent_player=config.agent_player,
+            )
 
         try:
-            obs = vec_env.reset()
+            # Subproc threads `obs` through the per-step rollout loop. The
+            # actor-learner branch rebinds it from each rollout's final obs
+            # (workers manage their own envs; ActorLearnerVecEnv has no reset).
+            if config.vec_env_type == "subproc":
+                obs = vec_env.reset()
             global_step = self._resume_global_step
             start_time = time.time()
 
@@ -481,45 +539,46 @@ class PPOTrainer:
                 self.buffer.hx_initial = hx
 
                 # --- Collect rollout ---
-                for step in range(config.rollout_steps):
-                    with torch.no_grad():
-                        t_cards = torch.from_numpy(obs["cards"]).to(self.device)
-                        t_global = torch.from_numpy(obs["global_state"]).to(self.device)
-                        t_actions = torch.from_numpy(obs["actions"]).to(self.device)
-                        t_mask = torch.from_numpy(obs["action_mask"]).to(self.device)
+                if config.vec_env_type == "sync_actor_learner":
+                    rollouts = vec_env.collect_rollouts()
+                    obs = self.buffer.ingest_rollouts(rollouts)
+                    for r in rollouts:
+                        for info in r["infos"]:
+                            self._record_episode(info)
+                    global_step += config.num_envs * config.rollout_steps
+                else:
+                    for step in range(config.rollout_steps):
+                        with torch.no_grad():
+                            t_cards = torch.from_numpy(obs["cards"]).to(self.device)
+                            t_global = torch.from_numpy(obs["global_state"]).to(self.device)
+                            t_actions = torch.from_numpy(obs["actions"]).to(self.device)
+                            t_mask = torch.from_numpy(obs["action_mask"]).to(self.device)
 
-                        logits, values, hx_new = self.network(
-                            t_cards, t_global, t_actions, t_mask, hx=hx,
-                        )
-                        dist = Categorical(logits=logits)
-                        actions = dist.sample()
-                        log_probs = dist.log_prob(actions)
+                            logits, values, hx_new = self.network(
+                                t_cards, t_global, t_actions, t_mask, hx=hx,
+                            )
+                            dist = Categorical(logits=logits)
+                            actions = dist.sample()
+                            log_probs = dist.log_prob(actions)
 
-                    actions_np = actions.cpu().numpy()
-                    log_probs_np = log_probs.cpu().numpy()
-                    values_np = values.cpu().numpy()
+                        actions_np = actions.cpu().numpy()
+                        log_probs_np = log_probs.cpu().numpy()
+                        values_np = values.cpu().numpy()
 
-                    next_obs, rewards, dones, infos = vec_env.step(actions_np)
-                    dones_f = dones.astype(np.float32)
+                        next_obs, rewards, dones, infos = vec_env.step(actions_np)
+                        dones_f = dones.astype(np.float32)
 
-                    self.buffer.add(obs, actions_np, log_probs_np, rewards, dones_f, values_np)
+                        self.buffer.add(obs, actions_np, log_probs_np, rewards, dones_f, values_np)
 
-                    # vec_env auto-resets on done — zero hx for those envs to match.
-                    dones_t = torch.from_numpy(dones_f).to(self.device)
-                    hx = self.network.mask_hx(hx_new, dones_t)
+                        # vec_env auto-resets on done — zero hx for those envs to match.
+                        dones_t = torch.from_numpy(dones_f).to(self.device)
+                        hx = self.network.mask_hx(hx_new, dones_t)
 
-                    # Track completed episodes
-                    for info in infos:
-                        if "terminal_reward" in info:
-                            self._episode_rewards.append(info["terminal_reward"])
-                            self._episode_lengths.append(info.get("episode_length", 0))
-                            win = 1.0 if info["terminal_reward"] > 0 else 0.0
-                            self._episode_wins.append(win)
-                            if "agent_deck_idx" in info:
-                                self._deck_wins.setdefault(info["agent_deck_idx"], []).append(win)
+                        for info in infos:
+                            self._record_episode(info)
 
-                    obs = next_obs
-                    global_step += config.num_envs
+                        obs = next_obs
+                        global_step += config.num_envs
 
                 # --- Compute advantages ---
                 with torch.no_grad():
@@ -545,6 +604,12 @@ class PPOTrainer:
                 else:
                     update_stats = self._run_update_feedforward()
                 total_policy_loss, total_value_loss, total_entropy, num_batches = update_stats
+
+                # Actor-learner: publish fresh weights so workers see them
+                # at the start of the next collect_rollouts cycle. Once per
+                # outer update (after all PPO epochs), not per minibatch.
+                if config.vec_env_type == "sync_actor_learner":
+                    vec_env.publish_weights(self.network)
 
                 # --- Logging ---
                 if update % config.log_interval == 0 and num_batches > 0:
@@ -613,6 +678,22 @@ class PPOTrainer:
                 self._writer.close()
 
         logger.info("Training complete. Total steps: %d", global_step)
+
+    def _record_episode(self, info: dict) -> None:
+        """Append a completed-episode entry to the trainer-side counters.
+
+        Both the subproc and actor-learner branches surface terminations via
+        an info dict with ``terminal_reward`` set; this consolidates the
+        bookkeeping so the two paths stay in sync.
+        """
+        if "terminal_reward" not in info:
+            return
+        self._episode_rewards.append(info["terminal_reward"])
+        self._episode_lengths.append(info.get("episode_length", 0))
+        win = 1.0 if info["terminal_reward"] > 0 else 0.0
+        self._episode_wins.append(win)
+        if "agent_deck_idx" in info:
+            self._deck_wins.setdefault(info["agent_deck_idx"], []).append(win)
 
     def _ppo_loss_terms_unreduced(
         self,

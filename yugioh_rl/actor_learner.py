@@ -39,13 +39,21 @@ class Transition(NamedTuple):
     reward: float
     done: bool
     version: int
+    info: dict
 
 
-def _pack_rollout(transitions: list[Transition]) -> dict:
+def _pack_rollout(transitions: list[Transition], final_obs: dict[str, np.ndarray]) -> dict:
     """Stack per-step records into a dict of numpy arrays.
 
     In sync mode the version is uniform across the rollout and collapses to a
     scalar int; in async it remains a per-step int64 array.
+
+    ``final_obs`` is the post-rollout observation (after the last env.step).
+    The trainer uses it to bootstrap the value estimate for GAE; it is
+    emitted as the four ``final_obs_*`` keys (single per-env arrays, not
+    stacked). ``infos`` is the list of per-step info dicts from env.step()
+    so the trainer can drive episode tracking the same way it does in
+    SubprocVecEnv (terminal_reward / episode_length / agent_deck_idx).
     """
     obs_cards = np.stack([t.obs["cards"] for t in transitions])
     obs_global = np.stack([t.obs["global_state"] for t in transitions])
@@ -72,6 +80,11 @@ def _pack_rollout(transitions: list[Transition]) -> dict:
         "rewards": rewards,
         "dones": dones,
         "policy_version": policy_version,
+        "final_obs_cards": final_obs["cards"],
+        "final_obs_global": final_obs["global_state"],
+        "final_obs_actions": final_obs["actions"],
+        "final_action_mask": final_obs["action_mask"],
+        "infos": [t.info for t in transitions],
     }
 
 
@@ -159,10 +172,11 @@ def _actor_learner_worker(
                     reward=float(reward),
                     done=bool(done),
                     version=int(version),
+                    info=info,
                 ))
                 obs = next_obs
 
-            remote.send(("rollout", _pack_rollout(transitions)))
+            remote.send(("rollout", _pack_rollout(transitions, final_obs=obs)))
     finally:
         env.close()
 

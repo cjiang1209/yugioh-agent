@@ -96,3 +96,20 @@ def test_publish_weights_propagates_to_workers(starter_deck: str) -> None:
         assert all(int(r["policy_version"]) == 2 for r in second)
     finally:
         vec.close()
+
+
+@requires_engine
+def test_rollout_includes_final_obs_and_infos(starter_deck: str) -> None:
+    vec, cfg = _make_vec(starter_deck)
+    try:
+        rollouts = vec.collect_rollouts()
+        for r in rollouts:
+            for k in ("final_obs_cards", "final_obs_global",
+                      "final_obs_actions", "final_action_mask"):
+                assert k in r
+            assert r["final_obs_cards"].shape == r["obs_cards"][0].shape
+            assert "infos" in r
+            assert isinstance(r["infos"], list)
+            assert len(r["infos"]) == cfg.rollout_steps
+    finally:
+        vec.close()
