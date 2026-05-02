@@ -12,12 +12,19 @@ async). Async-mode worker control flow lands when async support does.
 """
 from __future__ import annotations
 
-from typing import Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple
 
 import numpy as np
 
+if TYPE_CHECKING:
+    import torch.nn as nn
 
-__all__ = ["Transition", "_pack_rollout", "_actor_learner_worker"]
+    from yugioh_rl.config import TrainingConfig
+    from yugioh_rl.env_wrapper import DeckDict
+
+
+__all__ = ["Transition", "_pack_rollout", "_actor_learner_worker",
+           "ActorLearnerVecEnv", "WorkerDiedError", "WorkerTimeoutError"]
 
 
 class Transition(NamedTuple):
@@ -158,3 +165,135 @@ def _actor_learner_worker(
             remote.send(("rollout", _pack_rollout(transitions)))
     finally:
         env.close()
+
+
+class WorkerDiedError(RuntimeError):
+    """Raised by ActorLearnerVecEnv when a worker exits unexpectedly."""
+
+
+class WorkerTimeoutError(RuntimeError):
+    """Raised when a worker is alive but has not delivered a rollout within
+    ``worker_timeout_s``. Distinguishes a stuck-but-alive worker (e.g. env
+    deadlock) from one that crashed (``WorkerDiedError``)."""
+
+
+class ActorLearnerVecEnv:
+    """Vec env where each worker holds a local agent policy.
+
+    Replaces SubprocVecEnv when ``vec_env_type == "sync_actor_learner"``.
+    Per cycle: ``publish_weights`` then ``collect_rollouts`` (which sends
+    ``go`` to all workers and blocks on N rollouts).
+    """
+
+    def __init__(
+        self,
+        num_envs: int,
+        deck_pool: list["DeckDict"],
+        opponent: str,
+        reward_shaping: bool,
+        shaping_lp_weight: float,
+        shaping_card_weight: float,
+        seed: int,
+        agent_player: str,
+        opponent_device: str | None,
+        master_model: "nn.Module",
+        config: "TrainingConfig",
+        rollout_steps: int,
+        worker_timeout_s: float = 300.0,
+    ) -> None:
+        import multiprocessing as mp
+        from dataclasses import asdict
+
+        from yugioh_rl.shared_weights import SharedPolicyWeights
+
+        self.num_envs = num_envs
+        self.rollout_steps = rollout_steps
+        self._worker_timeout_s = worker_timeout_s
+        self._closed = False
+
+        # Trainer publishes initial weights BEFORE spawning workers so each
+        # worker's first read of shared memory sees a populated buffer.
+        self.shared_weights = SharedPolicyWeights(master_model)
+        self.shared_weights.publish(master_model)
+        config_dict = asdict(config)
+        weight_handles = self.shared_weights.share_handles()
+        base_env_kwargs = {
+            "deck_pool": deck_pool,
+            "opponent": opponent,
+            "reward_shaping": reward_shaping,
+            "shaping_lp_weight": shaping_lp_weight,
+            "shaping_card_weight": shaping_card_weight,
+            "agent_player": agent_player,
+            "opponent_device": opponent_device,
+        }
+
+        ctx = mp.get_context("spawn")
+        self._remotes = []
+        self._workers = []
+        for i in range(num_envs):
+            parent_conn, child_conn = ctx.Pipe()
+            spawn_kwargs = {
+                "remote": child_conn,
+                "env_kwargs": {**base_env_kwargs, "seed": seed + i * 10000},
+                "weight_handles": weight_handles,
+                "config_dict": config_dict,
+                "rollout_steps": rollout_steps,
+            }
+            p = ctx.Process(
+                target=_actor_learner_worker, kwargs=spawn_kwargs, daemon=True,
+            )
+            p.start()
+            child_conn.close()
+            self._remotes.append(parent_conn)
+            self._workers.append(p)
+
+    def collect_rollouts(self) -> list[dict]:
+        """Send "go" to all workers and block until all N rollouts arrive.
+
+        Raises ``WorkerDiedError`` if any worker has exited, or
+        ``WorkerTimeoutError`` if a worker is alive but silent past the
+        configured timeout (so a deadlocked worker can never hang the trainer
+        indefinitely).
+        """
+        version = self.shared_weights.version
+        for remote in self._remotes:
+            remote.send(("go", version))
+
+        rollouts: list[dict] = []
+        for remote, proc in zip(self._remotes, self._workers):
+            if not remote.poll(self._worker_timeout_s):
+                if not proc.is_alive():
+                    raise WorkerDiedError(
+                        f"actor-learner worker pid={proc.pid} died "
+                        f"(exitcode={proc.exitcode}) before sending rollout"
+                    )
+                raise WorkerTimeoutError(
+                    f"worker pid={proc.pid} alive but silent for "
+                    f"{self._worker_timeout_s}s — likely deadlocked"
+                )
+            cmd, payload = remote.recv()
+            assert cmd == "rollout", f"unexpected cmd {cmd!r}"
+            assert payload["actions"].shape == (self.rollout_steps,), (
+                f"rollout shape {payload['actions'].shape} mismatches "
+                f"expected ({self.rollout_steps},)"
+            )
+            rollouts.append(payload)
+        return rollouts
+
+    def publish_weights(self, model) -> int:
+        """Trainer-side: write fresh weights to shared memory."""
+        return self.shared_weights.publish(model)
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        for remote in self._remotes:
+            try:
+                remote.send(("shutdown", None))
+            except (BrokenPipeError, EOFError):
+                pass
+        for proc in self._workers:
+            proc.join(timeout=5)
+            if proc.is_alive():
+                proc.terminate()

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import multiprocessing as mp
+from dataclasses import asdict
 from pathlib import Path
 
 import numpy as np
@@ -9,16 +10,16 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-# Reuse engine fixtures: skips if libocgcore + cards.cdb absent.
+from yugioh_env.deck_parser import parse_ydk
+from yugioh_rl.actor_learner import _actor_learner_worker
 from yugioh_rl.config import TrainingConfig
 from yugioh_rl.network import YuGiOhNet
 from yugioh_rl.shared_weights import SharedPolicyWeights
 
+from tests.rl.conftest import requires_engine
+
 
 def _spawn_worker(deck_paths, config: TrainingConfig, rollout_steps: int):
-    from yugioh_env.deck_parser import parse_ydk
-    from yugioh_rl.actor_learner import _actor_learner_worker
-
     deck_pool = [parse_ydk(p) for p in deck_paths]
 
     master = YuGiOhNet.from_config(config)
@@ -41,7 +42,7 @@ def _spawn_worker(deck_paths, config: TrainingConfig, rollout_steps: int):
         "remote": child,
         "env_kwargs": env_kwargs,
         "weight_handles": shared.share_handles(),
-        "config_dict": config.__dict__,
+        "config_dict": asdict(config),
         "rollout_steps": rollout_steps,
     }
     proc = ctx.Process(target=_actor_learner_worker, kwargs=spawn_kwargs, daemon=True)
@@ -50,14 +51,7 @@ def _spawn_worker(deck_paths, config: TrainingConfig, rollout_steps: int):
     return proc, parent, shared
 
 
-@pytest.mark.skipif(
-    not Path("build/libocgcore.dylib").exists() and not Path("build/libocgcore.so").exists(),
-    reason="libocgcore not built (run `make build`)",
-)
-@pytest.mark.skipif(
-    not Path("assets/cards.cdb").exists(),
-    reason="assets/cards.cdb not present",
-)
+@requires_engine
 def test_worker_produces_valid_rollout() -> None:
     deck = "assets/decks/starter.ydk"
     if not Path(deck).exists():
@@ -114,11 +108,7 @@ def test_worker_produces_valid_rollout() -> None:
             proc.terminate()
 
 
-@pytest.mark.skipif(
-    not Path("build/libocgcore.dylib").exists() and not Path("build/libocgcore.so").exists(),
-    reason="libocgcore not built",
-)
-@pytest.mark.skipif(not Path("assets/cards.cdb").exists(), reason="cards.cdb absent")
+@requires_engine
 def test_worker_refreshes_on_new_version() -> None:
     deck = "assets/decks/starter.ydk"
     if not Path(deck).exists():
@@ -149,11 +139,7 @@ def test_worker_refreshes_on_new_version() -> None:
             proc.terminate()
 
 
-@pytest.mark.skipif(
-    not Path("build/libocgcore.dylib").exists() and not Path("build/libocgcore.so").exists(),
-    reason="libocgcore not built",
-)
-@pytest.mark.skipif(not Path("assets/cards.cdb").exists(), reason="cards.cdb absent")
+@requires_engine
 def test_worker_handles_shutdown() -> None:
     deck = "assets/decks/starter.ydk"
     if not Path(deck).exists():
