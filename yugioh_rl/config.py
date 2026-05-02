@@ -60,6 +60,10 @@ class TrainingConfig:
     save_dir: str = "checkpoints"  # Exact run directory (CLI builds this from --base-dir + timestamp)
     device: str = "auto"
 
+    # "sync_actor_learner": workers hold a local policy and submit full
+    # rollouts, avoiding the per-step IPC round-trip of "subproc".
+    vec_env_type: Literal["subproc", "sync_actor_learner"] = "subproc"
+
     @property
     def is_recurrent(self) -> bool:
         """Whether the network has an RNN module — drives TBPTT vs feed-forward."""
