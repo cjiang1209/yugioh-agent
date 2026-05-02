@@ -24,6 +24,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+from cli.utils import DEVICE_CHOICES
+
 ROOT = Path(__file__).resolve().parent.parent
 RESULTS_ROOT = ROOT / "benchmarks"
 
@@ -91,13 +93,15 @@ def main() -> int:
                    default=["assets/decks/blue_eyes.ydk", "assets/decks/dark_magician.ydk"])
     p.add_argument("--log-interval", type=int, default=5)
     p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--device", default="cpu", choices=DEVICE_CHOICES,
+                   help="Forward to cli.train --device (default: cpu)")
     args = p.parse_args()
 
     grid_id = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = RESULTS_ROOT / grid_id
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"opponent={args.opponent}, decks={args.deck_paths}")
+    print(f"opponent={args.opponent}, decks={args.deck_paths}, device={args.device}")
     print(f"grid: num_envs={args.num_envs} × rollout_steps={args.rollout_steps}")
     print(f"results -> {out_dir}\n", flush=True)
 
@@ -115,6 +119,7 @@ def main() -> int:
                 "--opponent", args.opponent,
                 "--deck-paths", *args.deck_paths,
                 "--rnn-type", "none",
+                "--device", args.device,
                 "--log-interval", str(args.log_interval),
                 "--seed", str(args.seed),
                 "--base-dir", str(base_dir),

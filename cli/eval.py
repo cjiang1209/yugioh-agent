@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 
 from cli.utils import (
+    DEVICE_CHOICES,
     fatal,
     resolve_device,
     validate_deck_paths,
@@ -61,7 +62,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Agent turn order per episode (default: random).",
     )
     parser.add_argument(
-        "--device", type=str, default="cpu", choices=["cpu", "cuda", "auto"],
+        "--device", type=str, default="cpu", choices=DEVICE_CHOICES,
         help="Device for both agent-side and env-side model opponents (default: cpu).",
     )
     parser.add_argument(

@@ -43,15 +43,25 @@ def validate_deck_paths(paths: list[str], flag: str = "--deck-paths") -> None:
             fatal(f"{flag}: deck file must end with .ydk: {dp}")
 
 
-def resolve_device(spec: str) -> str:
-    """Resolve a ``--device`` value to a concrete ``"cpu"`` or ``"cuda"``.
+DEVICE_CHOICES = ("auto", "cpu", "cuda", "mps")
+"""Valid values for the ``--device`` CLI argument across cli.train / cli.eval /
+cli.benchmark_throughput. Single source of truth; importers pass this to
+``argparse``'s ``choices=``."""
 
-    ``"auto"`` picks cuda when available, else cpu. Concrete strings pass
-    through unchanged. The standalone eval CLI must call this before any
-    ``torch.device(...)`` / ``torch.load(map_location=...)`` consumer because
-    those raise on the literal string ``"auto"``.
+
+def resolve_device(spec: str) -> str:
+    """Resolve a ``--device`` value to a concrete ``"cpu"``, ``"cuda"``, or ``"mps"``.
+
+    ``"auto"`` picks cuda when available, else mps when available, else cpu.
+    Concrete strings pass through unchanged. The standalone eval CLI must call
+    this before any ``torch.device(...)`` / ``torch.load(map_location=...)``
+    consumer because those raise on the literal string ``"auto"``.
     """
     if spec == "auto":
         import torch
-        return "cuda" if torch.cuda.is_available() else "cpu"
+        if torch.cuda.is_available():
+            return "cuda"
+        if torch.backends.mps.is_available():
+            return "mps"
+        return "cpu"
     return spec

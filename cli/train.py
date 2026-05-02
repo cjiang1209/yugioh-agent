@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 
 from cli.utils import (
+    DEVICE_CHOICES,
     fatal,
     validate_deck_paths,
     validate_opponent_spec,
@@ -161,8 +162,8 @@ def parse_args() -> argparse.Namespace:
     infra.add_argument("--base-dir", type=str, default="checkpoints",
                        help="Base directory for runs; each run creates a timestamped "
                             "subdirectory (default: checkpoints)")
-    infra.add_argument("--device", type=str, default="auto", choices=["auto", "cpu", "cuda"],
-                       help="Compute device: 'auto' picks cuda if available (default: auto)")
+    infra.add_argument("--device", type=str, default="auto", choices=DEVICE_CHOICES,
+                       help="Compute device: 'auto' picks cuda if available, else mps, else cpu (default: auto).")
 
     return parser.parse_args()
 
