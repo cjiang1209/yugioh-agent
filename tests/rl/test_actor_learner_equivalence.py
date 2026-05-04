@@ -26,7 +26,8 @@ def _param_l2(net: torch.nn.Module) -> float:
 
 
 @requires_engine
-def test_actor_learner_matches_subproc_within_tolerance(tmp_path) -> None:
+@pytest.mark.parametrize("rnn_type", ["none", "lstm"])
+def test_actor_learner_matches_subproc_within_tolerance(tmp_path, rnn_type: str) -> None:
     deck = "assets/decks/starter.ydk"
     if not Path(deck).exists():
         pytest.skip(f"{deck} not present")
@@ -44,14 +45,19 @@ def test_actor_learner_matches_subproc_within_tolerance(tmp_path) -> None:
         save_interval=9999,
         log_interval=999,
         device="cpu",
+        rnn_type=rnn_type,
+        rnn_hidden_dim=64,
+        rnn_num_layers=1,
+        bptt_chunk_len=16,
     )
 
     cfg_sub = TrainingConfig(
-        **base, vec_env_type="subproc", save_dir=str(tmp_path / "subproc"),
+        **base, vec_env_type="subproc",
+        save_dir=str(tmp_path / f"subproc_{rnn_type}"),
     )
     cfg_al = TrainingConfig(
         **base, vec_env_type="sync_actor_learner",
-        save_dir=str(tmp_path / "actor_learner"),
+        save_dir=str(tmp_path / f"actor_learner_{rnn_type}"),
     )
 
     t_sub = PPOTrainer(cfg_sub)
@@ -63,11 +69,13 @@ def test_actor_learner_matches_subproc_within_tolerance(tmp_path) -> None:
     n_al = _param_l2(t_al.network)
     rel = abs(n_sub - n_al) / max(n_sub, 1e-9)
     assert rel < 0.20, (
-        f"param L2 diverged too far: subproc={n_sub:.4f} "
-        f"actor_learner={n_al:.4f} rel={rel:.3f}"
+        f"[rnn_type={rnn_type}] param L2 diverged too far: "
+        f"subproc={n_sub:.4f} actor_learner={n_al:.4f} rel={rel:.3f}"
     )
 
     for net, label in [(t_sub.network, "subproc"), (t_al.network, "actor_learner")]:
         for name, p in net.state_dict().items():
             if p.dtype.is_floating_point:
-                assert torch.isfinite(p).all(), f"{label}: non-finite param {name}"
+                assert torch.isfinite(p).all(), (
+                    f"[rnn_type={rnn_type}] {label}: non-finite param {name}"
+                )
