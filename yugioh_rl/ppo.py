@@ -275,6 +275,21 @@ class PPOTrainer:
         else:
             self.device = torch.device(config.device)
 
+        # PyTorch 2.11 MPS LSTM backward kernel asserts during the per-step
+        # TBPTT replay (forward succeeds, backward trips a uint32 underflow in
+        # MPSNDArrayDescriptor). GRU and the whole-sequence LSTM path are both
+        # fine, so this is specific to the per-step LSTM backward our TBPTT
+        # update uses. Fail fast at construction with a usable workaround
+        # rather than crashing several minutes into a run with a cryptic
+        # Metal driver assertion. See bugs/mps_lstm_per_step_backward/ for repros.
+        if self.device.type == "mps" and config.rnn_type == "lstm":
+            raise RuntimeError(
+                "rnn_type='lstm' on device='mps' triggers a PyTorch MPS "
+                "backward-kernel crash during PPO updates. Workarounds: "
+                "use --rnn-type gru, or --device cpu. "
+                "(See bugs/mps_lstm_per_step_backward/mps_lstm_minimal.py for the minimal repro.)"
+            )
+
         logger.info("Using device: %s", self.device)
 
         # Network, optimizer, and resume state
