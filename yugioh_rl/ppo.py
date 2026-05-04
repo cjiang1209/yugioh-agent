@@ -477,15 +477,6 @@ class PPOTrainer:
             config.total_timesteps, num_updates, config.num_envs,
         )
 
-        if config.is_recurrent and config.vec_env_type == "sync_actor_learner":
-            # Workers don't yet thread hx between steps; the trainer raises here
-            # so users get a clean error rather than N spawned workers each
-            # raising NotImplementedError on construction.
-            raise NotImplementedError(
-                "vec_env_type='sync_actor_learner' does not yet support "
-                f"rnn_type={config.rnn_type!r}; use vec_env_type='subproc'"
-            )
-
         if config.vec_env_type == "sync_actor_learner":
             from yugioh_rl.actor_learner import ActorLearnerVecEnv
             vec_env = ActorLearnerVecEnv(
@@ -542,6 +533,8 @@ class PPOTrainer:
                 if config.vec_env_type == "sync_actor_learner":
                     rollouts = vec_env.collect_rollouts()
                     obs = self.buffer.ingest_rollouts(rollouts)
+                    # buffer.hx_initial is already the zero hx from above —
+                    # TBPTT replay starts from there, matching subproc.
                     for r in rollouts:
                         for info in r["infos"]:
                             self._record_episode(info)
@@ -581,13 +574,19 @@ class PPOTrainer:
                         global_step += config.num_envs
 
                 # --- Compute advantages ---
+                if config.vec_env_type == "sync_actor_learner":
+                    bootstrap_hx = self.network.cat_hx(
+                        [r["final_hx"] for r in rollouts], self.device,
+                    )
+                else:
+                    bootstrap_hx = hx
                 with torch.no_grad():
                     t_cards = torch.from_numpy(obs["cards"]).to(self.device)
                     t_global = torch.from_numpy(obs["global_state"]).to(self.device)
                     t_actions = torch.from_numpy(obs["actions"]).to(self.device)
                     t_mask = torch.from_numpy(obs["action_mask"]).to(self.device)
                     _, last_values, _ = self.network(
-                        t_cards, t_global, t_actions, t_mask, hx=hx,
+                        t_cards, t_global, t_actions, t_mask, hx=bootstrap_hx,
                     )
                     last_values_np = last_values.cpu().numpy()
 

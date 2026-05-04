@@ -256,9 +256,7 @@ class YuGiOhNet(nn.Module):
         net.load_state_dict(state_dict)
         return net
 
-    def init_hx(
-        self, batch_size: int, device,
-    ) -> tuple[torch.Tensor, torch.Tensor] | torch.Tensor | None:
+    def init_hx(self, batch_size: int, device) -> HxState:
         """Zero hidden state shaped ``(num_layers, batch_size, rnn_hidden_dim)``.
 
         Returns ``(h, c)`` for LSTM, ``h`` for GRU, ``None`` when no RNN.
@@ -273,10 +271,7 @@ class YuGiOhNet(nn.Module):
         return h
 
     @staticmethod
-    def mask_hx(
-        hx: tuple[torch.Tensor, torch.Tensor] | torch.Tensor | None,
-        dones: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor] | torch.Tensor | None:
+    def mask_hx(hx: HxState, dones: torch.Tensor) -> HxState:
         """Zero hidden state entries for envs where ``dones[i]`` is True.
 
         ``dones`` is a 1-D ``(N,)`` tensor; it broadcasts to ``(1, N, 1)``
@@ -291,9 +286,7 @@ class YuGiOhNet(nn.Module):
         return hx * keep
 
     @staticmethod
-    def detach_hx(
-        hx: tuple[torch.Tensor, torch.Tensor] | torch.Tensor | None,
-    ) -> tuple[torch.Tensor, torch.Tensor] | torch.Tensor | None:
+    def detach_hx(hx: HxState) -> HxState:
         """Stop gradient flow through hx.
 
         Used at TBPTT chunk boundaries: each chunk's backward should only
@@ -308,15 +301,36 @@ class YuGiOhNet(nn.Module):
 
     @staticmethod
     def slice_hx(
-        hx: tuple[torch.Tensor, torch.Tensor] | torch.Tensor | None,
+        hx: HxState,
         env_idx: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor] | torch.Tensor | None:
+    ) -> HxState:
         """Index hx along the env dimension (dim 1)."""
         if hx is None:
             return None
         if isinstance(hx, tuple):
             return tuple(t[:, env_idx] for t in hx)
         return hx[:, env_idx]
+
+    @staticmethod
+    def cat_hx(
+        per_env: list[HxState],
+        device: torch.device,
+    ) -> HxState:
+        """Concatenate per-env hx tensors along the env dimension.
+
+        Inverse of ``slice_hx``: takes N per-env hx (each shape
+        ``(num_layers, 1, hidden_dim)`` or a tuple thereof) and returns one
+        batched hx of shape ``(num_layers, N, hidden_dim)`` on ``device``.
+        Used by the actor-learner ingest path to seed the GAE bootstrap.
+        """
+        sample = per_env[0]
+        if sample is None:
+            return None
+        if isinstance(sample, tuple):
+            h = torch.cat([hx[0] for hx in per_env], dim=1).to(device)
+            c = torch.cat([hx[1] for hx in per_env], dim=1).to(device)
+            return (h, c)
+        return torch.cat(per_env, dim=1).to(device)
 
     def _embed_codes(self, codes: torch.Tensor) -> torch.Tensor:
         """Embed card codes using symbolic or semantic mode.
