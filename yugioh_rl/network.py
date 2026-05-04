@@ -19,6 +19,12 @@ from yugioh_rl.features import (
 
 logger = logging.getLogger(__name__)
 
+# Recurrent hidden state shape:
+#   None              — feed-forward (rnn_type="none")
+#   Tensor            — GRU (h, shape (num_layers, batch, hidden_dim))
+#   tuple of 2 Tensor — LSTM ((h, c), each (num_layers, batch, hidden_dim))
+HxState = tuple[torch.Tensor, torch.Tensor] | torch.Tensor | None
+
 # Location bits used for zone pooling (same order as features.py _LOC_BITS)
 # hand=0x02, mzone=0x04, szone=0x08, grave=0x10, banished=0x20, extra=0x40
 _ZONE_LOC_BITS = [0x02, 0x04, 0x08, 0x10, 0x20, 0x40]

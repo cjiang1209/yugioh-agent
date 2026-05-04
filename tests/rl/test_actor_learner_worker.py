@@ -155,3 +155,55 @@ def test_worker_handles_shutdown() -> None:
     finally:
         if proc.is_alive():
             proc.terminate()
+
+
+@requires_engine
+@pytest.mark.parametrize("rnn_type", ["lstm", "gru"])
+def test_worker_produces_valid_rollout_with_rnn(rnn_type: str) -> None:
+    deck = "assets/decks/starter.ydk"
+    if not Path(deck).exists():
+        pytest.skip(f"{deck} not present")
+
+    rollout_steps = 8
+    cfg = TrainingConfig(
+        num_envs=1,
+        deck_paths=[deck],
+        rollout_steps=rollout_steps,
+        rnn_type=rnn_type,
+        rnn_hidden_dim=64,
+        rnn_num_layers=1,
+        bptt_chunk_len=8,
+    )
+    proc, parent, _ = _spawn_worker([deck], cfg, rollout_steps)
+    try:
+        parent.send(("go", 1))
+        cmd, payload = parent.recv()
+        assert cmd == "rollout"
+
+        for key in ("obs_cards", "obs_global", "obs_actions", "action_mask",
+                    "actions", "log_probs", "values", "rewards", "dones",
+                    "policy_version", "infos",
+                    "final_obs_cards", "final_obs_global",
+                    "final_obs_actions", "final_action_mask"):
+            assert key in payload, f"missing field {key!r}"
+
+        assert "final_hx" in payload
+        final_hx = payload["final_hx"]
+        expected_shape = (cfg.rnn_num_layers, 1, cfg.rnn_hidden_dim)
+        if rnn_type == "lstm":
+            assert isinstance(final_hx, tuple), f"expected (h, c) tuple, got {type(final_hx)}"
+            h, c = final_hx
+            assert h.shape == expected_shape and c.shape == expected_shape
+            assert torch.isfinite(h).all() and torch.isfinite(c).all()
+        else:
+            assert isinstance(final_hx, torch.Tensor), (
+                f"expected single tensor, got {type(final_hx)}"
+            )
+            assert final_hx.shape == expected_shape
+            assert torch.isfinite(final_hx).all()
+
+        parent.send(("shutdown", None))
+    finally:
+        proc.join(timeout=10)
+        if proc.is_alive():
+            proc.terminate()

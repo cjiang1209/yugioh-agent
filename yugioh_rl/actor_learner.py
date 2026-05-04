@@ -21,6 +21,7 @@ if TYPE_CHECKING:
 
     from yugioh_rl.config import TrainingConfig
     from yugioh_rl.env_wrapper import DeckDict
+    from yugioh_rl.network import HxState
 
 
 __all__ = ["Transition", "_pack_rollout", "_actor_learner_worker",
@@ -42,7 +43,11 @@ class Transition(NamedTuple):
     info: dict
 
 
-def _pack_rollout(transitions: list[Transition], final_obs: dict[str, np.ndarray]) -> dict:
+def _pack_rollout(
+    transitions: list[Transition],
+    final_obs: dict[str, np.ndarray],
+    final_hx: HxState,
+) -> dict:
     """Stack per-step records into a dict of numpy arrays.
 
     In sync mode the version is uniform across the rollout and collapses to a
@@ -54,6 +59,11 @@ def _pack_rollout(transitions: list[Transition], final_obs: dict[str, np.ndarray
     stacked). ``infos`` is the list of per-step info dicts from env.step()
     so the trainer can drive episode tracking the same way it does in
     SubprocVecEnv (terminal_reward / episode_length / agent_deck_idx).
+
+    ``final_hx`` is the post-rollout hidden state (after mask_hx on the last
+    done). It is None for feed-forward configs, a single tensor of shape
+    ``(num_layers, 1, hidden_dim)`` for GRU, or a tuple of two such tensors
+    for LSTM. The trainer stacks per-env ``final_hx`` for the GAE bootstrap.
     """
     obs_cards = np.stack([t.obs["cards"] for t in transitions])
     obs_global = np.stack([t.obs["global_state"] for t in transitions])
@@ -85,6 +95,7 @@ def _pack_rollout(transitions: list[Transition], final_obs: dict[str, np.ndarray
         "final_obs_actions": final_obs["actions"],
         "final_action_mask": final_obs["action_mask"],
         "infos": [t.info for t in transitions],
+        "final_hx": final_hx,
     }
 
 
@@ -116,13 +127,6 @@ def _actor_learner_worker(
 
     cfg = TrainingConfig(**config_dict)
     cfg = normalize_legacy_config(cfg)
-    if cfg.is_recurrent:
-        # Worker does not yet thread hx between steps; trainer's existing
-        # SubprocVecEnv path does this via mask_hx. Until added, an RNN
-        # config would silently produce zero-hidden-state rollouts.
-        raise NotImplementedError(
-            "actor-learner worker does not yet support rnn_type != 'none'"
-        )
 
     # Pin per-worker policy RNG so action sampling is deterministic given
     # env_kwargs['seed']. The duel and deck RNGs are seeded inside TrainingEnv.
@@ -146,6 +150,8 @@ def _actor_learner_worker(
             assert cmd == "go", f"unexpected cmd {cmd!r}"
 
             version = weights.refresh_into(local_policy)
+            # Reset hx every rollout: post-update weights make stale hx inconsistent.
+            hx = local_policy.init_hx(1, "cpu")
             transitions: list[Transition] = []
             for _ in range(rollout_steps):
                 # torch.from_numpy aliases obs's numpy buffers; safe because
@@ -157,7 +163,9 @@ def _actor_learner_worker(
                     glob_t = torch.from_numpy(obs["global_state"]).unsqueeze(0)
                     acts_t = torch.from_numpy(obs["actions"]).unsqueeze(0)
                     mask_t = torch.from_numpy(obs["action_mask"]).unsqueeze(0)
-                    logits, value, _ = local_policy(cards_t, glob_t, acts_t, mask_t)
+                    logits, value, hx_new = local_policy(
+                        cards_t, glob_t, acts_t, mask_t, hx=hx,
+                    )
                     dist = Categorical(logits=logits)
                     action = dist.sample()
                     log_prob = dist.log_prob(action)
@@ -174,9 +182,14 @@ def _actor_learner_worker(
                     version=int(version),
                     info=info,
                 ))
+                # Auto-reset on done — zero hx for this env to match.
+                done_t = torch.tensor([float(done)], dtype=torch.float32)
+                hx = local_policy.mask_hx(hx_new, done_t)
                 obs = next_obs
 
-            remote.send(("rollout", _pack_rollout(transitions, final_obs=obs)))
+            remote.send(("rollout", _pack_rollout(
+                transitions, final_obs=obs, final_hx=hx,
+            )))
     finally:
         env.close()
 
