@@ -158,6 +158,48 @@ def test_worker_handles_shutdown() -> None:
 
 
 @requires_engine
+def test_worker_resets_on_done() -> None:
+    """Worker must reset on done; the obs after a done must differ from the terminal obs."""
+    deck = "assets/decks/starter.ydk"
+    if not Path(deck).exists():
+        pytest.skip(f"{deck} not present")
+
+    # 1024 single-env steps comfortably exceeds the ~330-step worst case
+    # observed in the captured baseline (4 envs, 3 dones across 338 steps).
+    rollout_steps = 1024
+    cfg = TrainingConfig(num_envs=1, deck_paths=[deck], rollout_steps=rollout_steps)
+    proc, parent, _ = _spawn_worker([deck], cfg, rollout_steps)
+    try:
+        parent.send(("go", 1))
+        cmd, payload = parent.recv()
+        assert cmd == "rollout"
+
+        dones = payload["dones"]   # (T,)
+        assert dones.any(), (
+            "rollout did not cross any done transition; widen rollout_steps"
+        )
+        obs_cards = payload["obs_cards"]   # (T, 200, 42)
+
+        done_idxs = np.where(dones)[0]
+        for t in done_idxs:
+            if t + 1 >= rollout_steps:
+                continue   # done was the last step, no next obs in window
+            terminal_cards = obs_cards[t]
+            next_cards = obs_cards[t + 1]
+            assert not np.array_equal(terminal_cards, next_cards), (
+                f"obs at t+1 ({t + 1}) is byte-identical to terminal obs "
+                f"at t ({t}) — worker did not reset on done, the policy is "
+                f"being fed a finished-duel obs into the next step"
+            )
+
+        parent.send(("shutdown", None))
+    finally:
+        proc.join(timeout=15)
+        if proc.is_alive():
+            proc.terminate()
+
+
+@requires_engine
 @pytest.mark.parametrize("rnn_type", ["lstm", "gru"])
 def test_worker_produces_valid_rollout_with_rnn(rnn_type: str) -> None:
     deck = "assets/decks/starter.ydk"

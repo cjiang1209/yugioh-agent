@@ -93,19 +93,9 @@ def run_match(
 ) -> tuple[int, dict[int, list[float]]]:
     """Run ``num_episodes`` against the env's pre-configured opponent.
 
-    The env is reset once up front; ``TrainingEnv.step()`` auto-resets on
-    terminal transitions, so the loop must NOT call ``env.reset()`` per
-    episode — that would advance the env's episode counter twice and
-    desync the agent reseed (``base_seed + i + 1``) from the env's actual
-    episode seed (which would then be ``base_seed + 2*i + 1``).
-
-    Per episode ``i`` (0-indexed):
-        agent.reseed(base_seed + i + 1)   # matches the env's episode_count
-        # play through; on done, env.step() auto-resets and the next
-        # iteration's first obs is already from episode i+2.
-
-    Returns ``(total_wins, per_deck)`` where ``per_deck`` maps
-    ``agent_deck_idx`` → list of 1.0/0.0 win records.
+    Each episode begins with an explicit ``env.reset()``; ``TrainingEnv.step()``
+    no longer auto-resets.  Returns ``(total_wins, per_deck)`` where
+    ``per_deck`` maps ``agent_deck_idx`` → list of 1.0/0.0 win records.
     """
     total_wins = 0
     per_deck: dict[int, list[float]] = {}
@@ -113,9 +103,9 @@ def run_match(
     # just to play zero episodes (matches the pre-refactor for-loop semantics).
     if num_episodes <= 0:
         return total_wins, per_deck
-    obs = env.reset()
     for i in range(num_episodes):
         agent.reseed(base_seed + i + 1)
+        obs = env.reset()
         done = False
         while not done:
             if agent.needs_observation:

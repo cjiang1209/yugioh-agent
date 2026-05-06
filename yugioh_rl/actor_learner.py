@@ -182,9 +182,13 @@ def _actor_learner_worker(
                     version=int(version),
                     info=info,
                 ))
-                # Auto-reset on done — zero hx for this env to match.
                 done_t = torch.tensor([float(done)], dtype=torch.float32)
                 hx = local_policy.mask_hx(hx_new, done_t)
+                # Explicit reset on done: step() returns the terminal obs
+                # (no auto-reset), and the next iteration would otherwise
+                # feed a finished duel's obs back into the policy.
+                if done:
+                    next_obs = env.reset()
                 obs = next_obs
 
             remote.send(("rollout", _pack_rollout(

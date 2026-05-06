@@ -130,10 +130,12 @@ class _ScriptedEnv:
     """Fake TrainingEnv driven by a list of scripted step() outcomes per episode.
 
     Each episode is a list of dicts: ``{"done": bool, "reward": float,
-    "agent_deck_idx": int}``. Mirrors ``TrainingEnv``'s contract:
-    - ``reset()`` is called explicitly only at the start of a match.
-    - ``step()`` auto-resets internally when ``done=True``, advancing the
-      episode counter and returning the first obs of the next episode.
+    "agent_deck_idx": int}``. Matches the post-refactor ``TrainingEnv``
+    contract:
+    - ``reset()`` advances to the next scripted episode and is called
+      **explicitly** by the caller before each episode.
+    - ``step()`` returns the terminal obs on ``done=True``; it does NOT
+      auto-advance the episode pointer.
     """
 
     def __init__(self, scripts: list[list[dict]]):
@@ -144,13 +146,10 @@ class _ScriptedEnv:
         self.current_msg = {"msg_type": 0}
         self.num_actions = 4
 
-    def _advance(self) -> None:
-        self._ep += 1
-        self._step = 0
-
     def reset(self):
         self.reset_calls += 1
-        self._advance()
+        self._ep += 1
+        self._step = 0
         return _dummy_obs()
 
     def step(self, action):
@@ -161,9 +160,7 @@ class _ScriptedEnv:
         if done:
             info["terminal_reward"] = outcome.get("reward", 0.0)
             info["agent_deck_idx"] = outcome.get("agent_deck_idx", 0)
-            # Auto-reset: advance to next episode without bumping reset_calls.
-            if self._ep + 1 < len(self._scripts):
-                self._advance()
+            # No auto-advance — caller is responsible for the next reset.
         return _dummy_obs(), 0.0, done, info
 
 
@@ -235,12 +232,11 @@ class TestRunMatch:
         assert env.reset_calls == 0
         assert agent.reseed_calls == []
 
-    def test_does_not_double_reset_between_episodes(self):
-        """env.reset() is called once at start; auto-reset handles subsequent episodes.
-
-        Regression: an explicit env.reset() per iteration would advance
-        TrainingEnv's episode counter twice (once explicit, once via the
-        auto-reset inside step()), desyncing agent reseed from env episode seed.
+    def test_resets_explicitly_per_episode(self):
+        """run_match calls env.reset() once per episode now that
+        TrainingEnv.step() no longer auto-resets.  Without this, the
+        terminal obs of episode N would be fed to the agent at the start
+        of episode N+1 — bug.
         """
         agent = _RecordingAgent()
         env = _ScriptedEnv([
@@ -249,8 +245,7 @@ class TestRunMatch:
             [{"done": True, "reward": 1.0, "agent_deck_idx": 0}],
         ])
         run_match(agent, env, num_episodes=3, base_seed=0)
-        assert env.reset_calls == 1
-        # Agent reseeds N times for N episodes — one per env-played episode.
+        assert env.reset_calls == 3
         assert agent.reseed_calls == [1, 2, 3]
 
 

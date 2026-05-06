@@ -35,10 +35,17 @@ def _obs_to_numpy(obs) -> dict[str, np.ndarray]:
 
 
 class TrainingEnv:
-    """Single-env wrapper around YuGiOhEnvironment for training.
+    """Single-env wrapper around YuGiOhEnvironment for training and eval.
 
-    Bypasses HTTP by calling the environment directly in-process.
-    Provides numpy observations, reward shaping, and auto-reset.
+    Bypasses HTTP by calling the environment directly in-process.  Provides
+    numpy observations, reward shaping, and terminal info on episode end.
+    Episodes are addressable by index via ``reset(episode_idx=...)`` so a
+    parallel-eval worker can dispatch one specific episode at a time.
+
+    ``step()`` does **not** auto-reset on terminal transitions.  The caller
+    must call ``reset()`` explicitly before stepping again — vec-env wrappers
+    (e.g. ``SubprocVecEnv.reset_done``) restore today's wire-level
+    auto-reset semantics around this contract for training paths.
     """
 
     def __init__(
@@ -75,7 +82,9 @@ class TrainingEnv:
         self._seed = seed
         self._episode_count = 0
 
-        # Deck pool and sampling RNG (independent from duel RNG)
+        # Deck pool and sampling RNG.  ``_deck_rng`` is reseeded per-episode
+        # in reset() so deck draws are a pure function of (seed, episode_count)
+        # — required for episode-shard parallelism.
         self._deck_pool = deck_pool
         self._deck_rng = stdlib_random.Random(seed)
         self._player_rng = stdlib_random.Random()
@@ -86,9 +95,19 @@ class TrainingEnv:
         self._prev_opp_lp = 0
         self._prev_advantage = 0
 
-    def reset(self) -> dict[str, np.ndarray]:
-        """Reset the environment and return initial observation."""
-        self._episode_count += 1
+    def reset(self, *, episode_idx: int | None = None) -> dict[str, np.ndarray]:
+        """Begin a new episode and return the first observation.
+
+        By default (``episode_idx=None``) increments the internal episode
+        counter — same behavior sequential callers expect (training rollouts,
+        run_match). Pass ``episode_idx=N`` to address a specific episode index;
+        used by the parallel-eval worker pool to dispatch one specific episode
+        at a time without relying on stateful counter advancement.
+        """
+        if episode_idx is not None:
+            self._episode_count = episode_idx
+        else:
+            self._episode_count += 1
         episode_seed = self._seed + self._episode_count
 
         # Pre-resolve agent_player so we can map decks to correct engine
@@ -99,7 +118,7 @@ class TrainingEnv:
         else:
             resolved_player = int(self._agent_player_setting)
 
-        # Sample agent and opponent decks independently
+        self._deck_rng = stdlib_random.Random(episode_seed)
         agent_deck_idx = self._deck_rng.randrange(len(self._deck_pool))
         opp_deck_idx = self._deck_rng.randrange(len(self._deck_pool))
         agent_deck = self._deck_pool[agent_deck_idx]
@@ -132,11 +151,18 @@ class TrainingEnv:
     def step(self, action_index: int) -> tuple[dict[str, np.ndarray], float, bool, dict[str, Any]]:
         """Step the environment with an action.
 
+        On ``done=True`` the returned obs is the **terminal** obs of the
+        just-finished episode — there is no auto-reset.  The caller must
+        call :meth:`reset` (or, for vec-env wrappers, ``reset_done``)
+        before invoking ``step`` again; otherwise the next call would
+        advance a finished duel.
+
         Returns:
-            obs: numpy observation dict
+            obs: numpy observation dict (terminal on done=True)
             reward: shaped or terminal reward
             done: whether episode ended
-            info: extra info (terminal_reward, episode_length on done)
+            info: extra info — populated on done with ``terminal_reward``,
+                  ``episode_length``, and ``agent_deck_idx``
         """
         obs = self._env.step(YuGiOhAction(action_index=action_index))
         np_obs = _obs_to_numpy(obs)
@@ -149,9 +175,9 @@ class TrainingEnv:
             info["terminal_reward"] = reward
             info["episode_length"] = self._env._step_count
             info["agent_deck_idx"] = self._last_agent_deck_idx
-
-            # Auto-reset: return first obs of new episode
-            np_obs = self.reset()
+            # No auto-reset.  Caller chooses when to begin the next episode
+            # (vec-env workers do it eagerly to preserve wire behavior;
+            # eval workers reset to a specific episode_idx for the next task).
         elif self._reward_shaping:
             reward += self._compute_shaping(np_obs["global_state"])
 
@@ -276,6 +302,14 @@ class SubprocVecEnv:
     def step(self, actions: np.ndarray) -> tuple[dict[str, np.ndarray], np.ndarray, np.ndarray, list[dict]]:
         """Step all environments with the given actions.
 
+        Returns the **terminal** observation for envs that finished this
+        step (``dones[i] == True``).  Callers that want the next-episode
+        first observation at those indices must follow up with
+        :meth:`reset_done`.  The previous auto-reset behavior was moved out
+        of ``TrainingEnv.step`` so eval workers can address specific
+        episodes — production training paths restore the old wire shape via
+        the explicit :meth:`reset_done` call.
+
         Args:
             actions: (num_envs,) int array of action indices
 
@@ -298,6 +332,33 @@ class SubprocVecEnv:
             np.array(dones, dtype=bool),
             list(infos),
         )
+
+    def reset_done(
+        self,
+        dones: np.ndarray,
+        obs: dict[str, np.ndarray],
+    ) -> dict[str, np.ndarray]:
+        """Substitute new-episode obs at indices where ``dones[i]`` is True.
+
+        Restores wire-level auto-reset semantics that ``TrainingEnv.step()``
+        no longer provides.  When ``dones`` is all-False, returns the input
+        ``obs`` object unchanged (zero pipe traffic, no copy — callers must
+        not mutate the result in that case without copying themselves).
+        """
+        if not dones.any():
+            return obs
+
+        # Sends first, recvs after, so the slowest worker doesn't serialize the rest.
+        done_indices = np.flatnonzero(dones)
+        for i in done_indices:
+            self._remotes[i].send(("reset", None))
+
+        new_obs = {k: v.copy() for k, v in obs.items()}
+        for i in done_indices:
+            single = self._remotes[i].recv()
+            for k in new_obs:
+                new_obs[k][i] = single[k]
+        return new_obs
 
     def _stack_obs(self, obs_list: list[dict[str, np.ndarray]]) -> dict[str, np.ndarray]:
         """Stack a list of observation dicts into batched arrays."""

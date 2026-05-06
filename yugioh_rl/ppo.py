@@ -578,7 +578,9 @@ class PPOTrainer:
 
                         self.buffer.add(obs, actions_np, log_probs_np, rewards, dones_f, values_np)
 
-                        # vec_env auto-resets on done — zero hx for those envs to match.
+                        # Substitute new-episode obs at done indices (replaces former auto-reset).
+                        next_obs = vec_env.reset_done(dones, next_obs)
+
                         dones_t = torch.from_numpy(dones_f).to(self.device)
                         hx = self.network.mask_hx(hx_new, dones_t)
 
