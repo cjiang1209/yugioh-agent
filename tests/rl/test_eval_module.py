@@ -14,7 +14,7 @@ from yugioh_env.opponent import (
 )
 from yugioh_rl.eval import (
     EvalResult,
-    evaluate,
+    evaluate_with_agent,
     log_results_to_tensorboard,
     make_eval_agent,
     opponent_label_from_spec,
@@ -146,9 +146,12 @@ class _ScriptedEnv:
         self.current_msg = {"msg_type": 0}
         self.num_actions = 4
 
-    def reset(self):
+    def reset(self, *, episode_idx: int | None = None):
         self.reset_calls += 1
-        self._ep += 1
+        if episode_idx is not None:
+            self._ep = episode_idx - 1   # 1-indexed: matches TrainingEnv
+        else:
+            self._ep += 1
         self._step = 0
         return _dummy_obs()
 
@@ -271,7 +274,7 @@ def fake_training_env_factory():
             self.num_actions = 4
             instances.append(self)
 
-        def reset(self):
+        def reset(self, *, episode_idx: int | None = None):
             self._step_count = 0
             return _dummy_obs()
 
@@ -295,7 +298,7 @@ class TestEvaluate:
         FakeEnv, instances = fake_training_env_factory
         agent = _RecordingAgent()
         with patch("yugioh_rl.eval.TrainingEnv", FakeEnv):
-            results = evaluate(
+            results = evaluate_with_agent(
                 agent,
                 deck_pool=[{"main": list(range(40)), "extra": []}],
                 opponent_specs=["greedy", "random", "model:/p/v1.pt"],
@@ -322,7 +325,7 @@ class TestEvaluate:
         FakeEnv, instances = fake_training_env_factory
         agent = _RecordingAgent()
         with patch("yugioh_rl.eval.TrainingEnv", FakeEnv):
-            evaluate(
+            evaluate_with_agent(
                 agent,
                 deck_pool=[{"main": list(range(40)), "extra": []}],
                 opponent_specs=["greedy"],
@@ -336,7 +339,7 @@ class TestEvaluate:
         FakeEnv, _ = fake_training_env_factory
         agent = _RecordingAgent()
         with patch("yugioh_rl.eval.TrainingEnv", FakeEnv):
-            results = evaluate(
+            results = evaluate_with_agent(
                 agent,
                 deck_pool=[{"main": list(range(40)), "extra": []}],
                 opponent_specs=["greedy", "model:/p/v1.pt"],
@@ -357,7 +360,7 @@ class TestEvaluate:
         FakeEnv, _ = fake_training_env_factory
         agent = _RecordingAgent()
         with patch("yugioh_rl.eval.TrainingEnv", FakeEnv):
-            evaluate(
+            evaluate_with_agent(
                 agent,
                 deck_pool=[{"main": list(range(40)), "extra": []}],
                 opponent_specs=["greedy", "random"],
@@ -369,6 +372,105 @@ class TestEvaluate:
         # Each opponent's run_match is called with base_seed=100, so reseeds are
         # 101, 102 (greedy) then 101, 102 (random) — same pair, no drift.
         assert agent.reseed_calls == [101, 102, 101, 102]
+
+
+# ---------------------------------------------------------------------------
+# Parallel-eval primitives — pure-Python tests (no engine required)
+# ---------------------------------------------------------------------------
+
+
+class TestBuildTasks:
+    def test_tasks_are_opponent_major(self):
+        from yugioh_rl.eval import _build_tasks
+
+        tasks = _build_tasks(["a", "b"], 3)
+        # Opponent A's 3 tasks come first, then opponent B's 3.
+        assert [(t.opp_idx, t.episode_idx) for t in tasks] == [
+            (0, 1), (0, 2), (0, 3), (1, 1), (1, 2), (1, 3),
+        ]
+
+    def test_episodes_are_one_indexed(self):
+        from yugioh_rl.eval import _build_tasks
+
+        tasks = _build_tasks(["x"], 3)
+        assert [t.episode_idx for t in tasks] == [1, 2, 3]
+
+    def test_zero_episodes_yields_empty(self):
+        from yugioh_rl.eval import _build_tasks
+
+        assert _build_tasks(["a", "b"], 0) == []
+
+
+class TestAggregatePartials:
+    def test_groups_by_opp_idx_in_spec_order(self):
+        from yugioh_rl.eval import _PartialResult, _aggregate_partials
+
+        partials = [
+            _PartialResult(opp_idx=1, episode_idx=1, win=True,  agent_deck_idx=0),
+            _PartialResult(opp_idx=0, episode_idx=1, win=False, agent_deck_idx=0),
+            _PartialResult(opp_idx=0, episode_idx=2, win=True,  agent_deck_idx=0),
+        ]
+        results = _aggregate_partials(partials, ["random", "greedy"])
+        assert len(results) == 2
+        # Result 0 = "random" (2 episodes, 1 win). Result 1 = "greedy" (1 ep, 1 win).
+        assert results[0].opponent_label == "random"
+        assert results[0].wins == 1
+        assert results[0].episodes == 2
+        assert results[1].opponent_label == "greedy"
+        assert results[1].wins == 1
+        assert results[1].episodes == 1
+
+    def test_per_deck_order_independent_of_reply_order(self):
+        """Two reply orders, same final per_deck list ordering — sorted by episode_idx.
+
+        Without the sort, parallel runs at different worker counts could
+        produce the same wins/episodes but differently-ordered per_deck
+        lists, breaking byte-equal parity assertions in the integration
+        test.
+        """
+        from yugioh_rl.eval import _PartialResult, _aggregate_partials
+
+        # Build 4 partials for one opponent, in episode_idx order: 1,2,3,4.
+        # Episodes 1, 3 used deck 0 (win, lose); episodes 2, 4 used deck 1 (lose, win).
+        in_order = [
+            _PartialResult(0, 1, True,  0),
+            _PartialResult(0, 2, False, 1),
+            _PartialResult(0, 3, False, 0),
+            _PartialResult(0, 4, True,  1),
+        ]
+        shuffled = [in_order[i] for i in (3, 0, 2, 1)]   # arbitrary worker reply order
+
+        a = _aggregate_partials(in_order, ["x"])
+        b = _aggregate_partials(shuffled, ["x"])
+
+        assert a[0].per_deck_wins == b[0].per_deck_wins == {
+            0: [1.0, 0.0],   # deck 0: episode 1 win, episode 3 loss
+            1: [0.0, 1.0],   # deck 1: episode 2 loss, episode 4 win
+        }
+
+    def test_computes_win_rate(self):
+        from yugioh_rl.eval import _PartialResult, _aggregate_partials
+
+        partials = [
+            _PartialResult(0, 1, True,  0),
+            _PartialResult(0, 2, True,  0),
+            _PartialResult(0, 3, False, 0),
+            _PartialResult(0, 4, True,  0),
+        ]
+        results = _aggregate_partials(partials, ["x"])
+        assert results[0].wins == 3
+        assert results[0].episodes == 4
+        assert results[0].win_rate == 0.75
+
+    def test_empty_partials_for_opp(self):
+        """An opponent with zero partials still appears with episodes=0, win_rate=0."""
+        from yugioh_rl.eval import _aggregate_partials
+
+        results = _aggregate_partials([], ["lonely"])
+        assert len(results) == 1
+        assert results[0].episodes == 0
+        assert results[0].wins == 0
+        assert results[0].win_rate == 0.0
 
 
 # ---------------------------------------------------------------------------

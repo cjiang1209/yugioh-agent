@@ -71,7 +71,7 @@ def run_pairwise(
     """
     from cli.utils import resolve_device
     from yugioh_rl.env_wrapper import parse_deck_pool
-    from yugioh_rl.eval import evaluate, make_eval_agent
+    from yugioh_rl.eval import evaluate
 
     base_seed = seed if seed is not None else _pair_seed(entry_a.entry_id, entry_b.entry_id)
     device = resolve_device(panel.match.device)
@@ -91,17 +91,15 @@ def run_pairwise(
     deck_pool = parse_deck_pool(decks)
     deck_stems = [Path(p).stem for p in decks]
 
-    agent = make_eval_agent(
-        f"model:{entry_a.checkpoint_path}", seed=base_seed, device=device
-    )
     raw = evaluate(
-        agent,
+        agent_spec=f"model:{entry_a.checkpoint_path}",
         deck_pool=deck_pool,
         opponent_specs=[f"model:{entry_b.checkpoint_path}"],
         num_episodes=episodes,
         seed=base_seed,
         agent_player=panel.match.agent_player,
         opponent_device=device,
+        agent_device=device,
     )
     r = raw[0]
     if r.wins > r.episodes:

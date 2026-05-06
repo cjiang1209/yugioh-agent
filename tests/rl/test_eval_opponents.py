@@ -25,7 +25,7 @@ from yugioh_rl.ppo import PPOTrainer
 
 
 # ---------------------------------------------------------------------------
-# Trainer wrapper integration — patch yugioh_rl.ppo.evaluate
+# Trainer wrapper integration — patch yugioh_rl.ppo.evaluate_with_agent
 # ---------------------------------------------------------------------------
 
 def _make_trainer_stub(config: TrainingConfig) -> PPOTrainer:
@@ -60,7 +60,7 @@ class TestEvaluateWrapper:
             captured.update(kwargs)
             return []
 
-        with patch("yugioh_rl.ppo.evaluate", _fake_evaluate):
+        with patch("yugioh_rl.ppo.evaluate_with_agent", _fake_evaluate):
             trainer._evaluate(num_episodes=5, global_step=1000)
 
         assert captured["deck_pool"] is trainer._deck_pool
@@ -88,7 +88,7 @@ class TestEvaluateWrapper:
                 ctor_calls.append((network, device))
 
         with patch("yugioh_rl.ppo.NetworkOpponent", _FakeNetworkOpponent), \
-             patch("yugioh_rl.ppo.evaluate", return_value=[]):
+             patch("yugioh_rl.ppo.evaluate_with_agent", return_value=[]):
             trainer._evaluate(num_episodes=1, global_step=0)
 
         assert len(ctor_calls) == 1
@@ -105,7 +105,7 @@ class TestEvaluateWrapper:
         )
         trainer = _make_trainer_stub(config)
 
-        with patch("yugioh_rl.ppo.evaluate", return_value=[]):
+        with patch("yugioh_rl.ppo.evaluate_with_agent", return_value=[]):
             trainer._evaluate(num_episodes=1, global_step=0)
 
         # network.eval() called before, .train() called after.
@@ -125,7 +125,7 @@ class TestEvaluateWrapper:
         assert trainer._writer is None
 
         results = [EvalResult("greedy", 1, 1, 1.0, {0: [1.0]})]
-        with patch("yugioh_rl.ppo.evaluate", return_value=results), \
+        with patch("yugioh_rl.ppo.evaluate_with_agent", return_value=results), \
              patch("yugioh_rl.ppo.log_results_to_tensorboard") as log_mock:
             trainer._evaluate(num_episodes=1, global_step=0)
 
@@ -143,7 +143,7 @@ class TestEvaluateWrapper:
         trainer._writer = MagicMock()
 
         results = [EvalResult("greedy", 1, 1, 1.0, {0: [1.0]})]
-        with patch("yugioh_rl.ppo.evaluate", return_value=results), \
+        with patch("yugioh_rl.ppo.evaluate_with_agent", return_value=results), \
              patch("yugioh_rl.ppo.log_results_to_tensorboard") as log_mock:
             trainer._evaluate(num_episodes=1, global_step=42)
 

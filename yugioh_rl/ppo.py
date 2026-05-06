@@ -17,7 +17,7 @@ from torch.distributions import Categorical
 from yugioh_env.opponent import NetworkOpponent
 from yugioh_rl.config import TrainingConfig
 from yugioh_rl.env_wrapper import SubprocVecEnv, TrainingEnv, parse_deck_pool
-from yugioh_rl.eval import evaluate, log_results_to_tensorboard
+from yugioh_rl.eval import evaluate_with_agent, log_results_to_tensorboard
 from yugioh_rl.network import YuGiOhNet
 
 logger = logging.getLogger(__name__)
@@ -889,7 +889,7 @@ class PPOTrainer:
             # still wins for eval-side model opponents. Forcing the trainer's
             # GPU here would silently override an explicit env-var opt-out and
             # can OOM on memory-constrained GPUs.
-            results = evaluate(
+            results = evaluate_with_agent(
                 agent,
                 deck_pool=self._deck_pool,
                 opponent_specs=self.config.eval_opponents,

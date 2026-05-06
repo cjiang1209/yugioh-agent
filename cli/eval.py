@@ -131,19 +131,19 @@ def main(argv: list[str] | None = None) -> int:
 
     # Deferred so a bad spec exits before paying torch / yugioh_env import cost.
     from yugioh_rl.env_wrapper import parse_deck_pool
-    from yugioh_rl.eval import evaluate, make_eval_agent
+    from yugioh_rl.eval import evaluate
 
     deck_pool = parse_deck_pool(args.deck_paths)
-    agent = make_eval_agent(args.agent, seed=args.seed, device=device)
 
     results = evaluate(
-        agent,
+        agent_spec=args.agent,
         deck_pool=deck_pool,
         opponent_specs=args.opponents,
         num_episodes=args.episodes,
         seed=args.seed,
         agent_player=args.agent_player,
         opponent_device=device,
+        agent_device=device,
     )
 
     deck_stems = [Path(p).stem for p in args.deck_paths]

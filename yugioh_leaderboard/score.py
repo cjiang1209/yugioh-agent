@@ -46,7 +46,7 @@ def score_checkpoint(
     from cli.utils import resolve_device
     from yugioh_rl.config import TrainingConfig, normalize_legacy_config
     from yugioh_rl.env_wrapper import parse_deck_pool
-    from yugioh_rl.eval import evaluate, make_eval_agent
+    from yugioh_rl.eval import evaluate
 
     checkpoint_path = Path(checkpoint_path)
     eid = entry_id_for(checkpoint_path)
@@ -64,19 +64,17 @@ def score_checkpoint(
     episodes = episodes_override if episodes_override is not None else panel.match.episodes
     base_seed = seed_override if seed_override is not None else stable_seed(eid, "panel")
 
-    agent = make_eval_agent(
-        f"model:{checkpoint_path}", seed=base_seed, device=device
-    )
     panel_specs = [p.spec for p in panel.panel]
     panel_labels = [p.label for p in panel.panel]
     raw_results = evaluate(
-        agent,
+        agent_spec=f"model:{checkpoint_path}",
         deck_pool=deck_pool,
         opponent_specs=panel_specs,
         num_episodes=episodes,
         seed=base_seed,
         agent_player=panel.match.agent_player,
         opponent_device=device,
+        agent_device=device,
     )
 
     deck_stems = [Path(p).stem for p in deck_paths]
