@@ -33,6 +33,7 @@ def score_checkpoint(
     tags: Optional[list[str]] = None,
     existing_entry: Optional[Entry] = None,
     precomputed_hash: Optional[str] = None,
+    workers: int = 1,
 ) -> Entry:
     """Score ``checkpoint_path`` against ``panel`` and return an Entry.
 
@@ -40,6 +41,10 @@ def score_checkpoint(
     preserved (only ``panel_results`` and timestamps update). The CLI may
     pass ``precomputed_hash`` so we don't re-stream a multi-hundred-MB file
     that was already hashed for the dedup short-circuit.
+
+    ``workers`` controls eval parallelism; defaults to sequential (1).
+    Higher values fan out across processes; results are byte-equal across
+    worker counts (deterministic aggregation).
     """
     import torch
 
@@ -75,6 +80,7 @@ def score_checkpoint(
         agent_player=panel.match.agent_player,
         opponent_device=device,
         agent_device=device,
+        workers=workers,
     )
 
     deck_stems = [Path(p).stem for p in deck_paths]

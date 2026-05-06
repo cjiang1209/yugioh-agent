@@ -111,3 +111,68 @@ def test_pairwise_mirrors_symmetrically(tmp_path):
     assert a_rec.vs_entry_id == "b_run_latest"
     assert b_rec.vs_entry_id == "a_run_latest"
     assert a_rec.wins + b_rec.wins == a_rec.episodes
+
+
+@pytest.mark.skipif(
+    not _engine_available(),
+    reason="libocgcore or assets/cards.cdb missing",
+)
+def test_pairwise_parity_across_worker_counts(tmp_path):
+    """Pairwise has a single opponent, so all parallelism is episode-shard.
+    workers=1 / 2 / 4 against the same checkpoint pair must all produce
+    byte-equal pairwise records (wins / episodes / per_deck / win_rate)
+    — both for the agent-side record and its mirror."""
+    pytest.importorskip("torch")
+
+    from tests.rl.test_resume import _make_checkpoint
+    from yugioh_rl.config import TrainingConfig
+
+    from yugioh_leaderboard.entry import Entry
+    from yugioh_leaderboard.features import extract_features
+    from yugioh_leaderboard.pairwise import run_pairwise
+    from yugioh_leaderboard.panel import (
+        PanelConfig,
+        PanelEntry,
+        PanelMatchOptions,
+    )
+
+    cfg = TrainingConfig(num_envs=1, deck_paths=["assets/decks/blue_eyes.ydk"], seed=42)
+    a_dir = tmp_path / "a_run"; a_dir.mkdir()
+    b_dir = tmp_path / "b_run"; b_dir.mkdir()
+    a_ckpt = a_dir / "checkpoint_latest.pt"
+    b_ckpt = b_dir / "checkpoint_latest.pt"
+    _make_checkpoint(str(a_ckpt), config=cfg)
+    _make_checkpoint(str(b_ckpt), config=cfg)
+
+    # episodes=4 + workers=4 yields 1 episode per shard — strongest
+    # shard-granularity check on the single-opponent codepath.
+    panel = PanelConfig(
+        schema_version=1, panel_version=1, panel=[PanelEntry("greedy", "greedy")],
+        match=PanelMatchOptions(episodes=4, agent_player="random", device="cpu"),
+        history=[],
+    )
+
+    def _entry(ckpt: Path, eid: str) -> Entry:
+        return Entry(
+            schema_version=1, entry_id=eid, checkpoint_path=str(ckpt),
+            checkpoint_hash="sha256:placeholder", added_at="t",
+            panel_version=1, features=extract_features(cfg),
+            tags=[], panel_results=[], pairwise_results=[],
+        )
+
+    runs = {}
+    for k in (1, 2, 4):
+        a_out, b_out = run_pairwise(
+            _entry(a_ckpt, "a"), _entry(b_ckpt, "b"),
+            panel, episodes=4, workers=k,
+        )
+        runs[k] = (a_out.pairwise_results[0], b_out.pairwise_results[0])
+
+    base_a, base_b = runs[1]
+    for k in (2, 4):
+        rec_a, rec_b = runs[k]
+        for base, got in [(base_a, rec_a), (base_b, rec_b)]:
+            assert got.episodes == base.episodes, f"workers={k} episodes drift"
+            assert got.wins == base.wins, f"workers={k} wins drift"
+            assert got.win_rate == base.win_rate, f"workers={k} win_rate drift"
+            assert got.per_deck == base.per_deck, f"workers={k} per_deck drift"

@@ -62,12 +62,16 @@ def run_pairwise(
     episodes: int = 100,
     seed: Optional[int] = None,
     decks_override: Optional[list[str]] = None,
+    workers: int = 1,
 ) -> tuple[Entry, Entry]:
     """Run one pairwise match and return updated copies of (entry_a, entry_b).
 
     Decks default to the intersection of both entries' deck pools (or
     ``decks_override`` if passed). Seed defaults to a stable hash of the
     two entry ids.
+
+    ``workers`` controls eval parallelism; defaults to sequential (1).
+    Pairwise has a single opponent, so all parallelism is episode-shard.
     """
     from cli.utils import resolve_device
     from yugioh_rl.env_wrapper import parse_deck_pool
@@ -100,6 +104,7 @@ def run_pairwise(
         agent_player=panel.match.agent_player,
         opponent_device=device,
         agent_device=device,
+        workers=workers,
     )
     r = raw[0]
     if r.wins > r.episodes:
