@@ -66,6 +66,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Device for both agent-side and env-side model opponents (default: cpu).",
     )
     parser.add_argument(
+        "--workers", type=int, default=1,
+        help=(
+            "Number of worker processes for parallel evaluation (default: 1, "
+            "sequential). Each worker re-instantiates the agent locally; "
+            "results are byte-equal across worker counts."
+        ),
+    )
+    parser.add_argument(
         "--json", type=str, default="",
         help="Optional path to write results as JSON.",
     )
@@ -79,6 +87,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def _validate(args: argparse.Namespace) -> None:
     if args.episodes < 0:
         fatal(f"--episodes: must be >= 0, got {args.episodes}")
+    if args.workers < 1:
+        fatal(f"--workers: must be >= 1, got {args.workers}")
     validate_deck_paths(args.deck_paths)
     validate_opponent_spec(args.agent, "--agent")
     for spec in args.opponents:
@@ -144,6 +154,7 @@ def main(argv: list[str] | None = None) -> int:
         agent_player=args.agent_player,
         opponent_device=device,
         agent_device=device,
+        workers=args.workers,
     )
 
     deck_stems = [Path(p).stem for p in args.deck_paths]

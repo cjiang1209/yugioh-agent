@@ -20,8 +20,13 @@ from yugioh_rl.eval import EvalResult
 
 @pytest.fixture
 def stub_eval_pipeline():
-    """Patch parse_deck_pool, make_eval_agent, evaluate. Return a captured-call
-    dict for assertions and let the test customize evaluate's return value."""
+    """Patch parse_deck_pool and evaluate. Return a captured-call dict for
+    assertions and let the test customize evaluate's return value.
+
+    Post-split, ``evaluate(agent_spec=...)`` builds the agent internally
+    via ``make_eval_agent`` for the sequential path, or workers do for the
+    parallel path — the CLI no longer touches make_eval_agent directly.
+    """
     captured: dict = {"results": [
         EvalResult("greedy", episodes=2, wins=1, win_rate=0.5, per_deck_wins={0: [1.0, 0.0]}),
     ]}
@@ -30,19 +35,11 @@ def stub_eval_pipeline():
         captured["deck_paths"] = list(paths)
         return [{"main": list(range(40)), "extra": []} for _ in paths]
 
-    def fake_make_eval_agent(spec, *, seed=0, device="cpu", network=None):
-        captured["agent_spec"] = spec
-        captured["agent_seed"] = seed
-        captured["agent_device"] = device
-        return object()
-
-    def fake_evaluate(agent, **kwargs):
-        captured["evaluate_agent"] = agent
+    def fake_evaluate(**kwargs):
         captured.update(kwargs)
         return captured["results"]
 
     with patch("yugioh_rl.env_wrapper.parse_deck_pool", fake_parse_deck_pool), \
-         patch("yugioh_rl.eval.make_eval_agent", fake_make_eval_agent), \
          patch("yugioh_rl.eval.evaluate", fake_evaluate):
         yield captured
 
@@ -63,7 +60,6 @@ def test_forwards_args_to_evaluate(stub_eval_pipeline, deck_path_str):
 
     cap = stub_eval_pipeline
     assert cap["agent_spec"] == "greedy"
-    assert cap["agent_seed"] == 7
     assert cap["opponent_specs"] == ["random", "greedy"]
     assert cap["num_episodes"] == 5
     assert cap["seed"] == 7
@@ -164,3 +160,29 @@ def test_console_table_includes_per_deck(stub_eval_pipeline, deck_path_str, caps
     out = capsys.readouterr().out
     assert "vs greedy: 1/2 (50.0%)" in out
     assert "deck starter:" in out
+
+
+# ---------------------------------------------------------------------------
+# --workers plumbing
+# ---------------------------------------------------------------------------
+
+def test_workers_forwarded_when_set(stub_eval_pipeline, deck_path_str):
+    cli_eval.main([
+        "--agent", "greedy",
+        "--opponents", "greedy",
+        "--deck-paths", deck_path_str,
+        "--episodes", "1",
+        "--workers", "4",
+    ])
+    assert stub_eval_pipeline["workers"] == 4
+
+
+def test_workers_zero_rejected(deck_path_str):
+    with pytest.raises(SystemExit):
+        cli_eval.main([
+            "--agent", "greedy",
+            "--opponents", "greedy",
+            "--deck-paths", deck_path_str,
+            "--episodes", "1",
+            "--workers", "0",
+        ])

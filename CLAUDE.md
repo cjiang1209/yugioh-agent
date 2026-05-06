@@ -256,9 +256,13 @@ scripts/eval.sh --agent model:checkpoints/v1/latest.pt \
     --deck-paths assets/decks/*.ydk --json results.json
 scripts/eval.sh --agent greedy --opponents random --episodes 50 \
     --deck-paths assets/decks/starter.ydk --device cuda  # routes both sides onto GPU
+scripts/eval.sh --agent model:checkpoints/v1/latest.pt --opponents greedy random \
+    --deck-paths assets/decks/*.ydk --episodes 500 --workers 4   # parallel opponents
 ```
 
 The agent is reseeded from `--seed` at the start of each opponent's match so cross-opponent win rates compare against an identical seeded trajectory. `--device` threads to **both** the agent-side and the env-side `model:` opponents (overriding `YUGIOH_OPPONENT_DEVICE` for the eval session). Both `cli/eval.py` and `cli/train.py` share validators in `cli/utils.py`, so spec rejection (empty `model:`, unknown kind, missing checkpoint) produces identical error strings.
+
+`--workers N` (default 1, sequential) fans out evaluation across N worker processes. Each worker re-instantiates the agent locally from its spec, caches one `TrainingEnv` per opponent, and plays one episode per pipe message; results aggregated deterministically (sorted by `episode_idx` per opponent), so `--workers 1`, `--workers 2`, `--workers 4` produce **byte-equal** `EvalResult`s on the same checkpoint. Workers must re-load `model:` checkpoints, so the speedup is best at `episodes ≫ workers`; a 100-episode panel against 2 model opponents runs ~2-4× faster at `--workers 4` on CPU.
 
 `PPOTrainer._evaluate` is a thin wrapper around `yugioh_rl.eval.evaluate(...)`; TensorBoard scalar keys (`eval/win_rate_vs_{label}`, `eval/win_rate_vs_{label}_deck_{deck_name}`) and console log format are preserved byte-identical to pre-refactor output.
 
@@ -327,11 +331,13 @@ scripts/leaderboard.sh add <checkpoint.pt>             # score against panel, wr
 scripts/leaderboard.sh add <ckpt> --tags v2-shaper      # attach user-supplied tag(s)
 scripts/leaderboard.sh add <ckpt> --clear-tags          # wipe tags on re-score
 scripts/leaderboard.sh add <ckpt> --force               # re-score even with matching hash
+scripts/leaderboard.sh add <ckpt> --workers 4           # parallel panel scoring (deterministic)
 scripts/leaderboard.sh compare --by rnn_type            # group + paired-bootstrap CI table
 scripts/leaderboard.sh compare --by rnn_type --filter reward_shaping=true   # filter then group
 scripts/leaderboard.sh compare --by-tag v1-shaper v2-shaper                  # group by user tags
 scripts/leaderboard.sh compare --by rnn_type --json     # machine-readable output
-scripts/leaderboard.sh pairwise <entry_a_id> <entry_b_id>   # head-to-head match
+scripts/leaderboard.sh pairwise <entry_a_id> <entry_b_id>          # head-to-head match
+scripts/leaderboard.sh pairwise <a> <b> --workers 4               # parallel head-to-head
 scripts/leaderboard.sh refresh-index                    # regenerate leaderboard/index.md
 ```
 
@@ -354,6 +360,7 @@ Compare output reports paired-bootstrap 95% CI per group; CI excluding 0 is bold
 - **Pairwise re-runs are commutative.** `pairwise A B` and `pairwise B A` produce the same seed and overwrite the prior record (matched by `vs_entry_id`).
 - **Pairwise needs deck overlap.** Default decks are the intersection of both entries' deck pools; pass `--decks` to override when entries share none (otherwise `NoSharedDecksError`).
 - **Pairwise assumes no ties.** The mirror computes `b_wins = episodes - r.wins`, so ties would silently produce negative B-wins; the engine never returns ties in practice. `run_pairwise` only asserts the weaker `wins <= episodes` invariant as a sanity check.
+- **`--workers N` is deterministic.** Both `add` and `pairwise` accept `--workers N` (default 1). Workers fan out across `(opponent, episode_idx)` tuples; results are aggregated sorted by `episode_idx` per opponent so `--workers 1`, `2`, `4` produce byte-equal `panel_results` / `pairwise_results` on the same checkpoint. Each worker re-loads `model:` checkpoints, so memory scales linearly with N — sizing rule is `N ≤ available_RAM / per_model_size`.
 
 See "Test Skip Behavior" above for the per-file engine/torch requirements.
 

@@ -45,6 +45,9 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Override the deck pool from the checkpoint's training config.")
     add_p.add_argument("--force", action="store_true",
                        help="Re-score and overwrite even when an entry with matching hash exists.")
+    add_p.add_argument("--workers", type=int, default=1,
+                       help="Worker processes for parallel panel scoring (default: 1, sequential). "
+                            "Results are byte-equal across worker counts.")
 
     cmp = sub.add_parser("compare", help="Compare entries grouped by a feature field.")
     cmp.add_argument("--by", type=str, default=None,
@@ -69,6 +72,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="Override the deterministic per-pair seed.")
     pw.add_argument("--decks", nargs="+", default=None,
                     help="Override the deck pool (default: intersection of both entries').")
+    pw.add_argument("--workers", type=int, default=1,
+                    help="Worker processes for parallel evaluation (default: 1, sequential). "
+                         "Single opponent → all parallelism is episode-shard.")
 
     sub.add_parser("refresh-index", help="Regenerate leaderboard/index.md from entry files.")
 
@@ -79,6 +85,8 @@ def _validate_subcommand_args(ns: argparse.Namespace) -> None:
     if ns.command == "add":
         if ns.episodes is not None and ns.episodes < 1:
             fatal(f"--episodes: must be >= 1, got {ns.episodes}")
+        if ns.workers < 1:
+            fatal(f"--workers: must be >= 1, got {ns.workers}")
         if not Path(ns.checkpoint_path).exists():
             fatal(f"checkpoint not found: {ns.checkpoint_path}")
         if ns.decks is not None:
@@ -104,6 +112,8 @@ def _validate_subcommand_args(ns: argparse.Namespace) -> None:
     if ns.command == "pairwise":
         if ns.episodes < 1:
             fatal(f"--episodes: must be >= 1, got {ns.episodes}")
+        if ns.workers < 1:
+            fatal(f"--workers: must be >= 1, got {ns.workers}")
         if ns.decks is not None:
             validate_deck_paths(ns.decks, "--decks")
 
@@ -176,6 +186,7 @@ def _cmd_add(ns: argparse.Namespace) -> int:
         tags=tags,
         existing_entry=existing,
         precomputed_hash=chash,
+        workers=ns.workers,
     )
     write_entry(entry_path, entry)
     _refresh_index_file(panel=panel)
@@ -267,6 +278,7 @@ def _cmd_pairwise(ns: argparse.Namespace) -> int:
         new_a, new_b = run_pairwise(
             entry_a, entry_b, panel,
             episodes=ns.episodes, seed=ns.seed, decks_override=ns.decks,
+            workers=ns.workers,
         )
     except NoSharedDecksError as e:
         fatal(str(e))
