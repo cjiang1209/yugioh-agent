@@ -786,3 +786,56 @@ def test_announce_number_response_is_index_not_value():
     assert mapper.action_to_response(0) == struct.pack("<i", 0)
     assert mapper.action_to_response(1) == struct.pack("<i", 1)
     assert mapper.action_to_response(2) == struct.pack("<i", 2)
+
+
+def test_announce_attrib_multi_step_two_picks_produces_or_mask():
+    """Multi-bit AnnounceAttribute (count=2): step-by-step picks accumulate
+    via _selected; the second pick's response packs the OR'd mask."""
+    import struct
+    from yugioh_core.constants import (
+        ATTRIBUTE_DARK, ATTRIBUTE_LIGHT, ATTRIBUTE_WIND,
+    )
+    mapper = ActionMapper()
+    msg = {
+        "msg_type": MSG_ANNOUNCE_ATTRIB,
+        "player": 0,
+        "count": 2,
+        "available": ATTRIBUTE_DARK | ATTRIBUTE_LIGHT | ATTRIBUTE_WIND,
+    }
+
+    # Step 1: 3 actions (one per available bit), all intermediate (no build_response)
+    mapper.update(msg)
+    assert mapper.num_actions == 3
+    for i in range(3):
+        assert mapper.action_to_response(i) is None
+
+    # Pick action 0 — its index is the bit position of WIND.
+    wind_bit = mapper.get_action_index(0)
+    assert (1 << wind_bit) == ATTRIBUTE_WIND  # action.index encodes the bit position
+
+    # Step 2: env injects _selected=[<wind_bit>]
+    mapper.update({**msg, "_selected": [wind_bit]})
+    # Now 2 actions remain (LIGHT and DARK), both terminal.
+    assert mapper.num_actions == 2
+    dark_bit = ATTRIBUTE_DARK.bit_length() - 1  # ATTRIBUTE_DARK is a single bit
+    dark_action_pos = next(i for i, a in enumerate(mapper.actions) if a["index"] == dark_bit)
+    response = mapper.action_to_response(dark_action_pos)
+    # Engine reads uint32 mask: ATTRIBUTE_WIND | ATTRIBUTE_DARK
+    assert response == struct.pack("<I", ATTRIBUTE_WIND | ATTRIBUTE_DARK)
+
+
+def test_announce_attrib_count_one_emits_terminal_picks():
+    """count=1 (the common case): each available bit becomes a terminal action,
+    not an intermediate pick."""
+    import struct
+    from yugioh_core.constants import ATTRIBUTE_DARK
+    mapper = ActionMapper()
+    mapper.update({
+        "msg_type": MSG_ANNOUNCE_ATTRIB,
+        "player": 0,
+        "count": 1,
+        "available": ATTRIBUTE_DARK,
+    })
+    assert mapper.num_actions == 1
+    response = mapper.action_to_response(0)
+    assert response == struct.pack("<I", ATTRIBUTE_DARK)

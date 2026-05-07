@@ -236,53 +236,69 @@ def _extract_option_actions(msg: dict) -> list[dict]:
 def _extract_multi_step_actions(
     msg: dict,
     *,
+    items: list[dict],
+    item_to_action: Callable[[int, dict], dict],
+    build_response: Callable[[list[int]], bytes],
     can_finish: Callable[[list[dict], list[int]], bool],
     completes: Callable[[list[dict], list[int]], bool],
 ) -> list[dict]:
-    """Shared helper for multi-step card selection.
+    """Multi-step pick from a uniform item list.
 
-    The caller drives multi-step selection by injecting ``_selected``
-    (list of already-chosen card indices) into the message before each
-    ``update`` call.  On each step this helper presents the remaining
-    cards; picks where ``completes`` returns True get a real
-    ``build_response``, intermediate picks get ``None``.  A "finish"
-    action (category=1) appears when ``can_finish`` returns True.
+    The caller supplies:
+      - ``items``: pickable units (cards, bit-items, etc.)
+      - ``item_to_action(i, item) -> action_dict``: how to render one item
+        as an action dict. Must set the ``index`` field (see contract below).
+        The helper sets ``build_response`` and ``num_selected`` on the
+        returned dict; the caller should not pre-populate those.
+      - ``build_response(selected_ids) -> bytes``: turn the cumulative
+        selection into wire bytes.
+      - ``can_finish`` / ``completes``: same semantics as before.
 
-    Args:
-        can_finish: ``(cards, selected) -> bool`` — True when a "finish"
-            action should be offered (agent can stop early).
-        completes: ``(cards, new_selected) -> bool`` — True when this
-            pick should produce a real ``build_response``.
+    The ``_selected`` accumulation contract:
+        ``msg["_selected"]`` is a list of ``action["index"]`` values from
+        prior picks — NOT loop positions, NOT item-list slots.  Two
+        consequences:
+
+        1. The helper filters out already-picked items by matching against
+           ``action["index"]``, not the enumeration counter.
+        2. The ``build_response`` callback receives the same identifiers
+           (the cumulative ``action["index"]`` list) and must convert
+           them to wire bytes itself.
+
+    Each caller decides what ``index`` *means* for its prompt, and the
+    response builder reverses that meaning.  For card-selection callers,
+    ``index = i = card slot`` (so the contract change is a no-op).  For
+    bit-mask callers, ``index = bit number``.
+
+    Assumes engine inputs are valid (e.g. ``count <= len(items)``); the
+    helper does not detect or recover from a ``completes()`` that never
+    fires.
     """
-    cards = msg.get("cards", [])
     selected: list[int] = msg.get("_selected", [])
     selected_set = set(selected)
-    if not cards:
+    if not items:
         return []
 
     actions: list[dict] = []
-    for i, card in enumerate(cards):
-        if i in selected_set:
+    for i, item in enumerate(items):
+        action = item_to_action(i, item)
+        if action["index"] in selected_set:
             continue
-        new_selected = selected + [i]
-        done = completes(cards, new_selected)
-        actions.append({
-            "category": 0, "index": i, "code": card.get("code", 0),
-            "controller": card.get("controller", 0), "location": card.get("location", 0), "sequence": card.get("sequence", 0),
-            "num_selected": len(new_selected),
-            "build_response": (
-                (lambda idxs=new_selected: rb.build_select_card_response(idxs))
-                if done else None
-            ),
-        })
+        new_selected = selected + [action["index"]]
+        action["num_selected"] = len(new_selected)
+        if completes(items, new_selected):
+            action["build_response"] = (lambda ids=new_selected: build_response(ids))
+        else:
+            action["build_response"] = None
+        actions.append(action)
         if len(actions) >= MAX_ACTIONS:
             return actions
 
-    if can_finish(cards, selected):
+    if can_finish(items, selected):
         actions.append({
             "category": 1, "index": 0, "code": 0, "location": 0, "sequence": 0,
             "num_selected": len(selected),
-            "build_response": lambda idxs=list(selected): rb.build_select_card_response(idxs),
+            "build_response": lambda ids=list(selected): build_response(ids),
         })
 
     return actions
@@ -294,16 +310,32 @@ def _extract_card_actions(msg: dict) -> list[dict]:
     Completes when ``len(selected) >= max``.  Finish offered when
     ``min < max`` and ``len(selected) >= min``.
     """
+    cards = msg.get("cards", [])
     min_sel = msg.get("min", 1)
     max_sel = msg.get("max", min_sel)
 
-    def _completes(cards: list[dict], selected: list[int]) -> bool:
+    def _to_action(i: int, card: dict) -> dict:
+        return {
+            "category": 0, "index": i, "code": card.get("code", 0),
+            "controller": card.get("controller", 0),
+            "location": card.get("location", 0),
+            "sequence": card.get("sequence", 0),
+        }
+
+    def _completes(items: list[dict], selected: list[int]) -> bool:
         return len(selected) >= max_sel
 
-    def _can_finish(cards: list[dict], selected: list[int]) -> bool:
+    def _can_finish(items: list[dict], selected: list[int]) -> bool:
         return min_sel < max_sel and len(selected) >= min_sel
 
-    return _extract_multi_step_actions(msg, can_finish=_can_finish, completes=_completes)
+    return _extract_multi_step_actions(
+        msg,
+        items=cards,
+        item_to_action=_to_action,
+        build_response=rb.build_select_card_response,
+        can_finish=_can_finish,
+        completes=_completes,
+    )
 
 
 def _extract_chain_actions(msg: dict) -> list[dict]:
@@ -391,18 +423,34 @@ def _extract_tribute_actions(msg: dict) -> list[dict]:
     ``sum(release_param) >= min``, ``completes`` when release is met
     AND card count reaches ``max``.
     """
+    cards = msg.get("cards", [])
     min_rel = msg.get("min", 1)
     max_cards = msg.get("max", min_rel)
 
-    def _completes(cards: list[dict], selected: list[int]) -> bool:
-        total = sum(cards[i].get("release_param", 1) for i in selected)
+    def _to_action(i: int, card: dict) -> dict:
+        return {
+            "category": 0, "index": i, "code": card.get("code", 0),
+            "controller": card.get("controller", 0),
+            "location": card.get("location", 0),
+            "sequence": card.get("sequence", 0),
+        }
+
+    def _completes(items: list[dict], selected: list[int]) -> bool:
+        total = sum(items[i].get("release_param", 1) for i in selected)
         return total >= min_rel and len(selected) >= max_cards
 
-    def _can_finish(cards: list[dict], selected: list[int]) -> bool:
-        total = sum(cards[i].get("release_param", 1) for i in selected)
+    def _can_finish(items: list[dict], selected: list[int]) -> bool:
+        total = sum(items[i].get("release_param", 1) for i in selected)
         return total >= min_rel
 
-    return _extract_multi_step_actions(msg, can_finish=_can_finish, completes=_completes)
+    return _extract_multi_step_actions(
+        msg,
+        items=cards,
+        item_to_action=_to_action,
+        build_response=rb.build_select_card_response,
+        can_finish=_can_finish,
+        completes=_completes,
+    )
 
 
 def _extract_sum_actions(msg: dict) -> list[dict]:
@@ -446,42 +494,72 @@ def _extract_sort_actions(msg: dict) -> list[dict]:
     ]
 
 
+def _pack_bit_mask_response(
+    selected_bits: list[int],
+    builder: Callable[[int], bytes],
+) -> bytes:
+    """OR a list of bit positions into a mask and pass it to the wire builder.
+
+    Shared by the `Announce*` extractors that take a `count` of bits to
+    select; the helper accumulates picks via `_selected` and the per-prompt
+    response builder packs the final mask into the engine's expected width.
+    """
+    mask = 0
+    for bit in selected_bits:
+        mask |= (1 << bit)
+    return builder(mask)
+
+
 def _extract_announce_race_actions(msg: dict) -> list[dict]:
     available = msg.get("available", 0)
-    actions = []
-    for bit in range(64):
-        race = 1 << bit
-        if available & race:
-            actions.append({
-                "category": 0, "index": bit, "code": 0, "location": 0, "sequence": 0,
-                "meta": {
-                    "kind": "race",
-                    "label": RACE_NAMES.get(race, f"Race(0x{race:x})"),
-                    "raw_value": race,
-                },
-                "build_response": lambda r=race: rb.build_announce_race_response(r),
-            })
-            if len(actions) >= MAX_ACTIONS:
-                break
-    return actions
+    count = msg.get("count", 1)
+    items = [{"bit": b, "mask": 1 << b} for b in range(64) if available & (1 << b)]
+
+    def _to_action(i: int, item: dict) -> dict:
+        return {
+            "category": 0, "index": item["bit"], "code": 0,
+            "location": 0, "sequence": 0,
+            "meta": {
+                "kind": "race",
+                "label": RACE_NAMES.get(item["mask"], f"Race(0x{item['mask']:x})"),
+                "raw_value": item["mask"],
+            },
+        }
+
+    return _extract_multi_step_actions(
+        msg,
+        items=items,
+        item_to_action=_to_action,
+        build_response=lambda bits: _pack_bit_mask_response(bits, rb.build_announce_race_response),
+        completes=lambda items, sel: len(sel) >= count,
+        can_finish=lambda items, sel: False,
+    )
 
 
 def _extract_announce_attrib_actions(msg: dict) -> list[dict]:
     available = msg.get("available", 0)
-    actions = []
-    for bit in range(8):
-        attrib = 1 << bit
-        if available & attrib:
-            actions.append({
-                "category": 0, "index": bit, "code": 0, "location": 0, "sequence": 0,
-                "meta": {
-                    "kind": "attribute",
-                    "label": ATTRIBUTE_NAMES.get(attrib, f"Attr(0x{attrib:x})"),
-                    "raw_value": attrib,
-                },
-                "build_response": lambda a=attrib: rb.build_announce_attrib_response(a),
-            })
-    return actions
+    count = msg.get("count", 1)
+    items = [{"bit": b, "mask": 1 << b} for b in range(8) if available & (1 << b)]
+
+    def _to_action(i: int, item: dict) -> dict:
+        return {
+            "category": 0, "index": item["bit"], "code": 0,
+            "location": 0, "sequence": 0,
+            "meta": {
+                "kind": "attribute",
+                "label": ATTRIBUTE_NAMES.get(item["mask"], f"Attr(0x{item['mask']:x})"),
+                "raw_value": item["mask"],
+            },
+        }
+
+    return _extract_multi_step_actions(
+        msg,
+        items=items,
+        item_to_action=_to_action,
+        build_response=lambda bits: _pack_bit_mask_response(bits, rb.build_announce_attrib_response),
+        completes=lambda items, sel: len(sel) >= count,
+        can_finish=lambda items, sel: False,
+    )
 
 
 def _extract_announce_number_actions(msg: dict) -> list[dict]:
