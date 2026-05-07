@@ -9,6 +9,10 @@ from yugioh_env.action_space import ActionMapper, MAX_ACTIONS, ACTION_FEATURES
 from yugioh_core.constants import (
     LOCATION_MZONE,
     LOCATION_SZONE,
+    MSG_ANNOUNCE_ATTRIB,
+    MSG_ANNOUNCE_NUMBER,
+    MSG_ANNOUNCE_RACE,
+    MSG_ROCK_PAPER_SCISSORS,
     MSG_SELECT_CARD,
     MSG_SELECT_COUNTER,
     MSG_SELECT_PLACE,
@@ -636,3 +640,134 @@ def test_tribute_num_selected_feature():
     # Remaining card actions have num_selected = 2 (will be 2 after pick)
     for i in range(2):
         assert features2[i][9] == 2
+
+
+# --- Meta field boundary-case tests (Tasks 3-9) ---
+
+def test_announce_race_meta_unknown_race_falls_back_to_hex():
+    """An unmapped race bit must produce a hex placeholder rather than crash or
+    silently drop the action. Ygopro-core may add new races over time."""
+    from yugioh_core.constants import MSG_ANNOUNCE_RACE
+    mapper = ActionMapper()
+    # bit 50 — well outside any current RACE_NAMES entry
+    mapper.update({"msg_type": MSG_ANNOUNCE_RACE, "player": 0, "available": 1 << 50})
+    assert mapper.num_actions == 1
+    assert mapper.actions[0]["meta"]["label"] == f"Race(0x{1 << 50:x})"
+
+
+def test_chain_pass_action_has_no_meta():
+    """The pass action (category=1) must not carry meta — the describer falls
+    through to the legacy 'Pass (no chain)' label when meta is absent."""
+    from yugioh_core.constants import MSG_SELECT_CHAIN
+    mapper = ActionMapper()
+    mapper.update({
+        "msg_type": MSG_SELECT_CHAIN,
+        "player": 0,
+        "forced": 0,
+        "chains": [
+            {"code": 12345, "controller": 0, "location": 0x10, "sequence": 0,
+             "position": 0, "desc": 0xabcdef, "client_mode": 0},
+        ],
+    })
+    assert mapper.num_actions == 2  # 1 chain + 1 pass
+    assert mapper.actions[0]["meta"]["kind"] == "chain_link"
+    assert mapper.actions[1].get("meta") is None
+    assert mapper.actions[1]["category"] == 1
+
+
+def test_counter_skips_cards_with_zero_counters():
+    """Cards with counter_count=0 must NOT produce actions — they have nothing to remove.
+    Existing extractor already filters these; this test guards against future regression."""
+    from yugioh_core.constants import MSG_SELECT_COUNTER
+    mapper = ActionMapper()
+    mapper.update({
+        "msg_type": MSG_SELECT_COUNTER,
+        "player": 0,
+        "counter_type": 0x1,
+        "count": 2,
+        "cards": [
+            {"code": 111, "controller": 0, "location": 0x4, "sequence": 0, "counter_count": 3},
+            {"code": 222, "controller": 0, "location": 0x4, "sequence": 1, "counter_count": 0},
+            {"code": 333, "controller": 0, "location": 0x4, "sequence": 2, "counter_count": 5},
+        ],
+    })
+    assert mapper.num_actions == 2
+    assert {a["code"] for a in mapper.actions} == {111, 333}
+
+
+@pytest.mark.parametrize("setup", [
+    # (msg_dict, kind_string, has_card_code_flag)
+    (
+        {"msg_type": MSG_ANNOUNCE_NUMBER, "player": 0, "numbers": [3]},
+        "number", False,
+    ),
+    (
+        {"msg_type": MSG_ANNOUNCE_RACE, "player": 0, "available": 0x1},
+        "race", False,
+    ),
+    (
+        {"msg_type": MSG_ANNOUNCE_ATTRIB, "player": 0, "available": 0x1},
+        "attribute", False,
+    ),
+    (
+        {"msg_type": MSG_ROCK_PAPER_SCISSORS, "player": 0},
+        "rps", False,
+    ),
+    (
+        {"msg_type": MSG_SELECT_OPTION, "player": 0, "options": [0xdead]},
+        "option", False,
+    ),
+    (
+        {"msg_type": MSG_SELECT_CHAIN, "player": 0, "forced": 1,
+         "chains": [{"code": 555, "controller": 0, "location": 0x10,
+                     "sequence": 0, "position": 0, "desc": 0x1, "client_mode": 0}]},
+        "chain_link", True,
+    ),
+    (
+        {"msg_type": MSG_SELECT_COUNTER, "player": 0, "counter_type": 0x1, "count": 1,
+         "cards": [{"code": 666, "controller": 0, "location": 0x4,
+                    "sequence": 0, "counter_count": 1}]},
+        "counter", True,
+    ),
+])
+def test_action_meta_card_code_consistency(setup):
+    """§6 invariant: for each kind, action_feats[2:6] code matches meta.extras['card_code']
+    iff the kind is card-bearing. This catches drift between the feature vector and the
+    meta dict — the two sources of truth for downstream consumers."""
+    msg, expected_kind, has_card_code = setup
+    mapper = ActionMapper()
+    mapper.update(msg)
+    feats = mapper.get_action_features()
+    assert mapper.num_actions >= 1, f"Expected at least one action for {expected_kind}"
+
+    for i, action in enumerate(mapper.actions):
+        meta = action.get("meta")
+        if meta is None:
+            continue  # pass actions etc.
+        assert meta["kind"] == expected_kind
+        feats_row = list(feats[i])
+        # Decode card code from bytes [2:6] as uint32 (little-endian)
+        decoded_code = (int(feats_row[2])
+                        | (int(feats_row[3]) << 8)
+                        | (int(feats_row[4]) << 16)
+                        | (int(feats_row[5]) << 24))
+        if has_card_code:
+            assert decoded_code != 0, (
+                f"{expected_kind} action #{i}: feats code is 0 but kind references a card"
+            )
+            assert "card_code" in meta.get("extras", {}), (
+                f"{expected_kind} action #{i}: meta.extras missing card_code"
+            )
+            assert decoded_code == meta["extras"]["card_code"], (
+                f"{expected_kind} action #{i}: feats code {decoded_code} != "
+                f"meta.extras.card_code {meta['extras']['card_code']}"
+            )
+        else:
+            assert decoded_code == 0, (
+                f"{expected_kind} action #{i}: feats code is non-zero "
+                f"but this kind has no associated card"
+            )
+            assert "card_code" not in meta.get("extras", {}), (
+                f"{expected_kind} action #{i}: meta.extras must not have card_code "
+                f"for card-less kinds"
+            )

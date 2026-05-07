@@ -227,8 +227,9 @@ def _extract_option_actions(msg: dict) -> list[dict]:
     options = msg.get("options", [])
     return [
         {"category": 0, "index": i, "code": 0, "location": 0, "sequence": 0,
+         "meta": {"kind": "option", "label": f"effect 0x{desc:x}", "raw_value": int(desc)},
          "build_response": lambda idx=i: rb.build_select_option_response(idx)}
-        for i, _ in enumerate(options)
+        for i, desc in enumerate(options)
     ]
 
 
@@ -310,9 +311,18 @@ def _extract_chain_actions(msg: dict) -> list[dict]:
     forced = msg.get("forced", 0)
     actions = []
     for i, chain in enumerate(chains):
+        code = chain.get("code", 0)
         actions.append({
-            "category": 0, "index": i, "code": chain.get("code", 0),
-            "controller": chain.get("controller", 0), "location": chain.get("location", 0), "sequence": chain.get("sequence", 0),
+            "category": 0, "index": i, "code": code,
+            "controller": chain.get("controller", 0),
+            "location": chain.get("location", 0),
+            "sequence": chain.get("sequence", 0),
+            "meta": {
+                "kind": "chain_link",
+                "label": f"chain card #{i}",
+                "raw_value": int(chain.get("desc", 0)),
+                "extras": {"card_code": code},
+            },
             "build_response": lambda idx=i: rb.build_select_chain_response(idx),
         })
     if not forced:
@@ -444,6 +454,11 @@ def _extract_announce_race_actions(msg: dict) -> list[dict]:
         if available & race:
             actions.append({
                 "category": 0, "index": bit, "code": 0, "location": 0, "sequence": 0,
+                "meta": {
+                    "kind": "race",
+                    "label": RACE_NAMES.get(race, f"Race(0x{race:x})"),
+                    "raw_value": race,
+                },
                 "build_response": lambda r=race: rb.build_announce_race_response(r),
             })
             if len(actions) >= MAX_ACTIONS:
@@ -459,6 +474,11 @@ def _extract_announce_attrib_actions(msg: dict) -> list[dict]:
         if available & attrib:
             actions.append({
                 "category": 0, "index": bit, "code": 0, "location": 0, "sequence": 0,
+                "meta": {
+                    "kind": "attribute",
+                    "label": ATTRIBUTE_NAMES.get(attrib, f"Attr(0x{attrib:x})"),
+                    "raw_value": attrib,
+                },
                 "build_response": lambda a=attrib: rb.build_announce_attrib_response(a),
             })
     return actions
@@ -468,6 +488,7 @@ def _extract_announce_number_actions(msg: dict) -> list[dict]:
     numbers = msg.get("numbers", [])
     return [
         {"category": 0, "index": i, "code": 0, "location": 0, "sequence": 0,
+         "meta": {"kind": "number", "label": f"Announce {num}", "raw_value": int(num)},
          "build_response": lambda n=num: rb.build_announce_number_response(n)}
         for i, num in enumerate(numbers)
     ]
@@ -476,8 +497,9 @@ def _extract_announce_number_actions(msg: dict) -> list[dict]:
 def _extract_rps_actions(msg: dict) -> list[dict]:
     return [
         {"category": 0, "index": c, "code": 0, "location": 0, "sequence": 0,
+         "meta": {"kind": "rps", "label": RPS_NAMES[c], "raw_value": c},
          "build_response": lambda choice=c: rb.build_rock_paper_scissors_response(choice)}
-        for c in [1, 2, 3]  # rock, paper, scissors
+        for c in [1, 2, 3]
     ]
 
 
@@ -485,18 +507,26 @@ def _extract_counter_actions(msg: dict) -> list[dict]:
     """Simplified: select first card's counters."""
     cards = msg.get("cards", [])
     count = msg.get("count", 0)
+    counter_type = int(msg.get("counter_type", 0))
     if not cards:
         return []
-    # Simple: distribute all counters from first available card
     actions = []
     for i, card in enumerate(cards):
         cc = card.get("counter_count", 0)
         if cc > 0:
             counters = [0] * len(cards)
-            counters[i] = min(cc, count)
+            n_remove = min(cc, count)
+            counters[i] = n_remove
+            code = card.get("code", 0)
             actions.append({
-                "category": 0, "index": i, "code": card.get("code", 0),
+                "category": 0, "index": i, "code": code,
                 "location": 0, "sequence": 0,
+                "meta": {
+                    "kind": "counter",
+                    "label": f"Remove {n_remove} from card #{i}",
+                    "raw_value": counter_type,
+                    "extras": {"counter_count": n_remove, "card_code": code},
+                },
                 "build_response": lambda c=counters: rb.build_select_counter_response(c),
             })
     return actions
