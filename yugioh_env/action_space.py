@@ -489,7 +489,7 @@ def _extract_announce_number_actions(msg: dict) -> list[dict]:
     return [
         {"category": 0, "index": i, "code": 0, "location": 0, "sequence": 0,
          "meta": {"kind": "number", "label": f"Announce {num}", "raw_value": int(num)},
-         "build_response": lambda n=num: rb.build_announce_number_response(n)}
+         "build_response": lambda idx=i: rb.build_announce_number_response(idx)}
         for i, num in enumerate(numbers)
     ]
 

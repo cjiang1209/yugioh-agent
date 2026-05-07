@@ -771,3 +771,18 @@ def test_action_meta_card_code_consistency(setup):
                 f"{expected_kind} action #{i}: meta.extras must not have card_code "
                 f"for card-less kinds"
             )
+
+
+def test_announce_number_response_is_index_not_value():
+    """The engine reads MSG_ANNOUNCE_NUMBER's response as an INDEX into the
+    options list, not the announced value (third_party/ygopro-core/playerop.cpp:1109).
+    Sending the value (e.g. 3 for [3,2,1]) makes the engine see 3 >= len(options)=3
+    and emit MSG_RETRY → silent forfeit. This regression test pins the index semantics."""
+    import struct
+    from yugioh_core.constants import MSG_ANNOUNCE_NUMBER
+    mapper = ActionMapper()
+    mapper.update({"msg_type": MSG_ANNOUNCE_NUMBER, "player": 0, "numbers": [3, 2, 1]})
+    # Action 0 is "Announce 3" — the engine must receive index=0, NOT value=3.
+    assert mapper.action_to_response(0) == struct.pack("<i", 0)
+    assert mapper.action_to_response(1) == struct.pack("<i", 1)
+    assert mapper.action_to_response(2) == struct.pack("<i", 2)

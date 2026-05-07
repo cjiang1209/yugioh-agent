@@ -100,9 +100,15 @@ def build_announce_card_response(code: int) -> bytes:
     return struct.pack("<I", code)
 
 
-def build_announce_number_response(number: int) -> bytes:
-    """Build response for MSG_ANNOUNCE_NUMBER."""
-    return struct.pack("<I", number)
+def build_announce_number_response(index: int) -> bytes:
+    """Build response for MSG_ANNOUNCE_NUMBER.
+
+    The engine reads `returns.at<int32_t>(0)` as an INDEX into the announced
+    options list, NOT the announced value itself
+    (third_party/ygopro-core/playerop.cpp:1109). Passing the value out-of-range
+    triggers MSG_RETRY and silently forfeits the duel.
+    """
+    return struct.pack("<i", index)
 
 
 def build_rock_paper_scissors_response(choice: int) -> bytes:
