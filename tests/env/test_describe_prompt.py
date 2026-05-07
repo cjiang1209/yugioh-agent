@@ -191,7 +191,7 @@ def test_chain(mapper, card_db):
         ],
     })
     prompt = describe_prompt(mapper, card_db)
-    assert prompt["type"] == "chain"
+    assert prompt["type"] == "chain_link"
     assert prompt["forced"] is False
 
 
@@ -271,3 +271,35 @@ def test_disfield_maps_to_place(mapper, card_db):
     })
     prompt = describe_prompt(mapper, card_db)
     assert prompt["type"] == "place"
+
+
+def test_prompt_type_map_includes_announce_kinds():
+    """describe_prompt returns the new ActionMeta-aligned `type` strings for the
+    five prompts that previously fell through to 'unknown'."""
+    from yugioh_core.constants import (
+        MSG_ANNOUNCE_NUMBER, MSG_ANNOUNCE_RACE, MSG_ANNOUNCE_ATTRIB,
+        MSG_ROCK_PAPER_SCISSORS, MSG_SELECT_COUNTER, MSG_SELECT_OPTION,
+    )
+    from yugioh_env.action_space import ActionMapper
+    from yugioh_env.server.action_describer import describe_prompt
+
+    class _StubDB:
+        def get_card_name(self, code): return f"Card{code}"
+
+    cases = [
+        ({"msg_type": MSG_ANNOUNCE_NUMBER, "player": 0, "numbers": [3]}, "number"),
+        ({"msg_type": MSG_ANNOUNCE_RACE, "player": 0, "available": 0x1}, "race"),
+        ({"msg_type": MSG_ANNOUNCE_ATTRIB, "player": 0, "available": 0x1}, "attribute"),
+        ({"msg_type": MSG_ROCK_PAPER_SCISSORS, "player": 0}, "rps"),
+        ({"msg_type": MSG_SELECT_COUNTER, "player": 0, "counter_type": 0x1,
+          "count": 1, "cards": []}, "counter"),
+        ({"msg_type": MSG_SELECT_OPTION, "player": 0, "options": [0x1]}, "option"),
+    ]
+    for msg, expected_type in cases:
+        mapper = ActionMapper()
+        mapper.update(msg)
+        result = describe_prompt(mapper, _StubDB())
+        assert result["type"] == expected_type, (
+            f"msg_type={msg['msg_type']}: expected '{expected_type}', got '{result['type']}'"
+        )
+

@@ -15,6 +15,11 @@ from yugioh_core.constants import (
     MSG_SELECT_POSITION,
     MSG_SELECT_TRIBUTE,
     MSG_SELECT_UNSELECT_CARD,
+    MSG_SELECT_COUNTER,
+    MSG_ANNOUNCE_NUMBER,
+    MSG_ANNOUNCE_RACE,
+    MSG_ANNOUNCE_ATTRIB,
+    MSG_ROCK_PAPER_SCISSORS,
     POS_FACEUP_ATTACK,
     POS_FACEDOWN_ATTACK,
     POS_FACEUP_DEFENSE,
@@ -78,6 +83,7 @@ def describe_actions(mapper: ActionMapper, card_db: CardDatabase) -> list[dict]:
             "controller": action.get("controller", 0),
             "location": action.get("location", 0),
             "sequence": action.get("sequence", 0),
+            "meta": action.get("meta"),
         })
 
     return result
@@ -87,6 +93,7 @@ def _describe_one(action: dict, msg_type: int, card_name: str) -> tuple[str, str
     """Return (description, category_string) for a single action."""
     cat = action.get("category", 0)
     code = action.get("code", 0)
+    meta = action.get("meta")
 
     if msg_type == MSG_SELECT_IDLECMD:
         label, cat_str = _IDLE_DESCS.get(cat, (f"Action {cat}", "unknown"))
@@ -110,6 +117,8 @@ def _describe_one(action: dict, msg_type: int, card_name: str) -> tuple[str, str
         return ("Yes", "yes") if cat == 0 else ("No", "no")
 
     if msg_type == MSG_SELECT_OPTION:
+        if meta is not None:
+            return meta["label"], "option"
         idx = action.get("index", 0)
         return f"Option {idx + 1}", "option"
 
@@ -153,7 +162,24 @@ def _describe_one(action: dict, msg_type: int, card_name: str) -> tuple[str, str
         label = f"Select {card_name}" if card_name else f"Select card #{action.get('index', 0)}"
         return label, "select_card"
 
-    # Fallback for sum, sort, announce, counter, rps, etc.
+    if msg_type == MSG_ANNOUNCE_NUMBER:
+        return meta["label"], "number"
+
+    if msg_type == MSG_ANNOUNCE_RACE:
+        return meta["label"], "race"
+
+    if msg_type == MSG_ANNOUNCE_ATTRIB:
+        return meta["label"], "attribute"
+
+    if msg_type == MSG_ROCK_PAPER_SCISSORS:
+        return meta["label"], "rps"
+
+    if msg_type == MSG_SELECT_COUNTER:
+        count = meta["extras"]["counter_count"]
+        target = card_name or f"card #{action.get('index', 0)}"
+        return f"Remove {count} from {target}", "counter"
+
+    # Fallback for sum, sort, etc.
     if card_name:
         return f"Select {card_name}", "select_card"
     return f"Action #{action.get('index', 0)}", "unknown"
@@ -168,12 +194,17 @@ _PROMPT_TYPE_MAP = {
     MSG_SELECT_YESNO: "yes_no",
     MSG_SELECT_OPTION: "option",
     MSG_SELECT_CARD: "select_card",
-    MSG_SELECT_CHAIN: "chain",
+    MSG_SELECT_CHAIN: "chain_link",
     MSG_SELECT_PLACE: "place",
     MSG_SELECT_DISFIELD: "place",
     MSG_SELECT_POSITION: "position",
     MSG_SELECT_TRIBUTE: "tribute",
     MSG_SELECT_UNSELECT_CARD: "select_card",
+    MSG_ANNOUNCE_NUMBER: "number",
+    MSG_ANNOUNCE_RACE: "race",
+    MSG_ANNOUNCE_ATTRIB: "attribute",
+    MSG_ROCK_PAPER_SCISSORS: "rps",
+    MSG_SELECT_COUNTER: "counter",
 }
 
 
