@@ -26,7 +26,7 @@ from pathlib import Path
 from yugioh_env.client import YuGiOhEnv
 from yugioh_core.constants import PHASE_NAMES
 from yugioh_env.deck_parser import parse_ydk
-from yugioh_env.models import YuGiOhAction, YuGiOhObservation
+from yugioh_env.models import ActionMeta, YuGiOhAction, YuGiOhObservation
 
 # MSG_SELECT type -> human-readable name
 MSG_SELECT_NAMES = {
@@ -166,8 +166,14 @@ def parse_action_features(action_feats: list[int]) -> dict:
     }
 
 
-def describe_action(action_feats: list[int]) -> str:
-    """Produce a human-readable description of an action."""
+def describe_action(action_feats: list[int], meta: ActionMeta | None = None) -> str:
+    """Produce a human-readable description of an action.
+
+    `meta` is the corresponding `obs.action_meta[i]` (an `ActionMeta` Pydantic
+    model, or None for slots without structured metadata). When present, the
+    meta label is preferred over the placeholder strings the feature-vector
+    decoding would produce.
+    """
     info = parse_action_features(action_feats)
     msg_type = info["msg_type"]
     cat = info["category"]
@@ -185,6 +191,8 @@ def describe_action(action_feats: list[int]) -> str:
         parts.append("Yes" if cat == 0 else "No")
     elif msg_type == 13:  # YESNO
         parts.append("Yes" if cat == 0 else "No")
+    elif msg_type == 14:  # SELECT_OPTION
+        parts.append(meta.label if meta else f"Option {info['index']}")
     elif msg_type == 19:  # POSITION
         pos_names = {0x1: "FU-ATK", 0x2: "FD-ATK", 0x4: "FU-DEF", 0x8: "FD-DEF"}
         parts.append(f"Position: {pos_names.get(info['index'], info['index'])}")
@@ -201,6 +209,20 @@ def describe_action(action_feats: list[int]) -> str:
     elif msg_type == 15 and cat == 1:  # SELECT_CARD finish
         num_sel = info.get("num_selected", 0)
         parts.append(f"Finish selecting ({num_sel} card{'s' if num_sel != 1 else ''})")
+    elif msg_type == 143:  # ANNOUNCE_NUMBER
+        parts.append(meta.label if meta else f"msg=143 #{info['index']}")
+    elif msg_type == 140:  # ANNOUNCE_RACE
+        parts.append(meta.label if meta else f"msg=140 #{info['index']}")
+    elif msg_type == 141:  # ANNOUNCE_ATTRIB
+        parts.append(meta.label if meta else f"msg=141 #{info['index']}")
+    elif msg_type == 132:  # ROCK_PAPER_SCISSORS
+        parts.append(meta.label if meta else f"msg=132 #{info['index']}")
+    elif msg_type == 22:  # SELECT_COUNTER
+        if meta:
+            count = meta.extras["counter_count"]
+            parts.append(f"Remove {count}")
+        else:
+            parts.append(f"Counter #{info['index']}")
     else:
         sel_name = MSG_SELECT_NAMES.get(msg_type, f"msg={msg_type}")
         num_sel = info.get("num_selected", 1)
@@ -259,7 +281,8 @@ def display_state(obs: YuGiOhObservation, step_num: int) -> None:
     print(f"{'─' * 60}")
 
     for idx in legal:
-        desc = describe_action(obs.actions[idx])
+        meta = obs.action_meta[idx] if idx < len(obs.action_meta) else None
+        desc = describe_action(obs.actions[idx], meta)
         print(f"    [{idx:>2}]  {desc}")
 
     print()
@@ -329,7 +352,10 @@ def run_episode(
     while not result.done:
         action_idx = pick_action(result.observation)
         if verbose:
-            desc = describe_action(result.observation.actions[action_idx])
+            meta = (result.observation.action_meta[action_idx]
+                    if action_idx < len(result.observation.action_meta)
+                    else None)
+            desc = describe_action(result.observation.actions[action_idx], meta)
             print(f"  -> Playing action [{action_idx}]: {desc}")
 
         result = env.step(YuGiOhAction(action_index=action_idx))
@@ -463,7 +489,7 @@ def main():
         with YuGiOhEnv(
             base_url=args.url,
             message_timeout_s=args.timeout,
-        ) as env:
+        ).sync() as env:
             print("Connected!\n")
 
             all_stats = []
