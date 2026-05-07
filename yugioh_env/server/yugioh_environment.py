@@ -13,6 +13,7 @@ from openenv.core.env_server.types import Observation
 
 from yugioh_env.action_space import ActionMapper
 from yugioh_core.card_database import CardDatabase
+from yugioh_core.encoding import MAX_ACTIONS
 from yugioh_env.event_logger import FieldTracker, format_events
 from yugioh_core.constants import (
     LOCATION_HAND,
@@ -36,7 +37,7 @@ from yugioh_core.constants import (
 )
 from yugioh_env.duel import Duel
 from yugioh_env.lib_loader import load_library
-from yugioh_env.models import YuGiOhAction, YuGiOhObservation, YuGiOhState
+from yugioh_env.models import YuGiOhAction, YuGiOhObservation, YuGiOhState, ActionMeta
 from yugioh_env.observation import build_observation
 from yugioh_env.opponent import Opponent, make_opponent
 from yugioh_env.server.board_state import build_board_state
@@ -67,6 +68,18 @@ def _resolve_opponent_device(config: dict[str, Any]) -> str:
     return config.get("opponent_device") or os.environ.get(
         "YUGIOH_OPPONENT_DEVICE", "cpu"
     )
+
+
+def _build_action_meta_list(actions: list[dict]) -> list[ActionMeta | None]:
+    """Build a length-MAX_ACTIONS list parallel to actions[], None for slots without meta.
+
+    Validates each meta dict through Pydantic (raises ValidationError on bad kind)."""
+    out: list[ActionMeta | None] = [None] * MAX_ACTIONS
+    for i, action in enumerate(actions[:MAX_ACTIONS]):
+        meta = action.get("meta")
+        if meta is not None:
+            out[i] = ActionMeta(**meta)
+    return out
 
 
 class YuGiOhEnvironment(Environment):
@@ -431,12 +444,19 @@ class YuGiOhEnvironment(Environment):
 
         action_mask = self._mapper.get_action_mask()
         action_features = self._mapper.get_action_features()
+        action_meta = _build_action_meta_list(self._mapper.actions)
+
+        assert len(action_meta) == len(action_features) == len(action_mask), (
+            f"action_meta/features/mask length drift: "
+            f"{len(action_meta)}/{len(action_features)}/{len(action_mask)}"
+        )
 
         return YuGiOhObservation(
             cards=obs_data["cards"].tolist(),
             global_state=obs_data["global_state"].tolist(),
             actions=action_features.tolist(),
             action_mask=action_mask.tolist(),
+            action_meta=action_meta,
             event_log=event_log or [],
             done=False,
             reward=0.0,
@@ -471,7 +491,8 @@ class YuGiOhEnvironment(Environment):
             cards=cards,
             global_state=global_state,
             actions=[],
-            action_mask=[0] * 32,
+            action_mask=[],
+            action_meta=[],
             event_log=event_log or [],
             done=True,
             reward=reward,

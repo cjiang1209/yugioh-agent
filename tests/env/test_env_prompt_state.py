@@ -133,5 +133,5 @@ def test_terminal_observation_clears_current_msg():
     assert env.current_msg is None
     assert env.num_actions == 0
     assert env._card_sel == []
-    # And the terminal observation's action_mask is all-zero, matching num_actions.
-    assert obs.action_mask == [0] * 32
+    # And the terminal observation's action_mask is empty (consistent with actions=[]).
+    assert obs.action_mask == []
