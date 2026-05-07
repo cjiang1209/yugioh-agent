@@ -101,6 +101,61 @@ RACE_CELESTIALWARRIOR = 0x40000000
 RACE_GALAXY = 0x80000000
 RACE_YOKAI = 0x4000000000000000
 
+
+# ─── Display name lookups (for ActionMeta) ──────────────────────────────────
+
+RACE_NAMES: dict[int, str] = {
+    RACE_WARRIOR: "Warrior",
+    RACE_SPELLCASTER: "Spellcaster",
+    RACE_FAIRY: "Fairy",
+    RACE_FIEND: "Fiend",
+    RACE_ZOMBIE: "Zombie",
+    RACE_MACHINE: "Machine",
+    RACE_AQUA: "Aqua",
+    RACE_PYRO: "Pyro",
+    RACE_ROCK: "Rock",
+    RACE_WINGEDBEAST: "Winged Beast",
+    RACE_PLANT: "Plant",
+    RACE_INSECT: "Insect",
+    RACE_THUNDER: "Thunder",
+    RACE_DRAGON: "Dragon",
+    RACE_BEAST: "Beast",
+    RACE_BEASTWARRIOR: "Beast-Warrior",
+    RACE_DINOSAUR: "Dinosaur",
+    RACE_FISH: "Fish",
+    RACE_SEASERPENT: "Sea Serpent",
+    RACE_REPTILE: "Reptile",
+    RACE_PSYCHIC: "Psychic",
+    RACE_DIVINE: "Divine-Beast",
+    RACE_CREATORGOD: "Creator God",
+    RACE_WYRM: "Wyrm",
+    RACE_CYBERSE: "Cyberse",
+    RACE_ILLUSION: "Illusion",
+    RACE_CYBORG: "Cyborg",
+    RACE_MAGICALKNIGHT: "Magical Knight",
+    RACE_HIGHDRAGON: "High Dragon",
+    RACE_OMEGAPSYCHIC: "Omega Psychic",
+    RACE_CELESTIALWARRIOR: "Celestial Warrior",
+    RACE_GALAXY: "Galaxy",
+    RACE_YOKAI: "Yokai",
+}
+
+ATTRIBUTE_NAMES: dict[int, str] = {
+    ATTRIBUTE_EARTH: "EARTH",
+    ATTRIBUTE_WATER: "WATER",
+    ATTRIBUTE_FIRE: "FIRE",
+    ATTRIBUTE_WIND: "WIND",
+    ATTRIBUTE_LIGHT: "LIGHT",
+    ATTRIBUTE_DARK: "DARK",
+    ATTRIBUTE_DIVINE: "DIVINE",
+}
+
+RPS_NAMES: dict[int, str] = {
+    1: "Rock",
+    2: "Paper",
+    3: "Scissors",
+}
+
 # ─── Phases ──────────────────────────────────────────────────────────────────
 PHASE_DRAW = 0x01
 PHASE_STANDBY = 0x02
