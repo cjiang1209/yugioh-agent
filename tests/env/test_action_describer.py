@@ -104,13 +104,17 @@ def test_describer_rewrites_counter_with_card_name():
 
 
 def test_describer_meta_field_passes_through_as_none_when_absent():
-    """For prompts whose extractor doesn't emit meta (e.g. SELECT_YESNO), the
-    result row's meta field is None — no fabricated meta from the describer."""
-    from yugioh_core.constants import MSG_SELECT_YESNO
-    mapper = _make_mapper_with_meta({"msg_type": MSG_SELECT_YESNO, "player": 0})
+    """For prompts whose extractor doesn't emit meta (e.g. SELECT_PLACE), the
+    result row's meta field is None — no fabricated meta from the describer.
+    (SELECT_YESNO now emits an `effect`-kind meta on its Yes action; SELECT_PLACE
+    has no analog and so still has meta=None for all its actions.)"""
+    from yugioh_core.constants import MSG_SELECT_PLACE
+    mapper = _make_mapper_with_meta({
+        "msg_type": MSG_SELECT_PLACE, "player": 0,
+        "count": 1, "field_mask": 0,  # all 32 zones unblocked → many actions
+    })
     descs = describe_actions(mapper, _StubCardDB())
     assert descs[0]["meta"] is None
-    assert descs[0]["description"] == "Yes"
 
 
 class _StubResolver:
@@ -183,3 +187,50 @@ def test_describer_chain_drops_resolved_text_when_card_name_missing():
     descs = describe_actions(mapper, _NoNameDB(), resolver=_StubResolver({0x123: "Real effect"}))
     # Resolved text dropped; falls back to anonymous "Chain #0".
     assert descs[0]["description"] == "Chain #0"
+
+
+def test_describer_idle_activate_appends_resolved_effect_text():
+    """When an idle ACTIVATE action's meta resolves, append `: {effect}` to
+    the existing `Activate {card_name}` label."""
+    from yugioh_core.constants import MSG_SELECT_IDLECMD
+    mapper = _make_mapper_with_meta({
+        "msg_type": MSG_SELECT_IDLECMD, "player": 0,
+        "summonable": [], "sp_summonable": [], "repositionable": [],
+        "mset": [], "sset": [],
+        "activatable": [{"code": 555, "controller": 0, "location": 0x4,
+                         "sequence": 0, "desc": 0xabc, "client_mode": 0}],
+        "to_bp": 0, "to_ep": 0, "shuffle_hand": 0,
+    })
+    resolver = _StubResolver({0xabc: "Increase ATK"})
+    descs = describe_actions(mapper, _StubCardDB(), resolver=resolver)
+    assert descs[0]["description"] == "Activate Card555: Increase ATK"
+    assert descs[0]["category"] == "activate"
+
+
+def test_describer_effectyn_yes_appends_resolved_text():
+    """EFFECTYN's Yes action gets `: {effect}` appended; No is unchanged."""
+    from yugioh_core.constants import MSG_SELECT_EFFECTYN
+    mapper = _make_mapper_with_meta({
+        "msg_type": MSG_SELECT_EFFECTYN, "player": 0,
+        "code": 777, "controller": 0, "location": 0x4, "sequence": 0,
+        "desc": 0xdef,
+    })
+    resolver = _StubResolver({0xdef: "Special Summon"})
+    descs = describe_actions(mapper, _StubCardDB(), resolver=resolver)
+    assert descs[0]["description"] == "Yes — activate Card777: Special Summon"
+    assert descs[1]["description"] == "No"
+    # No action must NOT inherit the prompt's effect meta.
+    assert descs[1]["meta"] is None
+
+
+def test_describer_yesno_yes_uses_resolved_text_as_qualifier():
+    """YESNO has no card_name; resolved text becomes the qualifier:
+    `Yes — {effect_text}` instead of bare `Yes`."""
+    from yugioh_core.constants import MSG_SELECT_YESNO
+    mapper = _make_mapper_with_meta({
+        "msg_type": MSG_SELECT_YESNO, "player": 0, "desc": 0x111,
+    })
+    resolver = _StubResolver({0x111: "Pay LP"})
+    descs = describe_actions(mapper, _StubCardDB(), resolver=resolver)
+    assert descs[0]["description"] == "Yes — Pay LP"
+    assert descs[1]["description"] == "No"

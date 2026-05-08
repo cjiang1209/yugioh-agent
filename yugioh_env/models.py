@@ -28,11 +28,13 @@ class ActionMeta(BaseModel):
       counter:    raw_value=int (counter_type u16);                       extras={"counter_count": int, "card_code": int}
       option:     raw_value=int (effect-desc u64);                        extras={}
       chain_link: raw_value=int (effect-desc u64);                        extras={"card_code": int}
+      effect:     raw_value=int (effect-desc u64; 0 = no specific effect);  extras={"card_code": int} (omitted for YESNO)
     """
 
     kind: Literal[
         "number", "race", "attribute",
         "rps", "counter", "option", "chain_link",
+        "effect",
     ]
     label: str
     raw_value: int | None = None

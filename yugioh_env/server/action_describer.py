@@ -99,6 +99,16 @@ def describe_actions(
     return result
 
 
+def _resolve_effect(meta: dict | None, resolver: StringResolver | None) -> str | None:
+    """Return resolved effect text for a kind=effect meta, or None."""
+    if not resolver or meta is None or meta.get("kind") != "effect":
+        return None
+    raw = meta.get("raw_value")
+    if raw is None:
+        return None
+    return resolver.resolve(raw)
+
+
 def _describe_one(
     action: dict,
     msg_type: int,
@@ -113,23 +123,37 @@ def _describe_one(
     if msg_type == MSG_SELECT_IDLECMD:
         label, cat_str = _IDLE_DESCS.get(cat, (f"Action {cat}", "unknown"))
         if code and card_name:
-            return f"{label} {card_name}", cat_str
+            base = f"{label} {card_name}"
+            resolved = _resolve_effect(meta, resolver)
+            if resolved:
+                return f"{base}: {resolved}", cat_str
+            return base, cat_str
         return label, cat_str
 
     if msg_type == MSG_SELECT_BATTLECMD:
         label, cat_str = _BATTLE_DESCS.get(cat, (f"Action {cat}", "unknown"))
         if code and card_name:
-            return f"{label} {card_name}", cat_str
+            base = f"{label} {card_name}"
+            resolved = _resolve_effect(meta, resolver)
+            if resolved:
+                return f"{base}: {resolved}", cat_str
+            return base, cat_str
         return label, cat_str
 
     if msg_type == MSG_SELECT_EFFECTYN:
         if cat == 0:
-            desc = f"Yes — activate {card_name}" if card_name else "Yes"
-            return desc, "yes"
+            base = f"Yes — activate {card_name}" if card_name else "Yes"
+            resolved = _resolve_effect(meta, resolver)
+            if resolved:
+                return f"{base}: {resolved}", "yes"
+            return base, "yes"
         return "No", "no"
 
     if msg_type == MSG_SELECT_YESNO:
-        return ("Yes", "yes") if cat == 0 else ("No", "no")
+        if cat == 0:
+            resolved = _resolve_effect(meta, resolver)
+            return (f"Yes — {resolved}" if resolved else "Yes"), "yes"
+        return "No", "no"
 
     if msg_type == MSG_SELECT_OPTION:
         if meta is not None:

@@ -15,6 +15,7 @@ from yugioh_core.constants import (
     MSG_ROCK_PAPER_SCISSORS,
     MSG_SELECT_CARD,
     MSG_SELECT_COUNTER,
+    MSG_SELECT_IDLECMD,
     MSG_SELECT_PLACE,
     MSG_SELECT_TRIBUTE,
     MSG_SELECT_UNSELECT_CARD,
@@ -728,6 +729,21 @@ def test_counter_skips_cards_with_zero_counters():
          "cards": [{"code": 666, "controller": 0, "location": 0x4,
                     "sequence": 0, "counter_count": 1}]},
         "counter", True,
+    ),
+    # Card-bearing effect (IDLE_ACTIVATE)
+    (
+        {"msg_type": MSG_SELECT_IDLECMD, "player": 0,
+         "summonable": [], "sp_summonable": [], "repositionable": [],
+         "mset": [], "sset": [],
+         "activatable": [{"code": 444, "controller": 0, "location": 0x4,
+                          "sequence": 0, "desc": 0x1, "client_mode": 0}],
+         "to_bp": 0, "to_ep": 0, "shuffle_hand": 0},
+        "effect", True,
+    ),
+    # Card-less effect (YESNO)
+    (
+        {"msg_type": MSG_SELECT_YESNO, "player": 0, "desc": 0x1},
+        "effect", False,
     ),
 ])
 def test_action_meta_card_code_consistency(setup):

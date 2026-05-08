@@ -149,9 +149,19 @@ def _extract_idle_actions(msg: dict) -> list[dict]:
         })
 
     for i, card in enumerate(msg.get("activatable", [])):
+        code = card.get("code", 0)
+        desc = card.get("desc", 0)
         actions.append({
-            "category": IDLE_ACTIVATE, "index": i, "code": card.get("code", 0),
-            "controller": card.get("controller", 0), "location": card.get("location", 0), "sequence": card.get("sequence", 0),
+            "category": IDLE_ACTIVATE, "index": i, "code": code,
+            "controller": card.get("controller", 0),
+            "location": card.get("location", 0),
+            "sequence": card.get("sequence", 0),
+            "meta": {
+                "kind": "effect",
+                "label": f"effect 0x{desc:x}",
+                "raw_value": int(desc),
+                "extras": {"card_code": code},
+            },
             "build_response": lambda cat=IDLE_ACTIVATE, idx=i: rb.build_select_idlecmd_response(cat, idx),
         })
 
@@ -175,9 +185,19 @@ def _extract_battle_actions(msg: dict) -> list[dict]:
     actions = []
 
     for i, card in enumerate(msg.get("activatable", [])):
+        code = card.get("code", 0)
+        desc = card.get("desc", 0)
         actions.append({
-            "category": BATTLE_ACTIVATE, "index": i, "code": card.get("code", 0),
-            "controller": card.get("controller", 0), "location": card.get("location", 0), "sequence": card.get("sequence", 0),
+            "category": BATTLE_ACTIVATE, "index": i, "code": code,
+            "controller": card.get("controller", 0),
+            "location": card.get("location", 0),
+            "sequence": card.get("sequence", 0),
+            "meta": {
+                "kind": "effect",
+                "label": f"effect 0x{desc:x}",
+                "raw_value": int(desc),
+                "extras": {"card_code": code},
+            },
             "build_response": lambda cat=BATTLE_ACTIVATE, idx=i: rb.build_select_battlecmd_response(cat, idx),
         })
 
@@ -204,19 +224,37 @@ def _extract_battle_actions(msg: dict) -> list[dict]:
 
 
 def _extract_effectyn_actions(msg: dict) -> list[dict]:
+    code = msg.get("code", 0)
+    desc = msg.get("desc", 0)
     return [
-        {"category": 0, "index": 0, "code": msg.get("code", 0),
-         "controller": msg.get("controller", 0), "location": msg.get("location", 0), "sequence": msg.get("sequence", 0),
+        {"category": 0, "index": 0, "code": code,
+         "controller": msg.get("controller", 0),
+         "location": msg.get("location", 0),
+         "sequence": msg.get("sequence", 0),
+         "meta": {
+             "kind": "effect",
+             "label": f"effect 0x{desc:x}",
+             "raw_value": int(desc),
+             "extras": {"card_code": code},
+         },
          "build_response": lambda: rb.build_select_yesno_response(True)},
-        {"category": 1, "index": 0, "code": msg.get("code", 0),
-         "controller": msg.get("controller", 0), "location": msg.get("location", 0), "sequence": msg.get("sequence", 0),
+        {"category": 1, "index": 0, "code": code,
+         "controller": msg.get("controller", 0),
+         "location": msg.get("location", 0),
+         "sequence": msg.get("sequence", 0),
          "build_response": lambda: rb.build_select_yesno_response(False)},
     ]
 
 
 def _extract_yesno_actions(msg: dict) -> list[dict]:
+    desc = msg.get("desc", 0)
     return [
         {"category": 0, "index": 0, "code": 0, "location": 0, "sequence": 0,
+         "meta": {
+             "kind": "effect",
+             "label": f"effect 0x{desc:x}",
+             "raw_value": int(desc),
+         },
          "build_response": lambda: rb.build_select_yesno_response(True)},
         {"category": 1, "index": 0, "code": 0, "location": 0, "sequence": 0,
          "build_response": lambda: rb.build_select_yesno_response(False)},
