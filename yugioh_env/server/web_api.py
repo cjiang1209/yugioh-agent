@@ -56,7 +56,7 @@ def _build_response(
     # Reuse the last frame's board if available (avoids redundant FFI call)
     board = frames[-1]["board"] if frames else build_board_state(env, open_cards=env._open_cards)
 
-    actions = describe_actions(env._mapper, env._card_db) if not done else []
+    actions = describe_actions(env._mapper, env._card_db, env._string_resolver) if not done else []
     prompt = describe_prompt(env._mapper, env._card_db) if not done else None
 
     # Convert absolute controller → relative side for the client

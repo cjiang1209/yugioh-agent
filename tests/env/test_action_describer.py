@@ -111,3 +111,75 @@ def test_describer_meta_field_passes_through_as_none_when_absent():
     descs = describe_actions(mapper, _StubCardDB())
     assert descs[0]["meta"] is None
     assert descs[0]["description"] == "Yes"
+
+
+class _StubResolver:
+    """Resolves a fixed dict of desc_u64 → string. Anything else returns None."""
+
+    def __init__(self, table: dict[int, str]):
+        self._table = table
+
+    def resolve(self, desc_u64: int) -> str | None:
+        return self._table.get(desc_u64)
+
+
+def test_describer_option_uses_resolver_when_provided():
+    """When a resolver returns a real string for the option's raw_value, the
+    describer prefers it over the placeholder `effect 0x...` label."""
+    from yugioh_core.constants import MSG_SELECT_OPTION
+    mapper = _make_mapper_with_meta({
+        "msg_type": MSG_SELECT_OPTION, "player": 0, "options": [0xabc, 0xdef],
+    })
+    resolver = _StubResolver({0xabc: "Special Summon a Spellcaster"})
+    descs = describe_actions(mapper, _StubCardDB(), resolver=resolver)
+    # Resolved option uses the real string.
+    assert descs[0]["description"] == "Special Summon a Spellcaster"
+    # Unresolved option falls back to the placeholder.
+    assert descs[1]["description"] == "effect 0xdef"
+
+
+def test_describer_chain_appends_resolved_effect_text():
+    """When chain meta resolves AND a card_name is known, append the effect text;
+    otherwise fall back to today's `Chain {card_name}` form."""
+    from yugioh_core.constants import MSG_SELECT_CHAIN
+    mapper = _make_mapper_with_meta({
+        "msg_type": MSG_SELECT_CHAIN, "player": 0, "forced": 1,
+        "chains": [{"code": 777, "controller": 0, "location": 0x10,
+                    "sequence": 0, "position": 0, "desc": 0x123, "client_mode": 0}],
+    })
+    resolver = _StubResolver({0x123: "Increase ATK by 1000"})
+    descs = describe_actions(mapper, _StubCardDB(), resolver=resolver)
+    assert descs[0]["description"] == "Chain Card777: Increase ATK by 1000"
+
+
+def test_describer_chain_falls_back_when_resolver_returns_none():
+    """Unresolved chain desc keeps today's `Chain {card_name}` form (no trailing colon)."""
+    from yugioh_core.constants import MSG_SELECT_CHAIN
+    mapper = _make_mapper_with_meta({
+        "msg_type": MSG_SELECT_CHAIN, "player": 0, "forced": 1,
+        "chains": [{"code": 777, "controller": 0, "location": 0x10,
+                    "sequence": 0, "position": 0, "desc": 0x123, "client_mode": 0}],
+    })
+    descs = describe_actions(mapper, _StubCardDB(), resolver=_StubResolver({}))
+    assert descs[0]["description"] == "Chain Card777"
+
+
+def test_describer_chain_drops_resolved_text_when_card_name_missing():
+    """When card_name is empty (e.g. anonymous chain entry), the describer
+    intentionally drops the resolved effect text rather than emit awkward
+    `Chain : <effect>`. Chain falls back to the index form `Chain #N`."""
+    from yugioh_core.constants import MSG_SELECT_CHAIN
+
+    class _NoNameDB:
+        def get_card_name(self, code: int) -> str:
+            return ""  # simulate missing/anonymous card
+
+    mapper = _make_mapper_with_meta({
+        "msg_type": MSG_SELECT_CHAIN, "player": 0, "forced": 1,
+        # code=0 disables card_name lookup in describer's `card_name = card_db.get_card_name(code) if code else ""`
+        "chains": [{"code": 0, "controller": 0, "location": 0x10,
+                    "sequence": 0, "position": 0, "desc": 0x123, "client_mode": 0}],
+    })
+    descs = describe_actions(mapper, _NoNameDB(), resolver=_StubResolver({0x123: "Real effect"}))
+    # Resolved text dropped; falls back to anonymous "Chain #0".
+    assert descs[0]["description"] == "Chain #0"

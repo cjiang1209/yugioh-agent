@@ -33,6 +33,7 @@ from yugioh_core.action_categories import (
     BATTLE_ACTIVATE, BATTLE_ATTACK, BATTLE_TO_M2, BATTLE_TO_EP,
 )
 from yugioh_core.card_database import CardDatabase
+from yugioh_core.string_resolver import StringResolver
 from yugioh_env.action_space import ActionMapper
 
 _IDLE_DESCS = {
@@ -61,8 +62,17 @@ _POS_NAMES = {
 }
 
 
-def describe_actions(mapper: ActionMapper, card_db: CardDatabase) -> list[dict]:
-    """Return a list of action dicts with human-readable descriptions."""
+def describe_actions(
+    mapper: ActionMapper,
+    card_db: CardDatabase,
+    resolver: StringResolver | None = None,
+) -> list[dict]:
+    """Return a list of action dicts with human-readable descriptions.
+
+    `resolver`, when provided, upgrades placeholder labels for prompts
+    that carry an effect-desc (option, chain) into real text from the
+    card database (`texts.str{n+1}`).
+    """
     actions = mapper.actions
     msg_type = mapper.msg_type
     result: list[dict] = []
@@ -72,7 +82,7 @@ def describe_actions(mapper: ActionMapper, card_db: CardDatabase) -> list[dict]:
         cat = action.get("category", 0)
         card_name = card_db.get_card_name(code) if code else ""
 
-        desc, category_str = _describe_one(action, msg_type, card_name)
+        desc, category_str = _describe_one(action, msg_type, card_name, resolver)
 
         result.append({
             "index": i,
@@ -89,7 +99,12 @@ def describe_actions(mapper: ActionMapper, card_db: CardDatabase) -> list[dict]:
     return result
 
 
-def _describe_one(action: dict, msg_type: int, card_name: str) -> tuple[str, str]:
+def _describe_one(
+    action: dict,
+    msg_type: int,
+    card_name: str,
+    resolver: StringResolver | None = None,
+) -> tuple[str, str]:
     """Return (description, category_string) for a single action."""
     cat = action.get("category", 0)
     code = action.get("code", 0)
@@ -118,7 +133,8 @@ def _describe_one(action: dict, msg_type: int, card_name: str) -> tuple[str, str
 
     if msg_type == MSG_SELECT_OPTION:
         if meta is not None:
-            return meta["label"], "option"
+            resolved = resolver.resolve(meta["raw_value"]) if resolver else None
+            return (resolved or meta["label"]), "option"
         idx = action.get("index", 0)
         return f"Option {idx + 1}", "option"
 
@@ -132,8 +148,13 @@ def _describe_one(action: dict, msg_type: int, card_name: str) -> tuple[str, str
     if msg_type == MSG_SELECT_CHAIN:
         if cat == 1:
             return "Pass (no chain)", "pass"
-        desc = f"Chain {card_name}" if card_name else f"Chain #{action.get('index', 0)}"
-        return desc, "chain"
+        target = card_name or f"#{action.get('index', 0)}"
+        resolved = None
+        if resolver and meta is not None:
+            resolved = resolver.resolve(meta["raw_value"])
+        if resolved and card_name:
+            return f"Chain {target}: {resolved}", "chain"
+        return f"Chain {target}", "chain"
 
     if msg_type in (MSG_SELECT_PLACE, MSG_SELECT_DISFIELD):
         loc = action.get("location", 0)

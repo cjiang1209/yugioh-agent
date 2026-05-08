@@ -14,6 +14,7 @@ from openenv.core.env_server.types import Observation
 from yugioh_env.action_space import ActionMapper
 from yugioh_core.card_database import CardDatabase
 from yugioh_core.encoding import MAX_ACTIONS
+from yugioh_core.string_resolver import StringResolver
 from yugioh_env.event_logger import FieldTracker, format_events
 from yugioh_core.constants import (
     LOCATION_HAND,
@@ -128,6 +129,7 @@ class YuGiOhEnvironment(Environment):
         # Initialize components
         self._lib = load_library(lib_path)
         self._card_db = CardDatabase(db_path)
+        self._string_resolver = StringResolver(self._card_db)
         self._script_dirs = [Path(d) for d in script_dirs]
 
         # Agent player: 0 = go first, 1 = go second, "random" = coin flip per episode

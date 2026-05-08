@@ -86,6 +86,25 @@ class CardDatabase:
         row = cursor.fetchone()
         return row["name"] if row else f"Unknown({code})"
 
+    def get_card_string(self, code: int, n: int) -> str | None:
+        """Look up card-specific string `n` (0-15) for the given passcode.
+
+        These are the per-card option strings the engine references via
+        `aux.Stringid(code, n)` — stored as `texts.str{n+1}` in cards.cdb.
+        Returns None when the card or slot is unknown, or the string is empty.
+        """
+        if not 0 <= n <= 15:
+            return None
+        column = f"str{n + 1}"
+        cursor = self._conn.execute(
+            f"SELECT {column} FROM texts WHERE id=?", (code,)
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        value = row[column]
+        return value if value else None
+
     def close(self) -> None:
         self._conn.close()
 
