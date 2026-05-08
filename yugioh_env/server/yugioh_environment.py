@@ -14,7 +14,7 @@ from openenv.core.env_server.types import Observation
 from yugioh_env.action_space import ActionMapper
 from yugioh_core.card_database import CardDatabase
 from yugioh_core.encoding import MAX_ACTIONS
-from yugioh_core.string_resolver import StringResolver
+from yugioh_core.string_resolver import StringResolver, parse_sys_strings
 from yugioh_env.event_logger import FieldTracker, format_events
 from yugioh_core.constants import (
     LOCATION_HAND,
@@ -116,6 +116,9 @@ class YuGiOhEnvironment(Environment):
         db_path = config.get("db_path") or os.environ.get(
             "YUGIOH_DB_PATH", str(project_root / "assets" / "cards.cdb")
         )
+        strings_path = config.get("strings_path") or os.environ.get(
+            "YUGIOH_STRINGS_PATH", str(project_root / "assets" / "strings.conf")
+        )
         script_dirs = config.get("script_dirs") or [
             project_root / "third_party" / "CardScripts" / "official",
             project_root / "third_party" / "CardScripts" / "pre-release",
@@ -129,7 +132,15 @@ class YuGiOhEnvironment(Environment):
         # Initialize components
         self._lib = load_library(lib_path)
         self._card_db = CardDatabase(db_path)
-        self._string_resolver = StringResolver(self._card_db)
+        if Path(strings_path).is_file():
+            sys_strings = parse_sys_strings(strings_path)
+        else:
+            logger.warning(
+                "strings.conf not found at %s; sysstring labels will use placeholders. "
+                "Run scripts/setup.sh to download.", strings_path
+            )
+            sys_strings = {}
+        self._string_resolver = StringResolver(self._card_db, sys_strings=sys_strings)
         self._script_dirs = [Path(d) for d in script_dirs]
 
         # Agent player: 0 = go first, 1 = go second, "random" = coin flip per episode

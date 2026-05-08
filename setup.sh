@@ -30,13 +30,8 @@ echo ""
 
 # ── cards.cdb download ──────────────────────────────────────────────────────
 CDB_PATH="assets/cards.cdb"
-NEED_CDB=false
 if [ ! -f "$CDB_PATH" ] || [ ! -s "$CDB_PATH" ]; then
-    NEED_CDB=true
-fi
-
-if [ "$NEED_CDB" = true ]; then
-    echo "The card database (assets/cards.cdb) is missing or empty."
+    echo "The card database ($CDB_PATH) is missing or empty."
     echo "It is required for running duels and most tests."
     echo ""
     printf "Download cards.cdb automatically? [Y/n] "
@@ -45,19 +40,39 @@ if [ "$NEED_CDB" = true ]; then
         [nN]|[nN][oO])
             echo ""
             echo "Skipping download. You can get it later by running:"
-            echo "  curl -L -o assets/cards.cdb \\"
+            echo "  curl -fsSL -o $CDB_PATH \\"
             echo "    https://github.com/mycard/ygopro-database/raw/master/locales/en-US/cards.cdb"
             ;;
         *)
             echo "==> Downloading cards.cdb..."
             mkdir -p assets
-            curl -L -o "$CDB_PATH" \
-                "https://github.com/mycard/ygopro-database/raw/master/locales/en-US/cards.cdb"
-            echo "Downloaded $(wc -c < "$CDB_PATH" | tr -d ' ') bytes to $CDB_PATH"
+            if curl -fsSL -o "$CDB_PATH" \
+                "https://github.com/mycard/ygopro-database/raw/master/locales/en-US/cards.cdb"; then
+                echo "    Downloaded $(wc -c < "$CDB_PATH" | tr -d ' ') bytes to $CDB_PATH."
+            else
+                echo "    Download failed; duels and most tests will not work."
+                rm -f "$CDB_PATH"
+            fi
             ;;
     esac
 else
     echo "Card database found at $CDB_PATH"
+fi
+
+# ── strings.conf download (sysstring labels for the string resolver) ────────
+STRINGS_PATH="assets/strings.conf"
+if [ ! -f "$STRINGS_PATH" ] || [ ! -s "$STRINGS_PATH" ]; then
+    echo "==> Downloading strings.conf..."
+    mkdir -p assets
+    if curl -fsSL -o "$STRINGS_PATH" \
+        "https://raw.githubusercontent.com/ProjectIgnis/Distribution/master/config/strings.conf"; then
+        echo "    Downloaded $(wc -l < "$STRINGS_PATH" | tr -d ' ') lines to $STRINGS_PATH."
+    else
+        echo "    Download failed; effect labels will use placeholders."
+        rm -f "$STRINGS_PATH"
+    fi
+else
+    echo "Sysstring labels found at $STRINGS_PATH"
 fi
 
 echo ""

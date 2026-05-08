@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from yugioh_core.card_database import CardDatabase
-from yugioh_core.string_resolver import StringResolver
+from yugioh_core.string_resolver import StringResolver, parse_sys_strings
 
 
 @pytest.fixture
@@ -81,3 +81,45 @@ def test_per_card_lookup_ignores_sys_table(db):
     sys = {0: "WRONG"}  # would be picked up if sys table were consulted for n==0
     r = StringResolver(db, sys_strings=sys)
     assert r.resolve(_make_stringid(10032958, 0)) == "Gain an effect"
+
+
+def test_parse_sys_strings_extracts_only_system_section(tmp_path):
+    """Parser ignores !counter, !setname, !victory and comments;
+    extracts !system as int→str."""
+    path = tmp_path / "strings.conf"
+    path.write_text(
+        "# header comment\n"
+        "!system 1 Normal Summon\n"
+        "!system 70 Monster Cards\n"
+        "!counter 0x1 Spell Counter\n"
+        "!setname 0x10 Magician\n"
+        "!victory 0x0 Exodia\n"
+        "any line that doesn't start with the above keywords is ignored\n"
+        "!system 1303 Save as\n"
+    )
+    table = parse_sys_strings(path)
+    assert table == {1: "Normal Summon", 70: "Monster Cards", 1303: "Save as"}
+
+
+def test_parse_sys_strings_preserves_value_whitespace(tmp_path):
+    """The value after the int is captured verbatim, including embedded
+    spaces and punctuation."""
+    path = tmp_path / "strings.conf"
+    path.write_text("!system 42 Activate this effect?\n")
+    table = parse_sys_strings(path)
+    assert table[42] == "Activate this effect?"
+
+
+def test_string_resolver_resolves_sysstring_from_parsed_file(tmp_path, db):
+    """parse_sys_strings → StringResolver(sys_strings=...) → resolve(0x46)
+    returns real text. End-to-end check that the parsed dict feeds the
+    resolver correctly."""
+    path = tmp_path / "strings.conf"
+    path.write_text("!system 70 Monster Cards\n!system 71 Spell Cards\n")
+    table = parse_sys_strings(path)
+    # `db` fixture is a tiny CardDatabase from existing tests — per-card
+    # lookup paths are not exercised here; only sysstring path matters.
+    resolver = StringResolver(db, sys_strings=table)
+    assert resolver.resolve(0x46) == "Monster Cards"   # passcode=0, n=70
+    assert resolver.resolve(0x47) == "Spell Cards"     # passcode=0, n=71
+    assert resolver.resolve(0x63) is None              # n=99, unknown sysstring

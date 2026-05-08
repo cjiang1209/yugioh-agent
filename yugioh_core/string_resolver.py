@@ -5,8 +5,8 @@ The OCG engine emits 64-bit string IDs (``desc``) for prompts like
 A string ID is encoded as ``(passcode << 20) | (n & 0xfffff)``:
 
   - ``passcode == 0``: a system string (engine-internal hint), looked up
-    by ``n`` in ``strings.conf``.  Not yet supported — sysstrings always
-    return ``None`` until a sysstring table is wired in.
+    by ``n`` in a ``sys_strings`` mapping parsed from ``strings.conf``.
+    Returns ``None`` when the mapping is empty or doesn't contain ``n``.
   - ``passcode != 0``: a per-card option string, looked up as
     ``texts.str{n+1}`` for ``id = passcode`` in ``cards.cdb``.
 
@@ -15,14 +15,38 @@ Failed lookups return ``None``; callers fall back to a placeholder.
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 from yugioh_core.card_database import CardDatabase
+
+
+_SYS_STRING_RE = re.compile(r"^!system\s+(\d+)\s+(.*)$")
+
+
+def parse_sys_strings(path: str | Path) -> dict[int, str]:
+    """Parse a `strings.conf` file's `!system` entries into {id: text}.
+
+    Other sections (`!counter`, `!setname`, `!victory`) are ignored — only
+    sysstrings feed the current resolver. Raises FileNotFoundError if the
+    path doesn't exist; callers should pre-check (env-side decision so the
+    resolver stays pure).
+    """
+    table: dict[int, str] = {}
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            m = _SYS_STRING_RE.match(line.rstrip("\r\n"))
+            if m:
+                table[int(m.group(1))] = m.group(2)
+    return table
 
 
 class StringResolver:
     """Resolve engine string IDs to display text via a card database.
 
-    Sysstring resolution is reserved for a future wire-in: pass a
-    ``sys_strings`` mapping (parsed from ``strings.conf``) once available.
+    Pass ``sys_strings`` (a mapping parsed from ``strings.conf`` via
+    ``parse_sys_strings``) to enable sysstring resolution; otherwise
+    sysstring lookups return ``None`` and callers fall back to placeholders.
     """
 
     def __init__(
