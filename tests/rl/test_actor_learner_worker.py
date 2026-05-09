@@ -69,7 +69,7 @@ def test_worker_produces_valid_rollout() -> None:
         expected_shapes = {
             "obs_cards":   (T, 200, 42),
             "obs_global":  (T, 20),
-            "obs_actions": (T, 32, 12),
+            "obs_actions": (T, 32, 28),
             "action_mask": (T, 32),
             "actions":     (T,),
             "log_probs":   (T,),

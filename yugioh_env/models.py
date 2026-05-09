@@ -8,12 +8,23 @@ from pydantic import BaseModel, Field
 
 from openenv.core.env_server.types import Action, Observation, State
 
+from yugioh_core.encoding import (
+    ACTION_FEATURES,
+    CARD_FEATURES,
+    GLOBAL_FEATURES,
+    MAX_ACTIONS,
+    MAX_CARDS,
+)
+
 
 class YuGiOhAction(Action):
     """Agent action: select an index into available actions."""
 
     action_index: int = Field(
-        ..., description="Index into available actions (0 to 31)", ge=0, le=31
+        ...,
+        description=f"Index into available actions (0 to {MAX_ACTIONS - 1})",
+        ge=0,
+        le=MAX_ACTIONS - 1,
     )
 
 
@@ -46,19 +57,19 @@ class YuGiOhObservation(Observation):
 
     cards: list[list[int]] = Field(
         default_factory=list,
-        description="Card features (200 x 42) uint8 encoded",
+        description=f"Card features ({MAX_CARDS} x {CARD_FEATURES}) uint8 encoded",
     )
     global_state: list[int] = Field(
         default_factory=list,
-        description="Global state features (20,) uint8 encoded",
+        description=f"Global state features ({GLOBAL_FEATURES},) uint8 encoded",
     )
     actions: list[list[int]] = Field(
         default_factory=list,
-        description="Action features (32 x 12) uint8 encoded",
+        description=f"Action features ({MAX_ACTIONS} x {ACTION_FEATURES}) uint8 encoded",
     )
     action_mask: list[int] = Field(
         default_factory=list,
-        description="Binary action mask (32,): 1 = legal, 0 = illegal",
+        description=f"Binary action mask ({MAX_ACTIONS},): 1 = legal, 0 = illegal",
     )
     action_meta: list[ActionMeta | None] = Field(
         default_factory=list,

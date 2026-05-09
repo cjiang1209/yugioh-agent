@@ -533,8 +533,10 @@ class TestActionRoundtrip:
             "cards": [{"code": 100, "controller": 0, "location": 2,
                         "sequence": 0, "subsequence": 0}],
         })
-        codes, feats = decode_actions(self._action_tensor(mapper))
+        codes, desc_pcs, desc_ns, feats = decode_actions(self._action_tensor(mapper))
         assert codes.shape == (1, MAX_ACTIONS)
+        assert desc_pcs.shape == (1, MAX_ACTIONS)
+        assert desc_ns.shape == (1, MAX_ACTIONS)
         assert feats.shape == (1, MAX_ACTIONS, ACTION_FEAT_DIM)
 
     def test_action_code(self):
@@ -545,7 +547,7 @@ class TestActionRoundtrip:
             "cards": [{"code": 89631139, "controller": 0, "location": 2,
                         "sequence": 0, "subsequence": 0}],
         })
-        codes, _ = decode_actions(self._action_tensor(mapper))
+        codes, *_ = decode_actions(self._action_tensor(mapper))
         assert codes[0, 0].item() == 89631139
 
     def test_msg_type(self):
@@ -556,7 +558,7 @@ class TestActionRoundtrip:
             "cards": [{"code": 100, "controller": 0, "location": 2,
                         "sequence": 0, "subsequence": 0}],
         })
-        _, feats = decode_actions(self._action_tensor(mapper))
+        *_, feats = decode_actions(self._action_tensor(mapper))
         assert feats[0, 0, 0].item() == pytest.approx(MSG_SELECT_CARD / 255.0)
 
     def test_category(self):
@@ -568,7 +570,7 @@ class TestActionRoundtrip:
             "repositionable": [], "mset": [], "sset": [],
             "activatable": [], "to_bp": False, "to_ep": False, "shuffle": False,
         })
-        _, feats = decode_actions(self._action_tensor(mapper))
+        *_, feats = decode_actions(self._action_tensor(mapper))
         # First action = normal summon, category 0
         assert feats[0, 0, 1].item() == pytest.approx(0 / 10.0)
         # Second action = special summon, category 1
@@ -582,15 +584,15 @@ class TestActionRoundtrip:
             "cards": [{"code": 100, "controller": 0, "location": 0x04,
                         "sequence": 5, "subsequence": 0}],
         })
-        _, feats = decode_actions(self._action_tensor(mapper))
-        # location 0x04 (MZONE) → bit 1 of _LOC_BITS
-        loc_feats = feats[0, 0, 2:9]
+        *_, feats = decode_actions(self._action_tensor(mapper))
+        # New layout: feats[..., 3:10] = location bits (after msg_type, category, controller)
+        loc_feats = feats[0, 0, 3:10]
         expected_set = _bit_index(_LOC_BITS, 0x04)
         for i in range(7):
             expected = 1.0 if i in expected_set else 0.0
             assert loc_feats[i].item() == expected, f"action loc bit {i}"
-        # sequence
-        assert feats[0, 0, 9].item() == pytest.approx(5 / 15.0)
+        # sequence (heuristic /60.0)
+        assert feats[0, 0, 10].item() == pytest.approx(5 / 60.0)
 
     def test_unused_slots_zero(self):
         """Unused action slots should decode as all zeros."""
@@ -601,7 +603,88 @@ class TestActionRoundtrip:
             "cards": [{"code": 100, "controller": 0, "location": 2,
                         "sequence": 0, "subsequence": 0}],
         })
-        codes, feats = decode_actions(self._action_tensor(mapper))
+        codes, _, _, feats = decode_actions(self._action_tensor(mapper))
         # Slot 1 (unused) should be all zeros
         assert codes[0, 1].item() == 0
         assert feats[0, 1].sum().item() == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Decoder contract tests (Task 11): pin the 4-tuple shape and the
+# disambiguation rule that masks the per-card desc_n scalar to 0 when
+# the action carries a sysstring desc.
+# ---------------------------------------------------------------------------
+
+class TestDecodeActionsContract:
+    """The shape of decode_actions's return is part of the network's
+    forward-pass contract; pin it here."""
+
+    def _action_tensor(self, mapper: ActionMapper) -> torch.Tensor:
+        features = mapper.get_action_features()
+        return torch.from_numpy(features).unsqueeze(0)
+
+    def _yesno_tensor(self, desc: int) -> torch.Tensor:
+        """Build an action tensor for SELECT_YESNO with a custom desc."""
+        from yugioh_core.constants import MSG_SELECT_YESNO
+        mapper = ActionMapper()
+        mapper.update({
+            "msg_type": MSG_SELECT_YESNO, "player": 0, "_agent_player": 0,
+            "desc": desc,
+        })
+        return self._action_tensor(mapper)
+
+    def test_decode_actions_returns_4tuple(self):
+        """Pin the (codes, desc_passcodes, desc_ns, action_feats) signature
+        so accidental return-shape changes get caught here, not deep in the
+        network forward pass."""
+        from yugioh_core.constants import MSG_SELECT_YESNO
+        mapper = ActionMapper()
+        mapper.update({
+            "msg_type": MSG_SELECT_YESNO, "player": 0, "_agent_player": 0,
+            "desc": 0x1234567890ABC,
+        })
+        result = decode_actions(self._action_tensor(mapper))
+        assert isinstance(result, tuple)
+        assert len(result) == 4
+        codes, desc_pcs, desc_ns, feats = result
+        assert codes.shape == (1, MAX_ACTIONS)
+        assert desc_pcs.shape == (1, MAX_ACTIONS)
+        assert desc_ns.shape == (1, MAX_ACTIONS)
+        assert feats.dim() == 3
+
+    def test_decode_actions_action_feat_dim(self):
+        """ACTION_FEAT_DIM is part of the network input contract; pin it."""
+        from yugioh_core.constants import MSG_SELECT_YESNO
+        mapper = ActionMapper()
+        mapper.update({
+            "msg_type": MSG_SELECT_YESNO, "player": 0, "_agent_player": 0,
+            "desc": 0,
+        })
+        *_, feats = decode_actions(self._action_tensor(mapper))
+        assert feats.shape[-1] == 23
+        assert feats.shape[-1] == ACTION_FEAT_DIM  # constant tracks reality
+
+    def test_decode_action_per_card_desc_n_scalar_masked_when_sysstring(self):
+        """The disambiguation rule: per-card desc_n scalar (last dim of
+        action_feats) must be 0 for sysstring actions (passcode==0), and
+        non-zero for per-card actions (passcode>0). This is the load-bearing
+        invariant that lets the MLP cleanly disambiguate the two desc paths
+        without learning to mask anything itself."""
+        # Sysstring case: passcode=0 (low 20 bits = 70 means !system 70)
+        sys_tensor = self._yesno_tensor(desc=70)
+        codes_sys, pcs_sys, ns_sys, feats_sys = decode_actions(sys_tensor)
+        # Both yesno actions (yes + no) carry the same desc → both passcode=0
+        assert pcs_sys[0, 0].item() == 0
+        assert ns_sys[0, 0].item() == 70
+        # Per-card desc_n scalar (last dim) must be masked to 0 for sysstring
+        assert feats_sys[0, 0, -1].item() == 0.0
+
+        # Per-card case: passcode=12345, n=3 → desc = (12345 << 20) | 3
+        per_card_desc = (12345 << 20) | 3
+        per_card_tensor = self._yesno_tensor(desc=per_card_desc)
+        codes_pc, pcs_pc, ns_pc, feats_pc = decode_actions(per_card_tensor)
+        assert pcs_pc[0, 0].item() == 12345
+        assert ns_pc[0, 0].item() == 3
+        # Per-card desc_n scalar must carry the n value, normalized by vocab-1
+        from yugioh_core.encoding import PER_CARD_DESC_N_VOCAB
+        assert feats_pc[0, 0, -1].item() == pytest.approx(3.0 / (PER_CARD_DESC_N_VOCAB - 1))

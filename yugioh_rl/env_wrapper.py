@@ -9,6 +9,13 @@ from typing import Any
 
 import numpy as np
 
+from yugioh_core.encoding import (
+    ACTION_FEATURES,
+    CARD_FEATURES,
+    GLOBAL_FEATURES,
+    MAX_ACTIONS,
+    MAX_CARDS,
+)
 from yugioh_env.models import YuGiOhAction
 
 DeckDict = dict[str, list[int]]  # {"main": [int, ...], "extra": [int, ...]}
@@ -27,10 +34,22 @@ def parse_deck_pool(deck_paths: list[str]) -> list[DeckDict]:
 def _obs_to_numpy(obs) -> dict[str, np.ndarray]:
     """Convert a YuGiOhObservation (with Python lists) back to numpy arrays."""
     return {
-        "cards": np.array(obs.cards, dtype=np.uint8).reshape(200, 42) if obs.cards else np.zeros((200, 42), dtype=np.uint8),
-        "global_state": np.array(obs.global_state, dtype=np.uint8).reshape(20) if obs.global_state else np.zeros(20, dtype=np.uint8),
-        "actions": np.array(obs.actions, dtype=np.uint8).reshape(32, 12) if obs.actions else np.zeros((32, 12), dtype=np.uint8),
-        "action_mask": np.array(obs.action_mask, dtype=np.int8).reshape(32) if obs.action_mask else np.zeros(32, dtype=np.int8),
+        "cards": (
+            np.array(obs.cards, dtype=np.uint8).reshape(MAX_CARDS, CARD_FEATURES)
+            if obs.cards else np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8)
+        ),
+        "global_state": (
+            np.array(obs.global_state, dtype=np.uint8).reshape(GLOBAL_FEATURES)
+            if obs.global_state else np.zeros(GLOBAL_FEATURES, dtype=np.uint8)
+        ),
+        "actions": (
+            np.array(obs.actions, dtype=np.uint8).reshape(MAX_ACTIONS, ACTION_FEATURES)
+            if obs.actions else np.zeros((MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8)
+        ),
+        "action_mask": (
+            np.array(obs.action_mask, dtype=np.int8).reshape(MAX_ACTIONS)
+            if obs.action_mask else np.zeros(MAX_ACTIONS, dtype=np.int8)
+        ),
     }
 
 

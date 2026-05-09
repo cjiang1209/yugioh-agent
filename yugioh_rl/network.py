@@ -7,6 +7,7 @@ import logging
 import torch
 import torch.nn as nn
 
+from yugioh_core.encoding import SYSSTRING_VOCAB
 from yugioh_rl.config import TrainingConfig
 from yugioh_rl.features import (
     CARD_FEAT_DIM,
@@ -207,7 +208,15 @@ class YuGiOhNet(nn.Module):
             head_in_dim = config.rnn_hidden_dim
 
         # Action encoder
-        action_input_dim = embed_dim + ACTION_FEAT_DIM
+        # Inputs per action: code_emb + desc_passcode_emb (reuses card table)
+        # + sysstring_emb (masked when per-card) + ACTION_FEAT_DIM floats.
+        self.sysstring_emb = nn.Embedding(SYSSTRING_VOCAB, config.desc_n_embed_dim)
+        action_input_dim = (
+            embed_dim                       # action_codes → card embedding
+            + embed_dim                     # desc_passcodes → reuses card embedding
+            + config.desc_n_embed_dim       # sysstring desc → dedicated table
+            + ACTION_FEAT_DIM
+        )
         self.action_encoder = _mlp(action_input_dim, config.action_embed_dim, config.action_embed_dim)
 
         # Policy head: project board (or RNN output) → action_embed_dim for dot product
@@ -374,7 +383,7 @@ class YuGiOhNet(nn.Module):
         Args:
             obs_cards: (B, 200, 42) uint8 — B is N or T*N depending on path.
             obs_global: (B, 20) uint8
-            obs_actions: (B, 32, 12) uint8
+            obs_actions: (B, 32, 28) uint8
             action_mask: (B, 32) int8 — 1=legal, 0=illegal.
             hx: LSTM tuple, GRU tensor, or ``None``.
 
@@ -384,7 +393,9 @@ class YuGiOhNet(nn.Module):
         # --- Decode observations ---
         card_ids, card_feats = decode_cards(obs_cards)      # (B,200), (B,200,F_card)
         global_feats = decode_global(obs_global)              # (B,F_global)
-        action_codes, action_feats = decode_actions(obs_actions)  # (B,32), (B,32,F_act)
+        # decode_actions returns (codes, desc_passcodes, desc_ns, action_feats);
+        # desc_ns is clamped to SYSSTRING_VOCAB-1 for safe embedding lookup.
+        action_codes, desc_passcodes, desc_ns, action_feats = decode_actions(obs_actions)
 
         # --- Card encoding ---
         card_embed = self._embed_codes(card_ids)  # (B, 200, embed_dim)
@@ -439,8 +450,21 @@ class YuGiOhNet(nn.Module):
             new_hx = cur_hx
 
         # --- Action encoding ---
-        act_embed = self._embed_codes(action_codes)  # (B, 32, embed_dim)
-        act_input = torch.cat([act_embed, action_feats], dim=-1)
+        # code_emb: prompt-level card the action targets (e.g. the card to summon).
+        # desc_card_emb: card-identity component of the engine effect string id;
+        #   reuses the card embedding table (row 0 = sentinel "no card", which is
+        #   also what we hit when the desc is a sysstring (passcode == 0)).
+        # sys_emb_masked: sysstring component, masked to 0 when the desc is per-card,
+        #   so exactly one of (sys_emb, per_card_desc_n_scalar in action_feats) is
+        #   non-zero per action.
+        act_embed = self._embed_codes(action_codes)        # (B, 32, embed_dim)
+        desc_card_embed = self._embed_codes(desc_passcodes)  # (B, 32, embed_dim)
+        is_sysstring = (desc_passcodes == 0)
+        sys_emb = self.sysstring_emb(desc_ns)              # (B, 32, desc_n_embed_dim)
+        sys_emb_masked = sys_emb * is_sysstring.float().unsqueeze(-1)
+        act_input = torch.cat(
+            [act_embed, desc_card_embed, sys_emb_masked, action_feats], dim=-1,
+        )
         act_enc = self.action_encoder(act_input)  # (B, 32, action_embed_dim)
 
         # --- Policy head: dot product ---

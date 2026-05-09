@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from yugioh_env.action_space import ActionMapper, MAX_ACTIONS, ACTION_FEATURES
+from yugioh_core.encoding import decode_u16, decode_u32
 from yugioh_core.constants import (
     LOCATION_MZONE,
     LOCATION_SZONE,
@@ -13,6 +14,7 @@ from yugioh_core.constants import (
     MSG_ANNOUNCE_NUMBER,
     MSG_ANNOUNCE_RACE,
     MSG_ROCK_PAPER_SCISSORS,
+    MSG_SELECT_BATTLECMD,
     MSG_SELECT_CARD,
     MSG_SELECT_COUNTER,
     MSG_SELECT_IDLECMD,
@@ -23,6 +25,7 @@ from yugioh_core.constants import (
     MSG_SELECT_CHAIN,
     MSG_SELECT_POSITION,
     MSG_SELECT_OPTION,
+    MSG_SELECT_SUM,
     POS_FACEUP_ATTACK,
     POS_FACEUP_DEFENSE,
 )
@@ -122,12 +125,13 @@ def test_action_features_card_code_encoding():
     # feat[0] = msg_type
     assert feat[0] == MSG_SELECT_CARD
     # feat[2:6] = code as uint32 LE (89631139 = 0x0557B1A3)
-    code = int(feat[2]) | (int(feat[3]) << 8) | (int(feat[4]) << 16) | (int(feat[5]) << 24)
+    code = decode_u32(feat, 2)
     assert code == 89631139
-    # feat[6] = location, feat[7] = sequence, feat[8] = index
-    assert feat[6] == 2   # location
-    assert feat[7] == 3   # sequence
-    assert feat[8] == 0   # index
+    # New 28-byte layout: [6]=controller, [7]=location, [8:10]=sequence (u16 LE), [16]=index
+    assert feat[7] == 2   # location
+    seq = decode_u16(feat, 8)
+    assert seq == 3   # sequence
+    assert feat[16] == 0   # index
 
 
 def test_invalid_action_index():
@@ -381,7 +385,7 @@ def test_select_card_min_max_multi_step():
     features = mapper.get_action_features()
     # Each card action has num_selected = 1 (will be 1 after pick)
     for i in range(4):
-        assert features[i][9] == 1
+        assert features[i][17] == 1
         assert features[i][1] == 0  # category = 0 (card pick)
 
     # Pick card 0 — returns None (multi-step in progress)
@@ -395,10 +399,10 @@ def test_select_card_min_max_multi_step():
     features2 = mapper.get_action_features()
     # Last action is "finish" (category=1)
     assert features2[3][1] == 1  # category = 1
-    assert features2[3][9] == 1  # num_selected = 1 (accumulated so far)
+    assert features2[3][17] == 1  # num_selected = 1 (accumulated so far)
     # Card actions have num_selected = 2 (will be 2 after this pick)
     for i in range(3):
-        assert features2[i][9] == 2
+        assert features2[i][17] == 2
         assert features2[i][1] == 0  # category = 0
 
     # Pick card 2 — hits max=2, returns final response
@@ -633,14 +637,14 @@ def test_tribute_num_selected_feature():
     features = mapper.get_action_features()
     # Step 1: each card action has num_selected = 1 (will be 1 after pick)
     for i in range(3):
-        assert features[i][9] == 1
+        assert features[i][17] == 1
 
     # Step 2: after picking card 0
     mapper.update({**msg, "_selected": [0]})
     features2 = mapper.get_action_features()
     # Remaining card actions have num_selected = 2 (will be 2 after pick)
     for i in range(2):
-        assert features2[i][9] == 2
+        assert features2[i][17] == 2
 
 
 # --- Meta field boundary-case tests (Tasks 3-9) ---
@@ -762,11 +766,7 @@ def test_action_meta_card_code_consistency(setup):
             continue  # pass actions etc.
         assert meta["kind"] == expected_kind
         feats_row = list(feats[i])
-        # Decode card code from bytes [2:6] as uint32 (little-endian)
-        decoded_code = (int(feats_row[2])
-                        | (int(feats_row[3]) << 8)
-                        | (int(feats_row[4]) << 16)
-                        | (int(feats_row[5]) << 24))
+        decoded_code = decode_u32(feats_row, 2)
         if has_card_code:
             assert decoded_code != 0, (
                 f"{expected_kind} action #{i}: feats code is 0 but kind references a card"
@@ -855,3 +855,195 @@ def test_announce_attrib_count_one_emits_terminal_picks():
     assert mapper.num_actions == 1
     response = mapper.action_to_response(0)
     assert response == struct.pack("<I", ATTRIBUTE_DARK)
+
+
+# --- Test C: action controller relativization (engine-absolute → 0=agent/1=opp) ---
+
+@pytest.mark.parametrize("agent_player", [0, 1])
+def test_action_controller_relativizes_per_agent_player(agent_player):
+    """SELECT_CHAIN with chain entries on both engine sides: the encoded
+    controller byte must be 0 when the chain belongs to agent_player and
+    1 otherwise, regardless of which engine player the agent is.
+
+    Pins the contract that extractors read msg["_agent_player"] and
+    relativize the engine-absolute controller into agent-relative form.
+    """
+    mapper = ActionMapper()
+    mapper.update({
+        "msg_type": MSG_SELECT_CHAIN,
+        "player": agent_player,
+        "_agent_player": agent_player,
+        "forced": 1,  # no "no chain" option, just the entries
+        "chains": [
+            # Chain on engine player 0
+            {"flag": 0, "code": 100, "controller": 0,
+             "location": 0x04, "sequence": 0, "subsequence": 0,
+             "position": 0x01, "desc": 0},
+            # Chain on engine player 1
+            {"flag": 0, "code": 200, "controller": 1,
+             "location": 0x04, "sequence": 0, "subsequence": 0,
+             "position": 0x01, "desc": 0},
+        ],
+    })
+    features = mapper.get_action_features()
+    # New 28-byte layout: byte 6 = controller (relativized: 0=agent, 1=opp)
+    ctrl_p0 = int(features[0][6])  # chain on engine player 0
+    ctrl_p1 = int(features[1][6])  # chain on engine player 1
+    if agent_player == 0:
+        assert ctrl_p0 == 0  # agent's own
+        assert ctrl_p1 == 1  # opponent's
+    else:
+        assert ctrl_p0 == 1  # opponent's (engine 0)
+        assert ctrl_p1 == 0  # agent's own (engine 1)
+
+
+# --- Test 1 (consolidated 8-case): single-byte wire field roundtrip ---
+# Each case sets ONE wire field on a synthesized prompt, decodes the
+# corresponding feats byte (per the 28-byte layout in _encode_action),
+# and asserts the value survived. Catches drop/typo bugs in extractors.
+
+def _idle_msg_with_card(**card_overrides) -> dict:
+    """SELECT_IDLECMD with a single summonable card carrying the given fields."""
+    card = {"code": 100, "controller": 0, "location": 0x02, "sequence": 0}
+    card.update(card_overrides)
+    return {
+        "msg_type": MSG_SELECT_IDLECMD, "player": 0, "_agent_player": 0,
+        "summonable": [card], "sp_summonable": [], "repositionable": [],
+        "mset": [], "sset": [], "activatable": [],
+        "to_bp": False, "to_ep": False, "shuffle_hand": False,
+    }
+
+
+def _battle_msg_with_attackable(**card_overrides) -> dict:
+    """SELECT_BATTLECMD with a single attackable card."""
+    card = {"code": 100, "controller": 0, "location": 0x04,
+            "sequence": 0, "direct_attackable": 0}
+    card.update(card_overrides)
+    return {
+        "msg_type": MSG_SELECT_BATTLECMD, "player": 0, "_agent_player": 0,
+        "activatable": [], "attackable": [card],
+        "to_m2": False, "to_ep": False,
+    }
+
+
+def _tribute_msg(**card_overrides) -> dict:
+    """SELECT_TRIBUTE with a single card; release_param overridable."""
+    card = {"code": 100, "controller": 0, "location": 0x04,
+            "sequence": 0, "release_param": 1}
+    card.update(card_overrides)
+    return {
+        "msg_type": MSG_SELECT_TRIBUTE, "player": 0, "_agent_player": 0,
+        "cancelable": 0, "min": 1, "max": 1, "cards": [card],
+    }
+
+
+def _sum_msg(**card_overrides) -> dict:
+    """SELECT_SUM with a single optional card; param overridable."""
+    card = {"code": 100, "controller": 0, "location": 0x04,
+            "sequence": 0, "param": 1}
+    card.update(card_overrides)
+    return {
+        "msg_type": MSG_SELECT_SUM, "player": 0, "_agent_player": 0,
+        "select_type": 0, "target_sum": 5, "min": 1, "max": 1,
+        "must_cards": [], "optional_cards": [card],
+    }
+
+
+def _card_msg(**card_overrides) -> dict:
+    """SELECT_CARD with a single card; subsequence overridable."""
+    card = {"code": 100, "controller": 0, "location": 0x04,
+            "sequence": 0, "subsequence": 0}
+    card.update(card_overrides)
+    return {
+        "msg_type": MSG_SELECT_CARD, "player": 0, "_agent_player": 0,
+        "cancelable": 0, "min": 1, "max": 1, "cards": [card],
+    }
+
+
+def _chain_msg_with_chain(**chain_overrides) -> dict:
+    """SELECT_CHAIN with one forced chain entry; position overridable."""
+    chain = {"flag": 0, "code": 100, "controller": 0,
+             "location": 0x04, "sequence": 0, "subsequence": 0,
+             "position": 0x01, "desc": 0}
+    chain.update(chain_overrides)
+    return {
+        "msg_type": MSG_SELECT_CHAIN, "player": 0, "_agent_player": 0,
+        "forced": 1, "chains": [chain],
+    }
+
+
+def _counter_msg(**msg_overrides) -> dict:
+    """SELECT_COUNTER with one card carrying counters."""
+    card = {"code": 100, "controller": 0, "location": 0x04,
+            "sequence": 0, "counter_count": 3}
+    base = {
+        "msg_type": MSG_SELECT_COUNTER, "player": 0, "_agent_player": 0,
+        "counter_type": 0x01, "count": 1, "cards": [card],
+    }
+    base.update(msg_overrides)
+    return base
+
+
+@pytest.mark.parametrize(
+    "case_name, msg_factory, byte_idx, expected",
+    [
+        # controller: opponent's card (engine ctrl=1, agent_player=0) → byte[6] == 1
+        ("controller", lambda: _idle_msg_with_card(controller=1), 6, 1),
+        # direct_attackable: byte[12] == 1
+        ("direct_attackable", lambda: _battle_msg_with_attackable(direct_attackable=1), 12, 1),
+        # release_param (tribute weight): byte[13] == 7
+        ("release_param", lambda: _tribute_msg(release_param=7), 13, 7),
+        # sum.param (sum weight): byte[13] == 4
+        ("sum_param", lambda: _sum_msg(param=4), 13, 4),
+        # subsequence: byte[10] == 2
+        ("subsequence", lambda: _card_msg(subsequence=2), 10, 2),
+        # position: byte[11] == 0x04 (FU-Def)
+        ("position", lambda: _chain_msg_with_chain(position=0x04), 11, 0x04),
+        # counter_type: byte[14] == 0x05 (low byte of counter_type=5)
+        ("counter_type", lambda: _counter_msg(counter_type=5), 14, 5),
+        # counter_count: byte[15] == 1 (n_remove = min(card.counter_count=3, msg.count=1))
+        ("counter_count", lambda: _counter_msg(), 15, 1),
+    ],
+)
+def test_extractor_single_byte_field_roundtrip(case_name, msg_factory, byte_idx, expected):
+    """Each wire field shows up in the right byte of the encoded action."""
+    mapper = ActionMapper()
+    mapper.update(msg_factory())
+    features = mapper.get_action_features()
+    assert features[0][byte_idx] == expected, (
+        f"case {case_name}: feats[0][{byte_idx}]={int(features[0][byte_idx])}, "
+        f"expected {expected}"
+    )
+
+
+# --- Test 2: desc decomposition (bytes 20-27 as u64 LE) ---
+
+def test_extractor_desc_packs_into_bytes_20_27():
+    """desc is encoded as u64 LE in bytes 20-27. Pack a known value with
+    distinguishable passcode/n halves and verify decomposition."""
+    desc_value = (0x12345 << 20) | 0x67  # passcode=0x12345, n=0x67
+    msg = {
+        "msg_type": MSG_SELECT_YESNO, "player": 0, "_agent_player": 0,
+        "desc": desc_value,
+    }
+    mapper = ActionMapper()
+    mapper.update(msg)
+    feat = mapper.get_action_features()[0]
+    decoded = 0
+    for i in range(8):
+        decoded |= int(feat[20 + i]) << (8 * i)
+    assert decoded == desc_value
+    assert (decoded >> 20) == 0x12345  # passcode half
+    assert (decoded & 0xFFFFF) == 0x67  # n half (low 20 bits)
+
+
+# --- Test 3: sequence widening regression (u8 → u16) ---
+
+def test_extractor_sequence_widens_to_u16():
+    """Sequence values >255 must survive encoding (deck/banished/GY targeting).
+    Pre-fix would truncate sequence=300 to 44 (300 & 0xFF)."""
+    msg = _card_msg(sequence=300)
+    mapper = ActionMapper()
+    mapper.update(msg)
+    feat = mapper.get_action_features()[0]
+    assert decode_u16(feat, 8) == 300

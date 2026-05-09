@@ -8,6 +8,13 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
+from yugioh_core.encoding import (
+    ACTION_FEATURES,
+    CARD_FEATURES,
+    GLOBAL_FEATURES,
+    MAX_ACTIONS,
+    MAX_CARDS,
+)
 from yugioh_rl.config import TrainingConfig
 from yugioh_rl.network import YuGiOhNet
 from yugioh_rl.ppo import PPOTrainer
@@ -32,10 +39,10 @@ def _make_checkpoint(
     optimizer = torch.optim.Adam(net.parameters(), lr=config.learning_rate)
 
     if run_backward:
-        cards = torch.zeros(1, 200, 42, dtype=torch.uint8)
-        glob = torch.zeros(1, 20, dtype=torch.uint8)
-        actions = torch.zeros(1, 32, 12, dtype=torch.uint8)
-        mask = torch.ones(1, 32, dtype=torch.int8)
+        cards = torch.zeros(1, MAX_CARDS, CARD_FEATURES, dtype=torch.uint8)
+        glob = torch.zeros(1, GLOBAL_FEATURES, dtype=torch.uint8)
+        actions = torch.zeros(1, MAX_ACTIONS, ACTION_FEATURES, dtype=torch.uint8)
+        mask = torch.ones(1, MAX_ACTIONS, dtype=torch.int8)
         for _ in range(3):
             logits, value, _ = net(cards, glob, actions, mask)
             loss = -logits.mean() + value.mean()

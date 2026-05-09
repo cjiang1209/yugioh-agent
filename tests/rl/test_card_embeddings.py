@@ -11,6 +11,13 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
+from yugioh_core.encoding import (
+    ACTION_FEATURES,
+    CARD_FEATURES,
+    GLOBAL_FEATURES,
+    MAX_ACTIONS,
+    MAX_CARDS,
+)
 from yugioh_rl.config import TrainingConfig
 from yugioh_rl.network import TextEmbeddingLookup, YuGiOhNet
 
@@ -42,10 +49,10 @@ def _make_embeddings_file(
 
 def _make_dummy_obs(batch_size: int = 2):
     """Create minimal dummy observations for a forward pass."""
-    obs_cards = torch.zeros(batch_size, 200, 42, dtype=torch.uint8)
-    obs_global = torch.zeros(batch_size, 20, dtype=torch.uint8)
-    obs_actions = torch.zeros(batch_size, 32, 12, dtype=torch.uint8)
-    action_mask = torch.ones(batch_size, 32, dtype=torch.int8)
+    obs_cards = torch.zeros(batch_size, MAX_CARDS, CARD_FEATURES, dtype=torch.uint8)
+    obs_global = torch.zeros(batch_size, GLOBAL_FEATURES, dtype=torch.uint8)
+    obs_actions = torch.zeros(batch_size, MAX_ACTIONS, ACTION_FEATURES, dtype=torch.uint8)
+    action_mask = torch.ones(batch_size, MAX_ACTIONS, dtype=torch.int8)
     # Set at least one legal action
     action_mask[:, 0] = 1
     return obs_cards, obs_global, obs_actions, action_mask
@@ -163,7 +170,7 @@ class TestSymbolicMode:
         obs_cards, obs_global, obs_actions, action_mask = _make_dummy_obs(batch_size=2)
         logits, values, _ = net(obs_cards, obs_global, obs_actions, action_mask)
 
-        assert logits.shape == (2, 32)
+        assert logits.shape == (2, MAX_ACTIONS)
         assert values.shape == (2,)
         assert torch.isfinite(values).all()
 
@@ -186,7 +193,7 @@ class TestSemanticMode:
         obs_cards, obs_global, obs_actions, action_mask = _make_dummy_obs(batch_size=2)
         logits, values, _ = net(obs_cards, obs_global, obs_actions, action_mask)
 
-        assert logits.shape == (2, 32)
+        assert logits.shape == (2, MAX_ACTIONS)
         assert values.shape == (2,)
         assert torch.isfinite(values).all()
 
@@ -261,7 +268,7 @@ class TestSemanticMode:
 
         obs_cards, obs_global, obs_actions, action_mask = _make_dummy_obs(batch_size=2)
         logits, values, _ = net(obs_cards, obs_global, obs_actions, action_mask)
-        assert logits.shape == (2, 32)
+        assert logits.shape == (2, MAX_ACTIONS)
         assert values.shape == (2,)
         assert torch.isfinite(values).all()
 

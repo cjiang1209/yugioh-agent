@@ -9,7 +9,18 @@ MAX_CARDS = 200
 CARD_FEATURES = 42
 GLOBAL_FEATURES = 20
 MAX_ACTIONS = 32
-ACTION_FEATURES = 12
+ACTION_FEATURES = 28
+
+# Vocab sizes for desc_n embeddings (used by yugioh_rl/network.py).
+# Per-card desc: rigorous — cards.cdb texts table has str1..str16, so per-card
+# desc_n maxes at 15 (16 slots). The model uses a scalar instead of an embedding
+# for this branch, so this constant is mainly informational.
+PER_CARD_DESC_N_VOCAB = 16
+
+# Sysstring desc: ProjectIgnis ships up to ID ~12125 today, but engine could emit
+# values up to u16 max. We use full u16 vocab to future-proof against upstream
+# sysstring growth without code change.
+SYSSTRING_VOCAB = 65536
 
 # Zone slot allocations per player
 ZONE_SLOTS = {
@@ -37,6 +48,26 @@ def _encode_i16_clamped(val: int) -> tuple[int, int]:
 def encode_u32(val: int) -> tuple[int, int, int, int]:
     """Encode a uint32 value as four uint8 bytes (little-endian)."""
     return val & 0xFF, (val >> 8) & 0xFF, (val >> 16) & 0xFF, (val >> 24) & 0xFF
+
+
+def encode_u64(val: int) -> tuple[int, int, int, int, int, int, int, int]:
+    """Encode a uint64 value as eight uint8 bytes (little-endian)."""
+    return tuple((val >> (8 * i)) & 0xFF for i in range(8))
+
+
+def decode_u16(arr, offset: int) -> int:
+    """Decode a uint16 LE from two consecutive bytes of arr at *offset*."""
+    return int(arr[offset]) | (int(arr[offset + 1]) << 8)
+
+
+def decode_u32(arr, offset: int) -> int:
+    """Decode a uint32 LE from four consecutive bytes of arr at *offset*."""
+    return (
+        int(arr[offset])
+        | (int(arr[offset + 1]) << 8)
+        | (int(arr[offset + 2]) << 16)
+        | (int(arr[offset + 3]) << 24)
+    )
 
 
 def encode_card(

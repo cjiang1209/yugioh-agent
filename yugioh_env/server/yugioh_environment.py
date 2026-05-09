@@ -317,7 +317,11 @@ class YuGiOhEnvironment(Environment):
             # _current_msg must track the mapper update so current_msg/num_actions stay consistent.
             card_idx = self._mapper.get_action_index(action.action_index)
             self._card_sel.append(card_idx)
-            updated_msg = {**self._current_msg, "_selected": list(self._card_sel)}
+            updated_msg = {
+                **self._current_msg,
+                "_selected": list(self._card_sel),
+                "_agent_player": self._agent_player,
+            }
             self._mapper.update(updated_msg)
             self._current_msg = updated_msg
             return self._make_observation()
@@ -400,7 +404,7 @@ class YuGiOhEnvironment(Environment):
                 # Agent's turn to decide
                 self._current_msg = msg
                 self._card_sel.clear()
-                self._mapper.update(msg)
+                self._mapper.update({**msg, "_agent_player": self._agent_player})
                 return self._make_observation(
                     event_log=self._flatten_frame_events(),
                 )
@@ -408,7 +412,8 @@ class YuGiOhEnvironment(Environment):
             elif player != self._agent_player and msg_type in SELECT_MSGS:
                 # Opponent's turn - auto-play (loop for multi-step selections)
                 opp_mapper = ActionMapper()
-                opp_mapper.update(msg)
+                opp_agent_player = 1 - self._agent_player
+                opp_mapper.update({**msg, "_agent_player": opp_agent_player})
                 opp_sel: list[int] = []
                 if opp_mapper.num_actions > 0:
                     response = None
@@ -428,7 +433,11 @@ class YuGiOhEnvironment(Environment):
                         response = opp_mapper.action_to_response(opp_action)
                         if response is None:
                             opp_sel.append(opp_mapper.get_action_index(opp_action))
-                            opp_mapper.update({**msg, "_selected": list(opp_sel)})
+                            opp_mapper.update({
+                                **msg,
+                                "_selected": list(opp_sel),
+                                "_agent_player": opp_agent_player,
+                            })
                     if response is not None:
                         self._duel.send_response(response)
                 else:

@@ -13,6 +13,13 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
+from yugioh_core.encoding import (
+    ACTION_FEATURES,
+    CARD_FEATURES,
+    GLOBAL_FEATURES,
+    MAX_ACTIONS,
+    MAX_CARDS,
+)
 from yugioh_rl.config import TrainingConfig
 from yugioh_rl.network import YuGiOhNet
 
@@ -68,9 +75,9 @@ def test_legacy_checkpoint_inference_via_model_opponent(tmp_path):
     opp = ModelOpponent(ckpt_path, device="cpu")
 
     obs = {
-        "cards": np.zeros((200, 42), dtype=np.uint8),
-        "global_state": np.zeros(20, dtype=np.uint8),
-        "actions": np.zeros((32, 12), dtype=np.uint8),
+        "cards": np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8),
+        "global_state": np.zeros(GLOBAL_FEATURES, dtype=np.uint8),
+        "actions": np.zeros((MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8),
         "action_mask": np.zeros(32, dtype=np.int8),
     }
     obs["action_mask"][:3] = 1
@@ -99,10 +106,10 @@ def test_legacy_checkpoint_inference_via_model_agent(tmp_path, db_path):
 
 
 def _dummy_obs_tensors(batch: int = 4):
-    cards = torch.zeros(batch, 200, 42, dtype=torch.uint8)
-    glob = torch.zeros(batch, 20, dtype=torch.uint8)
-    actions = torch.zeros(batch, 32, 12, dtype=torch.uint8)
-    mask = torch.ones(batch, 32, dtype=torch.int8)
+    cards = torch.zeros(batch, MAX_CARDS, CARD_FEATURES, dtype=torch.uint8)
+    glob = torch.zeros(batch, GLOBAL_FEATURES, dtype=torch.uint8)
+    actions = torch.zeros(batch, MAX_ACTIONS, ACTION_FEATURES, dtype=torch.uint8)
+    mask = torch.ones(batch, MAX_ACTIONS, dtype=torch.int8)
     return cards, glob, actions, mask
 
 
@@ -256,9 +263,9 @@ def test_model_opponent_hx_lifecycle(tmp_path):
     opp = ModelOpponent(ckpt_path, device="cpu")
 
     obs = {
-        "cards": np.zeros((200, 42), dtype=np.uint8),
-        "global_state": np.zeros(20, dtype=np.uint8),
-        "actions": np.zeros((32, 12), dtype=np.uint8),
+        "cards": np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8),
+        "global_state": np.zeros(GLOBAL_FEATURES, dtype=np.uint8),
+        "actions": np.zeros((MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8),
         "action_mask": np.zeros(32, dtype=np.int8),
     }
     obs["action_mask"][:3] = 1
@@ -306,9 +313,9 @@ def test_model_opponent_feed_forward_hx_is_none(tmp_path):
     assert opp._impl._hx is None
 
     obs = {
-        "cards": np.zeros((200, 42), dtype=np.uint8),
-        "global_state": np.zeros(20, dtype=np.uint8),
-        "actions": np.zeros((32, 12), dtype=np.uint8),
+        "cards": np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8),
+        "global_state": np.zeros(GLOBAL_FEATURES, dtype=np.uint8),
+        "actions": np.zeros((MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8),
         "action_mask": np.zeros(32, dtype=np.int8),
     }
     obs["action_mask"][:3] = 1

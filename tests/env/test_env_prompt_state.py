@@ -21,6 +21,13 @@ import numpy as np
 import pytest
 
 from yugioh_env.action_space import ActionMapper
+from yugioh_core.encoding import (
+    ACTION_FEATURES,
+    CARD_FEATURES,
+    GLOBAL_FEATURES,
+    MAX_ACTIONS,
+    MAX_CARDS,
+)
 from yugioh_env.models import YuGiOhAction
 from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
 
@@ -34,8 +41,8 @@ def _stub_build_observation(monkeypatch):
     monkeypatch.setattr(
         env_mod, "build_observation",
         lambda gs, msg, agent_player, query_fn=None: {
-            "cards": np.zeros((200, 42), dtype=np.uint8),
-            "global_state": np.zeros(20, dtype=np.uint8),
+            "cards": np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8),
+            "global_state": np.zeros(GLOBAL_FEATURES, dtype=np.uint8),
         },
     )
 
@@ -96,7 +103,7 @@ def test_multi_step_updates_current_msg_in_sync_with_mapper():
     env._mapper.get_action_index = MagicMock(return_value=0)
     env._mapper.num_actions = 3
     env._mapper.get_action_mask = MagicMock(return_value=np.array([1, 1, 1] + [0] * 29, dtype=np.int8))
-    env._mapper.get_action_features = MagicMock(return_value=np.zeros((32, 12), dtype=np.uint8))
+    env._mapper.get_action_features = MagicMock(return_value=np.zeros((MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8))
 
     # Execute step in the multi-step branch (response is None).
     env.step(YuGiOhAction(action_index=0))

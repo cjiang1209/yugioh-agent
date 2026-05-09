@@ -8,6 +8,13 @@ import pytest
 
 from yugioh_env.action_space import ActionMapper
 from yugioh_core.constants import MSG_SELECT_YESNO
+from yugioh_core.encoding import (
+    ACTION_FEATURES,
+    CARD_FEATURES,
+    GLOBAL_FEATURES,
+    MAX_ACTIONS,
+    MAX_CARDS,
+)
 from yugioh_env.opponent import GreedyOpponent, Opponent, RandomOpponent
 
 
@@ -104,7 +111,7 @@ def test_base_opponent_needs_observation_default():
 def test_base_opponent_set_observation_is_noop():
     """Base Opponent.set_observation does nothing and doesn't raise."""
     opp = GreedyOpponent()
-    opp.set_observation({"cards": np.zeros((200, 42), dtype=np.uint8)})
+    opp.set_observation({"cards": np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8)})
 
 
 # ---------------------------------------------------------------------------
@@ -136,9 +143,9 @@ def _make_synthetic_checkpoint(path: str) -> None:
 def _dummy_obs() -> dict[str, np.ndarray]:
     """Create dummy observation arrays with valid shapes."""
     obs = {
-        "cards": np.zeros((200, 42), dtype=np.uint8),
-        "global_state": np.zeros(20, dtype=np.uint8),
-        "actions": np.zeros((32, 12), dtype=np.uint8),
+        "cards": np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8),
+        "global_state": np.zeros(GLOBAL_FEATURES, dtype=np.uint8),
+        "actions": np.zeros((MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8),
         "action_mask": np.zeros(32, dtype=np.int8),
     }
     # Mark first 3 actions as legal

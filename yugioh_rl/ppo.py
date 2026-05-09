@@ -14,6 +14,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Categorical
 
+from yugioh_core.encoding import (
+    ACTION_FEATURES,
+    CARD_FEATURES,
+    GLOBAL_FEATURES,
+    MAX_ACTIONS,
+    MAX_CARDS,
+)
 from yugioh_env.opponent import NetworkOpponent
 from yugioh_rl.config import TrainingConfig
 from yugioh_rl.env_wrapper import SubprocVecEnv, TrainingEnv, parse_deck_pool
@@ -37,10 +44,10 @@ def _to_tensor(arr: np.ndarray, device: torch.device, *, long: bool = False) -> 
 class MiniBatch:
     """A single minibatch of training data (feed-forward path)."""
 
-    obs_cards: torch.Tensor      # (M, 200, 42)
-    obs_global: torch.Tensor     # (M, 20)
-    obs_actions: torch.Tensor    # (M, 32, 12)
-    action_mask: torch.Tensor    # (M, 32)
+    obs_cards: torch.Tensor      # (M, MAX_CARDS, CARD_FEATURES)
+    obs_global: torch.Tensor     # (M, GLOBAL_FEATURES)
+    obs_actions: torch.Tensor    # (M, MAX_ACTIONS, ACTION_FEATURES)
+    action_mask: torch.Tensor    # (M, MAX_ACTIONS)
     actions: torch.Tensor        # (M,)
     old_log_probs: torch.Tensor  # (M,)
     advantages: torch.Tensor     # (M,)
@@ -57,10 +64,10 @@ class RecurrentMiniBatch:
     the network forward.
     """
 
-    obs_cards: torch.Tensor      # (T, env_mb, 200, 42)
-    obs_global: torch.Tensor     # (T, env_mb, 20)
-    obs_actions: torch.Tensor    # (T, env_mb, 32, 12)
-    action_mask: torch.Tensor    # (T, env_mb, 32)
+    obs_cards: torch.Tensor      # (T, env_mb, MAX_CARDS, CARD_FEATURES)
+    obs_global: torch.Tensor     # (T, env_mb, GLOBAL_FEATURES)
+    obs_actions: torch.Tensor    # (T, env_mb, MAX_ACTIONS, ACTION_FEATURES)
+    action_mask: torch.Tensor    # (T, env_mb, MAX_ACTIONS)
     actions: torch.Tensor        # (T, env_mb)
     old_log_probs: torch.Tensor  # (T, env_mb)
     advantages: torch.Tensor     # (T, env_mb)
@@ -78,10 +85,10 @@ class RolloutBuffer:
         self._ptr = 0
 
         T, N = rollout_steps, num_envs
-        self.obs_cards = np.zeros((T, N, 200, 42), dtype=np.uint8)
-        self.obs_global = np.zeros((T, N, 20), dtype=np.uint8)
-        self.obs_actions = np.zeros((T, N, 32, 12), dtype=np.uint8)
-        self.obs_mask = np.zeros((T, N, 32), dtype=np.int8)
+        self.obs_cards = np.zeros((T, N, MAX_CARDS, CARD_FEATURES), dtype=np.uint8)
+        self.obs_global = np.zeros((T, N, GLOBAL_FEATURES), dtype=np.uint8)
+        self.obs_actions = np.zeros((T, N, MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8)
+        self.obs_mask = np.zeros((T, N, MAX_ACTIONS), dtype=np.int8)
         self.actions = np.zeros((T, N), dtype=np.int64)
         self.log_probs = np.zeros((T, N), dtype=np.float32)
         self.rewards = np.zeros((T, N), dtype=np.float32)
@@ -180,10 +187,10 @@ class RolloutBuffer:
         total = T * N
 
         # Flatten time and env dims
-        flat_cards = self.obs_cards.reshape(total, 200, 42)
-        flat_global = self.obs_global.reshape(total, 20)
-        flat_actions_obs = self.obs_actions.reshape(total, 32, 12)
-        flat_mask = self.obs_mask.reshape(total, 32)
+        flat_cards = self.obs_cards.reshape(total, MAX_CARDS, CARD_FEATURES)
+        flat_global = self.obs_global.reshape(total, GLOBAL_FEATURES)
+        flat_actions_obs = self.obs_actions.reshape(total, MAX_ACTIONS, ACTION_FEATURES)
+        flat_mask = self.obs_mask.reshape(total, MAX_ACTIONS)
         flat_actions = self.actions.reshape(total)
         flat_log_probs = self.log_probs.reshape(total)
         flat_advantages = self.advantages.reshape(total)
@@ -836,10 +843,10 @@ class PPOTrainer:
                     flat = L * env_mb
 
                     logits, values, hx_new = self.network(
-                        batch.obs_cards[chunk].reshape(flat, 200, 42),
-                        batch.obs_global[chunk].reshape(flat, 20),
-                        batch.obs_actions[chunk].reshape(flat, 32, 12),
-                        batch.action_mask[chunk].reshape(flat, 32),
+                        batch.obs_cards[chunk].reshape(flat, MAX_CARDS, CARD_FEATURES),
+                        batch.obs_global[chunk].reshape(flat, GLOBAL_FEATURES),
+                        batch.obs_actions[chunk].reshape(flat, MAX_ACTIONS, ACTION_FEATURES),
+                        batch.action_mask[chunk].reshape(flat, MAX_ACTIONS),
                         hx=hx,
                         seq_shape=(L, env_mb),
                         dones=batch.dones[chunk],

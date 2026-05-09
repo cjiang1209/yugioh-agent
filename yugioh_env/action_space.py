@@ -7,7 +7,7 @@ from collections.abc import Callable
 import numpy as np
 
 from yugioh_core.constants import *  # noqa: F401,F403
-from yugioh_core.encoding import MAX_ACTIONS, ACTION_FEATURES
+from yugioh_core.encoding import MAX_ACTIONS, ACTION_FEATURES, encode_u16, encode_u32, encode_u64
 from yugioh_core.action_categories import (
     IDLE_SUMMON, IDLE_SP_SUMMON, IDLE_REPOSITION, IDLE_MSET,
     IDLE_SSET, IDLE_ACTIVATE, IDLE_TO_BP, IDLE_TO_EP,
@@ -109,42 +109,53 @@ class ActionMapper:
 
 # ─── Action extraction per message type ──────────────────────────────────────
 
+def _relativize_controller(card_ctrl: int, agent_player: int) -> int:
+    """Map engine-absolute controller to agent-relative (0=agent, 1=opp)."""
+    return 0 if int(card_ctrl) == int(agent_player) else 1
+
+
 def _extract_idle_actions(msg: dict) -> list[dict]:
     """Extract actions from MSG_SELECT_IDLECMD."""
     actions = []
+    agent_player = msg.get("_agent_player", 0)
 
     for i, card in enumerate(msg.get("summonable", [])):
         actions.append({
             "category": IDLE_SUMMON, "index": i, "code": card.get("code", 0),
-            "controller": card.get("controller", 0), "location": card.get("location", 0), "sequence": card.get("sequence", 0),
+            "controller": _relativize_controller(card.get("controller", 0), agent_player),
+            "location": card.get("location", 0), "sequence": card.get("sequence", 0),
             "build_response": lambda cat=IDLE_SUMMON, idx=i: rb.build_select_idlecmd_response(cat, idx),
         })
 
     for i, card in enumerate(msg.get("sp_summonable", [])):
         actions.append({
             "category": IDLE_SP_SUMMON, "index": i, "code": card.get("code", 0),
-            "controller": card.get("controller", 0), "location": card.get("location", 0), "sequence": card.get("sequence", 0),
+            "controller": _relativize_controller(card.get("controller", 0), agent_player),
+            "location": card.get("location", 0), "sequence": card.get("sequence", 0),
             "build_response": lambda cat=IDLE_SP_SUMMON, idx=i: rb.build_select_idlecmd_response(cat, idx),
         })
 
     for i, card in enumerate(msg.get("repositionable", [])):
         actions.append({
             "category": IDLE_REPOSITION, "index": i, "code": card.get("code", 0),
-            "controller": card.get("controller", 0), "location": card.get("location", 0), "sequence": card.get("sequence", 0),
+            "controller": _relativize_controller(card.get("controller", 0), agent_player),
+            "location": card.get("location", 0), "sequence": card.get("sequence", 0),
             "build_response": lambda cat=IDLE_REPOSITION, idx=i: rb.build_select_idlecmd_response(cat, idx),
         })
 
     for i, card in enumerate(msg.get("mset", [])):
         actions.append({
             "category": IDLE_MSET, "index": i, "code": card.get("code", 0),
-            "controller": card.get("controller", 0), "location": card.get("location", 0), "sequence": card.get("sequence", 0),
+            "controller": _relativize_controller(card.get("controller", 0), agent_player),
+            "location": card.get("location", 0), "sequence": card.get("sequence", 0),
             "build_response": lambda cat=IDLE_MSET, idx=i: rb.build_select_idlecmd_response(cat, idx),
         })
 
     for i, card in enumerate(msg.get("sset", [])):
         actions.append({
             "category": IDLE_SSET, "index": i, "code": card.get("code", 0),
-            "controller": card.get("controller", 0), "location": card.get("location", 0), "sequence": card.get("sequence", 0),
+            "controller": _relativize_controller(card.get("controller", 0), agent_player),
+            "location": card.get("location", 0), "sequence": card.get("sequence", 0),
             "build_response": lambda cat=IDLE_SSET, idx=i: rb.build_select_idlecmd_response(cat, idx),
         })
 
@@ -153,9 +164,10 @@ def _extract_idle_actions(msg: dict) -> list[dict]:
         desc = card.get("desc", 0)
         actions.append({
             "category": IDLE_ACTIVATE, "index": i, "code": code,
-            "controller": card.get("controller", 0),
+            "controller": _relativize_controller(card.get("controller", 0), agent_player),
             "location": card.get("location", 0),
             "sequence": card.get("sequence", 0),
+            "desc": int(desc),
             "meta": {
                 "kind": "effect",
                 "label": f"effect 0x{desc:x}",
@@ -183,15 +195,17 @@ def _extract_idle_actions(msg: dict) -> list[dict]:
 def _extract_battle_actions(msg: dict) -> list[dict]:
     """Extract actions from MSG_SELECT_BATTLECMD."""
     actions = []
+    agent_player = msg.get("_agent_player", 0)
 
     for i, card in enumerate(msg.get("activatable", [])):
         code = card.get("code", 0)
         desc = card.get("desc", 0)
         actions.append({
             "category": BATTLE_ACTIVATE, "index": i, "code": code,
-            "controller": card.get("controller", 0),
+            "controller": _relativize_controller(card.get("controller", 0), agent_player),
             "location": card.get("location", 0),
             "sequence": card.get("sequence", 0),
+            "desc": int(desc),
             "meta": {
                 "kind": "effect",
                 "label": f"effect 0x{desc:x}",
@@ -204,7 +218,9 @@ def _extract_battle_actions(msg: dict) -> list[dict]:
     for i, card in enumerate(msg.get("attackable", [])):
         actions.append({
             "category": BATTLE_ATTACK, "index": i, "code": card.get("code", 0),
-            "controller": card.get("controller", 0), "location": card.get("location", 0), "sequence": card.get("sequence", 0),
+            "controller": _relativize_controller(card.get("controller", 0), agent_player),
+            "location": card.get("location", 0), "sequence": card.get("sequence", 0),
+            "direct_attackable": int(card.get("direct_attackable", 0)),
             "build_response": lambda cat=BATTLE_ATTACK, idx=i: rb.build_select_battlecmd_response(cat, idx),
         })
 
@@ -226,11 +242,14 @@ def _extract_battle_actions(msg: dict) -> list[dict]:
 def _extract_effectyn_actions(msg: dict) -> list[dict]:
     code = msg.get("code", 0)
     desc = msg.get("desc", 0)
+    agent_player = msg.get("_agent_player", 0)
+    controller_rel = _relativize_controller(msg.get("controller", 0), agent_player)
     return [
         {"category": 0, "index": 0, "code": code,
-         "controller": msg.get("controller", 0),
+         "controller": controller_rel,
          "location": msg.get("location", 0),
          "sequence": msg.get("sequence", 0),
+         "desc": int(desc),
          "meta": {
              "kind": "effect",
              "label": f"effect 0x{desc:x}",
@@ -239,9 +258,10 @@ def _extract_effectyn_actions(msg: dict) -> list[dict]:
          },
          "build_response": lambda: rb.build_select_yesno_response(True)},
         {"category": 1, "index": 0, "code": code,
-         "controller": msg.get("controller", 0),
+         "controller": controller_rel,
          "location": msg.get("location", 0),
          "sequence": msg.get("sequence", 0),
+         "desc": int(desc),
          "build_response": lambda: rb.build_select_yesno_response(False)},
     ]
 
@@ -250,6 +270,7 @@ def _extract_yesno_actions(msg: dict) -> list[dict]:
     desc = msg.get("desc", 0)
     return [
         {"category": 0, "index": 0, "code": 0, "location": 0, "sequence": 0,
+         "desc": int(desc),
          "meta": {
              "kind": "effect",
              "label": f"effect 0x{desc:x}",
@@ -257,6 +278,7 @@ def _extract_yesno_actions(msg: dict) -> list[dict]:
          },
          "build_response": lambda: rb.build_select_yesno_response(True)},
         {"category": 1, "index": 0, "code": 0, "location": 0, "sequence": 0,
+         "desc": int(desc),
          "build_response": lambda: rb.build_select_yesno_response(False)},
     ]
 
@@ -265,6 +287,7 @@ def _extract_option_actions(msg: dict) -> list[dict]:
     options = msg.get("options", [])
     return [
         {"category": 0, "index": i, "code": 0, "location": 0, "sequence": 0,
+         "desc": int(desc),
          "meta": {"kind": "option", "label": f"effect 0x{desc:x}", "raw_value": int(desc)},
          "build_response": lambda idx=i: rb.build_select_option_response(idx)}
         for i, desc in enumerate(options)
@@ -351,13 +374,15 @@ def _extract_card_actions(msg: dict) -> list[dict]:
     cards = msg.get("cards", [])
     min_sel = msg.get("min", 1)
     max_sel = msg.get("max", min_sel)
+    agent_player = msg.get("_agent_player", 0)
 
     def _to_action(i: int, card: dict) -> dict:
         return {
             "category": 0, "index": i, "code": card.get("code", 0),
-            "controller": card.get("controller", 0),
+            "controller": _relativize_controller(card.get("controller", 0), agent_player),
             "location": card.get("location", 0),
             "sequence": card.get("sequence", 0),
+            "subsequence": int(card.get("subsequence", 0)),
         }
 
     def _completes(items: list[dict], selected: list[int]) -> bool:
@@ -379,18 +404,22 @@ def _extract_card_actions(msg: dict) -> list[dict]:
 def _extract_chain_actions(msg: dict) -> list[dict]:
     chains = msg.get("chains", [])
     forced = msg.get("forced", 0)
+    agent_player = msg.get("_agent_player", 0)
     actions = []
     for i, chain in enumerate(chains):
         code = chain.get("code", 0)
+        desc = chain.get("desc", 0)
         actions.append({
             "category": 0, "index": i, "code": code,
-            "controller": chain.get("controller", 0),
+            "controller": _relativize_controller(chain.get("controller", 0), agent_player),
             "location": chain.get("location", 0),
             "sequence": chain.get("sequence", 0),
+            "position": int(chain.get("position", 0)),
+            "desc": int(desc),
             "meta": {
                 "kind": "chain_link",
                 "label": f"chain card #{i}",
-                "raw_value": int(chain.get("desc", 0)),
+                "raw_value": int(desc),
                 "extras": {"card_code": code},
             },
             "build_response": lambda idx=i: rb.build_select_chain_response(idx),
@@ -464,13 +493,15 @@ def _extract_tribute_actions(msg: dict) -> list[dict]:
     cards = msg.get("cards", [])
     min_rel = msg.get("min", 1)
     max_cards = msg.get("max", min_rel)
+    agent_player = msg.get("_agent_player", 0)
 
     def _to_action(i: int, card: dict) -> dict:
         return {
             "category": 0, "index": i, "code": card.get("code", 0),
-            "controller": card.get("controller", 0),
+            "controller": _relativize_controller(card.get("controller", 0), agent_player),
             "location": card.get("location", 0),
             "sequence": card.get("sequence", 0),
+            "weight": int(card.get("release_param", 0)),
         }
 
     def _completes(items: list[dict], selected: list[int]) -> bool:
@@ -493,9 +524,12 @@ def _extract_tribute_actions(msg: dict) -> list[dict]:
 
 def _extract_sum_actions(msg: dict) -> list[dict]:
     optional = msg.get("optional_cards", [])
+    agent_player = msg.get("_agent_player", 0)
     return [
         {"category": 0, "index": i, "code": card.get("code", 0),
-         "controller": card.get("controller", 0), "location": card.get("location", 0), "sequence": card.get("sequence", 0),
+         "controller": _relativize_controller(card.get("controller", 0), agent_player),
+         "location": card.get("location", 0), "sequence": card.get("sequence", 0),
+         "weight": int(card.get("param", 0)) & 0xFF,
          "build_response": lambda idx=i: rb.build_select_sum_response([idx])}
         for i, card in enumerate(optional)
     ]
@@ -503,10 +537,13 @@ def _extract_sum_actions(msg: dict) -> list[dict]:
 
 def _extract_unselect_actions(msg: dict) -> list[dict]:
     actions = []
+    agent_player = msg.get("_agent_player", 0)
     for i, card in enumerate(msg.get("selectable", [])):
         actions.append({
             "category": 0, "index": i, "code": card.get("code", 0),
-            "controller": card.get("controller", 0), "location": card.get("location", 0), "sequence": card.get("sequence", 0),
+            "controller": _relativize_controller(card.get("controller", 0), agent_player),
+            "location": card.get("location", 0), "sequence": card.get("sequence", 0),
+            "subsequence": int(card.get("subsequence", 0)),
             "build_response": lambda idx=i: rb.build_select_unselect_card_response(idx),
         })
     if msg.get("finishable"):
@@ -521,9 +558,11 @@ def _extract_sort_actions(msg: dict) -> list[dict]:
     """For sort: each position choice is an action. Simplified: return identity order."""
     cards = msg.get("cards", [])
     count = len(cards)
+    agent_player = msg.get("_agent_player", 0)
     # Each action = place card i first in the ordering
     return [
         {"category": 0, "index": i, "code": card.get("code", 0),
+         "controller": _relativize_controller(card.get("controller", 0), agent_player),
          "location": 0, "sequence": 0,
          "build_response": lambda idx=i, n=count: rb.build_sort_card_response(
              [idx] + [j for j in range(n) if j != idx]
@@ -624,6 +663,7 @@ def _extract_counter_actions(msg: dict) -> list[dict]:
     cards = msg.get("cards", [])
     count = msg.get("count", 0)
     counter_type = int(msg.get("counter_type", 0))
+    agent_player = msg.get("_agent_player", 0)
     if not cards:
         return []
     actions = []
@@ -636,7 +676,10 @@ def _extract_counter_actions(msg: dict) -> list[dict]:
             code = card.get("code", 0)
             actions.append({
                 "category": 0, "index": i, "code": code,
+                "controller": _relativize_controller(card.get("controller", 0), agent_player),
                 "location": 0, "sequence": 0,
+                "counter_type": counter_type & 0xFF,
+                "counter_count": n_remove & 0xFF,
                 "meta": {
                     "kind": "counter",
                     "label": f"Remove {n_remove} from card #{i}",
@@ -675,32 +718,44 @@ _ACTION_EXTRACTORS = {
 def _encode_action(action: dict, msg_type: int) -> np.ndarray:
     """Encode a single action as a feature vector.
 
-    Layout (12 bytes):
-        [0]    msg_type      (uint8)
-        [1]    category      (uint8)
-        [2:6]  code          (uint32 LE - card passcode)
-        [6]    location      (uint8)
-        [7]    sequence      (uint8)
-        [8]    index         (uint8)
-        [9]    num_selected  (uint8 - number of cards in combo, default 1)
-        [10]   extra_idx_0   (uint8 - index of 2nd selected card)
-        [11]   extra_idx_1   (uint8 - index of 3rd selected card)
+    Layout (28 bytes):
+        [0]      msg_type           (uint8)
+        [1]      category           (uint8)
+        [2:6]    code               (uint32 LE - card passcode)
+        [6]      controller         (uint8 - relativized: 0=agent, 1=opp)
+        [7]      location           (uint8)
+        [8:10]   sequence           (uint16 LE)
+        [10]     subsequence        (uint8 - Xyz overlay slot)
+        [11]     position           (uint8 bitmask)
+        [12]     direct_attackable  (uint8 - 0/1)
+        [13]     weight             (uint8 - release_param OR sum.param, aliased)
+        [14]     counter_type       (uint8)
+        [15]     counter_count      (uint8)
+        [16]     index              (uint8)
+        [17]     num_selected       (uint8 - number of cards in combo, default 1)
+        [18]     extra_idx_0        (uint8 - index of 2nd selected card)
+        [19]     extra_idx_1        (uint8 - index of 3rd selected card)
+        [20:28]  desc               (uint64 LE - engine effect string ID)
     """
     feat = np.zeros(ACTION_FEATURES, dtype=np.uint8)
     feat[0] = msg_type & 0xFF
     feat[1] = action.get("category", 0)
-    code = action.get("code", 0)
-    feat[2] = code & 0xFF
-    feat[3] = (code >> 8) & 0xFF
-    feat[4] = (code >> 16) & 0xFF
-    feat[5] = (code >> 24) & 0xFF
-    feat[6] = action.get("location", 0) & 0xFF
-    feat[7] = min(action.get("sequence", 0), 255)
-    feat[8] = action.get("index", 0) & 0xFF
-    feat[9] = action.get("num_selected", 1)
+    feat[2:6] = encode_u32(action.get("code", 0) & 0xFFFFFFFF)
+    feat[6] = action.get("controller", 0) & 0xFF
+    feat[7] = action.get("location", 0) & 0xFF
+    feat[8:10] = encode_u16(min(action.get("sequence", 0), 65535))
+    feat[10] = action.get("subsequence", 0) & 0xFF
+    feat[11] = action.get("position", 0) & 0xFF
+    feat[12] = 1 if action.get("direct_attackable", 0) else 0
+    feat[13] = action.get("weight", 0) & 0xFF
+    feat[14] = action.get("counter_type", 0) & 0xFF
+    feat[15] = action.get("counter_count", 0) & 0xFF
+    feat[16] = action.get("index", 0) & 0xFF
+    feat[17] = action.get("num_selected", 1)
     extra = action.get("extra_indices", [])
     if len(extra) >= 1:
-        feat[10] = extra[0] & 0xFF
+        feat[18] = extra[0] & 0xFF
     if len(extra) >= 2:
-        feat[11] = extra[1] & 0xFF
+        feat[19] = extra[1] & 0xFF
+    feat[20:28] = encode_u64(action.get("desc", 0) & 0xFFFFFFFFFFFFFFFF)
     return feat

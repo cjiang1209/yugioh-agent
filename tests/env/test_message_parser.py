@@ -476,3 +476,55 @@ def test_parse_card_selected_loc_info():
     assert msg["cards"][0]["controller"] == 0
     assert msg["cards"][0]["sequence"] == 2
     assert msg["cards"][0]["position"] == 0x1
+
+
+def test_parser_emits_absolute_player_ids():
+    """Wire-format invariant: parsers pass through u8 player IDs verbatim
+    from the engine. 0 = first player, 1 = second player. NEVER relativized
+    by the parser. Relativization happens downstream in the env/observation
+    layer.
+
+    This invariant is load-bearing: every relativized `controller` field in
+    the observation depends on the parser side staying engine-absolute.
+    """
+    from yugioh_env.message_parser import _parse_select_yesno, _parse_select_chain
+
+    # SELECT_YESNO with player=1 + a known desc.
+    # Wire format: u8 player + u64 desc.
+    yesno_bytes = struct.pack("<BQ", 1, 0xdeadbeef)
+    parsed = _parse_select_yesno(BinaryReader(yesno_bytes))
+    assert parsed["player"] == 1, "parser must pass through engine-absolute player ID"
+
+    # SELECT_CHAIN with two chain entries on different engine sides.
+    # Wire format: u8 player + u8 spe_count + u8 forced + u32 hint_timing
+    #   + u32 other_timing + u32 count + entries.
+    # Each entry: u32 code + u8 controller + u8 location + u32 sequence
+    #   + u32 position + u64 desc + u8 client_mode.
+    chain_bytes = struct.pack(
+        "<BBBIII",
+        1,    # player (engine player 1 is being asked)
+        0,    # spe_count
+        1,    # forced
+        0,    # hint_timing
+        0,    # other_timing
+        2,    # count: 2 chain entries
+    )
+    # Entry 0: card on engine player 0's side
+    chain_bytes += struct.pack(
+        "<IBBIIQB",
+        100,    # code
+        0,      # controller (engine-absolute player 0)
+        0x10,   # location (GRAVE)
+        0, 0, 0, 0,  # sequence, position, desc, client_mode
+    )
+    # Entry 1: card on engine player 1's side
+    chain_bytes += struct.pack(
+        "<IBBIIQB",
+        200,
+        1,      # controller (engine-absolute player 1)
+        0x10, 0, 0, 0, 0,
+    )
+    parsed = _parse_select_chain(BinaryReader(chain_bytes))
+    assert parsed["player"] == 1
+    assert parsed["chains"][0]["controller"] == 0, "chain entry 0 must keep absolute controller"
+    assert parsed["chains"][1]["controller"] == 1, "chain entry 1 must keep absolute controller"

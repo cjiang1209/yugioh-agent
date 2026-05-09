@@ -44,6 +44,7 @@ class TrainingConfig:
     card_embeddings_path: str = ""  # path to pre-computed text embeddings (empty = disabled)
     text_embed_dim: int = 64  # frozen text embedding projection dim (only when enabled)
     learned_embed_dim: int = 8  # trainable per-card embedding dim (Mode B only)
+    desc_n_embed_dim: int = 8  # sysstring desc embedding dim (per-action effect string id)
 
     # Recurrent policy (default "none" = feed-forward, byte-identical to pre-RNN)
     rnn_type: Literal["none", "lstm", "gru"] = "none"

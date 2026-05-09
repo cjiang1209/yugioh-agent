@@ -7,6 +7,13 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
+from yugioh_core.encoding import (
+    ACTION_FEATURES,
+    CARD_FEATURES,
+    GLOBAL_FEATURES,
+    MAX_ACTIONS,
+    MAX_CARDS,
+)
 from yugioh_env.opponent import (
     GreedyOpponent,
     Opponent,
@@ -169,9 +176,9 @@ class _ScriptedEnv:
 
 def _dummy_obs() -> dict[str, np.ndarray]:
     return {
-        "cards": np.zeros((200, 42), dtype=np.uint8),
-        "global_state": np.zeros(20, dtype=np.uint8),
-        "actions": np.zeros((32, 12), dtype=np.uint8),
+        "cards": np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8),
+        "global_state": np.zeros(GLOBAL_FEATURES, dtype=np.uint8),
+        "actions": np.zeros((MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8),
         "action_mask": np.ones(32, dtype=np.int8),
     }
 
