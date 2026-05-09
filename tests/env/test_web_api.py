@@ -521,3 +521,56 @@ def test_step_preserves_open_cards(web_client):
         pytest.skip("Duel ended at reset")
     data = _step(web_client, action_index=0)
     assert "hand" in data["board"]["opponent"], "Step opponent should include hand"
+
+
+@pytest.mark.parametrize("agent_player", [0, 1])
+def test_action_controller_relativizes_per_agent_player(agent_player, web_client):
+    """For both agent_player=0 and agent_player=1, every card-bearing
+    action in the web API response must carry a relativized controller
+    value (0 = agent's own card, 1 = opponent's card).
+
+    Pins the web JSON layer specifically. The lower layers
+    (extractor → describer) are pinned by Test C in
+    tests/env/test_action_space.py and B1/B2 in tests/env/test_observation.py.
+
+    Pre-fix bug: web_api re-derived `side` from `controller == agent_player`,
+    which inverted "mine"/"opp" when agent_player=1. This test catches any
+    future re-derivation regression in the web layer.
+    """
+    response = web_client.post(
+        "/api/web/reset",
+        json={"seed": 42, "agent_player": agent_player},
+    )
+    assert response.status_code == 200, response.text
+    state = response.json()
+
+    card_actions_seen = 0
+    for _ in range(8):
+        actions = state["actions"]
+        for a in actions:
+            if a.get("card_code", 0) == 0:
+                continue
+            assert "side" not in a, (
+                f"action carries legacy side field: {a!r}"
+            )
+            assert "controller" in a, (
+                f"action missing controller: {a!r}"
+            )
+            assert a["controller"] in (0, 1), (
+                f"controller must be 0 or 1, got {a['controller']!r}"
+            )
+            card_actions_seen += 1
+        if card_actions_seen >= 1 or state.get("done"):
+            break
+        if not actions:
+            break
+        # Web API returns only legal actions; step the first by its index.
+        step_response = web_client.post(
+            "/api/web/step", json={"action_index": actions[0]["index"]},
+        )
+        assert step_response.status_code == 200, step_response.text
+        state = step_response.json()
+
+    assert card_actions_seen >= 1, (
+        "Test inconclusive: no card-bearing action observed in 8 prompts."
+    )

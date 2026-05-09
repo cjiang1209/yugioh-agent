@@ -26,6 +26,7 @@ class ResetRequest(BaseModel):
     deck0: dict | None = None  # {"main": [int, ...], "extra": [int, ...]}
     deck1: dict | None = None
     open_cards: bool = False
+    agent_player: int | str | None = None  # 0, 1, or "random"; None uses env config default
 
 
 class StepRequest(BaseModel):
@@ -59,11 +60,6 @@ def _build_response(
     actions = describe_actions(env._mapper, env._card_db, env._string_resolver) if not done else []
     prompt = describe_prompt(env._mapper, env._card_db) if not done else None
 
-    # Convert absolute controller → relative side for the client
-    agent = env._agent_player
-    for a in actions:
-        a["side"] = "mine" if a.pop("controller") == agent else "opp"
-
     return {
         "board": board,
         "game_state": env._build_game_state_dict(),
@@ -88,7 +84,13 @@ def reset_duel(body: ResetRequest, request: Request) -> dict:
     """Reset (or create) a duel and return the initial state."""
     env: YuGiOhEnvironment = request.app.state.web_env
     try:
-        obs = env.reset(seed=body.seed, deck0=body.deck0, deck1=body.deck1, open_cards=body.open_cards)
+        obs = env.reset(
+            seed=body.seed,
+            deck0=body.deck0,
+            deck1=body.deck1,
+            open_cards=body.open_cards,
+            agent_player=body.agent_player,
+        )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     return _build_response(env, obs.event_log, obs.done, obs.reward, include_frames=True)

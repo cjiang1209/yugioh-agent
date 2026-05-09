@@ -161,18 +161,19 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
   const actionableZones = new Set<string>();
   if (engineActions) {
     for (const a of engineActions) {
-      if (a.card_code && a.side && a.location !== undefined && a.sequence !== undefined) {
+      if (a.card_code && a.controller !== undefined && a.location !== undefined && a.sequence !== undefined) {
+        const side = a.controller === 0 ? "mine" : "opp";
         if (a.location === LOCATION_SZONE && a.sequence === 5) {
-          actionableKeys.add(locatorKey(a.card_code, a.side, "field", 0));
-          actionableZones.add(`${a.side}-field`);
+          actionableKeys.add(locatorKey(a.card_code, side, "field", 0));
+          actionableZones.add(`${side}-field`);
         } else if (a.location === LOCATION_MZONE && a.sequence >= 5) {
-          actionableKeys.add(locatorKey(a.card_code, a.side, "emz", a.sequence - 5));
-          actionableZones.add(`${a.side}-emz`);
+          actionableKeys.add(locatorKey(a.card_code, side, "emz", a.sequence - 5));
+          actionableZones.add(`${side}-emz`);
         } else {
           const zone = LOCATION_TO_ZONE[a.location];
           if (zone) {
-            actionableKeys.add(locatorKey(a.card_code, a.side, zone, a.sequence));
-            actionableZones.add(`${a.side}-${zone}`);
+            actionableKeys.add(locatorKey(a.card_code, side, zone, a.sequence));
+            actionableZones.add(`${side}-${zone}`);
           }
         }
       }
