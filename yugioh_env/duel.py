@@ -334,27 +334,6 @@ class Duel:
             return _parse_query_buffer(buf)
         return []
 
-    def query_card(self, player: int, location: int, sequence: int) -> dict | None:
-        """Query a single card."""
-        if self._duel_handle is None:
-            return None
-        info = OCG_QueryInfo()
-        info.flags = QUERY_BASIC
-        info.con = player
-        info.loc = location
-        info.seq = sequence
-        info.overlay_seq = 0
-
-        length = c_uint32()
-        buf_ptr = self._lib.OCG_DuelQuery(
-            self._duel_handle, ctypes.byref(length), ctypes.byref(info)
-        )
-        if length.value > 0 and buf_ptr:
-            buf = ctypes.string_at(buf_ptr, length.value)
-            cards = _parse_query_buffer(buf)
-            return cards[0] if cards else None
-        return None
-
     def query_count(self, player: int, location: int) -> int:
         """Query the number of cards at a location."""
         if self._duel_handle is None:
