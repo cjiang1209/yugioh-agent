@@ -94,26 +94,78 @@ def test_board_controller_relativizes_when_agent_player_is_1():
     assert int(cards[found, 7]) == 0, "engine player 1's card → relative=0 when agent=1"
 
 
-# Cross-source consistency between board and action encodings in a real
-# episode is currently not implementable. The intent is to verify, over many
-# turns of actual play, that any card referenced by both the board encoding
-# and a legal action carries consistent attributes across the two paths
-# (controller, location, sequence, etc. — anything the model could read from
-# both sources). It catches drift between the board-build and action-extract
-# pipelines that single-source unit tests cannot, including bugs introduced
-# by future encoding changes that touch only one side. The check would be
-# restricted to non-hidden cards (own cards + opponent's face-up cards),
-# since hidden-zone entries are intentionally redacted on the board side.
-#
-# Why it can't run today: `_parse_query_buffer` in
-# `yugioh_env/observation.py` parses the engine query wire format
-# incorrectly (it expects a `uint32 total_size` per card, but the engine
-# writes `uint16 entry_size + uint32 flag + value` per field), so the
-# parser breaks on the first field of every card and returns empty dicts.
-# Every entry in `obs.cards` therefore has `code == 0`, and no cross-source
-# lookup ever matches a real card. The web UI takes a different path
-# through the correct parser at `yugioh_env/server/board_state.py` (see
-# lines 48-56 for the documented wire format), which is why UI rendering
-# works while the RL observation pipeline silently feeds the model all-zero
-# board cards. This is a pre-existing bug, tracked separately; once the
-# parser is fixed, this test should be added.
+def test_board_and_action_controller_agree_on_real_episode(lib, db_path, script_dirs):
+    """Cross-source consistency: every legal card-bearing action over a real
+    episode whose card is present in the board encoding must carry the same
+    controller byte on both sides.
+
+    Restricted to non-hidden cards: opponent's face-down cards are
+    intentionally redacted in the board encoding (`is_public == 0`,
+    `code == 0`), so they cannot be cross-checked. The test focuses on
+    cards where both sources have a real value.
+
+    Asserts a minimum of 5 cross-checks were performed so the test is
+    meaningful — without the guard, an episode that only ever presents
+    card-less prompts (TO_BP, TO_EP, etc.) would silently no-op.
+    """
+    import random
+    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+    from yugioh_env.models import YuGiOhAction
+    from yugioh_core.encoding import decode_u32
+
+    env = YuGiOhEnvironment({})
+    obs = env.reset(seed=1234)
+    rng = random.Random(0)
+
+    steps_run = 0
+    card_actions_checked = 0
+    max_steps = 80  # cap so the test stays fast; enough to cross several turns
+
+    while not obs.done and steps_run < max_steps:
+        legal = [i for i, m in enumerate(obs.action_mask) if m == 1]
+        if not legal:
+            break
+
+        # Build a (code, location, sequence) → controller lookup from the
+        # board encoding. Skip slots without a real code (empty slots,
+        # face-down opponent cards).
+        board_by_id: dict[tuple[int, int, int], int] = {}
+        for c in obs.cards:
+            code = decode_u32(c, 0)
+            if code == 0:
+                continue
+            location = c[4]
+            sequence = c[5]
+            controller = c[7]
+            board_by_id.setdefault((code, location, sequence), controller)
+
+        # Walk legal card-bearing actions and cross-check the controller.
+        for ai, mask_v in enumerate(obs.action_mask):
+            if mask_v != 1:
+                continue
+            af = obs.actions[ai]
+            a_code = decode_u32(af, 2)
+            a_loc = af[7]
+            if a_code == 0 or a_loc == 0:
+                continue
+            a_ctrl = af[6]
+            a_seq = af[8] | (af[9] << 8)
+            board_ctrl = board_by_id.get((a_code, a_loc, a_seq))
+            if board_ctrl is None:
+                continue  # action references a card that isn't in obs.cards
+            assert a_ctrl == board_ctrl, (
+                f"controller drift: action[{ai}] (code={a_code}, "
+                f"loc=0x{a_loc:02x}, seq={a_seq}) ctrl={a_ctrl} but "
+                f"board_ctrl={board_ctrl}"
+            )
+            card_actions_checked += 1
+
+        obs = env.step(YuGiOhAction(action_index=rng.choice(legal)))
+        steps_run += 1
+
+    assert card_actions_checked >= 5, (
+        f"Test D no-op: {steps_run} steps but only {card_actions_checked} "
+        f"card-bearing actions were cross-checked. The cross-source invariant "
+        f"was barely (or never) exercised. Increase max_steps or check that "
+        f"the parser fix is producing real codes in the board encoding."
+    )
