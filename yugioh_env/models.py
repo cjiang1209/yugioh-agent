@@ -76,6 +76,11 @@ class YuGiOhObservation(Observation):
         description="Per-action prompt metadata, parallel to actions[]; "
                     "None for slots without structured meta.",
     )
+    prompt_meta: dict | None = Field(
+        default=None,
+        description="Prompt-level metadata (min/max/cancelable/forced/etc.); "
+                    "None when no active prompt.",
+    )
     event_log: list[str] = Field(
         default_factory=list,
         description="Human-readable descriptions of events since last action",

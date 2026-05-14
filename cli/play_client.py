@@ -18,92 +18,17 @@ from __future__ import annotations
 import argparse
 import os
 import random
-import sqlite3
 import sys
 import time
 from pathlib import Path
 
 from yugioh_env.client import YuGiOhEnv
 from yugioh_core.constants import PHASE_NAMES
+from yugioh_core.card_database import CardDatabase
+from yugioh_core.string_resolver import parse_sys_strings
+from yugioh_env.action_describer import ActionDescriber
 from yugioh_env.deck_parser import parse_ydk
-from yugioh_env.models import ActionMeta, YuGiOhAction, YuGiOhObservation
-
-# MSG_SELECT type -> human-readable name
-MSG_SELECT_NAMES = {
-    10: "Battle Command",
-    11: "Idle Command",
-    12: "Effect Yes/No",
-    13: "Yes/No",
-    14: "Option",
-    15: "Select Card",
-    16: "Chain",
-    18: "Select Place",
-    19: "Select Position",
-    20: "Tribute",
-    22: "Select Counter",
-    23: "Select Sum",
-    24: "Select Dis-Field",
-    26: "Select/Unselect Card",
-}
-
-# Idle command categories
-IDLE_CATEGORIES = {
-    0: "Normal Summon",
-    1: "Special Summon",
-    2: "Reposition",
-    3: "Monster Set",
-    4: "Spell/Trap Set",
-    5: "Activate Effect",
-    6: "-> Battle Phase",
-    7: "-> End Phase",
-}
-
-# Battle command categories
-BATTLE_CATEGORIES = {
-    0: "Activate Effect",
-    1: "Attack",
-    2: "-> Main Phase 2",
-    3: "-> End Phase",
-}
-
-
-class CardNames:
-    """Card name lookup from cards.cdb, preloaded at startup."""
-
-    def __init__(self):
-        self._names: dict[int, str] = {}
-
-    def load(self, card_codes: set[int] | None = None) -> None:
-        """Load card names from cards.cdb.
-
-        Args:
-            card_codes: If provided, only load names for these codes.
-                        If None, load all card names.
-        """
-        db_path = os.environ.get("YUGIOH_DB_PATH")
-        if not db_path:
-            db_path = str(Path(__file__).resolve().parent.parent / "assets" / "cards.cdb")
-        if not os.path.isfile(db_path):
-            return
-        conn = sqlite3.connect(db_path)
-        try:
-            if card_codes is not None:
-                placeholders = ",".join("?" for _ in card_codes)
-                rows = conn.execute(
-                    f"SELECT id, name FROM texts WHERE id IN ({placeholders})",
-                    list(card_codes),
-                )
-            else:
-                rows = conn.execute("SELECT id, name FROM texts")
-            self._names = {row[0]: row[1] for row in rows}
-        finally:
-            conn.close()
-
-    def get(self, code: int) -> str | None:
-        return self._names.get(code)
-
-
-card_names = CardNames()
+from yugioh_env.models import YuGiOhAction, YuGiOhObservation
 
 
 def decode_u16_le(lo: int, hi: int) -> int:
@@ -135,113 +60,6 @@ def parse_global_state(gs: list[int]) -> dict:
     }
 
 
-def decode_u32_le(b0: int, b1: int, b2: int, b3: int) -> int:
-    """Decode four uint8 bytes (little-endian) into a uint32."""
-    return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
-
-
-def parse_action_features(action_feats: list[int]) -> dict:
-    """Parse a single action's feature vector."""
-    msg_type = action_feats[0]
-    category = action_feats[1]
-    code = decode_u32_le(action_feats[2], action_feats[3], action_feats[4], action_feats[5])
-    location = action_feats[6]
-    sequence = action_feats[7]
-    index = action_feats[8]
-    num_selected = action_feats[9] if action_feats[9] > 0 else 1
-    extra_indices = []
-    if num_selected >= 2:
-        extra_indices.append(action_feats[10])
-    if num_selected >= 3:
-        extra_indices.append(action_feats[11])
-    return {
-        "msg_type": msg_type,
-        "category": category,
-        "code": code,
-        "location": location,
-        "sequence": sequence,
-        "index": index,
-        "num_selected": num_selected,
-        "extra_indices": extra_indices,
-    }
-
-
-def describe_action(action_feats: list[int], meta: ActionMeta | None = None) -> str:
-    """Produce a human-readable description of an action.
-
-    `meta` is the corresponding `obs.action_meta[i]` (an `ActionMeta` Pydantic
-    model, or None for slots without structured metadata). When present, the
-    meta label is preferred over the placeholder strings the feature-vector
-    decoding would produce.
-    """
-    info = parse_action_features(action_feats)
-    msg_type = info["msg_type"]
-    cat = info["category"]
-    code = info["code"]
-
-    parts = []
-
-    if msg_type == 11:  # IDLE
-        cat_name = IDLE_CATEGORIES.get(cat, f"cat={cat}")
-        parts.append(cat_name)
-    elif msg_type == 10:  # BATTLE
-        cat_name = BATTLE_CATEGORIES.get(cat, f"cat={cat}")
-        parts.append(cat_name)
-    elif msg_type == 12:  # EFFECTYN
-        parts.append("Yes" if cat == 0 else "No")
-    elif msg_type == 13:  # YESNO
-        parts.append("Yes" if cat == 0 else "No")
-    elif msg_type == 14:  # SELECT_OPTION
-        parts.append(meta.label if meta else f"Option {info['index']}")
-    elif msg_type == 19:  # POSITION
-        pos_names = {0x1: "FU-ATK", 0x2: "FD-ATK", 0x4: "FU-DEF", 0x8: "FD-DEF"}
-        parts.append(f"Position: {pos_names.get(info['index'], info['index'])}")
-    elif msg_type in (18, 24):  # SELECT_PLACE / SELECT_DISFIELD
-        sel_name = MSG_SELECT_NAMES.get(msg_type, f"msg={msg_type}")
-        loc = info["location"]
-        zone_name = "Monster" if loc == 0x04 else "Spell/Trap" if loc == 0x08 else f"loc=0x{loc:02x}"
-        parts.append(f"{sel_name} — {zone_name} Zone {info['sequence']}")
-    elif msg_type == 16:  # SELECT_CHAIN
-        if cat == 1:
-            parts.append("Pass")
-        else:
-            parts.append(f"Chain #{info['index']}")
-    elif msg_type == 15 and cat == 1:  # SELECT_CARD finish
-        num_sel = info.get("num_selected", 0)
-        parts.append(f"Finish selecting ({num_sel} card{'s' if num_sel != 1 else ''})")
-    elif msg_type == 143:  # ANNOUNCE_NUMBER
-        parts.append(meta.label if meta else f"msg=143 #{info['index']}")
-    elif msg_type == 140:  # ANNOUNCE_RACE
-        parts.append(meta.label if meta else f"msg=140 #{info['index']}")
-    elif msg_type == 141:  # ANNOUNCE_ATTRIB
-        parts.append(meta.label if meta else f"msg=141 #{info['index']}")
-    elif msg_type == 132:  # ROCK_PAPER_SCISSORS
-        parts.append(meta.label if meta else f"msg=132 #{info['index']}")
-    elif msg_type == 22:  # SELECT_COUNTER
-        if meta:
-            count = meta.extras["counter_count"]
-            parts.append(f"Remove {count}")
-        else:
-            parts.append(f"Counter #{info['index']}")
-    else:
-        sel_name = MSG_SELECT_NAMES.get(msg_type, f"msg={msg_type}")
-        num_sel = info.get("num_selected", 1)
-        if num_sel > 1:
-            idx_strs = [f"#{info['index']}"] + [f"#{ei}" for ei in info.get("extra_indices", [])]
-            parts.append(f"{sel_name} {'+'.join(idx_strs)}")
-        else:
-            parts.append(f"{sel_name} #{info['index']}")
-
-    if code > 0:
-        name = card_names.get(code)
-        if name:
-            parts.append(f"({code}: {name})")
-        else:
-            parts.append(f"({code})")
-
-    return " ".join(parts)
-
-
 def display_events(event_log: list[str]) -> None:
     """Print event log with prominent formatting."""
     if not event_log:
@@ -252,7 +70,7 @@ def display_events(event_log: list[str]) -> None:
     print()
 
 
-def display_state(obs: YuGiOhObservation, step_num: int) -> None:
+def display_state(obs: YuGiOhObservation, step_num: int, describer: ActionDescriber) -> None:
     """Print a summary of the current observation."""
     gs = parse_global_state(obs.global_state)
     phase_name = PHASE_NAMES.get(gs["phase"], f"0x{gs['phase']:02x}")
@@ -271,19 +89,14 @@ def display_state(obs: YuGiOhObservation, step_num: int) -> None:
     if gs["chain_count"] > 0:
         print(f"  Chain count: {gs['chain_count']}")
 
-    # Show legal actions
-    legal = [i for i, m in enumerate(obs.action_mask) if m == 1]
-    msg_type = gs["msg_type"]
-    msg_name = MSG_SELECT_NAMES.get(msg_type, f"msg={msg_type}")
+    legal_count = sum(1 for m in obs.action_mask if m == 1)
 
     print(f"{'─' * 60}")
-    print(f"  Decision: {msg_name}  ({len(legal)} legal action{'s' if len(legal) != 1 else ''})")
+    print(f"  Decision: {legal_count} legal action{'s' if legal_count != 1 else ''}")
     print(f"{'─' * 60}")
 
-    for idx in legal:
-        meta = obs.action_meta[idx] if idx < len(obs.action_meta) else None
-        desc = describe_action(obs.actions[idx], meta)
-        print(f"    [{idx:>2}]  {desc}")
+    for d in describer.describe_all(obs):
+        print(f"    [{d.index:>2}]  {d.description}")
 
     print()
 
@@ -325,6 +138,7 @@ def pick_action_greedy(obs: YuGiOhObservation) -> int:
 def run_episode(
     env: YuGiOhEnv,
     pick_action,
+    describer: ActionDescriber,
     seed: int | None = None,
     verbose: bool = True,
     deck0: dict | None = None,
@@ -347,23 +161,20 @@ def run_episode(
 
     if verbose:
         display_events(result.observation.event_log)
-        display_state(result.observation, step_num)
+        display_state(result.observation, step_num, describer)
 
     while not result.done:
         action_idx = pick_action(result.observation)
         if verbose:
-            meta = (result.observation.action_meta[action_idx]
-                    if action_idx < len(result.observation.action_meta)
-                    else None)
-            desc = describe_action(result.observation.actions[action_idx], meta)
-            print(f"  -> Playing action [{action_idx}]: {desc}")
+            d = describer.describe(result.observation, action_idx)
+            print(f"  -> Playing action [{action_idx}]: {d.description}")
 
         result = env.step(YuGiOhAction(action_index=action_idx))
         step_num += 1
 
         if verbose and not result.done:
             display_events(result.observation.event_log)
-            display_state(result.observation, step_num)
+            display_state(result.observation, step_num, describer)
 
     # Final summary
     gs = parse_global_state(result.observation.global_state)
@@ -469,19 +280,17 @@ def main():
     if args.deck1:
         deck1 = parse_ydk(args.deck1)
 
-    # Collect card codes from specified decks to limit DB loading
-    deck_codes: set[int] | None = None
-    if deck0 is not None or deck1 is not None:
-        deck_codes = set()
-        for d in (deck0, deck1):
-            if d is not None:
-                deck_codes.update(d.get("main", []))
-                deck_codes.update(d.get("extra", []))
-
     agent_player = 1 if args.go_second else 0
 
-    card_names.load(deck_codes)
-    print(f"Loaded {len(card_names._names)} card names.")
+    db_path = os.environ.get("YUGIOH_DB_PATH") or str(
+        Path(__file__).resolve().parent.parent / "assets" / "cards.cdb"
+    )
+    strings_path = os.environ.get("YUGIOH_STRINGS_PATH") or str(
+        Path(__file__).resolve().parent.parent / "assets" / "strings.conf"
+    )
+    card_db = CardDatabase(db_path)
+    sys_strings = parse_sys_strings(strings_path) if Path(strings_path).is_file() else None
+    describer = ActionDescriber(card_db, sys_strings=sys_strings)
     print(f"Agent player: {agent_player} ({'goes second' if agent_player == 1 else 'goes first'})")
     print(f"Connecting to {args.url} ...")
 
@@ -499,7 +308,7 @@ def main():
                     print(f"--- Episode {ep + 1}/{args.episodes} (seed={seed}) ---")
 
                 t0 = time.time()
-                stats = run_episode(env, pick_action, seed=seed, verbose=verbose,
+                stats = run_episode(env, pick_action, describer, seed=seed, verbose=verbose,
                                     deck0=deck0, deck1=deck1,
                                     agent_player=agent_player)
                 elapsed = time.time() - t0

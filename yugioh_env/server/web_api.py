@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from yugioh_core.string_resolver import parse_sys_strings
+from yugioh_env.action_describer import ActionDescriber
 from yugioh_env.deck_parser import parse_ydk
 from yugioh_env.models import YuGiOhAction
 from yugioh_env.server.board_state import build_board_state
-from yugioh_env.server.action_describer import describe_actions, describe_prompt
 from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
 
 logger = logging.getLogger(__name__)
@@ -38,6 +40,8 @@ class StepRequest(BaseModel):
 
 def _build_response(
     env: YuGiOhEnvironment,
+    describer: ActionDescriber,
+    obs,  # YuGiOhObservation
     event_log: list[str],
     done: bool,
     reward: float,
@@ -57,8 +61,12 @@ def _build_response(
     # Reuse the last frame's board if available (avoids redundant FFI call)
     board = frames[-1]["board"] if frames else build_board_state(env, open_cards=env._open_cards)
 
-    actions = describe_actions(env._mapper, env._card_db, env._string_resolver) if not done else []
-    prompt = describe_prompt(env._mapper, env._card_db) if not done else None
+    if obs is None or done:
+        actions = []
+        prompt = None
+    else:
+        actions = [d.to_dict() for d in describer.describe_all(obs)]
+        prompt = describer.describe_prompt(obs)
 
     return {
         "board": board,
@@ -77,12 +85,35 @@ def create_web_env(config: dict | None = None) -> YuGiOhEnvironment:
     return YuGiOhEnvironment(config)
 
 
+def create_describer(env: YuGiOhEnvironment, strings_path: str | Path | None = None) -> ActionDescriber:
+    """Construct the ActionDescriber the web UI shares across all requests.
+
+    Reuses the env's `cards.cdb` connection. Loads sysstring labels from
+    `strings_path` (or `YUGIOH_STRINGS_PATH` env var, or
+    `<project_root>/assets/strings.conf` as last resort). When the file
+    is missing, the describer falls back to placeholder labels.
+    """
+    if strings_path is None:
+        project_root = Path(__file__).resolve().parent.parent.parent
+        strings_path = os.environ.get(
+            "YUGIOH_STRINGS_PATH", str(project_root / "assets" / "strings.conf")
+        )
+    sys_strings = parse_sys_strings(strings_path) if Path(strings_path).is_file() else None
+    if sys_strings is None:
+        logger.warning(
+            "strings.conf not found at %s; sysstring labels will use placeholders. "
+            "Run scripts/setup.sh to download.", strings_path
+        )
+    return ActionDescriber(env._card_db, sys_strings=sys_strings)
+
+
 # ─── Endpoints ──────────────────────────────────────────────────────────────
 
 @web_router.post("/reset")
 def reset_duel(body: ResetRequest, request: Request) -> dict:
     """Reset (or create) a duel and return the initial state."""
     env: YuGiOhEnvironment = request.app.state.web_env
+    describer: ActionDescriber = request.app.state.describer
     try:
         obs = env.reset(
             seed=body.seed,
@@ -93,7 +124,7 @@ def reset_duel(body: ResetRequest, request: Request) -> dict:
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    return _build_response(env, obs.event_log, obs.done, obs.reward, include_frames=True)
+    return _build_response(env, describer, obs, obs.event_log, obs.done, obs.reward, include_frames=True)
 
 
 @web_router.get("/decks")
@@ -132,20 +163,27 @@ def list_decks(request: Request) -> list[dict]:
 def step_duel(body: StepRequest, request: Request) -> dict:
     """Submit an action and return the resulting state."""
     env: YuGiOhEnvironment = request.app.state.web_env
+    describer: ActionDescriber = request.app.state.describer
     if env._duel is None:
-        return _build_response(env, ["No active duel. Call /reset first."], True, 0.0)
+        return _build_response(env, describer, None, ["No active duel. Call /reset first."], True, 0.0)
     obs = env.step(YuGiOhAction(action_index=body.action_index))
-    return _build_response(env, obs.event_log, obs.done, obs.reward, include_frames=True)
+    return _build_response(env, describer, obs, obs.event_log, obs.done, obs.reward, include_frames=True)
 
 
 @web_router.get("/state")
 def get_state(request: Request) -> dict:
-    """Return the current duel state without advancing."""
-    env: YuGiOhEnvironment = request.app.state.web_env
-    if env._duel is None:
-        return _build_response(env, [], True, 0.0)
+    """Return the current duel state without advancing.
 
-    # Build response from current state (no step/reset)
+    Pure read-only: never builds a fresh observation (which would mutate
+    state via _make_terminal_observation or trigger FFI queries via
+    _make_observation). Both `actions` and `prompt` short-circuit to
+    empty when obs=None.
+    """
+    env: YuGiOhEnvironment = request.app.state.web_env
+    describer: ActionDescriber = request.app.state.describer
+    if env._duel is None:
+        return _build_response(env, describer, None, [], True, 0.0)
+
     done = env._duel.game_state.is_finished if env._duel else True
     reward = 0.0
     if done and env._duel:
@@ -154,4 +192,4 @@ def get_state(request: Request) -> dict:
             reward = 1.0
         elif winner == 1 - env._agent_player:
             reward = -1.0
-    return _build_response(env, [], done, reward)
+    return _build_response(env, describer, None, [], done, reward)

@@ -11,7 +11,7 @@ import pytest
 def web_client(lib, db_path, script_dirs, deck_path):
     """Create a TestClient wrapping the FastAPI app with a configured web env."""
     from starlette.testclient import TestClient
-    from yugioh_env.server.web_api import web_router, create_web_env
+    from yugioh_env.server.web_api import web_router, create_describer, create_web_env
 
     # Build a standalone app with only the web router
     from fastapi import FastAPI
@@ -23,6 +23,7 @@ def web_client(lib, db_path, script_dirs, deck_path):
         "opponent": "random",
         "opponent_seed": 42,
     })
+    app.state.describer = create_describer(app.state.web_env)
     app.include_router(web_router)
     return TestClient(app)
 

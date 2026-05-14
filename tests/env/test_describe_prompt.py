@@ -1,10 +1,11 @@
-"""Unit tests for describe_prompt().
+"""Unit tests for ActionDescriber.describe_prompt().
 
 Uses ActionMapper.update() with synthetic parsed messages — no live duel needed.
 """
 
 import pytest
 
+from tests.env.conftest import obs_from_msg as _obs_from_msg
 from yugioh_core.constants import (
     MSG_SELECT_EFFECTYN,
     MSG_SELECT_YESNO,
@@ -21,8 +22,7 @@ from yugioh_core.constants import (
     POS_FACEUP_ATTACK,
     POS_FACEDOWN_DEFENSE,
 )
-from yugioh_env.action_space import ActionMapper
-from yugioh_env.server.action_describer import describe_prompt
+from yugioh_env.action_describer import ActionDescriber
 
 
 class FakeCardDB:
@@ -36,17 +36,12 @@ class FakeCardDB:
 
 
 @pytest.fixture
-def mapper():
-    return ActionMapper()
-
-
-@pytest.fixture
 def card_db():
     return FakeCardDB({89631139: "Blue-Eyes White Dragon", 46986414: "Dark Magician"})
 
 
-def test_effectyn(mapper, card_db):
-    mapper.update({
+def test_effectyn(card_db):
+    obs = _obs_from_msg({
         "msg_type": MSG_SELECT_EFFECTYN,
         "player": 0,
         "code": 89631139,
@@ -56,25 +51,27 @@ def test_effectyn(mapper, card_db):
         "position": 0,
         "desc": 0,
     })
-    prompt = describe_prompt(mapper, card_db)
+    describer = ActionDescriber(card_db, sys_strings=None)
+    prompt = describer.describe_prompt(obs)
     assert prompt["type"] == "effect_yn"
     assert prompt["card_code"] == 89631139
     assert prompt["card_name"] == "Blue-Eyes White Dragon"
 
 
-def test_yesno(mapper, card_db):
-    mapper.update({
+def test_yesno(card_db):
+    obs = _obs_from_msg({
         "msg_type": MSG_SELECT_YESNO,
         "player": 0,
         "desc": 0,
     })
-    prompt = describe_prompt(mapper, card_db)
+    describer = ActionDescriber(card_db, sys_strings=None)
+    prompt = describer.describe_prompt(obs)
     assert prompt["type"] == "yes_no"
     assert "card_code" not in prompt
 
 
-def test_select_card(mapper, card_db):
-    mapper.update({
+def test_select_card(card_db):
+    obs = _obs_from_msg({
         "msg_type": MSG_SELECT_CARD,
         "player": 0,
         "cancelable": 0,
@@ -85,7 +82,8 @@ def test_select_card(mapper, card_db):
             {"code": 46986414, "controller": 0, "location": 2, "sequence": 1, "subsequence": 0},
         ],
     })
-    prompt = describe_prompt(mapper, card_db)
+    describer = ActionDescriber(card_db, sys_strings=None)
+    prompt = describer.describe_prompt(obs)
     assert prompt["type"] == "select_card"
     assert prompt["min"] == 1
     assert prompt["max"] == 2
@@ -93,8 +91,8 @@ def test_select_card(mapper, card_db):
     assert prompt["selected_count"] == 0
 
 
-def test_select_card_with_selected(mapper, card_db):
-    mapper.update({
+def test_select_card_with_selected(card_db):
+    obs = _obs_from_msg({
         "msg_type": MSG_SELECT_CARD,
         "player": 0,
         "cancelable": 0,
@@ -106,13 +104,14 @@ def test_select_card_with_selected(mapper, card_db):
             {"code": 46986414, "controller": 0, "location": 2, "sequence": 1, "subsequence": 0},
         ],
     })
-    prompt = describe_prompt(mapper, card_db)
+    describer = ActionDescriber(card_db, sys_strings=None)
+    prompt = describer.describe_prompt(obs)
     assert prompt["type"] == "select_card"
     assert prompt["selected_count"] == 1
 
 
-def test_tribute(mapper, card_db):
-    mapper.update({
+def test_tribute(card_db):
+    obs = _obs_from_msg({
         "msg_type": MSG_SELECT_TRIBUTE,
         "player": 0,
         "cancelable": 1,
@@ -123,7 +122,8 @@ def test_tribute(mapper, card_db):
             {"code": 46986414, "controller": 0, "location": 4, "sequence": 1, "release_param": 1},
         ],
     })
-    prompt = describe_prompt(mapper, card_db)
+    describer = ActionDescriber(card_db, sys_strings=None)
+    prompt = describer.describe_prompt(obs)
     assert prompt["type"] == "tribute"
     assert prompt["min_release"] == 2
     assert prompt["max_cards"] == 2
@@ -136,9 +136,9 @@ def test_tribute(mapper, card_db):
     assert "selected_count" not in prompt
 
 
-def test_tribute_with_selected(mapper, card_db):
+def test_tribute_with_selected(card_db):
     """A single monster with release_param=2 satisfies min_release=2."""
-    mapper.update({
+    obs = _obs_from_msg({
         "msg_type": MSG_SELECT_TRIBUTE,
         "player": 0,
         "cancelable": 0,
@@ -150,14 +150,15 @@ def test_tribute_with_selected(mapper, card_db):
             {"code": 46986414, "controller": 0, "location": 4, "sequence": 1, "release_param": 1},
         ],
     })
-    prompt = describe_prompt(mapper, card_db)
+    describer = ActionDescriber(card_db, sys_strings=None)
+    prompt = describer.describe_prompt(obs)
     assert prompt["type"] == "tribute"
     assert prompt["release_total"] == 2
     assert prompt["cards_selected"] == 1
 
 
-def test_unselect_card(mapper, card_db):
-    mapper.update({
+def test_unselect_card(card_db):
+    obs = _obs_from_msg({
         "msg_type": MSG_SELECT_UNSELECT_CARD,
         "player": 0,
         "finishable": 1,
@@ -169,7 +170,8 @@ def test_unselect_card(mapper, card_db):
         ],
         "unselectable": [],
     })
-    prompt = describe_prompt(mapper, card_db)
+    describer = ActionDescriber(card_db, sys_strings=None)
+    prompt = describer.describe_prompt(obs)
     assert prompt["type"] == "select_card"
     assert prompt["min"] == 1
     assert prompt["max"] == 3
@@ -177,8 +179,8 @@ def test_unselect_card(mapper, card_db):
     assert "selected_count" not in prompt
 
 
-def test_chain(mapper, card_db):
-    mapper.update({
+def test_chain(card_db):
+    obs = _obs_from_msg({
         "msg_type": MSG_SELECT_CHAIN,
         "player": 0,
         "spe_count": 0,
@@ -190,13 +192,14 @@ def test_chain(mapper, card_db):
              "position": 0, "desc": 0, "client_mode": 0},
         ],
     })
-    prompt = describe_prompt(mapper, card_db)
+    describer = ActionDescriber(card_db, sys_strings=None)
+    prompt = describer.describe_prompt(obs)
     assert prompt["type"] == "chain_link"
     assert prompt["forced"] is False
 
 
-def test_chain_forced(mapper, card_db):
-    mapper.update({
+def test_chain_forced(card_db):
+    obs = _obs_from_msg({
         "msg_type": MSG_SELECT_CHAIN,
         "player": 0,
         "spe_count": 0,
@@ -208,25 +211,27 @@ def test_chain_forced(mapper, card_db):
              "position": 0, "desc": 0, "client_mode": 0},
         ],
     })
-    prompt = describe_prompt(mapper, card_db)
+    describer = ActionDescriber(card_db, sys_strings=None)
+    prompt = describer.describe_prompt(obs)
     assert prompt["forced"] is True
 
 
-def test_position(mapper, card_db):
-    mapper.update({
+def test_position(card_db):
+    obs = _obs_from_msg({
         "msg_type": MSG_SELECT_POSITION,
         "player": 0,
         "code": 89631139,
         "positions": POS_FACEUP_ATTACK | POS_FACEDOWN_DEFENSE,
     })
-    prompt = describe_prompt(mapper, card_db)
+    describer = ActionDescriber(card_db, sys_strings=None)
+    prompt = describer.describe_prompt(obs)
     assert prompt["type"] == "position"
     assert prompt["card_code"] == 89631139
     assert prompt["card_name"] == "Blue-Eyes White Dragon"
 
 
-def test_idle_cmd(mapper, card_db):
-    mapper.update({
+def test_idle_cmd(card_db):
+    obs = _obs_from_msg({
         "msg_type": MSG_SELECT_IDLECMD,
         "player": 0,
         "summonable": [],
@@ -239,37 +244,41 @@ def test_idle_cmd(mapper, card_db):
         "to_ep": 1,
         "shuffle_hand": 0,
     })
-    prompt = describe_prompt(mapper, card_db)
+    describer = ActionDescriber(card_db, sys_strings=None)
+    prompt = describer.describe_prompt(obs)
     assert prompt["type"] == "idle_cmd"
     assert len(prompt) == 1  # only "type", no extra fields
 
 
-def test_unknown_msg_type(mapper, card_db):
-    mapper.update({"msg_type": 9999})
-    prompt = describe_prompt(mapper, card_db)
+def test_unknown_msg_type(card_db):
+    obs = _obs_from_msg({"msg_type": 9999})
+    describer = ActionDescriber(card_db, sys_strings=None)
+    prompt = describer.describe_prompt(obs)
     assert prompt["type"] == "unknown"
 
 
-def test_place(mapper, card_db):
-    mapper.update({
+def test_place(card_db):
+    obs = _obs_from_msg({
         "msg_type": MSG_SELECT_PLACE,
         "player": 0,
         "count": 1,
         "field_mask": 0x1F,  # 5 monster zones
     })
-    prompt = describe_prompt(mapper, card_db)
+    describer = ActionDescriber(card_db, sys_strings=None)
+    prompt = describer.describe_prompt(obs)
     assert prompt["type"] == "place"
     assert prompt["count"] == 1
 
 
-def test_disfield_maps_to_place(mapper, card_db):
-    mapper.update({
+def test_disfield_maps_to_place(card_db):
+    obs = _obs_from_msg({
         "msg_type": MSG_SELECT_DISFIELD,
         "player": 0,
         "count": 1,
         "field_mask": 0x1F,
     })
-    prompt = describe_prompt(mapper, card_db)
+    describer = ActionDescriber(card_db, sys_strings=None)
+    prompt = describer.describe_prompt(obs)
     assert prompt["type"] == "place"
 
 
@@ -280,8 +289,6 @@ def test_prompt_type_map_includes_announce_kinds():
         MSG_ANNOUNCE_NUMBER, MSG_ANNOUNCE_RACE, MSG_ANNOUNCE_ATTRIB,
         MSG_ROCK_PAPER_SCISSORS, MSG_SELECT_COUNTER, MSG_SELECT_OPTION,
     )
-    from yugioh_env.action_space import ActionMapper
-    from yugioh_env.server.action_describer import describe_prompt
 
     class _StubDB:
         def get_card_name(self, code): return f"Card{code}"
@@ -296,10 +303,9 @@ def test_prompt_type_map_includes_announce_kinds():
         ({"msg_type": MSG_SELECT_OPTION, "player": 0, "options": [0x1]}, "option"),
     ]
     for msg, expected_type in cases:
-        mapper = ActionMapper()
-        mapper.update(msg)
-        result = describe_prompt(mapper, _StubDB())
+        obs = _obs_from_msg(msg)
+        describer = ActionDescriber(_StubDB(), sys_strings=None)
+        result = describer.describe_prompt(obs)
         assert result["type"] == expected_type, (
             f"msg_type={msg['msg_type']}: expected '{expected_type}', got '{result['type']}'"
         )
-

@@ -169,3 +169,62 @@ def test_board_and_action_controller_agree_on_real_episode(lib, db_path, script_
         f"was barely (or never) exercised. Increase max_steps or check that "
         f"the parser fix is producing real codes in the board encoding."
     )
+
+
+def test_prompt_meta_populated_on_select_msg(lib, db_path, script_dirs):
+    """Reset and step into a SELECT_CARD prompt; assert obs.prompt_meta has
+    the expected keys."""
+    import random
+    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+    from yugioh_env.models import YuGiOhAction
+
+    env = YuGiOhEnvironment({})
+    obs = env.reset(seed=1234)
+    rng = random.Random(0)
+
+    # Walk a few prompts to look for any non-None prompt_meta with structure.
+    for _ in range(20):
+        if obs.done:
+            break
+        if obs.prompt_meta is not None:
+            assert isinstance(obs.prompt_meta, dict)
+            # The dict may be empty (for prompts like idle_cmd that have no
+            # extra fields) or carry per-prompt-type fields.
+            # `msg_type` is a documented wire-contract field that openenv
+            # HTTP clients receive via Pydantic model_dump().
+            assert "msg_type" in obs.prompt_meta, (
+                f"prompt_meta missing required 'msg_type' wire field: "
+                f"{obs.prompt_meta!r}"
+            )
+            assert isinstance(obs.prompt_meta["msg_type"], int)
+            return  # found a populated prompt_meta — test passes
+        legal = [i for i, m in enumerate(obs.action_mask) if m == 1]
+        if not legal:
+            break
+        obs = env.step(YuGiOhAction(action_index=rng.choice(legal)))
+
+    # If we never observed a non-None prompt_meta, the wiring is broken.
+    assert obs.prompt_meta is not None or obs.done, (
+        "prompt_meta was None across 20 prompts; wiring may be broken"
+    )
+
+
+def test_prompt_meta_none_on_terminal(lib, db_path, script_dirs):
+    """After the duel ends, obs.prompt_meta is None."""
+    import random
+    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+    from yugioh_env.models import YuGiOhAction
+
+    env = YuGiOhEnvironment({})
+    obs = env.reset(seed=1234)
+    rng = random.Random(0)
+
+    # Play to completion.
+    while not obs.done:
+        legal = [i for i, m in enumerate(obs.action_mask) if m == 1]
+        if not legal:
+            break
+        obs = env.step(YuGiOhAction(action_index=rng.choice(legal)))
+
+    assert obs.done
+    assert obs.prompt_meta is None

@@ -22,6 +22,9 @@ class CardDatabase:
         self._db_path = str(db_path)
         self._conn = sqlite3.connect(self._db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
+        # cards.cdb is immutable per-process; cache name lookups to avoid
+        # N+1 SQLite roundtrips from describer hot paths.
+        self._name_cache: dict[int, str] = {}
         self._cache: dict[int, dict | None] = {}
 
     def get_card(self, code: int) -> dict | None:
@@ -80,11 +83,16 @@ class CardDatabase:
 
     def get_card_name(self, code: int) -> str:
         """Get card name by passcode."""
+        cached = self._name_cache.get(code)
+        if cached is not None:
+            return cached
         cursor = self._conn.execute(
             "SELECT name FROM texts WHERE id=?", (code,)
         )
         row = cursor.fetchone()
-        return row["name"] if row else f"Unknown({code})"
+        name = row["name"] if row else f"Unknown({code})"
+        self._name_cache[code] = name
+        return name
 
     def get_card_string(self, code: int, n: int) -> str | None:
         """Look up card-specific string `n` (0-15) for the given passcode.

@@ -14,7 +14,6 @@ from openenv.core.env_server.types import Observation
 from yugioh_env.action_space import ActionMapper
 from yugioh_core.card_database import CardDatabase
 from yugioh_core.encoding import MAX_ACTIONS
-from yugioh_core.string_resolver import StringResolver, parse_sys_strings
 from yugioh_env.event_logger import FieldTracker, format_events
 from yugioh_core.constants import (
     LOCATION_HAND,
@@ -35,6 +34,14 @@ from yugioh_core.constants import (
     PHASE_STANDBY,
     SELECT_MSGS,
     MSG_WIN,
+    MSG_SELECT_EFFECTYN,
+    MSG_SELECT_CARD,
+    MSG_SELECT_TRIBUTE,
+    MSG_SELECT_UNSELECT_CARD,
+    MSG_SELECT_CHAIN,
+    MSG_SELECT_POSITION,
+    MSG_SELECT_PLACE,
+    MSG_SELECT_DISFIELD,
 )
 from yugioh_env.duel import Duel
 from yugioh_env.lib_loader import load_library
@@ -83,6 +90,54 @@ def _build_action_meta_list(actions: list[dict]) -> list[ActionMeta | None]:
     return out
 
 
+def _build_prompt_meta(mapper) -> dict | None:
+    """Build prompt-level metadata from the mapper's current message.
+
+    Mirrors the field-extraction logic of the previous server-side
+    `describe_prompt`, minus the card_name lookup (which moves to
+    ActionDescriber). Returns None when no active prompt.
+
+    The returned dict always includes a documented `msg_type` field
+    (the raw ygopro-core MSG_SELECT_* integer). It is part of the wire
+    contract for `prompt_meta`: openenv HTTP clients receive it via
+    `model_dump()`, and `ActionDescriber.describe_prompt` consumes
+    (pops) it to derive the human-readable `type` enum.
+    """
+    msg_type = mapper.msg_type
+    msg = mapper.msg
+    if msg_type is None or not msg:
+        return None
+    result: dict = {"msg_type": msg_type}
+    if msg_type == MSG_SELECT_EFFECTYN:
+        result["card_code"] = msg.get("code", 0)
+    elif msg_type == MSG_SELECT_CARD:
+        result["min"] = msg.get("min", 1)
+        result["max"] = msg.get("max", 1)
+        result["cancelable"] = bool(msg.get("cancelable", 0))
+        result["selected_count"] = len(msg.get("_selected", []))
+    elif msg_type == MSG_SELECT_TRIBUTE:
+        selected = msg.get("_selected", [])
+        cards = msg.get("cards", [])
+        result["min_release"] = msg.get("min", 1)
+        result["max_cards"] = msg.get("max", 1)
+        result["cancelable"] = bool(msg.get("cancelable", 0))
+        result["release_total"] = sum(
+            cards[i].get("release_param", 1) for i in selected if i < len(cards)
+        )
+        result["cards_selected"] = len(selected)
+    elif msg_type == MSG_SELECT_UNSELECT_CARD:
+        result["min"] = msg.get("min", 1)
+        result["max"] = msg.get("max", 1)
+        result["finishable"] = bool(msg.get("finishable", 0))
+    elif msg_type == MSG_SELECT_CHAIN:
+        result["forced"] = bool(msg.get("forced", 0))
+    elif msg_type == MSG_SELECT_POSITION:
+        result["card_code"] = msg.get("code", 0)
+    elif msg_type in (MSG_SELECT_PLACE, MSG_SELECT_DISFIELD):
+        result["count"] = msg.get("count", 1)
+    return result
+
+
 class YuGiOhEnvironment(Environment):
     """Server-side Yu-Gi-Oh! environment.
 
@@ -116,9 +171,6 @@ class YuGiOhEnvironment(Environment):
         db_path = config.get("db_path") or os.environ.get(
             "YUGIOH_DB_PATH", str(project_root / "assets" / "cards.cdb")
         )
-        strings_path = config.get("strings_path") or os.environ.get(
-            "YUGIOH_STRINGS_PATH", str(project_root / "assets" / "strings.conf")
-        )
         script_dirs = config.get("script_dirs") or [
             project_root / "third_party" / "CardScripts" / "official",
             project_root / "third_party" / "CardScripts" / "pre-release",
@@ -132,15 +184,6 @@ class YuGiOhEnvironment(Environment):
         # Initialize components
         self._lib = load_library(lib_path)
         self._card_db = CardDatabase(db_path)
-        if Path(strings_path).is_file():
-            sys_strings = parse_sys_strings(strings_path)
-        else:
-            logger.warning(
-                "strings.conf not found at %s; sysstring labels will use placeholders. "
-                "Run scripts/setup.sh to download.", strings_path
-            )
-            sys_strings = {}
-        self._string_resolver = StringResolver(self._card_db, sys_strings=sys_strings)
         self._script_dirs = [Path(d) for d in script_dirs]
 
         # Agent player: 0 = go first, 1 = go second, "random" = coin flip per episode
@@ -479,6 +522,7 @@ class YuGiOhEnvironment(Environment):
             actions=action_features.tolist(),
             action_mask=action_mask.tolist(),
             action_meta=action_meta,
+            prompt_meta=_build_prompt_meta(self._mapper),
             event_log=event_log or [],
             done=False,
             reward=0.0,
@@ -515,6 +559,7 @@ class YuGiOhEnvironment(Environment):
             actions=[],
             action_mask=[],
             action_meta=[],
+            prompt_meta=None,
             event_log=event_log or [],
             done=True,
             reward=reward,
