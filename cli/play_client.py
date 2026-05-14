@@ -70,6 +70,66 @@ def display_events(event_log: list[str]) -> None:
     print()
 
 
+_PROMPT_TYPE_LABELS = {
+    "idle_cmd": "Idle Command",
+    "battle_cmd": "Battle Command",
+    "effect_yn": "Effect Yes/No",
+    "yes_no": "Yes/No",
+    "option": "Option",
+    "select_card": "Select Card",
+    "chain_link": "Chain Link",
+    "place": "Place",
+    "position": "Position",
+    "tribute": "Tribute",
+    "number": "Announce Number",
+    "race": "Announce Race",
+    "attribute": "Announce Attribute",
+    "rps": "Rock-Paper-Scissors",
+    "counter": "Select Counter",
+    "unknown": "Unknown",
+}
+
+
+def _format_prompt_summary(prompt: dict | None) -> str:
+    """Render a one-line summary of the prompt's type and key constraints.
+
+    Returns just the type label for prompts whose action labels already
+    carry the full information (yes/no, position, etc.); adds min/max
+    constraints and selection progress for the few prompts that need it
+    (select_card, tribute, chain).
+    """
+    if not prompt:
+        return ""
+    p_type = prompt.get("type", "unknown")
+    label = _PROMPT_TYPE_LABELS.get(p_type, p_type)
+
+    if p_type == "select_card":
+        lo, hi = prompt["min"], prompt["max"]
+        range_str = f"pick {lo}" if lo == hi else f"pick {lo} to {hi}"
+        # selected_count is set for MSG_SELECT_CARD only; MSG_SELECT_UNSELECT_CARD
+        # emits `finishable` instead and omits selected_count.
+        picked = prompt.get("selected_count", 0)
+        progress = f", {picked} selected" if picked else ""
+        finishable = ", finishable" if prompt.get("finishable") else ""
+        return f"{label} — {range_str}{progress}{finishable}"
+
+    if p_type == "tribute":
+        min_rel = prompt["min_release"]
+        max_cards = prompt["max_cards"]
+        rel_total = prompt["release_total"]
+        picked = prompt["cards_selected"]
+        progress = (
+            f", release={rel_total}/{min_rel} ({picked} card{'s' if picked != 1 else ''})"
+            if picked else ""
+        )
+        return f"{label} — release total ≥ {min_rel} (max {max_cards} cards){progress}"
+
+    if p_type == "chain_link" and prompt.get("forced"):
+        return f"{label} — forced"
+
+    return label
+
+
 def display_state(obs: YuGiOhObservation, step_num: int, describer: ActionDescriber) -> None:
     """Print a summary of the current observation."""
     gs = parse_global_state(obs.global_state)
@@ -90,9 +150,15 @@ def display_state(obs: YuGiOhObservation, step_num: int, describer: ActionDescri
         print(f"  Chain count: {gs['chain_count']}")
 
     legal_count = sum(1 for m in obs.action_mask if m == 1)
+    summary = _format_prompt_summary(describer.describe_prompt(obs))
+    decision_line = (
+        f"  Decision: {summary}  ({legal_count} legal action{'s' if legal_count != 1 else ''})"
+        if summary
+        else f"  Decision: {legal_count} legal action{'s' if legal_count != 1 else ''}"
+    )
 
     print(f"{'─' * 60}")
-    print(f"  Decision: {legal_count} legal action{'s' if legal_count != 1 else ''}")
+    print(decision_line)
     print(f"{'─' * 60}")
 
     for d in describer.describe_all(obs):
