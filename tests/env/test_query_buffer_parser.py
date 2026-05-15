@@ -1,7 +1,7 @@
 """Unit tests for the OCG_DuelQueryLocation buffer parser.
 
 These tests synthesize wire bytes per the documented format and verify
-that `_parse_query_buffer` produces the expected dict structure.
+that `parse_query_location` produces the expected dict structure.
 
 Wire format (edo9300):
 
@@ -34,7 +34,7 @@ from yugioh_core.constants import (
     QUERY_OVERLAY_CARD,
     QUERY_END,
 )
-from yugioh_env.observation import _parse_query_buffer
+from yugioh_core.query_buffer import parse_query_location
 
 
 # ─── Wire-format builders ───────────────────────────────────────────────
@@ -76,14 +76,14 @@ def _wrap(body: bytes) -> bytes:
 def test_empty_buffer_returns_empty_list():
     """A buffer with total_size=0 (just the 4-byte header) parses to []."""
     data = struct.pack("<I", 0)
-    assert _parse_query_buffer(data) == []
+    assert parse_query_location(data) == []
 
 
 def test_single_card_single_field():
     """One slot with one QUERY_CODE field + QUERY_END terminator."""
     body = _u32_field(QUERY_CODE, 89631139) + _terminator()
     data = _wrap(body)
-    result = _parse_query_buffer(data)
+    result = parse_query_location(data)
     assert result == [{"sequence": 0, "code": 89631139}]
 
 
@@ -96,7 +96,7 @@ def test_single_card_multiple_fields():
         + _terminator()
     )
     data = _wrap(body)
-    result = _parse_query_buffer(data)
+    result = parse_query_location(data)
     assert result == [{
         "sequence": 0,
         "code": 12345,
@@ -114,7 +114,7 @@ def test_empty_slot_emits_empty_dict():
         + _u32_field(QUERY_CODE, 999) + _terminator()
     )
     data = _wrap(body)
-    result = _parse_query_buffer(data)
+    result = parse_query_location(data)
     assert result == [
         {},
         {},
@@ -131,7 +131,7 @@ def test_multiple_cards_no_empty_slots():
         + _u32_field(QUERY_CODE, 300) + _terminator()
     )
     data = _wrap(body)
-    result = _parse_query_buffer(data)
+    result = parse_query_location(data)
     assert result == [
         {"sequence": 0, "code": 100},
         {"sequence": 1, "code": 200},
@@ -152,7 +152,7 @@ def test_unknown_flag_raises_valueerror():
     )
     data = _wrap(body)
     with pytest.raises(ValueError, match=r"unknown query flag 0x4000000"):
-        _parse_query_buffer(data)
+        parse_query_location(data)
 
 
 def test_truncated_buffer_raises():
@@ -165,7 +165,7 @@ def test_truncated_buffer_raises():
     )
     truncated = full[:-2]  # chop off the last 2 bytes of QUERY_END terminator
     with pytest.raises((struct.error, AssertionError)):
-        _parse_query_buffer(truncated)
+        parse_query_location(truncated)
 
 
 def test_size_mismatch_assertion_fires():
@@ -175,7 +175,7 @@ def test_size_mismatch_assertion_fires():
     bogus_header = struct.pack("<I", len(body) - 2)
     data = bogus_header + body
     with pytest.raises(AssertionError, match=r"query buffer parse drift"):
-        _parse_query_buffer(data)
+        parse_query_location(data)
 
 
 def test_query_overlay_card_variable_length():
@@ -188,7 +188,7 @@ def test_query_overlay_card_variable_length():
     field = struct.pack("<HI", 4 + len(payload), QUERY_OVERLAY_CARD) + payload
     body = field + _terminator()
     data = _wrap(body)
-    result = _parse_query_buffer(data)
+    result = parse_query_location(data)
     assert result == [{"sequence": 0, "overlay_cards": [11, 22, 33]}]
 
 
@@ -201,7 +201,7 @@ def test_u8_field_decodes_correctly():
         + _terminator()
     )
     data = _wrap(body)
-    result = _parse_query_buffer(data)
+    result = parse_query_location(data)
     assert result == [{"sequence": 0, "owner": 1, "is_public": 1}]
 
 
@@ -211,5 +211,5 @@ def test_u64_race_field_decodes_correctly():
     race_val = (1 << 40) | 0x1234  # forces u64 rather than u32
     body = _u64_field(QUERY_RACE, race_val) + _terminator()
     data = _wrap(body)
-    result = _parse_query_buffer(data)
+    result = parse_query_location(data)
     assert result == [{"sequence": 0, "race": race_val}]

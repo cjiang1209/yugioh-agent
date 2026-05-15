@@ -575,3 +575,41 @@ def test_action_controller_relativizes_per_agent_player(agent_player, web_client
     assert card_actions_seen >= 1, (
         "Test inconclusive: no card-bearing action observed in 8 prompts."
     )
+
+
+def test_state_response_carries_populated_card(web_client):
+    """After the parser dedup, the web UI's board-state path now uses
+    the strict parser. Pin that real engine output produces at least
+    one card on the board with a populated `code` field — would catch
+    any accidental regression where the strict parser raised on
+    something the lenient one tolerated.
+    """
+    _reset(web_client)
+    resp = web_client.get("/api/web/state")
+    assert resp.status_code == 200, resp.text
+    state = resp.json()
+    board = state.get("board", {})
+    # Walk both sides; each side dict has list-valued keys (hand, monsters,
+    # spells_traps, graveyard, banished, extra_deck, etc.) holding either
+    # card dicts (with `code`) or None for empty zone slots.
+    seen_populated_card = False
+    for side_key in ("player", "opponent"):
+        side = board.get(side_key, {})
+        if not isinstance(side, dict):
+            continue
+        for value in side.values():
+            if not isinstance(value, list):
+                continue
+            for slot in value:
+                if isinstance(slot, dict) and slot.get("code"):
+                    seen_populated_card = True
+                    break
+            if seen_populated_card:
+                break
+        if seen_populated_card:
+            break
+    assert seen_populated_card, (
+        f"No populated card found on the board after reset; the strict "
+        f"parser may be raising on something the lenient one tolerated. "
+        f"Board snapshot: {board!r}"
+    )

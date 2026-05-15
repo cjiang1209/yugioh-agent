@@ -44,7 +44,7 @@ from yugioh_core.card_database import CardDatabase
 from yugioh_env.deck_parser import parse_ydk
 from yugioh_env.game_state import GameState
 from yugioh_env.message_parser import parse_messages
-from yugioh_env.observation import _parse_query_buffer
+from yugioh_core.query_buffer import parse_query_location
 
 logger = logging.getLogger(__name__)
 
@@ -331,7 +331,7 @@ class Duel:
         )
         if length.value > 0 and buf_ptr:
             buf = ctypes.string_at(buf_ptr, length.value)
-            return _parse_query_buffer(buf)
+            return parse_query_location(buf)
         return []
 
     def query_count(self, player: int, location: int) -> int:
