@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { DuelBoard } from "../components/duel/DuelBoard";
+import { CoinFlipOverlay } from "../components/CoinFlipOverlay";
 import { useAIEngine } from "../hooks/useAIEngine";
 import { DeckSelector } from "./DeckSelector";
+import { resolveTurnOrder, type TurnOrder } from "./turnOrder";
 import type { DeckPayload } from "../../../shared/deckTypes";
 
 const MODE_BUTTON_BASE = {
@@ -13,23 +15,41 @@ const MODE_BUTTON_BASE = {
 
 const ENGINE_API_URL = "http://localhost:8000";
 
+const randomSeed = () => Math.floor(Math.random() * 100000);
+
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function Duel() {
-  const [selectedDeck0, setSelectedDeck0] = useState<DeckPayload | null>(null);
-  const [selectedDeck1, setSelectedDeck1] = useState<DeckPayload | null>(null);
+  const [myDeck, setMyDeck] = useState<DeckPayload | null>(null);
+  const [oppDeck, setOppDeck] = useState<DeckPayload | null>(null);
   const [openCards, setOpenCards] = useState(false);
+  const [turnOrder, setTurnOrder] = useState<TurnOrder>("random");
+  const [agentPlayer, setAgentPlayer] = useState<0 | 1>(0);
+  const [pendingCoinFlip, setPendingCoinFlip] = useState<0 | 1 | null>(null);
 
   // Phase 1: Deck selection — scrollable page, no fixed wrapper
-  if (!selectedDeck0 || !selectedDeck1) {
+  if (!myDeck || !oppDeck) {
     return (
       <DeckSelector
         apiUrl={ENGINE_API_URL}
-        onDeckSelected={(myDeck, oppDeck, oc) => {
-          setSelectedDeck0(myDeck);
-          setSelectedDeck1(oppDeck);
+        onDeckSelected={(my, opp, oc, to, ap, animate) => {
+          setMyDeck(my);
+          setOppDeck(opp);
           setOpenCards(oc);
+          setTurnOrder(to);
+          setAgentPlayer(ap);
+          if (animate) setPendingCoinFlip(ap);
         }}
+      />
+    );
+  }
+
+  // Phase 1.5: Coin flip animation
+  if (pendingCoinFlip !== null) {
+    return (
+      <CoinFlipOverlay
+        result={pendingCoinFlip}
+        onComplete={() => setPendingCoinFlip(null)}
       />
     );
   }
@@ -37,19 +57,45 @@ export default function Duel() {
   // Phase 2: Duel — fixed viewport
   return (
     <div className="fixed inset-0" style={{ background: "var(--bg-void)" }}>
-      <AIModeDuel deck0={selectedDeck0} deck1={selectedDeck1} openCards={openCards} />
+      <AIModeDuel
+        myDeck={myDeck}
+        oppDeck={oppDeck}
+        openCards={openCards}
+        agentPlayer={agentPlayer}
+        onRestartTurnOrder={() => {
+          const { agentPlayer: ap, animateCoinFlip } = resolveTurnOrder(turnOrder);
+          setAgentPlayer(ap);
+          if (animateCoinFlip) setPendingCoinFlip(ap);
+          return { agentPlayer: ap, willAnimate: animateCoinFlip };
+        }}
+      />
     </div>
   );
 }
 
 // ─── AI Mode wrapper ────────────────────────────────────────────────────────
 
-function AIModeDuel({ deck0, deck1, openCards }: { deck0: DeckPayload; deck1: DeckPayload; openCards: boolean }) {
+function AIModeDuel({
+  myDeck,
+  oppDeck,
+  openCards,
+  agentPlayer,
+  onRestartTurnOrder,
+}: {
+  myDeck: DeckPayload;
+  oppDeck: DeckPayload;
+  openCards: boolean;
+  agentPlayer: 0 | 1;
+  onRestartTurnOrder: () => { agentPlayer: 0 | 1; willAnimate: boolean };
+}) {
   const { state, engineActions, enginePrompt, visibleLog, isReplaying, status, error, reset, submitAction } = useAIEngine(ENGINE_API_URL, openCards);
 
+  const deck0 = agentPlayer === 0 ? myDeck : oppDeck;
+  const deck1 = agentPlayer === 0 ? oppDeck : myDeck;
+
   useEffect(() => {
-    reset(Math.floor(Math.random() * 100000), deck0, deck1);
-  }, [deck0, deck1]);
+    reset(randomSeed(), deck0, deck1, agentPlayer);
+  }, [deck0, deck1, agentPlayer]);
 
   if (status === "loading" || (status === "idle" && !state)) {
     return <LoadingSpinner message="Connecting to engine..." />;
@@ -66,7 +112,7 @@ function AIModeDuel({ deck0, deck1, openCards }: { deck0: DeckPayload; deck1: De
             {error || "Failed to connect to Python engine. Is the server running?"}
           </div>
           <button
-            onClick={() => reset(Math.floor(Math.random() * 100000), deck0, deck1)}
+            onClick={() => reset(randomSeed(), deck0, deck1, agentPlayer)}
             className="px-4 py-2 rounded transition-all"
             style={{
               ...MODE_BUTTON_BASE,
@@ -91,7 +137,12 @@ function AIModeDuel({ deck0, deck1, openCards }: { deck0: DeckPayload; deck1: De
       engineActions={engineActions}
       enginePrompt={enginePrompt}
       onEngineAction={submitAction}
-      onRestart={() => reset(Math.floor(Math.random() * 100000), deck0, deck1)}
+      onRestart={() => {
+        const { agentPlayer: ap, willAnimate } = onRestartTurnOrder();
+        if (!willAnimate) {
+          reset(randomSeed(), deck0, deck1, ap);
+        }
+      }}
       visibleLog={visibleLog}
       isReplaying={isReplaying}
       openCards={openCards}

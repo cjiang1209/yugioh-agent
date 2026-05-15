@@ -34,7 +34,7 @@ export interface UseAIEngineReturn {
   isReplaying: boolean;
   status: AIEngineStatus;
   error: string | null;
-  reset: (seed?: number, deck0?: DeckPayload, deck1?: DeckPayload) => Promise<void>;
+  reset: (seed?: number, deck0?: DeckPayload, deck1?: DeckPayload, agentPlayer?: 0 | 1) => Promise<void>;
   submitAction: (actionIndex: number) => Promise<void>;
 }
 
@@ -299,7 +299,7 @@ export function useAIEngine(apiUrl: string = "http://localhost:8000", openCards:
     }
   }, [startReplay]);
 
-  const reset = useCallback(async (seed?: number, deck0?: DeckPayload, deck1?: DeckPayload) => {
+  const reset = useCallback(async (seed?: number, deck0?: DeckPayload, deck1?: DeckPayload, agentPlayer?: 0 | 1) => {
     setStatus("loading");
     setError(null);
     resetReplay();
@@ -311,6 +311,7 @@ export function useAIEngine(apiUrl: string = "http://localhost:8000", openCards:
       if (deck0 !== undefined) body.deck0 = deck0;
       if (deck1 !== undefined) body.deck1 = deck1;
       if (openCards) body.open_cards = true;
+      if (agentPlayer !== undefined) body.agent_player = agentPlayer;
       const res = await fetch(`${apiUrl}/api/web/reset`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

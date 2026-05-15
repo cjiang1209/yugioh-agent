@@ -1,13 +1,27 @@
 import { useEffect, useState } from "react";
 import type { DeckDefinition, DeckPayload } from "../../../shared/deckTypes";
+import { resolveTurnOrder, type TurnOrder } from "./turnOrder";
 
 const DECK_COLORS = ["var(--neon-cyan)", "var(--neon-pink)", "var(--neon-yellow)"];
 const CARD_IMAGE_BASE = "https://images.ygoprodeck.com/images/cards_small";
 const CARD_BACK = "https://images.ygoprodeck.com/images/cards/back_high.jpg";
 
+const TURN_ORDER_CAPTION: Record<TurnOrder, string> = {
+  random: "Coin flip decides who starts",
+  first: "You take the first turn",
+  second: "Opponent takes the first turn",
+};
+
 interface DeckSelectorProps {
   apiUrl?: string;
-  onDeckSelected: (myDeck: DeckPayload, oppDeck: DeckPayload, openCards: boolean) => void;
+  onDeckSelected: (
+    myDeck: DeckPayload,
+    oppDeck: DeckPayload,
+    openCards: boolean,
+    turnOrder: TurnOrder,
+    agentPlayer: 0 | 1,
+    animateCoinFlip: boolean,
+  ) => void;
 }
 
 function toPayload(deck: DeckDefinition): DeckPayload {
@@ -24,6 +38,7 @@ export function DeckSelector({ apiUrl = "http://localhost:8000", onDeckSelected 
   const [myDeck, setMyDeck] = useState<DeckDefinition | null>(null);
   const [oppDeck, setOppDeck] = useState<DeckDefinition | null>(null);
   const [openCards, setOpenCards] = useState(false);
+  const [turnOrder, setTurnOrder] = useState<TurnOrder>("random");
 
   useEffect(() => {
     fetch(`${apiUrl}/api/web/decks`)
@@ -146,6 +161,51 @@ export function DeckSelector({ apiUrl = "http://localhost:8000", onDeckSelected 
         <DeckPreview labelColor="var(--neon-pink)" deck={oppDeck} />
       </div>
 
+      {/* Turn order */}
+      <div className="flex flex-col items-center mb-6">
+        <div
+          className="text-xs font-bold mb-3 tracking-widest text-center"
+          style={{
+            fontFamily: "'Orbitron', sans-serif",
+            color: "var(--neon-cyan)",
+            fontSize: "0.65rem",
+            letterSpacing: "0.15em",
+          }}
+        >
+          TURN ORDER
+        </div>
+        <div className="flex gap-3" role="radiogroup" aria-label="Turn order">
+          <TurnOrderButton
+            label="RANDOM"
+            value="random"
+            current={turnOrder}
+            onSelect={setTurnOrder}
+          />
+          <TurnOrderButton
+            label="GO FIRST"
+            value="first"
+            current={turnOrder}
+            onSelect={setTurnOrder}
+          />
+          <TurnOrderButton
+            label="GO SECOND"
+            value="second"
+            current={turnOrder}
+            onSelect={setTurnOrder}
+          />
+        </div>
+        <span
+          className="mt-1 opacity-40"
+          style={{
+            color: "var(--text-secondary)",
+            fontFamily: "'Share Tech Mono', monospace",
+            fontSize: "0.5rem",
+          }}
+        >
+          {TURN_ORDER_CAPTION[turnOrder]}
+        </span>
+      </div>
+
       {/* Open cards toggle */}
       <div className="flex flex-col items-center mb-6">
         <button
@@ -177,7 +237,15 @@ export function DeckSelector({ apiUrl = "http://localhost:8000", onDeckSelected 
         disabled={!canStart}
         onClick={() => {
           if (myDeck && oppDeck) {
-            onDeckSelected(toPayload(myDeck), toPayload(oppDeck), openCards);
+            const { agentPlayer, animateCoinFlip } = resolveTurnOrder(turnOrder);
+            onDeckSelected(
+              toPayload(myDeck),
+              toPayload(oppDeck),
+              openCards,
+              turnOrder,
+              agentPlayer,
+              animateCoinFlip,
+            );
           }
         }}
         className="px-8 py-3 rounded font-bold text-sm transition-all"
@@ -195,6 +263,41 @@ export function DeckSelector({ apiUrl = "http://localhost:8000", onDeckSelected 
         {canStart ? "ENTER THE DUEL \u25B6" : "SELECT BOTH DECKS"}
       </button>
     </div>
+  );
+}
+
+// ─── Turn order button ──────────────────────────────────────────────────────
+
+function TurnOrderButton({
+  label,
+  value,
+  current,
+  onSelect,
+}: {
+  label: string;
+  value: TurnOrder;
+  current: TurnOrder;
+  onSelect: (v: TurnOrder) => void;
+}) {
+  const selected = current === value;
+  return (
+    <button
+      onClick={() => onSelect(value)}
+      role="radio"
+      aria-checked={selected}
+      className="px-4 py-2 rounded transition-all"
+      style={{
+        fontFamily: "'Orbitron', sans-serif",
+        fontSize: "0.6rem",
+        letterSpacing: "0.1em",
+        background: selected ? "rgba(0,245,255,0.1)" : "rgba(255,255,255,0.03)",
+        border: `1px solid ${selected ? "var(--neon-cyan)" : "var(--border-dim)"}`,
+        color: selected ? "var(--neon-cyan)" : "var(--text-muted)",
+        boxShadow: selected ? "0 0 12px rgba(0,245,255,0.25)" : "none",
+      }}
+    >
+      {label}
+    </button>
   );
 }
 
