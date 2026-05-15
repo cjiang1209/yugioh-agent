@@ -110,6 +110,7 @@ def _build_prompt_meta(mapper) -> dict | None:
     result: dict = {"msg_type": msg_type}
     if msg_type == MSG_SELECT_EFFECTYN:
         result["card_code"] = msg.get("code", 0)
+        result["location"] = msg.get("location", 0)
     elif msg_type == MSG_SELECT_CARD:
         result["min"] = msg.get("min", 1)
         result["max"] = msg.get("max", 1)

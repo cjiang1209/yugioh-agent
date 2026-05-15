@@ -1,6 +1,5 @@
 import type { EngineAction, EnginePrompt } from "../../../../../shared/engineTypes";
-
-const CARD_IMAGE_BASE = "https://images.ygoprodeck.com/images/cards_small";
+import { CardThumbnail } from "../CardThumbnail";
 
 interface SelectCardPanelProps {
   actions: EngineAction[];
@@ -82,7 +81,6 @@ export function SelectCardPanel({ actions, prompt, onAction }: SelectCardPanelPr
         }}
       >
         {cardActions.map((action) => {
-          const hasImage = action.card_code > 0;
           return (
             <button
               key={action.index}
@@ -108,40 +106,19 @@ export function SelectCardPanel({ actions, prompt, onAction }: SelectCardPanelPr
                 e.currentTarget.style.borderColor = "rgba(180,79,255,0.3)";
               }}
             >
-              {hasImage ? (
-                <img
-                  src={`${CARD_IMAGE_BASE}/${action.card_code}.jpg`}
-                  alt={action.card_name}
-                  style={{
-                    width: "80px",
-                    height: "112px",
-                    objectFit: "cover",
-                    borderRadius: "3px",
-                    border: "1px solid rgba(180,79,255,0.4)",
-                  }}
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).style.display = "none";
-                  }}
-                />
-              ) : (
-                <div
-                  style={{
-                    width: "80px",
-                    height: "112px",
-                    borderRadius: "3px",
-                    background: "rgba(255,255,255,0.04)",
-                    border: "1px solid rgba(180,79,255,0.3)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "0.7rem",
-                    color: "#b44fff",
-                    opacity: 0.5,
-                  }}
-                >
-                  ?
-                </div>
-              )}
+              <CardThumbnail
+                cardCode={action.card_code}
+                width={80}
+                height={112}
+                borderRadius={3}
+                borderColor={action.card_code > 0 ? "rgba(180,79,255,0.4)" : "rgba(180,79,255,0.3)"}
+                location={action.location}
+                badgeSize={18}
+                alt={action.card_name}
+                fallback={
+                  <span style={{ fontSize: "0.7rem", color: "#b44fff", opacity: 0.5 }}>?</span>
+                }
+              />
               <span
                 style={{
                   fontFamily: "'Share Tech Mono', monospace",

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Ghost, Mountain, ScrollText, Skull, Star, Swords } from "lucide-react";
 import {
   DuelState,
   FieldCard,
@@ -88,10 +89,10 @@ function requiredTributes(level: number) {
 
 // ─── Empty zone placeholders ─────────────────────────────────────────────────
 
-function ZoneLabel({ icon, children, color }: { icon: string; children: React.ReactNode; color?: string }) {
+function ZoneLabel({ icon, children, color }: { icon: React.ReactNode; children: React.ReactNode; color?: string }) {
   return (
     <div className="w-full h-full flex flex-col items-center justify-center gap-0.5">
-      <span style={{ fontSize: "clamp(0.7rem, 1.4vw, 1.2rem)", opacity: 0.5 }}>{icon}</span>
+      <span style={{ fontSize: "clamp(0.7rem, 1.4vw, 1.2rem)", opacity: 0.5, color: color ?? "var(--neon-cyan)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{icon}</span>
       <span
         style={{
           fontFamily: "'Orbitron', sans-serif",
@@ -109,10 +110,10 @@ function ZoneLabel({ icon, children, color }: { icon: string; children: React.Re
   );
 }
 
-const MONSTER_EMPTY = <ZoneLabel icon="⚔️">MONSTER</ZoneLabel>;
-const SPELL_TRAP_EMPTY = <ZoneLabel icon="✨">SPELL<br />TRAP</ZoneLabel>;
-const FIELD_EMPTY = <ZoneLabel icon="⛰️">FIELD</ZoneLabel>;
-const EMZ_EMPTY = <ZoneLabel icon="⚡" color="rgba(255,215,0,0.7)">EXTRA<br />MONSTER</ZoneLabel>;
+const MONSTER_EMPTY = <ZoneLabel icon={<Swords size={18} strokeWidth={2} />}>MONSTER</ZoneLabel>;
+const SPELL_TRAP_EMPTY = <ZoneLabel icon={<ScrollText size={18} strokeWidth={2} />}>SPELL<br />TRAP</ZoneLabel>;
+const FIELD_EMPTY = <ZoneLabel icon={<Mountain size={18} strokeWidth={2} />}>FIELD</ZoneLabel>;
+const EMZ_EMPTY = <ZoneLabel icon={<Swords size={18} strokeWidth={2} />} color="rgba(255,215,0,0.7)">EXTRA<br />MONSTER</ZoneLabel>;
 
 const EMZ_BADGE = (
   <div
@@ -993,7 +994,9 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <span style={{ color: "var(--neon-pink)", fontSize: "1.2rem", opacity: 0.6, textShadow: "0 0 6px rgba(255,45,120,0.5)" }}>⚰</span>
+            <span style={{ color: "var(--neon-pink)", opacity: 0.6, filter: "drop-shadow(0 0 6px rgba(255,45,120,0.5))", display: "inline-flex" }}>
+              <Skull size={22} strokeWidth={2} />
+            </span>
           </div>
         )}
         <div
@@ -1035,7 +1038,9 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <span style={{ color: "#b44fff", fontSize: "1.1rem", opacity: 0.6, textShadow: "0 0 6px rgba(180,79,255,0.5)" }}>✦</span>
+            <span style={{ color: "#b44fff", opacity: 0.6, filter: "drop-shadow(0 0 6px rgba(180,79,255,0.5))", display: "inline-flex" }}>
+              <Ghost size={22} strokeWidth={2} />
+            </span>
           </div>
         )}
         <div
@@ -1070,7 +1075,9 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
           justifyContent: "center",
         } as React.CSSProperties}
       >
-        <span style={{ color: "#ffd700", fontSize: "1.2rem", opacity: count > 0 ? 0.85 : 0.3, textShadow: "0 0 6px rgba(255,215,0,0.5)" }}>★</span>
+        <span style={{ color: "#ffd700", opacity: count > 0 ? 0.85 : 0.3, filter: "drop-shadow(0 0 6px rgba(255,215,0,0.5))", display: "inline-flex" }}>
+          <Star size={22} strokeWidth={2} />
+        </span>
         <div
           className="absolute bottom-0 left-0 right-0 text-center font-bold"
           style={{ fontSize: "0.65rem", paddingBlock: "2px", background: "rgba(0,0,0,0.8)", color: "#ffd700" }}

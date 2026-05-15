@@ -1,6 +1,5 @@
 import type { EngineAction, EnginePrompt } from "../../../../../shared/engineTypes";
-
-const CARD_IMAGE_BASE = "https://images.ygoprodeck.com/images/cards_small";
+import { CardThumbnail } from "../CardThumbnail";
 
 interface YesNoPanelProps {
   actions: EngineAction[];
@@ -28,20 +27,16 @@ export function YesNoPanel({ actions, prompt, onAction }: YesNoPanelProps) {
       {/* Card image for effect_yn */}
       {isEffect && cardCode > 0 && (
         <div style={{ display: "flex", justifyContent: "center" }}>
-          <img
-            src={`${CARD_IMAGE_BASE}/${cardCode}.jpg`}
+          <CardThumbnail
+            cardCode={cardCode}
+            width={80}
+            height={116}
+            borderRadius={4}
+            borderColor="rgba(0,180,255,0.4)"
+            boxShadow="0 0 12px rgba(0,180,255,0.15)"
+            location={prompt.location}
+            badgeSize={18}
             alt={cardName}
-            style={{
-              width: "80px",
-              height: "116px",
-              objectFit: "cover",
-              borderRadius: "4px",
-              border: "1px solid rgba(0,180,255,0.4)",
-              boxShadow: "0 0 12px rgba(0,180,255,0.15)",
-            }}
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
           />
         </div>
       )}

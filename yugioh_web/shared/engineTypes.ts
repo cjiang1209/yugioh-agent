@@ -134,6 +134,9 @@ export interface EnginePrompt {
   type: PromptType;
   card_code?: number;
   card_name?: string;
+  /** Engine location of the card the prompt targets (effect_yn, position).
+   *  Same encoding as EngineAction.location. */
+  location?: number;
   min?: number;
   max?: number;
   cancelable?: boolean;

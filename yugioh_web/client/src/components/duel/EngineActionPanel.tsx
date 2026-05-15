@@ -1,6 +1,5 @@
 import type { EngineAction } from "../../../../shared/engineTypes";
-
-const CARD_IMAGE_BASE = "https://images.ygoprodeck.com/images/cards_small";
+import { CardThumbnail } from "./CardThumbnail";
 
 const CATEGORY_COLORS: Record<string, { bg: string; border: string; text: string }> = {
   summon:         { bg: "rgba(0,200,80,0.15)",   border: "rgba(0,200,80,0.5)",   text: "#00d850" },
@@ -83,43 +82,16 @@ export function EngineActionPanel({ actions, onAction }: EngineActionPanelProps)
                   (e.currentTarget as HTMLElement).style.background = "transparent";
                 }}
               >
-                {/* Card thumbnail */}
-                {action.card_code > 0 ? (
-                  <img
-                    src={`${CARD_IMAGE_BASE}/${action.card_code}.jpg`}
-                    alt=""
-                    style={{
-                      width: "50px",
-                      height: "70px",
-                      objectFit: "cover",
-                      borderRadius: "2px",
-                      flexShrink: 0,
-                      border: `1px solid ${colors.border}`,
-                    }}
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = "none";
-                    }}
-                  />
-                ) : (
-                  <div
-                    style={{
-                      width: "50px",
-                      height: "70px",
-                      flexShrink: 0,
-                      borderRadius: "2px",
-                      background: "rgba(255,255,255,0.04)",
-                      border: `1px solid ${colors.border}`,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: "0.6rem",
-                      color: colors.text,
-                      opacity: 0.5,
-                    }}
-                  >
-                    ?
-                  </div>
-                )}
+                <CardThumbnail
+                  cardCode={action.card_code}
+                  width={50}
+                  height={70}
+                  borderColor={colors.border}
+                  location={action.location}
+                  fallback={
+                    <span style={{ fontSize: "0.6rem", color: colors.text, opacity: 0.5 }}>?</span>
+                  }
+                />
 
                 {/* Text content */}
                 <div style={{ flex: 1, minWidth: 0 }}>

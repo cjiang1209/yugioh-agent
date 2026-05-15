@@ -1,6 +1,5 @@
 import type { EngineAction, EnginePrompt } from "../../../../../shared/engineTypes";
-
-const CARD_IMAGE_BASE = "https://images.ygoprodeck.com/images/cards_small";
+import { CardThumbnail } from "../CardThumbnail";
 
 const POSITION_ICONS: Record<string, string> = {
   "Face-up Attack": "\u2694\uFE0F",
@@ -28,7 +27,6 @@ export function PositionPanel({ actions, prompt, onAction }: PositionPanelProps)
   const cardCode = prompt.card_code ?? 0;
   const cardName = prompt.card_name ?? "";
 
-  // Position actions from the actions array
   const positionActions = actions.filter((a) => a.category === "position");
 
   return (
@@ -39,20 +37,14 @@ export function PositionPanel({ actions, prompt, onAction }: PositionPanelProps)
       {/* Card image */}
       {cardCode > 0 && (
         <div style={{ display: "flex", justifyContent: "center" }}>
-          <img
-            src={`${CARD_IMAGE_BASE}/${cardCode}.jpg`}
+          <CardThumbnail
+            cardCode={cardCode}
+            width={80}
+            height={112}
+            borderRadius={4}
+            borderColor="rgba(245,230,66,0.4)"
+            boxShadow="0 0 12px rgba(245,230,66,0.15)"
             alt={cardName}
-            style={{
-              width: "80px",
-              height: "112px",
-              objectFit: "cover",
-              borderRadius: "4px",
-              border: "1px solid rgba(245,230,66,0.4)",
-              boxShadow: "0 0 12px rgba(245,230,66,0.15)",
-            }}
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
           />
         </div>
       )}
