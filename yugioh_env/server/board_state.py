@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import ctypes
 from typing import TYPE_CHECKING
 
 from yugioh_core.constants import (
@@ -20,17 +19,13 @@ from yugioh_core.constants import (
     POS_FACEDOWN,
     POS_ATTACK,
     POS_DEFENSE,
-    QUERY_BASIC,
     TYPE_MONSTER,
     TYPE_SPELL,
     TYPE_TRAP,
     TYPE_LINK,
 )
-from yugioh_core.query_buffer import parse_query_location
-from yugioh_env.core_types import OCG_QueryInfo, c_uint32
 
 if TYPE_CHECKING:
-    from yugioh_env.duel import Duel
     from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
 
 _POS_NAMES = {
@@ -43,27 +38,6 @@ _POS_NAMES = {
     POS_ATTACK: "ATK",
     POS_DEFENSE: "DEF",
 }
-
-def _query_location(duel: Duel, player: int, location: int) -> list[dict]:
-    """Query a location using the correct edo9300 buffer parser."""
-    if duel._duel_handle is None:
-        return []
-    info = OCG_QueryInfo()
-    info.flags = QUERY_BASIC
-    info.con = player
-    info.loc = location
-    info.seq = 0
-    info.overlay_seq = 0
-
-    length = c_uint32()
-    buf_ptr = duel._lib.OCG_DuelQueryLocation(
-        duel._duel_handle, ctypes.byref(length), ctypes.byref(info)
-    )
-    if length.value > 0 and buf_ptr:
-        buf = ctypes.string_at(buf_ptr, length.value)
-        return parse_query_location(buf)
-    return []
-
 
 # ─── Board state builder ──────────────────────────────────────────────────
 
@@ -162,18 +136,17 @@ def build_board_state(env: YuGiOhEnvironment, *, open_cards: bool = False) -> di
     if duel is None:
         return {"player": {}, "opponent": {}}
 
-    # Query all zones using the correct parser
-    agent_hand = _query_location(duel, agent, LOCATION_HAND)
-    agent_monsters = _query_location(duel, agent, LOCATION_MZONE)
-    agent_st = _query_location(duel, agent, LOCATION_SZONE)
-    agent_grave = _query_location(duel, agent, LOCATION_GRAVE)
-    agent_banished = _query_location(duel, agent, LOCATION_BANISHED)
-    agent_extra = _query_location(duel, agent, LOCATION_EXTRA)
+    agent_hand = duel.query_location(agent, LOCATION_HAND)
+    agent_monsters = duel.query_location(agent, LOCATION_MZONE)
+    agent_st = duel.query_location(agent, LOCATION_SZONE)
+    agent_grave = duel.query_location(agent, LOCATION_GRAVE)
+    agent_banished = duel.query_location(agent, LOCATION_BANISHED)
+    agent_extra = duel.query_location(agent, LOCATION_EXTRA)
 
-    opp_monsters = _query_location(duel, opp, LOCATION_MZONE)
-    opp_st = _query_location(duel, opp, LOCATION_SZONE)
-    opp_grave = _query_location(duel, opp, LOCATION_GRAVE)
-    opp_banished = _query_location(duel, opp, LOCATION_BANISHED)
+    opp_monsters = duel.query_location(opp, LOCATION_MZONE)
+    opp_st = duel.query_location(opp, LOCATION_SZONE)
+    opp_grave = duel.query_location(opp, LOCATION_GRAVE)
+    opp_banished = duel.query_location(opp, LOCATION_BANISHED)
 
     gs = duel.game_state
 
@@ -210,8 +183,8 @@ def build_board_state(env: YuGiOhEnvironment, *, open_cards: bool = False) -> di
     }
 
     if open_cards:
-        opp_hand = _query_location(duel, opp, LOCATION_HAND)
-        opp_extra = _query_location(duel, opp, LOCATION_EXTRA)
+        opp_hand = duel.query_location(opp, LOCATION_HAND)
+        opp_extra = duel.query_location(opp, LOCATION_EXTRA)
         opponent["hand"] = [_build_card_info(c, card_db) for c in opp_hand if c.get("code")]
         opponent["extra_deck"] = [_build_card_info(c, card_db) for c in opp_extra if c.get("code")]
 
