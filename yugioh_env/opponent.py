@@ -133,11 +133,24 @@ class NetworkOpponent(Opponent):
     Requires torch and yugioh_rl to be installed (``pip install -e ".[train]"``).
     """
 
-    def __init__(self, network, device: str = "cpu") -> None:
+    def __init__(
+        self,
+        network,
+        device: str = "cpu",
+        *,
+        stochastic: bool = False,
+        temperature: float = 1.0,
+    ) -> None:
         import torch
 
         self._network = network
         self._device = torch.device(device)
+        self._stochastic = stochastic
+        self._temperature = temperature
+        if temperature <= 0:
+            raise ValueError(
+                f"temperature must be > 0, got {temperature!r}"
+            )
         self._obs: dict[str, np.ndarray] | None = None
         # Per-episode recurrent state.  reseed() — called per duel by both
         # the HTTP env and the eval loop — re-zeros it.
@@ -166,12 +179,18 @@ class NetworkOpponent(Opponent):
             logits, _, self._hx = self._network(
                 t_cards, t_global, t_actions, t_mask, hx=self._hx,
             )
-            action = logits.argmax(dim=-1).item()
+            masked = logits.masked_fill(~t_mask.bool(), float("-inf"))
+            if self._stochastic:
+                probs = torch.softmax(masked / self._temperature, dim=-1)
+                action = int(torch.multinomial(probs[0], 1).item())
+            else:
+                action = int(masked.argmax(dim=-1).item())
 
         return min(action, num_actions - 1)
 
     def reseed(self, seed: int) -> None:
-        # Argmax policy is deterministic; reseed only resets recurrent state.
+        # Resets per-duel recurrent state. Stochastic-mode sampling uses
+        # the global torch RNG and is not reseeded here.
         self._hx = self._network.init_hx(1, self._device)
 
 
