@@ -42,7 +42,7 @@ def extract_features(cfg: TrainingConfig) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for name in GROUPING_FIELDS:
         if name == "card_embeddings":
-            out[name] = "semantic" if cfg.card_embeddings_path else "symbolic"
+            out[name] = "semantic" if cfg.card_embeddings else "symbolic"
         elif name == "training_opponent":
             out[name] = cfg.opponent
         else:

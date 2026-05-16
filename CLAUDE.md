@@ -224,12 +224,17 @@ scripts/train.sh --agent-player first                      # always go first
 scripts/train.sh --agent-player second                     # always go second
 scripts/train.sh --card-embeddings assets/card_text_embeddings.pt  # text-aware card encoding
 scripts/train.sh --init-checkpoint checkpoints/run1/checkpoint_100.pt  # new run from existing weights
-scripts/train.sh --init-checkpoint checkpoints/run1/checkpoint_100.pt --resume-optimizer  # also load optimizer state
+scripts/train.sh --init-checkpoint checkpoints/run1/checkpoint_100.pt --init-optimizer  # also load optimizer state
 scripts/train.sh --resume checkpoints/run1/checkpoint_latest.pt                        # resume interrupted run
 scripts/train.sh --resume checkpoints/run1/checkpoint_100.pt --total-timesteps 2000000 # resume and extend training
 scripts/train.sh --eval-opponents greedy random                        # default eval opponents
 scripts/train.sh --eval-opponents greedy model:checkpoints/run1/latest.pt  # eval vs model checkpoint
 scripts/train.sh --eval-opponents greedy model:checkpoints/v1/latest.pt model:checkpoints/v2/latest.pt  # multiple models
+
+# Load TrainingConfig fields from a JSON file (partial files allowed; CLI flags override JSON)
+scripts/train.sh --config configs/lstm.json
+scripts/train.sh --config configs/lstm.json --learning-rate 1e-4              # CLI flag overrides JSON
+scripts/train.sh --config checkpoints/<run>/config.json --seed 43             # re-run prior config with new seed
 
 # Multi-deck training (agent and opponent each sample a deck from the pool per episode)
 scripts/train.sh --deck-paths assets/decks/blue_eyes.ydk assets/decks/dark_magician.ydk
@@ -243,6 +248,8 @@ scripts/build_card_embeddings.sh --db path/to/cards.cdb --output path/to/embeddi
 See all options: `scripts/train.sh --help`
 
 Each run auto-creates a timestamped subdirectory under `--base-dir` (e.g. `checkpoints/20260311_143000_seed42/`) containing `config.json`, checkpoints, and TensorBoard logs. This prevents runs from overwriting each other.
+
+Each run's `config.json` is a complete `TrainingConfig` snapshot (keyed by dataclass field name). Pass it back to `--config` to reproduce a run, or use it as a starting point and override individual fields with CLI flags. JSON values for `save_dir` and `resume_checkpoint` are dropped on load (those are derived from `--base-dir` and `--resume`). `--config` is mutex with `--resume` — `--resume` already loads its config from the checkpoint.
 
 ### Standalone Evaluation
 
@@ -306,7 +313,7 @@ Disable with `--no-reward-shaping`.
 5. **Player order randomization**: By default (`--agent-player random`), the agent randomly goes first or second each episode (coin flip seeded by the episode seed). This prevents training bias from always playing first. The observation/network architecture is already player-agnostic (relativized by `agent_player`), so no model changes are needed.
 6. **Model opponent (self-play)**: `ModelOpponent` loads a trained checkpoint and runs greedy argmax inference to select actions. When `needs_observation` is True, the environment builds a full observation from the opponent's perspective before each decision. The server supports `--opponent model:PATH` (also configurable via `YUGIOH_OPPONENT` env var).
 7. **Semantic card embeddings (optional)**: The network supports two card embedding modes — **symbolic** (default: cards are arbitrary tokens, modulo-hashed into a learned embedding) and **semantic** (`--card-embeddings`: cards carry meaning from effect text). In semantic mode, `TextEmbeddingLookup` loads pre-computed sentence-transformer embeddings and uses `torch.searchsorted` for vectorized lookup by passcode. Frozen text vectors are projected via trainable `nn.Linear` and concatenated with a collision-free learned embedding. The embeddings file lives only in the trainer process — `SubprocVecEnv` workers never load it.
-8. **Incremental training from checkpoint**: `--init-checkpoint PATH` starts a new run (fresh directory, counters at 0) with model weights initialized from an existing checkpoint instead of random init. `--resume-optimizer` additionally loads optimizer state (momentum/variance), with LR overridden from the CLI. Architecture dimensions must match between checkpoint and CLI config; `PPOTrainer._validate_checkpoint_compat` checks this at startup. Text embedding mode must also be compatible (cannot add text embeddings to a symbolic checkpoint).
+8. **Incremental training from checkpoint**: `--init-checkpoint PATH` starts a new run (fresh directory, counters at 0) with model weights initialized from an existing checkpoint instead of random init. `--init-optimizer` additionally loads optimizer state (momentum/variance), with LR overridden from the CLI. Architecture dimensions must match between checkpoint and CLI config; `PPOTrainer._validate_checkpoint_compat` checks this at startup. Text embedding mode must also be compatible (cannot add text embeddings to a symbolic checkpoint).
 9. **Resume interrupted training**: `--resume PATH` restores full training state (model weights, optimizer, update/step counters, episode tracking) and continues in the same run directory. The `--total-timesteps` CLI value is always recomputed — pass a higher value to extend training or a lower value (triggers early return if already past). `--resume` and `--init-checkpoint` are mutually exclusive. TensorBoard logs continue seamlessly via `purge_step`. **Known limitation — episode seed divergence**: on resume, `SubprocVecEnv` is created with the original `config.seed` and `vec_env.reset()` replays the episode seed sequence from the beginning, not from where the interrupted run left off. Training is unaffected (the model still learns), but the exact episode ordering will differ from a single uninterrupted run. Saving and restoring per-env RNG state is impractical given the multi-process architecture.
 10. **Multi-deck training**: `--deck-paths` accepts multiple `.ydk` files. The deck pool is pre-parsed once and sent to workers via pickle. Each episode, agent and opponent decks are sampled independently from the pool using a per-worker `random.Random(seed)` RNG (separate from the duel RNG). `TrainingEnv.reset()` pre-resolves the `agent_player` coin flip before assigning decks to engine player 0/1, so per-deck metrics are correctly attributed to the agent's deck regardless of turn order. Eval uses the same independent sampling, with per-deck and aggregate win rates logged to TensorBoard.
 

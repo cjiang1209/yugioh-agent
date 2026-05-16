@@ -25,24 +25,24 @@ def test_resume_and_init_mutually_exclusive():
     assert "--resume and --init-checkpoint are mutually exclusive" in result.stderr
 
 
-def test_resume_with_resume_optimizer_rejected():
-    """--resume-optimizer is for --init-checkpoint, not --resume."""
+def test_resume_with_init_optimizer_rejected():
+    """--init-optimizer is for --init-checkpoint, not --resume."""
     result = subprocess.run(
         [
             sys.executable, "-m", "cli.train",
             "--resume", "fake.pt",
-            "--resume-optimizer",
+            "--init-optimizer",
         ],
         capture_output=True, text=True, timeout=30,
     )
     assert result.returncode != 0
-    assert "--resume-optimizer is for use with --init-checkpoint" in result.stderr
+    assert "--init-optimizer is for use with --init-checkpoint" in result.stderr
 
 
-def test_resume_optimizer_without_init_checkpoint():
-    """--resume-optimizer without --init-checkpoint should exit with error."""
+def test_init_optimizer_without_init_checkpoint():
+    """--init-optimizer without --init-checkpoint should exit with error."""
     result = subprocess.run(
-        [sys.executable, "-m", "cli.train", "--resume-optimizer"],
+        [sys.executable, "-m", "cli.train", "--init-optimizer"],
         capture_output=True, text=True, timeout=30,
     )
     assert result.returncode != 0

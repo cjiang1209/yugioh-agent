@@ -318,7 +318,7 @@ class PPOTrainer:
             self.optimizer = torch.optim.Adam(
                 self.network.parameters(), lr=config.learning_rate
             )
-            if config.resume_optimizer and "optimizer_state_dict" in ckpt:
+            if config.init_optimizer and "optimizer_state_dict" in ckpt:
                 self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
                 # Override LR from CLI so users can change schedule across runs
                 for pg in self.optimizer.param_groups:
@@ -470,7 +470,7 @@ class PPOTrainer:
         ckpt_has_text = any(
             k.startswith("text_lookup.") for k in ckpt["model_state_dict"]
         )
-        cli_wants_text = bool(config.card_embeddings_path)
+        cli_wants_text = bool(config.card_embeddings)
         if ckpt_has_text and not cli_wants_text:
             logger.warning(
                 "Checkpoint was trained with text embeddings but --card-embeddings "

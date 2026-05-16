@@ -233,9 +233,9 @@ class YuGiOhNet(nn.Module):
     def from_config(cls, config: TrainingConfig) -> YuGiOhNet:
         """Build from config (training time, may load embeddings from file)."""
         text_lookup = None
-        if config.card_embeddings_path:
+        if config.card_embeddings:
             text_lookup = TextEmbeddingLookup.from_path(
-                config.card_embeddings_path, config.text_embed_dim)
+                config.card_embeddings, config.text_embed_dim)
         return cls(config, text_lookup)
 
     @classmethod

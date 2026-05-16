@@ -164,7 +164,7 @@ class TestTextEmbeddingLookup:
 class TestSymbolicMode:
     def test_forward_pass_no_text_embeddings(self):
         config = TrainingConfig()
-        assert config.card_embeddings_path == ""
+        assert config.card_embeddings == ""
 
         net = YuGiOhNet.from_config(config)
         obs_cards, obs_global, obs_actions, action_mask = _make_dummy_obs(batch_size=2)
@@ -185,7 +185,7 @@ class TestSemanticMode:
         path = _make_embeddings_file(codes, dim=384, path=str(tmp_path / "emb.pt"))
 
         config = TrainingConfig(
-            card_embeddings_path=path,
+            card_embeddings=path,
             text_embed_dim=64,
             learned_embed_dim=8,
         )
@@ -201,7 +201,7 @@ class TestSemanticMode:
         codes = [10, 20]
         path = _make_embeddings_file(codes, dim=384, path=str(tmp_path / "emb.pt"))
 
-        config = TrainingConfig(card_embeddings_path=path)
+        config = TrainingConfig(card_embeddings=path)
         net = YuGiOhNet.from_config(config)
 
         assert net.text_lookup is not None
@@ -219,7 +219,7 @@ class TestSemanticMode:
         path = _make_embeddings_file(codes, dim=384, path=str(tmp_path / "emb.pt"))
 
         config = TrainingConfig(
-            card_embeddings_path=path,
+            card_embeddings=path,
             text_embed_dim=48,
             learned_embed_dim=12,
         )
@@ -234,7 +234,7 @@ class TestSemanticMode:
         codes = list(range(1, 51))
         path = _make_embeddings_file(codes, dim=384, path=str(tmp_path / "emb.pt"))
 
-        config = TrainingConfig(card_embeddings_path=path, text_embed_dim=32, learned_embed_dim=8)
+        config = TrainingConfig(card_embeddings=path, text_embed_dim=32, learned_embed_dim=8)
         net = YuGiOhNet.from_config(config)
 
         obs_cards, obs_global, obs_actions, action_mask = _make_dummy_obs(batch_size=4)
@@ -257,7 +257,7 @@ class TestSemanticMode:
         path = _make_embeddings_file(codes, dim=384, path=str(tmp_path / "emb.pt"))
 
         config = TrainingConfig(
-            card_embeddings_path=path, text_embed_dim=32, learned_embed_dim=8,
+            card_embeddings=path, text_embed_dim=32, learned_embed_dim=8,
             rnn_type=rnn_type, rnn_hidden_dim=64, rnn_num_layers=1,
         )
         net = YuGiOhNet.from_config(config)
@@ -277,7 +277,7 @@ class TestSemanticMode:
         codes = list(range(1, 51))
         path = _make_embeddings_file(codes, dim=384, path=str(tmp_path / "emb.pt"))
 
-        config = TrainingConfig(card_embeddings_path=path, text_embed_dim=32, learned_embed_dim=8)
+        config = TrainingConfig(card_embeddings=path, text_embed_dim=32, learned_embed_dim=8)
         net_orig = YuGiOhNet.from_config(config)
         net_orig.eval()
 

@@ -41,12 +41,12 @@ _RESUME_OVERRIDE_ALLOWLIST: dict[str, str] = {
 # TrainingConfig override. --base-dir is tolerated with a warning in
 # validate_cli_args; the others are session-scoped meta controls.
 _RESUME_META_FLAGS: frozenset[str] = frozenset({
-    "--resume", "--init-checkpoint", "--resume-optimizer", "--base-dir",
+    "--resume", "--init-checkpoint", "--init-optimizer", "--base-dir",
 })
 
 # TrainingConfig fields that are session-scoped; drop from ckpt_config on merge.
 _META_FIELDS: frozenset[str] = frozenset(
-    {"resume_checkpoint", "init_checkpoint", "resume_optimizer", "save_dir"}
+    {"resume_checkpoint", "init_checkpoint", "init_optimizer", "save_dir"}
 )
 
 
@@ -63,6 +63,34 @@ def _provided_flags() -> list[str]:
         if arg.startswith("--"):
             flags.append(arg.split("=", 1)[0])
     return flags
+
+
+def _load_config_file(path: Path) -> dict:
+    """Load TrainingConfig field values from a JSON file.
+
+    The JSON top-level must be an object whose keys are TrainingConfig field
+    names. Unknown keys are a fatal error. Two fields are silently stripped:
+    `save_dir` (derived from --base-dir + timestamp) and `resume_checkpoint`
+    (derived from --resume; mutex with --config). This subset of `_META_FIELDS`
+    is intentional — `init_checkpoint` and `init_optimizer` are user-settable
+    via --config. The drop lets snapshots written by `_write_config_snapshot`
+    round-trip without rejection.
+    """
+    try:
+        data = json.loads(path.read_text())
+    except FileNotFoundError:
+        fatal(f"--config file not found: {path}")
+    except json.JSONDecodeError as e:
+        fatal(f"--config {path}: invalid JSON ({e})")
+    if not isinstance(data, dict):
+        fatal(f"--config {path}: top-level value must be a JSON object")
+    valid = {f.name for f in fields(TrainingConfig)}
+    unknown = sorted(set(data) - valid)
+    if unknown:
+        fatal(f"--config {path}: unknown keys {unknown}")
+    for k in ("save_dir", "resume_checkpoint"):
+        data.pop(k, None)
+    return data
 
 
 def parse_args() -> argparse.Namespace:
@@ -144,8 +172,8 @@ def parse_args() -> argparse.Namespace:
                        help="Path to .pt checkpoint to resume training from (continues in same run directory)")
     infra.add_argument("--init-checkpoint", type=str, default="",
                        help="Path to .pt checkpoint to initialize model weights from (starts a new run)")
-    infra.add_argument("--resume-optimizer", action="store_true",
-                       help="Also load optimizer state from checkpoint (use with --init-checkpoint)")
+    infra.add_argument("--init-optimizer", action="store_true",
+                       help="When using --init-checkpoint, also load the optimizer state from it (not just the model weights)")
     infra.add_argument("--seed", type=int, default=42,
                        help="Random seed for reproducibility (default: 42)")
     infra.add_argument("--log-interval", type=int, default=10,
@@ -169,6 +197,10 @@ def parse_args() -> argparse.Namespace:
                        help="Vec-env transport: 'subproc' (synchronous IPC) or "
                             "'sync_actor_learner' (workers hold a local policy and submit "
                             "full rollouts; eliminates per-step round-trip).")
+    infra.add_argument("--config", type=str, default="",
+                       help="Path to a JSON file of TrainingConfig field values. "
+                            "Partial files allowed; missing fields use defaults. "
+                            "CLI flags override JSON values. Mutually exclusive with --resume.")
 
     return parser.parse_args()
 
@@ -177,19 +209,22 @@ def validate_cli_args(args: argparse.Namespace) -> None:
     """Validate CLI args that do not depend on the resumed-config merge.
 
     Handles: --resume / --init-checkpoint mutual exclusion and path existence,
-    --resume-optimizer legality, and "ignored flag" warnings.  Field-value
+    --init-optimizer legality, and "ignored flag" warnings.  Field-value
     checks (deck existence, opponent specs) run later against the effective
     TrainingConfig so that on --resume they see checkpoint values, not the
     discarded CLI args.
     """
     logger = logging.getLogger(__name__)
 
-    # --resume is mutually exclusive with --init-checkpoint and --resume-optimizer
+    # --resume is mutually exclusive with --init-checkpoint and --init-optimizer
     if args.resume:
+        if args.config:
+            fatal("--config and --resume are mutually exclusive "
+                  "(--resume loads its config from the checkpoint)")
         if args.init_checkpoint:
             fatal("--resume and --init-checkpoint are mutually exclusive")
-        if args.resume_optimizer:
-            fatal("--resume-optimizer is for use with --init-checkpoint, not --resume")
+        if args.init_optimizer:
+            fatal("--init-optimizer is for use with --init-checkpoint, not --resume")
         if not Path(args.resume).exists():
             fatal(f"resume checkpoint not found: {args.resume}")
         if was_provided("--base-dir"):
@@ -198,9 +233,9 @@ def validate_cli_args(args: argparse.Namespace) -> None:
                 "(save directory is inferred from checkpoint path)"
             )
 
-    # --resume-optimizer requires --init-checkpoint (when not using --resume)
-    if args.resume_optimizer and not args.init_checkpoint:
-        fatal("--resume-optimizer requires --init-checkpoint")
+    # --init-optimizer requires --init-checkpoint (when not using --resume)
+    if args.init_optimizer and not args.init_checkpoint:
+        fatal("--init-optimizer requires --init-checkpoint")
 
     # --no-reward-shaping voids shaping weight arguments
     if args.no_reward_shaping:
@@ -267,50 +302,49 @@ def validate_effective_config(config: "TrainingConfig") -> None:  # noqa: F821
 
 
 def _build_fresh_config(args: argparse.Namespace, save_dir: str) -> TrainingConfig:
-    """Build TrainingConfig directly from CLI args (fresh / --init-checkpoint)."""
-    return TrainingConfig(
-        num_envs=args.num_envs,
-        deck_paths=args.deck_paths,
-        opponent=args.opponent,
-        agent_player=args.agent_player,
-        reward_shaping=not args.no_reward_shaping,
-        shaping_lp_weight=args.shaping_lp_weight,
-        shaping_card_weight=args.shaping_card_weight,
-        total_timesteps=args.total_timesteps,
-        rollout_steps=args.rollout_steps,
-        num_epochs=args.num_epochs,
-        minibatch_size=args.minibatch_size,
-        learning_rate=args.learning_rate,
-        gamma=args.gamma,
-        gae_lambda=args.gae_lambda,
-        clip_range=args.clip_range,
-        value_loss_coef=args.value_loss_coef,
-        entropy_coef=args.entropy_coef,
-        max_grad_norm=args.max_grad_norm,
-        card_embed_dim=args.card_embed_dim,
-        global_embed_dim=args.global_embed_dim,
-        board_hidden_dim=args.board_hidden_dim,
-        action_embed_dim=args.action_embed_dim,
-        card_embeddings_path=args.card_embeddings,
-        text_embed_dim=args.text_embed_dim,
-        learned_embed_dim=args.learned_embed_dim,
-        rnn_type=args.rnn_type,
-        rnn_hidden_dim=args.rnn_hidden_dim,
-        rnn_num_layers=args.rnn_num_layers,
-        bptt_chunk_len=args.bptt_chunk_len,
-        init_checkpoint=args.init_checkpoint,
-        resume_checkpoint=args.resume,
-        resume_optimizer=args.resume_optimizer,
-        seed=args.seed,
-        log_interval=args.log_interval,
-        eval_interval=args.eval_interval,
-        eval_episodes=args.eval_episodes,
-        eval_opponents=args.eval_opponents,
-        save_interval=args.save_interval,
-        save_dir=save_dir,
-        device=args.device,
-        vec_env_type=args.vec_env_type,
-    )
+    """Build TrainingConfig by merging three layers:
+    defaults < --config JSON < explicitly-passed CLI flags.
+
+    `save_dir` and `resume_checkpoint` are derived (set by the CLI from
+    runtime inputs); JSON values for them are silently dropped by
+    `_load_config_file`.
+    """
+    # Layer 1: dataclass defaults.
+    merged = asdict(TrainingConfig())
+
+    # Layer 2: --config JSON, if any.
+    if args.config:
+        merged.update(_load_config_file(Path(args.config)))
+
+    # Layer 3: explicit CLI flags.
+    provided = set(_provided_flags())
+    field_names = {f.name for f in fields(TrainingConfig)}
+
+    for flag in provided:
+        # --no-reward-shaping inverts: presence in `provided` implies True.
+        if flag == "--no-reward-shaping":
+            merged["reward_shaping"] = False
+            continue
+
+        # CLI-only knobs (not config fields).
+        if flag in ("--config", "--base-dir"):
+            continue
+
+        # argparse dest is --foo-bar -> foo_bar, which equals the
+        # TrainingConfig field name. The `field in field_names` guard
+        # skips CLI-only flags (e.g. --help) and any TrainingConfig field
+        # that has no CLI surface.
+        field = flag.removeprefix("--").replace("-", "_")
+        if field in field_names:
+            merged[field] = getattr(args, field)
+
+    # Derived fields. `save_dir` is computed by the caller from
+    # --base-dir + timestamp + seed. `resume_checkpoint` is "" on the
+    # fresh path (the resume path uses _build_resume_config).
+    merged["save_dir"] = save_dir
+    merged["resume_checkpoint"] = args.resume
+
+    return TrainingConfig(**merged)
 
 
 def _build_resume_config(args: argparse.Namespace, save_dir: str) -> TrainingConfig:
@@ -388,7 +422,7 @@ def _build_resume_config(args: argparse.Namespace, save_dir: str) -> TrainingCon
     # Meta fields come from the CLI invocation.
     merged["resume_checkpoint"] = args.resume
     merged["init_checkpoint"] = ""
-    merged["resume_optimizer"] = False
+    merged["init_optimizer"] = False
     merged["save_dir"] = save_dir
 
     return TrainingConfig(**merged)

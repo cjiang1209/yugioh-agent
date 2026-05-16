@@ -21,7 +21,7 @@ def test_extract_includes_grouping_keys():
         opponent="greedy",
         total_timesteps=1_000_000,
         seed=42,
-        card_embeddings_path="",
+        card_embeddings="",
     )
     f = extract_features(cfg)
     assert f["rnn_type"] == "lstm"
@@ -35,12 +35,12 @@ def test_extract_includes_grouping_keys():
 
 
 def test_card_embeddings_symbolic_when_path_empty():
-    cfg = TrainingConfig(card_embeddings_path="")
+    cfg = TrainingConfig(card_embeddings="")
     assert extract_features(cfg)["card_embeddings"] == "symbolic"
 
 
 def test_card_embeddings_semantic_when_path_set():
-    cfg = TrainingConfig(card_embeddings_path="assets/embeds.pt")
+    cfg = TrainingConfig(card_embeddings="assets/embeds.pt")
     assert extract_features(cfg)["card_embeddings"] == "semantic"
 
 

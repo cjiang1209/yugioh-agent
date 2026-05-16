@@ -98,7 +98,7 @@ def test_init_checkpoint_text_mode_mismatch_rejected(tmp_path):
         save_dir=str(tmp_path / "run"),
         num_envs=1,
         init_checkpoint=ckpt_path,
-        card_embeddings_path="fake.pt",
+        card_embeddings="fake.pt",
     )
     with pytest.raises(ValueError, match="text embedding"):
         PPOTrainer(config)
@@ -131,8 +131,8 @@ def test_init_checkpoint_loads_recurrent_weights(tmp_path, rnn_type):
     assert torch.allclose(ref_param, loaded_param)
 
 
-def test_resume_optimizer_loads_state(tmp_path):
-    """Optimizer state should be populated when resume_optimizer=True."""
+def test_init_optimizer_loads_state(tmp_path):
+    """Optimizer state should be populated when init_optimizer=True."""
     ckpt_path = str(tmp_path / "ckpt.pt")
 
     _make_checkpoint(ckpt_path, run_backward=True)
@@ -141,7 +141,7 @@ def test_resume_optimizer_loads_state(tmp_path):
         save_dir=str(tmp_path / "run"),
         num_envs=1,
         init_checkpoint=ckpt_path,
-        resume_optimizer=True,
+        init_optimizer=True,
     )
     trainer = PPOTrainer(config)
 

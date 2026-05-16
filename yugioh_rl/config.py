@@ -41,7 +41,7 @@ class TrainingConfig:
     global_embed_dim: int = 64
     board_hidden_dim: int = 256
     action_embed_dim: int = 64
-    card_embeddings_path: str = ""  # path to pre-computed text embeddings (empty = disabled)
+    card_embeddings: str = ""  # path to pre-computed text embeddings (empty = disabled)
     text_embed_dim: int = 64  # frozen text embedding projection dim (only when enabled)
     learned_embed_dim: int = 8  # trainable per-card embedding dim (Mode B only)
     desc_n_embed_dim: int = 8  # sysstring desc embedding dim (per-action effect string id)
@@ -55,7 +55,7 @@ class TrainingConfig:
     # Infrastructure
     init_checkpoint: str = ""       # Path to .pt checkpoint to init weights from (new run)
     resume_checkpoint: str = ""     # Path to checkpoint to resume training from
-    resume_optimizer: bool = False  # Also load optimizer state from checkpoint
+    init_optimizer: bool = False    # When using --init-checkpoint, also load optimizer state (not just weights)
     seed: int = 42
     log_interval: int = 10
     eval_interval: int = 50

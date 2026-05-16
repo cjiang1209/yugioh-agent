@@ -362,7 +362,7 @@ def test_resume_reads_config_from_checkpoint(tmp_path, monkeypatch):
     assert config.resume_checkpoint == ckpt_path
     assert config.save_dir == str(tmp_path)
     assert config.init_checkpoint == ""
-    assert config.resume_optimizer is False
+    assert config.init_optimizer is False
 
 
 def test_resume_cli_override_allowlist(tmp_path, monkeypatch):
