@@ -163,6 +163,11 @@ class NetworkOpponent(Opponent):
     def set_observation(self, obs: dict[str, np.ndarray]) -> None:
         self._obs = obs
 
+    @property
+    def network(self):
+        """The wrapped policy network."""
+        return self._network
+
     def select_action(self, msg: dict, num_actions: int) -> int:
         import torch
 
