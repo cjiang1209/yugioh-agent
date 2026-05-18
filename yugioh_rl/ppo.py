@@ -523,6 +523,11 @@ class PPOTrainer:
             config.total_timesteps, num_updates, config.num_envs,
         )
 
+        pool_handles = (
+            self._opponent_pool.share_handles()
+            if self._opponent_pool is not None else None
+        )
+
         if config.vec_env_type == "sync_actor_learner":
             from yugioh_rl.actor_learner import ActorLearnerVecEnv
             vec_env = ActorLearnerVecEnv(
@@ -538,12 +543,11 @@ class PPOTrainer:
                 master_model=self.network,
                 config=config,
                 rollout_steps=config.rollout_steps,
+                opponent_pool_handles=pool_handles,
+                opponent_pool_temperature=config.self_play_temperature,
+                opponent_pool_config=config,
             )
         else:
-            pool_handles = (
-                self._opponent_pool.share_handles()
-                if self._opponent_pool is not None else None
-            )
             vec_env = SubprocVecEnv(
                 num_envs=config.num_envs,
                 deck_pool=self._deck_pool,

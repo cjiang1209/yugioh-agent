@@ -230,6 +230,9 @@ class ActorLearnerVecEnv:
         master_model: "nn.Module",
         config: "TrainingConfig",
         rollout_steps: int,
+        opponent_pool_handles: dict | None = None,
+        opponent_pool_temperature: float = 1.0,
+        opponent_pool_config: "TrainingConfig | None" = None,
         worker_timeout_s: float = 300.0,
     ) -> None:
         import multiprocessing as mp
@@ -256,6 +259,9 @@ class ActorLearnerVecEnv:
             "shaping_card_weight": shaping_card_weight,
             "agent_player": agent_player,
             "opponent_device": opponent_device,
+            "opponent_pool_handles": opponent_pool_handles,
+            "opponent_pool_temperature": opponent_pool_temperature,
+            "opponent_pool_config": opponent_pool_config,
         }
 
         ctx = mp.get_context("spawn")

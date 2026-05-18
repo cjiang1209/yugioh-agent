@@ -22,9 +22,6 @@ from cli.utils import (
 )
 from yugioh_rl.config import VEC_ENV_TYPES, TrainingConfig, normalize_legacy_config
 
-_SYNC_ACTOR_LEARNER = "sync_actor_learner"
-assert _SYNC_ACTOR_LEARNER in VEC_ENV_TYPES
-
 
 # Flags whose values may override the checkpoint's stored config on --resume.
 # Map CLI flag → TrainingConfig field name.
@@ -248,12 +245,6 @@ def validate_cli_args(args: argparse.Namespace) -> None:
     # --init-optimizer requires --init-checkpoint (when not using --resume)
     if args.init_optimizer and not args.init_checkpoint:
         fatal("--init-optimizer requires --init-checkpoint")
-
-    if args.self_play and args.vec_env_type == _SYNC_ACTOR_LEARNER:
-        fatal(
-            "--self-play with --vec-env-type sync_actor_learner is not yet wired; "
-            "use --vec-env-type subproc."
-        )
 
     # --no-reward-shaping voids shaping weight arguments
     if args.no_reward_shaping:
