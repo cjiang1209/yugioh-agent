@@ -219,6 +219,10 @@ class YuGiOhEnvironment(Environment):
         # When True, board snapshots include unhidden opponent card data
         self._open_cards: bool = False
 
+    def set_opponent(self, opponent: Opponent) -> None:
+        """Replace the opponent for subsequent episodes."""
+        self._opponent = opponent
+
     @property
     def last_frames(self) -> list[dict]:
         """Intermediate board snapshots captured during the last process cycle."""

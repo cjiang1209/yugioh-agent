@@ -242,3 +242,38 @@ def test_reset_done_no_op_when_no_dones() -> None:
             )
     finally:
         vec_env.close()
+
+
+@requires_engine
+def test_subproc_vec_env_forwards_pool_handles_to_workers() -> None:
+    from yugioh_rl.config import TrainingConfig
+    from yugioh_rl.env_wrapper import SubprocVecEnv
+    from yugioh_rl.network import YuGiOhNet
+    from yugioh_rl.opponent_pool import OpponentPool
+
+    config = TrainingConfig(self_play=True)
+    pool = OpponentPool.create_trainer(
+        pool_size=2,
+        initial_opponent_spec="greedy",
+        network_factory=lambda: YuGiOhNet.from_config(config),
+    )
+
+    deck_path = Path("assets/decks/blue_eyes.ydk")
+    if not deck_path.exists():
+        pytest.skip(f"missing deck: {deck_path}")
+    deck_pool = parse_deck_pool([str(deck_path)])
+
+    vec = SubprocVecEnv(
+        num_envs=2,
+        deck_pool=deck_pool,
+        opponent="greedy",
+        opponent_pool_handles=pool.share_handles(),
+        opponent_pool_temperature=1.0,
+        opponent_pool_config=config,
+        seed=42,
+    )
+    try:
+        obs = vec.reset()
+        assert obs["action_mask"].shape[0] == 2  # 2 envs
+    finally:
+        vec.close()

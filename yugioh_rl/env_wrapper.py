@@ -5,7 +5,7 @@ from __future__ import annotations
 import multiprocessing as mp
 import random as stdlib_random
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
@@ -17,6 +17,9 @@ from yugioh_core.encoding import (
     MAX_CARDS,
 )
 from yugioh_env.models import YuGiOhAction
+
+if TYPE_CHECKING:
+    from yugioh_rl.config import TrainingConfig
 
 DeckDict = dict[str, list[int]]  # {"main": [int, ...], "extra": [int, ...]}
 
@@ -77,6 +80,9 @@ class TrainingEnv:
         seed: int = 42,
         agent_player: str = "random",
         opponent_device: str | None = None,
+        opponent_pool_handles: dict | None = None,
+        opponent_pool_temperature: float = 1.0,
+        opponent_pool_config: "TrainingConfig | None" = None,
     ) -> None:
         if not deck_pool:
             raise ValueError("deck_pool must not be empty")
@@ -114,6 +120,24 @@ class TrainingEnv:
         self._prev_opp_lp = 0
         self._prev_advantage = 0
 
+        self._opponent_pool = None
+        if opponent_pool_handles is not None:
+            from yugioh_rl.network import YuGiOhNet
+            from yugioh_rl.opponent_pool import OpponentPool
+
+            if opponent_pool_config is None:
+                raise ValueError(
+                    "opponent_pool_config is required when opponent_pool_handles is set"
+                )
+
+            self._opponent_pool = OpponentPool.attach_worker(
+                handles=opponent_pool_handles,
+                initial_opponent_spec=opponent,
+                network_factory=lambda: YuGiOhNet.from_config(opponent_pool_config),
+                temperature=opponent_pool_temperature,
+                rng=stdlib_random.Random(seed + 1),
+            )
+
     def reset(self, *, episode_idx: int | None = None) -> dict[str, np.ndarray]:
         """Begin a new episode and return the first observation.
 
@@ -150,6 +174,10 @@ class TrainingEnv:
             deck0, deck1 = opp_deck, agent_deck
 
         self._last_agent_deck_idx = agent_deck_idx
+
+        if self._opponent_pool is not None:
+            new_opp = self._opponent_pool.sample()
+            self._env.set_opponent(new_opp)
 
         obs = self._env.reset(
             seed=episode_seed,
@@ -285,6 +313,9 @@ class SubprocVecEnv:
         seed: int = 42,
         agent_player: str = "random",
         opponent_device: str | None = None,
+        opponent_pool_handles: dict | None = None,
+        opponent_pool_temperature: float = 1.0,
+        opponent_pool_config: "TrainingConfig | None" = None,
     ) -> None:
         self.num_envs = num_envs
         self._closed = False
@@ -304,6 +335,9 @@ class SubprocVecEnv:
                 "seed": seed + i * 10000,
                 "agent_player": agent_player,
                 "opponent_device": opponent_device,
+                "opponent_pool_handles": opponent_pool_handles,
+                "opponent_pool_temperature": opponent_pool_temperature,
+                "opponent_pool_config": opponent_pool_config,
             }
             p = ctx.Process(target=_worker, args=(child_conn, env_kwargs), daemon=True)
             p.start()
