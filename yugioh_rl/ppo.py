@@ -328,6 +328,30 @@ class PPOTrainer:
             self.network = YuGiOhNet.from_config(config).to(self.device)
             self.optimizer = torch.optim.Adam(self.network.parameters(), lr=config.learning_rate)
 
+        self._opponent_pool = None
+        if config.self_play:
+            from yugioh_rl.opponent_pool import OpponentPool
+
+            def network_factory():
+                return YuGiOhNet.from_config(config)
+
+            if config.resume_checkpoint:
+                self._opponent_pool = OpponentPool.from_resume(
+                    pool_size=config.self_play_pool_size,
+                    initial_opponent_spec=config.opponent,
+                    network_factory=network_factory,
+                    save_interval=config.save_interval,
+                    checkpoint_dir=Path(config.save_dir),
+                    temperature=config.self_play_temperature,
+                )
+            else:
+                self._opponent_pool = OpponentPool.create_trainer(
+                    pool_size=config.self_play_pool_size,
+                    initial_opponent_spec=config.opponent,
+                    network_factory=network_factory,
+                    temperature=config.self_play_temperature,
+                )
+
         # Rollout buffer
         self.buffer = RolloutBuffer(config.rollout_steps, config.num_envs)
 
@@ -516,6 +540,10 @@ class PPOTrainer:
                 rollout_steps=config.rollout_steps,
             )
         else:
+            pool_handles = (
+                self._opponent_pool.share_handles()
+                if self._opponent_pool is not None else None
+            )
             vec_env = SubprocVecEnv(
                 num_envs=config.num_envs,
                 deck_pool=self._deck_pool,
@@ -525,6 +553,9 @@ class PPOTrainer:
                 shaping_card_weight=config.shaping_card_weight,
                 seed=config.seed,
                 agent_player=config.agent_player,
+                opponent_pool_handles=pool_handles,
+                opponent_pool_temperature=config.self_play_temperature,
+                opponent_pool_config=config,
             )
 
         try:
@@ -946,3 +977,6 @@ class PPOTrainer:
         latest.symlink_to(path.name)
 
         logger.info("Saved checkpoint to %s", path)
+
+        if self._opponent_pool is not None:
+            self._opponent_pool.add_snapshot(self.network)
