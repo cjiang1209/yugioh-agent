@@ -181,3 +181,18 @@ def test_opponent_model_checkpoint_not_found():
     )
     assert result.returncode != 0
     assert "checkpoint not found" in result.stderr
+
+
+def test_self_play_rejects_sync_actor_learner():
+    """--self-play with sync_actor_learner vec-env should be rejected."""
+    result = subprocess.run(
+        [
+            sys.executable, "-m", "cli.train",
+            "--self-play",
+            "--vec-env-type", "sync_actor_learner",
+            "--total-timesteps", "100",
+        ],
+        capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode != 0
+    assert "--self-play with --vec-env-type sync_actor_learner is not yet wired" in result.stderr

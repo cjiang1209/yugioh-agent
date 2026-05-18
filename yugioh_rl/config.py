@@ -18,6 +18,9 @@ class TrainingConfig:
     num_envs: int = 8
     deck_paths: list[str] = field(default_factory=lambda: ["assets/decks/blue_eyes.ydk"])
     opponent: str = "greedy"  # "random", "greedy", or "model:path/to/checkpoint.pt"
+    self_play: bool = False
+    self_play_pool_size: int = 10
+    self_play_temperature: float = 1.0
     agent_player: str = "random"  # "first" (player 0), "second" (player 1), or "random"
     reward_shaping: bool = True
     shaping_lp_weight: float = 0.01
