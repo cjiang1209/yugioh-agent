@@ -41,13 +41,13 @@ if [ ! -f "$CDB_PATH" ] || [ ! -s "$CDB_PATH" ]; then
             echo ""
             echo "Skipping download. You can get it later by running:"
             echo "  curl -fsSL -o $CDB_PATH \\"
-            echo "    https://github.com/mycard/ygopro-database/raw/master/locales/en-US/cards.cdb"
+            echo "    https://github.com/ProjectIgnis/BabelCDB/raw/master/cards.cdb"
             ;;
         *)
             echo "==> Downloading cards.cdb..."
             mkdir -p assets
             if curl -fsSL -o "$CDB_PATH" \
-                "https://github.com/mycard/ygopro-database/raw/master/locales/en-US/cards.cdb"; then
+                "https://github.com/ProjectIgnis/BabelCDB/raw/master/cards.cdb"; then
                 echo "    Downloaded $(wc -c < "$CDB_PATH" | tr -d ' ') bytes to $CDB_PATH."
             else
                 echo "    Download failed; duels and most tests will not work."

@@ -158,7 +158,7 @@ third-party MUD server that uses a different ygopro fork).
   - [ProjectIgnis/CardScripts](https://github.com/ProjectIgnis/CardScripts) — Lua card scripts
 - **Card database** — `assets/cards.cdb` (downloaded by `setup.sh` on first
   run, or grab it manually from
-  [mycard/ygopro-database](https://github.com/mycard/ygopro-database))
+  [ProjectIgnis/BabelCDB](https://github.com/ProjectIgnis/BabelCDB))
 - **String labels** — `assets/strings.conf` (downloaded by `setup.sh` from
   [ProjectIgnis/Distribution](https://github.com/ProjectIgnis/Distribution);
   without it, effect labels fall back to placeholders)
