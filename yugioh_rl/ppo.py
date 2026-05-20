@@ -717,6 +717,13 @@ class PPOTrainer:
                                     np.mean(wins_list[-100:]),
                                     global_step,
                                 )
+                        if self._opponent_pool is not None:
+                            elo = self._opponent_pool.elo_summary()
+                            self._writer.add_scalar("selfplay/elo_agent", elo["agent"], global_step)
+                            self._writer.add_scalar("selfplay/elo_pool_mean", elo["pool_mean"], global_step)
+                            self._writer.add_scalar("selfplay/elo_pool_min", elo["pool_min"], global_step)
+                            self._writer.add_scalar("selfplay/elo_pool_max", elo["pool_max"], global_step)
+                            self._writer.add_scalar("selfplay/occupied", elo["occupied"], global_step)
 
                 # --- Evaluation ---
                 if update % config.eval_interval == 0:

@@ -15,6 +15,7 @@ import torch
 import torch.nn as nn
 
 from yugioh_rl.shared_weights import SharedPolicyWeights
+from yugioh_rl.elo import update as elo_update
 from yugioh_env.opponent import (
     NetworkOpponent,
     Opponent,
@@ -45,40 +46,64 @@ class SharedPoolState:
     """Cross-process shared state for OpponentPool.
 
     Owns:
-      - total_adds: monotonic add counter (one int64 in mp.shared_memory)
+      - total_adds: monotonic add counter (one int64 in shared memory)
       - slots: list of K SharedPolicyWeights instances
+      - agent_rating: live Elo rating of the trainer's policy (scalar float32)
+      - ratings: per-slot Elo ratings of pool opponents (float32, length K)
+      - n_games: per-slot count of games played vs each opponent (int64, length K)
     """
+
+    _DEFAULT_RATING = 1500.0
 
     def __init__(
         self,
         total_adds_tensor: torch.Tensor,
         slots: list[SharedPolicyWeights],
+        agent_rating_tensor: torch.Tensor,
+        ratings_tensor: torch.Tensor,
+        n_games_tensor: torch.Tensor,
     ) -> None:
         self._total_adds = total_adds_tensor
         self.slots = slots
+        self._agent_rating = agent_rating_tensor
+        self._ratings = ratings_tensor
+        self._n_games = n_games_tensor
 
     @classmethod
     def create(cls, pool_size: int, network: nn.Module) -> "SharedPoolState":
-        """Trainer-side: allocate shared memory for counter + K weight slots."""
+        """Trainer-side: allocate shared memory for counter + K weight slots + Elo state."""
         if pool_size < 1:
             raise ValueError(f"pool_size must be >= 1, got {pool_size}")
         total_adds = torch.zeros(1, dtype=torch.int64)
         total_adds.share_memory_()
         slots = [SharedPolicyWeights(network) for _ in range(pool_size)]
-        return cls(total_adds, slots)
+        agent_rating = torch.tensor([cls._DEFAULT_RATING], dtype=torch.float32)
+        agent_rating.share_memory_()
+        ratings = torch.full((pool_size,), cls._DEFAULT_RATING, dtype=torch.float32)
+        ratings.share_memory_()
+        n_games = torch.zeros(pool_size, dtype=torch.int64)
+        n_games.share_memory_()
+        return cls(total_adds, slots, agent_rating, ratings, n_games)
 
     @classmethod
     def from_handles(cls, handles: dict[str, Any]) -> "SharedPoolState":
         """Worker-side: attach to existing shared memory."""
-        total_adds = handles["total_adds"]
-        slots = [SharedPolicyWeights.from_handles(h) for h in handles["slots"]]
-        return cls(total_adds, slots)
+        return cls(
+            total_adds_tensor=handles["total_adds"],
+            slots=[SharedPolicyWeights.from_handles(h) for h in handles["slots"]],
+            agent_rating_tensor=handles["agent_rating"],
+            ratings_tensor=handles["ratings"],
+            n_games_tensor=handles["n_games"],
+        )
 
     def share_handles(self) -> dict[str, Any]:
         """Trainer-side: return picklable handles for worker spawn."""
         return {
             "total_adds": self._total_adds,
             "slots": [s.share_handles() for s in self.slots],
+            "agent_rating": self._agent_rating,
+            "ratings": self._ratings,
+            "n_games": self._n_games,
         }
 
     @property
@@ -92,6 +117,29 @@ class SharedPoolState:
     @property
     def pool_size(self) -> int:
         return len(self.slots)
+
+    @property
+    def agent_rating(self) -> float:
+        return float(self._agent_rating[0].item())
+
+    @agent_rating.setter
+    def agent_rating(self, value: float) -> None:
+        self._agent_rating[0] = float(value)
+
+    def get_rating(self, slot: int) -> float:
+        return float(self._ratings[slot].item())
+
+    def set_rating(self, slot: int, value: float) -> None:
+        self._ratings[slot] = float(value)
+
+    def get_n_games(self, slot: int) -> int:
+        return int(self._n_games[slot].item())
+
+    def increment_n_games(self, slot: int) -> None:
+        self._n_games[slot] += 1
+
+    def n_games_zero(self, slot: int) -> None:
+        self._n_games[slot] = 0
 
 
 class OpponentPool:
@@ -229,15 +277,25 @@ class OpponentPool:
         Trainer-only. The slot's version is bumped (via SharedPolicyWeights.publish)
         before total_adds is incremented, so a worker reading total_adds = N is
         guaranteed slot (N-1) % pool_size was fully published.
+
+        Inherits the current agent_rating into the new slot (standard self-play
+        convention: a snapshot of the trainer is, at publish time, as strong as
+        the trainer). Resets the slot's n_games to 0.
         """
         cur = self._shared.total_adds
         slot = cur % self._shared.pool_size
         self._shared.slots[slot].publish(network)
+        self._shared.set_rating(slot, self._shared.agent_rating)
+        self._shared.n_games_zero(slot)
         self._shared.total_adds = cur + 1
         return slot
 
-    def sample(self) -> Opponent:
-        """Refresh stale snapshot slots, then uniformly sample an occupied slot."""
+    def sample(self) -> tuple[int, Opponent]:
+        """Refresh stale snapshot slots, then uniformly sample an occupied slot.
+
+        Returns (slot_id, opponent) — callers use slot_id to report match
+        outcomes back via :meth:`report_result` for Elo updates.
+        """
         occupied = self.occupied_count()
         if occupied == 0:
             raise RuntimeError("OpponentPool.sample() called on empty pool")
@@ -263,4 +321,44 @@ class OpponentPool:
             self._local_versions[i] = slot_version
 
         slot = self._rng.randrange(occupied)
-        return self._pool[slot]
+        return slot, self._pool[slot]
+
+    def report_result(self, slot: int, agent_won: bool, k: float = 16.0) -> None:
+        """Apply an Elo update for one episode vs ``slot``.
+
+        Not atomic across workers: two simultaneous updates can race on
+        ``agent_rating``. Acceptable for a logging metric; the typical
+        drift is bounded by K per dropped update and self-corrects on the
+        next match.
+        """
+        agent = self._shared.agent_rating
+        opp = self._shared.get_rating(slot)
+        new_agent, new_opp = elo_update(agent, opp, agent_won=agent_won, k=k)
+        self._shared.agent_rating = new_agent
+        self._shared.set_rating(slot, new_opp)
+        self._shared.increment_n_games(slot)
+
+    def elo_summary(self) -> dict[str, float | int]:
+        """Snapshot of current ratings for logging. Only counts occupied slots.
+
+        Returns NaN for pool_mean/min/max when no slots are occupied so
+        TensorBoard skips the points instead of plotting a fake 0.0.
+        """
+        occupied = self.occupied_count()
+        if occupied == 0:
+            nan = float("nan")
+            return {
+                "agent": self._shared.agent_rating,
+                "pool_mean": nan,
+                "pool_min": nan,
+                "pool_max": nan,
+                "occupied": 0,
+            }
+        ratings = [self._shared.get_rating(i) for i in range(occupied)]
+        return {
+            "agent": self._shared.agent_rating,
+            "pool_mean": sum(ratings) / len(ratings),
+            "pool_min": min(ratings),
+            "pool_max": max(ratings),
+            "occupied": occupied,
+        }

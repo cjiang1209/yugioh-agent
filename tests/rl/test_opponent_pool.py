@@ -165,7 +165,7 @@ def test_sample_returns_initial_opponent_when_no_snapshots() -> None:
         initial_opponent_spec="greedy",
         network_factory=_Tiny,
     )
-    sampled = pool.sample()
+    _, sampled = pool.sample()
     assert isinstance(sampled, GreedyOpponent)
 
 
@@ -209,14 +209,11 @@ def test_sample_uniform_distribution_over_occupied() -> None:
     pool.add_snapshot(_Tiny())  # slot 1
     pool.add_snapshot(_Tiny())  # slot 2
 
-    # Track sampled slot indices by identity.
+    # Track sampled slot indices.
     counts = [0, 0, 0]
     for _ in range(3000):
-        opp = pool.sample()
-        for i, p in enumerate(pool._pool):
-            if opp is p:
-                counts[i] += 1
-                break
+        slot, _ = pool.sample()
+        counts[slot] += 1
     # Expect ~1000 each; allow generous tolerance.
     for c in counts:
         assert 800 < c < 1200, f"non-uniform sampling: {counts}"

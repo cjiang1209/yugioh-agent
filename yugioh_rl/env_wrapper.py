@@ -121,6 +121,7 @@ class TrainingEnv:
         self._prev_advantage = 0
 
         self._opponent_pool = None
+        self._current_opp_slot: int | None = None
         if opponent_pool_handles is not None:
             from yugioh_rl.network import YuGiOhNet
             from yugioh_rl.opponent_pool import OpponentPool
@@ -176,7 +177,7 @@ class TrainingEnv:
         self._last_agent_deck_idx = agent_deck_idx
 
         if self._opponent_pool is not None:
-            new_opp = self._opponent_pool.sample()
+            self._current_opp_slot, new_opp = self._opponent_pool.sample()
             self._env.set_opponent(new_opp)
 
         obs = self._env.reset(
@@ -222,6 +223,12 @@ class TrainingEnv:
             info["terminal_reward"] = reward
             info["episode_length"] = self._env._step_count
             info["agent_deck_idx"] = self._last_agent_deck_idx
+            if self._opponent_pool is not None and self._current_opp_slot is not None:
+                self._opponent_pool.report_result(
+                    slot=self._current_opp_slot,
+                    agent_won=reward > 0,
+                )
+                self._current_opp_slot = None
             # No auto-reset.  Caller chooses when to begin the next episode
             # (vec-env workers do it eagerly to preserve wire behavior;
             # eval workers reset to a specific episode_idx for the next task).
