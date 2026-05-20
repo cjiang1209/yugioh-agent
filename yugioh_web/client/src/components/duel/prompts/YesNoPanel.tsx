@@ -15,9 +15,11 @@ export function YesNoPanel({ actions, prompt, onAction }: YesNoPanelProps) {
   const cardCode = prompt.card_code ?? 0;
   const cardName = prompt.card_name ?? "";
 
-  const question = isEffect
-    ? `Activate effect of ${cardName || "this card"}?`
-    : "Do you want to proceed?";
+  const question =
+    prompt.prompt_text ??
+    (isEffect
+      ? `Activate effect of ${cardName || "this card"}?`
+      : "Do you want to proceed?");
 
   return (
     <div

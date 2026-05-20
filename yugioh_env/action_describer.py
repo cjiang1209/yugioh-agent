@@ -15,7 +15,8 @@ from yugioh_core.action_categories import (
 )
 from yugioh_core.card_database import CardDatabase
 from yugioh_core.constants import (
-    LOCATION_MZONE, LOCATION_SZONE,
+    LOCATION_BANISHED, LOCATION_DECK, LOCATION_EXTRA, LOCATION_GRAVE,
+    LOCATION_HAND, LOCATION_MZONE, LOCATION_OVERLAY, LOCATION_SZONE,
     MSG_ANNOUNCE_ATTRIB, MSG_ANNOUNCE_NUMBER, MSG_ANNOUNCE_RACE,
     MSG_ROCK_PAPER_SCISSORS,
     MSG_SELECT_BATTLECMD, MSG_SELECT_CARD, MSG_SELECT_CHAIN,
@@ -75,6 +76,45 @@ _PROMPT_TYPE_MAP = {
     MSG_ROCK_PAPER_SCISSORS: "rps",
     MSG_SELECT_COUNTER: "counter",
 }
+
+
+# Maps engine LOCATION_* bits to the human-readable strings ygopro uses to
+# substitute the second `%ls` in prompt templates.
+_LOCATION_NAMES = {
+    LOCATION_DECK: "Deck",
+    LOCATION_HAND: "Hand",
+    LOCATION_MZONE: "Monster Zone",
+    LOCATION_SZONE: "Spell/Trap Zone",
+    LOCATION_GRAVE: "Graveyard",
+    LOCATION_BANISHED: "Banished",
+    LOCATION_EXTRA: "Extra Deck",
+    LOCATION_OVERLAY: "Xyz Material",
+}
+
+
+def _format_prompt_text(template: str, card_name: str, location: int) -> str | None:
+    """Substitute printf-style placeholders in a sysstring prompt template.
+
+    strings.conf stores prompts with `%ls` for card/location names. ygopro
+    clients substitute these at render time using prompt-specific context.
+    For the prompts we expose (yes/no, effect-yn), the order is always
+    (card_name, location_name).
+
+    Returns None if a placeholder remains unfilled (e.g. a `%d` we don't
+    know how to fill) so the caller can fall back to a synthesized question
+    rather than show the raw template.
+    """
+    text = template
+    # count=1 on each replace preserves the (card, location) slot order.
+    if "%ls" in text and card_name:
+        text = text.replace("%ls", card_name, 1)
+    if "%ls" in text:
+        loc_name = _LOCATION_NAMES.get(location, "")
+        if loc_name:
+            text = text.replace("%ls", loc_name, 1)
+    if "%ls" in text or "%d" in text or "%s" in text:
+        return None
+    return text
 
 
 @dataclass
@@ -170,6 +210,25 @@ class ActionDescriber:
         if "card_code" in result:
             code = result["card_code"]
             result["card_name"] = self._card_db.get_card_name(code) if code else ""
+        # Resolve the prompt-level desc (yes/no, effect-yn) to display text.
+        # desc == 0 means "no specific prompt string"; an unknown id means the
+        # resolver can't find it; a template with placeholders we can't fill
+        # also yields None. In all those cases the consumer falls back to a
+        # synthesized question.
+        if "desc" in result:
+            desc = result["desc"]
+            template = (
+                self._resolver.resolve(desc)
+                if (self._resolver and desc) else None
+            )
+            if template is None:
+                result["prompt_text"] = None
+            else:
+                result["prompt_text"] = _format_prompt_text(
+                    template,
+                    card_name=result.get("card_name", ""),
+                    location=result.get("location", 0),
+                )
         return result
 
     # ─── Internal dispatch ────────────────────────────────────────────────

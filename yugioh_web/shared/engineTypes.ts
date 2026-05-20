@@ -149,6 +149,12 @@ export interface EnginePrompt {
   max_cards?: number;
   release_total?: number;
   cards_selected?: number;
+  // Yes/no prompt fields (MSG_SELECT_YESNO, MSG_SELECT_EFFECTYN).
+  // `desc` is the raw engine u64 (sysstring id or packed card-string ref);
+  // `prompt_text` is the server-resolved display string, or null when the
+  // engine emitted desc=0 or the resolver couldn't find the string.
+  desc?: number;
+  prompt_text?: string | null;
 }
 
 /** A snapshot of the board + events captured after one engine processing chunk. */

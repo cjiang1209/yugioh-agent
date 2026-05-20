@@ -35,6 +35,7 @@ from yugioh_core.constants import (
     SELECT_MSGS,
     MSG_WIN,
     MSG_SELECT_EFFECTYN,
+    MSG_SELECT_YESNO,
     MSG_SELECT_CARD,
     MSG_SELECT_TRIBUTE,
     MSG_SELECT_UNSELECT_CARD,
@@ -111,6 +112,9 @@ def _build_prompt_meta(mapper) -> dict | None:
     if msg_type == MSG_SELECT_EFFECTYN:
         result["card_code"] = msg.get("code", 0)
         result["location"] = msg.get("location", 0)
+        result["desc"] = msg.get("desc", 0)
+    elif msg_type == MSG_SELECT_YESNO:
+        result["desc"] = msg.get("desc", 0)
     elif msg_type == MSG_SELECT_CARD:
         result["min"] = msg.get("min", 1)
         result["max"] = msg.get("max", 1)

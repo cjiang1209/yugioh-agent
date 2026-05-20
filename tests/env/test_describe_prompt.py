@@ -28,11 +28,19 @@ from yugioh_env.action_describer import ActionDescriber
 class FakeCardDB:
     """Minimal CardDatabase stand-in for tests."""
 
-    def __init__(self, names: dict[int, str] | None = None):
+    def __init__(
+        self,
+        names: dict[int, str] | None = None,
+        strings: dict[tuple[int, int], str] | None = None,
+    ):
         self._names = names or {}
+        self._strings = strings or {}
 
     def get_card_name(self, code: int) -> str:
         return self._names.get(code, f"Card#{code}")
+
+    def get_card_string(self, passcode: int, n: int) -> str | None:
+        return self._strings.get((passcode, n))
 
 
 @pytest.fixture
@@ -56,6 +64,23 @@ def test_effectyn(card_db):
     assert prompt["type"] == "effect_yn"
     assert prompt["card_code"] == 89631139
     assert prompt["card_name"] == "Blue-Eyes White Dragon"
+    assert prompt["desc"] == 0
+
+
+def test_effectyn_preserves_nonzero_desc(card_db):
+    obs = _obs_from_msg({
+        "msg_type": MSG_SELECT_EFFECTYN,
+        "player": 0,
+        "code": 89631139,
+        "controller": 0,
+        "location": 2,
+        "sequence": 0,
+        "position": 0,
+        "desc": 0x55,
+    })
+    describer = ActionDescriber(card_db, sys_strings=None)
+    prompt = describer.describe_prompt(obs)
+    assert prompt["desc"] == 0x55
 
 
 def test_yesno(card_db):
@@ -68,6 +93,18 @@ def test_yesno(card_db):
     prompt = describer.describe_prompt(obs)
     assert prompt["type"] == "yes_no"
     assert "card_code" not in prompt
+    assert prompt["desc"] == 0
+
+
+def test_yesno_preserves_nonzero_desc(card_db):
+    obs = _obs_from_msg({
+        "msg_type": MSG_SELECT_YESNO,
+        "player": 0,
+        "desc": 0x1234,
+    })
+    describer = ActionDescriber(card_db, sys_strings=None)
+    prompt = describer.describe_prompt(obs)
+    assert prompt["desc"] == 0x1234
 
 
 def test_select_card(card_db):
@@ -309,3 +346,129 @@ def test_prompt_type_map_includes_announce_kinds():
         assert result["type"] == expected_type, (
             f"msg_type={msg['msg_type']}: expected '{expected_type}', got '{result['type']}'"
         )
+
+
+def test_yesno_resolves_sysstring_to_prompt_text(card_db):
+    sys_strings = {0x42: "Activate effect?"}
+    obs = _obs_from_msg({
+        "msg_type": MSG_SELECT_YESNO,
+        "player": 0,
+        "desc": 0x42,
+    })
+    describer = ActionDescriber(card_db, sys_strings=sys_strings)
+    prompt = describer.describe_prompt(obs)
+    assert prompt["desc"] == 0x42
+    assert prompt["prompt_text"] == "Activate effect?"
+
+
+def test_yesno_zero_desc_yields_null_prompt_text(card_db):
+    obs = _obs_from_msg({
+        "msg_type": MSG_SELECT_YESNO,
+        "player": 0,
+        "desc": 0,
+    })
+    describer = ActionDescriber(card_db, sys_strings={0x42: "Activate?"})
+    prompt = describer.describe_prompt(obs)
+    assert prompt["desc"] == 0
+    assert prompt["prompt_text"] is None
+
+
+def test_yesno_unknown_desc_yields_null_prompt_text(card_db):
+    obs = _obs_from_msg({
+        "msg_type": MSG_SELECT_YESNO,
+        "player": 0,
+        "desc": 0x999,
+    })
+    describer = ActionDescriber(card_db, sys_strings={0x42: "Activate?"})
+    prompt = describer.describe_prompt(obs)
+    assert prompt["prompt_text"] is None
+
+
+def test_yesno_no_resolver_yields_null_prompt_text(card_db):
+    obs = _obs_from_msg({
+        "msg_type": MSG_SELECT_YESNO,
+        "player": 0,
+        "desc": 0x42,
+    })
+    describer = ActionDescriber(card_db, sys_strings=None)
+    prompt = describer.describe_prompt(obs)
+    assert prompt["desc"] == 0x42
+    assert prompt["prompt_text"] is None
+
+
+def test_effectyn_resolves_card_string_to_prompt_text():
+    """EFFECTYN desc encoding: (passcode << 20) | n. Resolver calls
+    card_db.get_card_string(passcode, n)."""
+    card_db = FakeCardDB(
+        names={89631139: "Blue-Eyes White Dragon"},
+        strings={(89631139, 5): "Negate the attack?"},
+    )
+    desc = (89631139 << 20) | 5
+    obs = _obs_from_msg({
+        "msg_type": MSG_SELECT_EFFECTYN,
+        "player": 0,
+        "code": 89631139,
+        "controller": 0,
+        "location": 2,
+        "sequence": 0,
+        "position": 0,
+        "desc": desc,
+    })
+    describer = ActionDescriber(card_db, sys_strings={})
+    prompt = describer.describe_prompt(obs)
+    assert prompt["desc"] == desc
+    assert prompt["prompt_text"] == "Negate the attack?"
+
+
+def test_effectyn_substitutes_card_name_and_location_in_template(card_db):
+    """Two-`%ls` template: first placeholder → card name, second → location.
+    `location: 2` is LOCATION_HAND."""
+    sys_strings = {221: 'Activate the Trigger Effect of "%ls" from [%ls]?'}
+    desc = 221
+    obs = _obs_from_msg({
+        "msg_type": MSG_SELECT_EFFECTYN,
+        "player": 0,
+        "code": 89631139,
+        "controller": 0,
+        "location": 2,
+        "sequence": 0,
+        "position": 0,
+        "desc": desc,
+    })
+    describer = ActionDescriber(card_db, sys_strings=sys_strings)
+    prompt = describer.describe_prompt(obs)
+    assert prompt["prompt_text"] == (
+        'Activate the Trigger Effect of "Blue-Eyes White Dragon" from [Hand]?'
+    )
+
+
+def test_yesno_with_single_placeholder_template_drops_to_null(card_db):
+    """YESNO has no card_code/location, so a `%ls` template can't be
+    filled — prompt_text falls back to None so the client synthesizes."""
+    sys_strings = {95: 'Use the effect of "%ls"?'}
+    obs = _obs_from_msg({
+        "msg_type": MSG_SELECT_YESNO,
+        "player": 0,
+        "desc": 95,
+    })
+    describer = ActionDescriber(card_db, sys_strings=sys_strings)
+    prompt = describer.describe_prompt(obs)
+    assert prompt["prompt_text"] is None
+
+
+def test_prompt_text_drops_to_null_when_format_specifier_remains(card_db):
+    """A `%d`-bearing template we don't know how to fill yields None."""
+    sys_strings = {204: 'Remove %d "%ls"'}
+    obs = _obs_from_msg({
+        "msg_type": MSG_SELECT_EFFECTYN,
+        "player": 0,
+        "code": 89631139,
+        "controller": 0,
+        "location": 2,
+        "sequence": 0,
+        "position": 0,
+        "desc": 204,
+    })
+    describer = ActionDescriber(card_db, sys_strings=sys_strings)
+    prompt = describer.describe_prompt(obs)
+    assert prompt["prompt_text"] is None
