@@ -17,10 +17,30 @@ def test_empty_prompt_returns_empty_string():
 
 
 def test_unknown_type_falls_through_to_label():
-    assert _format_prompt_summary({"type": "yes_no"}) == "Yes/No"
     assert _format_prompt_summary({"type": "position"}) == "Position"
     assert _format_prompt_summary({"type": "place"}) == "Place"
     assert _format_prompt_summary({"type": "rps"}) == "Rock-Paper-Scissors"
+
+
+def test_yes_no_without_prompt_text_returns_type_label():
+    """When prompt_text is absent or null, fall back to today's behavior."""
+    assert _format_prompt_summary({"type": "yes_no"}) == "Yes/No"
+    assert _format_prompt_summary({"type": "yes_no", "prompt_text": None}) == "Yes/No"
+
+
+def test_yes_no_with_prompt_text_appends_resolved_question():
+    summary = _format_prompt_summary({
+        "type": "yes_no", "prompt_text": "Pay 1000 LP?",
+    })
+    assert summary == "Yes/No — Pay 1000 LP?"
+
+
+def test_effect_yn_with_prompt_text_appends_resolved_question():
+    summary = _format_prompt_summary({
+        "type": "effect_yn",
+        "prompt_text": 'Activate the Trigger Effect of "Blue-Eyes" from [Monster Zone]?',
+    })
+    assert summary == 'Effect Yes/No — Activate the Trigger Effect of "Blue-Eyes" from [Monster Zone]?'
 
 
 def test_truly_unknown_type_returns_raw_string():

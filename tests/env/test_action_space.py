@@ -744,11 +744,6 @@ def test_counter_skips_cards_with_zero_counters():
          "to_bp": 0, "to_ep": 0, "shuffle_hand": 0},
         "effect", True,
     ),
-    # Card-less effect (YESNO)
-    (
-        {"msg_type": MSG_SELECT_YESNO, "player": 0, "desc": 0x1},
-        "effect", False,
-    ),
 ])
 def test_action_meta_card_code_consistency(setup):
     """§6 invariant: for each kind, action_feats[2:6] code matches meta.extras['card_code']

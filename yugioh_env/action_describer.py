@@ -293,17 +293,9 @@ class ActionDescriber:
                 return (f"{base}: {resolved}" if resolved else base), cat_str
             return label, cat_str
 
-        if msg_type == MSG_SELECT_EFFECTYN:
+        if msg_type in (MSG_SELECT_EFFECTYN, MSG_SELECT_YESNO):
             if cat == 0:
-                base = f"Yes — activate {card_name}" if card_name else "Yes"
-                resolved = self._resolve_effect(meta)
-                return (f"{base}: {resolved}" if resolved else base), "yes"
-            return "No", "no"
-
-        if msg_type == MSG_SELECT_YESNO:
-            if cat == 0:
-                resolved = self._resolve_effect(meta)
-                return (f"Yes — {resolved}" if resolved else "Yes"), "yes"
+                return "Yes", "yes"
             return "No", "no"
 
         if msg_type == MSG_SELECT_OPTION:

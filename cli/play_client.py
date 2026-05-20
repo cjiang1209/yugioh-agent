@@ -103,6 +103,10 @@ def _format_prompt_summary(prompt: dict | None) -> str:
     p_type = prompt.get("type", "unknown")
     label = _PROMPT_TYPE_LABELS.get(p_type, p_type)
 
+    if p_type in ("yes_no", "effect_yn"):
+        text = prompt.get("prompt_text")
+        return f"{label} — {text}" if text else label
+
     if p_type == "select_card":
         lo, hi = prompt["min"], prompt["max"]
         range_str = f"pick {lo}" if lo == hi else f"pick {lo} to {hi}"

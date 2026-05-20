@@ -39,7 +39,11 @@ class ActionMeta(BaseModel):
       counter:    raw_value=int (counter_type u16);                       extras={"counter_count": int, "card_code": int}
       option:     raw_value=int (effect-desc u64);                        extras={}
       chain_link: raw_value=int (effect-desc u64);                        extras={"card_code": int}
-      effect:     raw_value=int (effect-desc u64; 0 = no specific effect);  extras={"card_code": int} (omitted for YESNO)
+      effect:     raw_value=int (effect-desc u64; 0 = no specific effect);  extras={"card_code": int}
+                  Emitted only for activate-this-effect actions in
+                  MSG_SELECT_IDLECMD / MSG_SELECT_BATTLECMD. Yes/no prompts
+                  (MSG_SELECT_YESNO, MSG_SELECT_EFFECTYN) emit no meta —
+                  see prompt_meta.desc / prompt_text instead.
     """
 
     kind: Literal[

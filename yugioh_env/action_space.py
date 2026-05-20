@@ -250,12 +250,6 @@ def _extract_effectyn_actions(msg: dict) -> list[dict]:
          "location": msg.get("location", 0),
          "sequence": msg.get("sequence", 0),
          "desc": int(desc),
-         "meta": {
-             "kind": "effect",
-             "label": f"effect 0x{desc:x}",
-             "raw_value": int(desc),
-             "extras": {"card_code": code},
-         },
          "build_response": lambda: rb.build_select_yesno_response(True)},
         {"category": 1, "index": 0, "code": code,
          "controller": controller_rel,
@@ -271,11 +265,6 @@ def _extract_yesno_actions(msg: dict) -> list[dict]:
     return [
         {"category": 0, "index": 0, "code": 0, "location": 0, "sequence": 0,
          "desc": int(desc),
-         "meta": {
-             "kind": "effect",
-             "label": f"effect 0x{desc:x}",
-             "raw_value": int(desc),
-         },
          "build_response": lambda: rb.build_select_yesno_response(True)},
         {"category": 1, "index": 0, "code": 0, "location": 0, "sequence": 0,
          "desc": int(desc),

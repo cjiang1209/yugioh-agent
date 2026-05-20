@@ -106,9 +106,7 @@ def test_describer_rewrites_counter_with_card_name():
 
 def test_describer_meta_field_passes_through_as_none_when_absent():
     """For prompts whose extractor doesn't emit meta (e.g. SELECT_PLACE), the
-    result row's meta field is None — no fabricated meta from the describer.
-    (SELECT_YESNO now emits an `effect`-kind meta on its Yes action; SELECT_PLACE
-    has no analog and so still has meta=None for all its actions.)"""
+    result row's meta field is None — no fabricated meta from the describer."""
     from yugioh_core.constants import MSG_SELECT_PLACE
     obs = _obs_from_msg({
         "msg_type": MSG_SELECT_PLACE, "player": 0,
@@ -216,8 +214,9 @@ def test_describer_idle_activate_appends_resolved_effect_text():
     assert details[0].category == "activate"
 
 
-def test_describer_effectyn_yes_appends_resolved_text():
-    """EFFECTYN's Yes action gets `: {effect}` appended; No is unchanged."""
+def test_describer_effectyn_yes_is_plain_yes():
+    """EFFECTYN action labels are plain Yes/No; card name and resolved
+    effect text live on the prompt header, not on the action label."""
     from yugioh_core.constants import MSG_SELECT_EFFECTYN
     obs = _obs_from_msg({
         "msg_type": MSG_SELECT_EFFECTYN, "player": 0,
@@ -227,23 +226,25 @@ def test_describer_effectyn_yes_appends_resolved_text():
     describer = ActionDescriber(_StubCardDB(), sys_strings={})
     describer._resolver = _StubResolver({0xdef: "Special Summon"})
     details = describer.describe_all(obs)
-    assert details[0].description == "Yes — activate Card777: Special Summon"
+    assert details[0].description == "Yes"
     assert details[1].description == "No"
-    # No action must NOT inherit the prompt's effect meta.
+    assert details[0].meta is None
     assert details[1].meta is None
 
 
-def test_describer_yesno_yes_uses_resolved_text_as_qualifier():
-    """YESNO has no card_name; resolved text becomes the qualifier:
-    `Yes — {effect_text}` instead of bare `Yes`."""
+def test_describer_yesno_yes_is_plain_yes():
+    """YESNO has no card context; both actions are plain Yes/No.
+    The resolved question lives on prompt_text."""
     obs = _obs_from_msg({
         "msg_type": MSG_SELECT_YESNO, "player": 0, "desc": 0x111,
     })
     describer = ActionDescriber(_StubCardDB(), sys_strings={})
     describer._resolver = _StubResolver({0x111: "Pay LP"})
     details = describer.describe_all(obs)
-    assert details[0].description == "Yes — Pay LP"
+    assert details[0].description == "Yes"
     assert details[1].description == "No"
+    assert details[0].meta is None
+    assert details[1].meta is None
 
 
 def test_describe_all_returns_one_per_legal_action():
