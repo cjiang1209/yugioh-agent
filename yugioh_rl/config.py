@@ -21,6 +21,7 @@ class TrainingConfig:
     self_play: bool = False
     self_play_pool_size: int = 10
     self_play_temperature: float = 1.0
+    self_play_sampling: Literal["uniform", "pfsp"] = "uniform"
     agent_player: str = "random"  # "first" (player 0), "second" (player 1), or "random"
     reward_shaping: bool = True
     shaping_lp_weight: float = 0.01

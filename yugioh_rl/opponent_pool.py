@@ -9,13 +9,13 @@ from __future__ import annotations
 import random as stdlib_random
 import re
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Literal, get_args
 
 import torch
 import torch.nn as nn
 
 from yugioh_rl.shared_weights import SharedPolicyWeights
-from yugioh_rl.elo import update as elo_update
+from yugioh_rl.elo import expected_score, update as elo_update
 from yugioh_env.opponent import (
     NetworkOpponent,
     Opponent,
@@ -24,6 +24,11 @@ from yugioh_env.opponent import (
 
 
 _CHECKPOINT_RE = re.compile(r"^checkpoint_(\d+)\.pt$")
+
+Sampling = Literal["uniform", "pfsp"]
+_VALID_SAMPLING = get_args(Sampling)
+_PFSP_P = 2.0
+_PFSP_EPSILON = 0.2
 
 
 def _find_numbered_checkpoints(checkpoint_dir: Path) -> list[int]:
@@ -157,11 +162,17 @@ class OpponentPool:
         network_factory: Callable[[], nn.Module],
         temperature: float,
         rng: stdlib_random.Random,
+        sampling: Sampling = "uniform",
     ) -> None:
+        if sampling not in _VALID_SAMPLING:
+            raise ValueError(
+                f"sampling must be one of {_VALID_SAMPLING}, got {sampling!r}"
+            )
         self._shared = shared
         self._network_factory = network_factory
         self._temperature = temperature
         self._rng = rng
+        self._sampling = sampling
         self._pool: list[Opponent | None] = [None] * shared.pool_size
         self._local_versions: list[int] = [0] * shared.pool_size
 
@@ -172,6 +183,7 @@ class OpponentPool:
         initial_opponent_spec: str,
         network_factory: Callable[[], nn.Module],
         temperature: float = 1.0,
+        sampling: Sampling = "uniform",
         rng: stdlib_random.Random | None = None,
     ) -> "OpponentPool":
         """Trainer-side: allocate shared memory, seed slot 0 with initial opponent."""
@@ -183,6 +195,7 @@ class OpponentPool:
             network_factory=network_factory,
             temperature=temperature,
             rng=rng or stdlib_random.Random(),
+            sampling=sampling,
         )
         pool._pool[0] = make_opponent(initial_opponent_spec)
         shared.total_adds = 1
@@ -195,6 +208,7 @@ class OpponentPool:
         initial_opponent_spec: str,
         network_factory: Callable[[], nn.Module],
         temperature: float = 1.0,
+        sampling: Sampling = "uniform",
         rng: stdlib_random.Random | None = None,
     ) -> "OpponentPool":
         """Worker-side: attach to existing SharedPoolState via handles dict.
@@ -210,6 +224,7 @@ class OpponentPool:
             network_factory=network_factory,
             temperature=temperature,
             rng=rng or stdlib_random.Random(),
+            sampling=sampling,
         )
         # Slot 0 still scripted iff total_adds >= 1 and its version is still 0.
         if shared.total_adds >= 1 and shared.slots[0].version == 0:
@@ -225,6 +240,7 @@ class OpponentPool:
         save_interval: int,
         checkpoint_dir: Path,
         temperature: float = 1.0,
+        sampling: Sampling = "uniform",
         rng: stdlib_random.Random | None = None,
     ) -> "OpponentPool":
         """Trainer-side construction from disk checkpoints.
@@ -238,6 +254,7 @@ class OpponentPool:
             initial_opponent_spec=initial_opponent_spec,
             network_factory=network_factory,
             temperature=temperature,
+            sampling=sampling,
             rng=rng,
         )
 
@@ -320,8 +337,37 @@ class OpponentPool:
                 )
             self._local_versions[i] = slot_version
 
-        slot = self._rng.randrange(occupied)
+        slot = self._pick_slot(occupied)
         return slot, self._pool[slot]
+
+    def _pick_slot(self, occupied: int) -> int:
+        """Strategy dispatcher for slot selection. ``occupied`` is the
+        guaranteed-occupied prefix length (slots 0..occupied-1)."""
+        if self._sampling == "uniform":
+            return self._rng.randrange(occupied)
+        if self._sampling == "pfsp":
+            return self._pick_slot_pfsp(occupied)
+        raise RuntimeError(f"unhandled sampling strategy: {self._sampling!r}")
+
+    def _pick_slot_pfsp(self, occupied: int) -> int:
+        """PFSP: weight each occupied slot by ``(1 - P(agent beats it))^p``,
+        mix in ``epsilon`` uniform exploration, fall back to uniform if all
+        weights collapse (agent dominates every slot).
+
+        Reads ``agent_rating`` and ``ratings[]`` from shared memory non-
+        atomically — see CLAUDE.md note on the K-bounded drift trade-off.
+        """
+        if self._rng.random() < _PFSP_EPSILON:
+            return self._rng.randrange(occupied)
+
+        agent = self._shared.agent_rating
+        weights = [
+            (1.0 - expected_score(agent, self._shared.get_rating(i))) ** _PFSP_P
+            for i in range(occupied)
+        ]
+        if sum(weights) <= 1e-9:
+            return self._rng.randrange(occupied)
+        return self._rng.choices(range(occupied), weights=weights, k=1)[0]
 
     def report_result(self, slot: int, agent_won: bool, k: float = 16.0) -> None:
         """Apply an Elo update for one episode vs ``slot``.
