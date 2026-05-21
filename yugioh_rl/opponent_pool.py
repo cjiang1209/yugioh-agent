@@ -26,7 +26,8 @@ from yugioh_env.opponent import (
 _CHECKPOINT_RE = re.compile(r"^checkpoint_(\d+)\.pt$")
 
 Sampling = Literal["uniform", "pfsp"]
-_VALID_SAMPLING = get_args(Sampling)
+SAMPLING_CHOICES: tuple[str, ...] = get_args(Sampling)
+_VALID_SAMPLING = SAMPLING_CHOICES
 _PFSP_P = 2.0
 _PFSP_EPSILON = 0.2
 

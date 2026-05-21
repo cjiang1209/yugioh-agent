@@ -20,6 +20,7 @@ from yugioh_env.models import YuGiOhAction
 
 if TYPE_CHECKING:
     from yugioh_rl.config import TrainingConfig
+    from yugioh_rl.opponent_pool import Sampling
 
 DeckDict = dict[str, list[int]]  # {"main": [int, ...], "extra": [int, ...]}
 
@@ -82,6 +83,7 @@ class TrainingEnv:
         opponent_device: str | None = None,
         opponent_pool_handles: dict | None = None,
         opponent_pool_temperature: float = 1.0,
+        opponent_pool_sampling: "Sampling" = "uniform",
         opponent_pool_config: "TrainingConfig | None" = None,
     ) -> None:
         if not deck_pool:
@@ -136,6 +138,7 @@ class TrainingEnv:
                 initial_opponent_spec=opponent,
                 network_factory=lambda: YuGiOhNet.from_config(opponent_pool_config),
                 temperature=opponent_pool_temperature,
+                sampling=opponent_pool_sampling,
                 rng=stdlib_random.Random(seed + 1),
             )
 
@@ -322,6 +325,7 @@ class SubprocVecEnv:
         opponent_device: str | None = None,
         opponent_pool_handles: dict | None = None,
         opponent_pool_temperature: float = 1.0,
+        opponent_pool_sampling: "Sampling" = "uniform",
         opponent_pool_config: "TrainingConfig | None" = None,
     ) -> None:
         self.num_envs = num_envs
@@ -344,6 +348,7 @@ class SubprocVecEnv:
                 "opponent_device": opponent_device,
                 "opponent_pool_handles": opponent_pool_handles,
                 "opponent_pool_temperature": opponent_pool_temperature,
+                "opponent_pool_sampling": opponent_pool_sampling,
                 "opponent_pool_config": opponent_pool_config,
             }
             p = ctx.Process(target=_worker, args=(child_conn, env_kwargs), daemon=True)

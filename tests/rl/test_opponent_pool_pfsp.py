@@ -157,3 +157,40 @@ def test_uniform_sampling_unchanged_by_pfsp_code() -> None:
     counts = _sample_counts(pool, n=3000)
     for c in counts:
         assert 800 < c < 1200, f"uniform broken by PFSP changes: {counts}"
+
+
+def test_training_env_propagates_sampling_to_pool() -> None:
+    """When constructed with opponent_pool_sampling='pfsp', TrainingEnv's
+    internal OpponentPool should also have sampling='pfsp'."""
+    from pathlib import Path
+
+    deck_path = Path("assets/decks/blue_eyes.ydk")
+    if not deck_path.exists():
+        pytest.skip(f"missing deck: {deck_path}")
+
+    from yugioh_rl.config import TrainingConfig
+    from yugioh_rl.env_wrapper import TrainingEnv, parse_deck_pool
+
+    config = TrainingConfig(self_play=True, self_play_sampling="pfsp")
+    pool = OpponentPool.create_trainer(
+        pool_size=2,
+        initial_opponent_spec="random",
+        network_factory=_network_factory,
+        sampling="pfsp",
+    )
+    deck_pool = parse_deck_pool([str(deck_path), str(deck_path)])
+
+    env = TrainingEnv(
+        deck_pool=deck_pool,
+        opponent="random",
+        opponent_pool_handles=pool.share_handles(),
+        opponent_pool_temperature=1.0,
+        opponent_pool_sampling="pfsp",
+        opponent_pool_config=config,
+        seed=42,
+        agent_player="first",
+    )
+    try:
+        assert env._opponent_pool._sampling == "pfsp"
+    finally:
+        env.close()

@@ -343,6 +343,7 @@ class PPOTrainer:
                     save_interval=config.save_interval,
                     checkpoint_dir=Path(config.save_dir),
                     temperature=config.self_play_temperature,
+                    sampling=config.self_play_sampling,
                 )
             else:
                 self._opponent_pool = OpponentPool.create_trainer(
@@ -350,6 +351,7 @@ class PPOTrainer:
                     initial_opponent_spec=config.opponent,
                     network_factory=network_factory,
                     temperature=config.self_play_temperature,
+                    sampling=config.self_play_sampling,
                 )
 
         # Rollout buffer
@@ -545,6 +547,7 @@ class PPOTrainer:
                 rollout_steps=config.rollout_steps,
                 opponent_pool_handles=pool_handles,
                 opponent_pool_temperature=config.self_play_temperature,
+                opponent_pool_sampling=config.self_play_sampling,
                 opponent_pool_config=config,
             )
         else:
@@ -559,6 +562,7 @@ class PPOTrainer:
                 agent_player=config.agent_player,
                 opponent_pool_handles=pool_handles,
                 opponent_pool_temperature=config.self_play_temperature,
+                opponent_pool_sampling=config.self_play_sampling,
                 opponent_pool_config=config,
             )
 

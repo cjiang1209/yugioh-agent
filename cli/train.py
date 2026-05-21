@@ -21,6 +21,7 @@ from cli.utils import (
     was_provided,
 )
 from yugioh_rl.config import VEC_ENV_TYPES, TrainingConfig, normalize_legacy_config
+from yugioh_rl.opponent_pool import SAMPLING_CHOICES
 
 
 # Flags whose values may override the checkpoint's stored config on --resume.
@@ -114,6 +115,15 @@ def parse_args() -> argparse.Namespace:
                      help="Sampling temperature for past snapshots. "
                           "1.0 = use the policy distribution; lower = sharper; "
                           "higher = more exploratory.")
+    env.add_argument("--self-play-sampling", type=str, default="uniform",
+                     choices=SAMPLING_CHOICES,
+                     help="How the trainer picks opponents from the self-play pool. "
+                          "'uniform' (default) gives each occupied slot equal "
+                          "probability. 'pfsp' = Prioritized Fictitious Self-Play: "
+                          "weight each slot by (1 - P(agent beats it))^2 to "
+                          "concentrate training on hard-but-beatable opponents, "
+                          "with a 20%% uniform-exploration mix so weak snapshots "
+                          "are not starved.")
     env.add_argument("--no-reward-shaping", action="store_true",
                      help="Disable LP/card-advantage reward shaping (use sparse win/loss only)")
     env.add_argument("--shaping-lp-weight", type=float, default=0.01,

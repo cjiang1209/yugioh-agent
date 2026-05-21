@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from yugioh_rl.config import TrainingConfig
     from yugioh_rl.env_wrapper import DeckDict
     from yugioh_rl.network import HxState
+    from yugioh_rl.opponent_pool import Sampling
 
 
 __all__ = ["Transition", "_pack_rollout", "_actor_learner_worker",
@@ -232,6 +233,7 @@ class ActorLearnerVecEnv:
         rollout_steps: int,
         opponent_pool_handles: dict | None = None,
         opponent_pool_temperature: float = 1.0,
+        opponent_pool_sampling: "Sampling" = "uniform",
         opponent_pool_config: "TrainingConfig | None" = None,
         worker_timeout_s: float = 300.0,
     ) -> None:
@@ -261,6 +263,7 @@ class ActorLearnerVecEnv:
             "opponent_device": opponent_device,
             "opponent_pool_handles": opponent_pool_handles,
             "opponent_pool_temperature": opponent_pool_temperature,
+            "opponent_pool_sampling": opponent_pool_sampling,
             "opponent_pool_config": opponent_pool_config,
         }
 
