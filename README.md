@@ -21,7 +21,7 @@ scripts/start_server.sh &
 scripts/play_client.sh
 ```
 
-Requires Python 3.10+, `clang++` with C++17, and `sqlite3` headers.
+Requires Python 3.10+, a C++17 compiler (`clang++` or `g++`), and `sqlite3` headers.
 See [Prerequisites](#prerequisites) for the full list.
 
 ## What can I do with this?
@@ -151,7 +151,7 @@ third-party MUD server that uses a different ygopro fork).
 ## Prerequisites
 
 - **Python** 3.10+
-- **C++ toolchain** — `clang++` with C++17 support
+- **C++ toolchain** — `clang++` or `g++` with C++17 support
 - **SQLite** development headers (for compiling the engine wrapper)
 - **Git submodules** — pulled by `setup.sh`:
   - [edo9300/ygopro-core](https://github.com/edo9300/ygopro-core) — the duel engine

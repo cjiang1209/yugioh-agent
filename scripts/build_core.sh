@@ -34,6 +34,19 @@ esac
 
 OUTPUT="$BUILD_DIR/libocgcore.$SHARED_EXT"
 
+# ─── Detect C++ compiler ────────────────────────────────────────────────────
+if [ -z "${CXX:-}" ]; then
+    if command -v clang++ >/dev/null 2>&1; then
+        CXX=clang++
+    elif command -v g++ >/dev/null 2>&1; then
+        CXX=g++
+    else
+        echo "Error: no C++ compiler found (tried clang++, g++)"
+        exit 1
+    fi
+fi
+echo "Using C++ compiler: $CXX"
+
 # ─── Build embedded Lua as static library ────────────────────────────────────
 LUA_SRC_DIR="$LUA_DIR/src"
 if [ ! -d "$LUA_SRC_DIR" ] || [ -z "$(ls "$LUA_SRC_DIR"/*.c 2>/dev/null)" ]; then
@@ -62,7 +75,7 @@ for src in "$LUA_SRC_DIR"/*.c; do
     fi
     obj="$BUILD_DIR/lua_${base}.o"
     # Compile .c as C++ (compileas "C++" in premake) so symbols have C++ linkage
-    clang++ -x c++ -std=c++17 -O2 -fPIC \
+    $CXX -x c++ -std=c++17 -O2 -fPIC \
         -I"$LUA_SRC_DIR" \
         -I"$LUA_DIR" \
         -include "$LUA_DIR/luaconf-customize.h" \
@@ -100,7 +113,7 @@ ALL_SOURCES="$SOURCES $RNG_SOURCES"
 echo "Building libocgcore.$SHARED_EXT ..."
 echo "Sources: $(echo "$SOURCES" | wc -l | tr -d ' ') core + $(echo "$RNG_SOURCES" | wc -l | tr -d ' ') RNG files"
 
-clang++ -std=c++17 -O2 -fPIC \
+$CXX -std=c++17 -O2 -fPIC \
     $SHARED_FLAG \
     -DOCGCORE_EXPORT_FUNCTIONS \
     -I"$CORE_DIR" \
