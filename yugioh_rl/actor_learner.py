@@ -126,6 +126,10 @@ def _actor_learner_worker(
     from yugioh_rl.network import YuGiOhNet
     from yugioh_rl.shared_weights import SharedPolicyWeights
 
+    # batch_size=1 inference — multi-threaded BLAS only adds scheduling overhead.
+    torch.set_num_threads(1)
+    torch.set_num_interop_threads(1)
+
     cfg = TrainingConfig(**config_dict)
     cfg = normalize_legacy_config(cfg)
 
@@ -268,6 +272,8 @@ class ActorLearnerVecEnv:
         }
 
         ctx = mp.get_context("spawn")
+        from yugioh_rl.env_wrapper import limit_worker_blas_threads
+        limit_worker_blas_threads()
         self._remotes = []
         self._workers = []
         for i in range(num_envs):

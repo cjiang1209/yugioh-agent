@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import multiprocessing as mp
+import os
 import random as stdlib_random
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -286,6 +287,17 @@ class TrainingEnv:
 # Vectorized environment using multiprocessing
 # ---------------------------------------------------------------------------
 
+
+def limit_worker_blas_threads() -> None:
+    """Cap BLAS thread pools in subsequently-spawned worker processes.
+
+    Safe to call in the parent — its own BLAS is already initialised and
+    ignores later env-var changes.
+    """
+    os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+    os.environ.setdefault("MKL_NUM_THREADS", "1")
+
+
 def _worker(remote: mp.connection.Connection, env_kwargs: dict) -> None:
     """Worker process: runs a TrainingEnv and responds to commands."""
     env = TrainingEnv(**env_kwargs)
@@ -332,6 +344,7 @@ class SubprocVecEnv:
         self._closed = False
 
         ctx = mp.get_context("spawn")
+        limit_worker_blas_threads()
         self._remotes: list[mp.connection.Connection] = []
         self._workers: list[mp.Process] = []
 
