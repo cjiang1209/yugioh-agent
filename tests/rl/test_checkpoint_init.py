@@ -53,7 +53,7 @@ def test_init_checkpoint_loads_weights(tmp_path):
     ckpt_path = str(tmp_path / "ckpt.pt")
 
     # Create checkpoint and grab a known weight tensor
-    config = TrainingConfig(save_dir=str(tmp_path / "run0"), num_envs=1)
+    config = TrainingConfig(save_dir=str(tmp_path / "run0"), num_envs=1, device="cpu")
     net = _make_checkpoint(ckpt_path, config)
     ref_param = next(iter(net.parameters())).detach().clone()
 
@@ -62,6 +62,7 @@ def test_init_checkpoint_loads_weights(tmp_path):
         save_dir=str(tmp_path / "run1"),
         num_envs=1,
         init_checkpoint=ckpt_path,
+        device="cpu",
     )
     trainer = PPOTrainer(init_config)
     loaded_param = next(iter(trainer.network.parameters())).detach()
@@ -119,6 +120,7 @@ def test_init_checkpoint_loads_recurrent_weights(tmp_path, rnn_type):
         save_dir=str(tmp_path / "run0"), num_envs=1,
         rnn_type=rnn_type, rnn_hidden_dim=64, rnn_num_layers=1,
         bptt_chunk_len=8, rollout_steps=8, minibatch_size=8,
+        device="cpu",
     )
     net = _make_checkpoint(ckpt_path, config, run_backward=True)
     ref_param = net.state_dict()["rnn.weight_ih_l0"].detach().clone()

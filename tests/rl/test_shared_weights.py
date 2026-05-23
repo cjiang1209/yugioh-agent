@@ -78,7 +78,7 @@ def test_nan_publish_rejected() -> None:
     assert shared.version == 0  # version did not advance
 
 
-def _child_refresh(handles, send_pipe):
+def _child_refresh(handles, pipe):
     # Runs in a spawned process. Reconstructs SharedPolicyWeights from
     # handles, refreshes a fresh model, and sends the result via pipe.
     import torch.nn as nn
@@ -92,8 +92,13 @@ def _child_refresh(handles, send_pipe):
     shared = SharedPolicyWeights.from_handles(handles)
     model = _Tiny()
     version = shared.refresh_into(model)
-    send_pipe.send((version, model.fc.weight.detach().clone()))
-    send_pipe.close()
+    pipe.send((version, model.fc.weight.detach().clone()))
+    # Wait for parent ack before exiting: torch tensors travel via a
+    # resource-sharer UNIX socket served by this process, which is torn
+    # down when the process exits. Exiting before the parent rebuilds the
+    # storage fd produces a FileNotFoundError in rebuild_storage_fd.
+    pipe.recv()
+    pipe.close()
 
 
 def test_cross_process_refresh() -> None:
@@ -108,10 +113,12 @@ def test_cross_process_refresh() -> None:
     parent_pipe, child_pipe = ctx.Pipe()
     proc = ctx.Process(target=_child_refresh, args=(shared.share_handles(), child_pipe))
     proc.start()
-    child_pipe.close()  # parent doesn't write
+    child_pipe.close()  # parent uses parent_pipe only
+
+    version, child_weight = parent_pipe.recv()
+    parent_pipe.send("ack")  # release the child so it can exit
     proc.join(timeout=30)
     assert proc.exitcode == 0, "child process exited non-zero"
 
-    version, child_weight = parent_pipe.recv()
     assert version == 1
     assert torch.equal(child_weight, expected_weight)

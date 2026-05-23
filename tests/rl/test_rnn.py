@@ -369,6 +369,7 @@ def _make_tbptt_trainer(*, rollout_steps: int, num_envs: int, **overrides):
         "num_envs": num_envs,
         "minibatch_size": rollout_steps,
         "num_epochs": 1,
+        "device": "cpu",
     }
     config = TrainingConfig(**{**defaults, **overrides})
     trainer = PPOTrainer(config)

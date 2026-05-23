@@ -357,7 +357,7 @@ def _run_eval_pool(
         worker = workers[w_idx]
         try:
             worker.conn.send((_CMD_TASK, task))
-        except (BrokenPipeError, EOFError):
+        except (BrokenPipeError, EOFError, ConnectionResetError):
             worker.proc.join(timeout=0.5)
             raise WorkerDiedError(
                 f"eval worker pid={worker.proc.pid} died "
@@ -400,7 +400,7 @@ def _run_eval_pool(
                 proc = workers[w_idx].proc
                 try:
                     cmd, payload = conn.recv()
-                except EOFError:
+                except (EOFError, ConnectionResetError):
                     raise WorkerDiedError(
                         f"eval worker pid={proc.pid} died "
                         f"(exitcode={proc.exitcode}) mid-task"
