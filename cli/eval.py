@@ -37,36 +37,53 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Evaluate one agent against one or more opponents."
     )
     parser.add_argument(
-        "--agent", type=str, required=True,
+        "--agent",
+        type=str,
+        required=True,
         help="Agent spec: 'random', 'greedy', or 'model:path/to/checkpoint.pt'.",
     )
     parser.add_argument(
-        "--opponents", nargs="+", required=True,
+        "--opponents",
+        nargs="+",
+        required=True,
         help="One or more opponent specs (same format as --agent).",
     )
     parser.add_argument(
-        "--deck-paths", nargs="+", required=True,
+        "--deck-paths",
+        nargs="+",
+        required=True,
         help="One or more .ydk deck files; agent and opponent sample from this pool each episode.",
     )
     parser.add_argument(
-        "--episodes", type=int, default=100,
+        "--episodes",
+        type=int,
+        default=100,
         help="Episodes per opponent (default: 100).",
     )
     parser.add_argument(
-        "--seed", type=int, default=42,
+        "--seed",
+        type=int,
+        default=42,
         help="Random seed (default: 42).",
     )
     parser.add_argument(
-        "--agent-player", type=str, default="random",
+        "--agent-player",
+        type=str,
+        default="random",
         choices=["first", "second", "random"],
         help="Agent turn order per episode (default: random).",
     )
     parser.add_argument(
-        "--device", type=str, default="cpu", choices=DEVICE_CHOICES,
+        "--device",
+        type=str,
+        default="cpu",
+        choices=DEVICE_CHOICES,
         help="Device for both agent-side and env-side model opponents (default: cpu).",
     )
     parser.add_argument(
-        "--workers", type=int, default=1,
+        "--workers",
+        type=int,
+        default=1,
         help=(
             "Number of worker processes for parallel evaluation (default: 1, "
             "sequential). Each worker re-instantiates the agent locally; "
@@ -74,11 +91,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "--json", type=str, default="",
+        "--json",
+        type=str,
+        default="",
         help="Optional path to write results as JSON.",
     )
     parser.add_argument(
-        "--verbose", action="store_true",
+        "--verbose",
+        action="store_true",
         help="Enable debug logging.",
     )
     return parser.parse_args(argv)
@@ -108,23 +128,23 @@ def _build_rows(results: list, deck_stems: list[str]) -> list[dict]:
                 "episodes": n,
                 "win_rate": wins / n if n else 0.0,
             }
-        rows.append({
-            "label": r.opponent_label,
-            "episodes": r.episodes,
-            "wins": r.wins,
-            "win_rate": r.win_rate,
-            "per_deck": decks,
-        })
+        rows.append(
+            {
+                "label": r.opponent_label,
+                "episodes": r.episodes,
+                "wins": r.wins,
+                "win_rate": r.win_rate,
+                "per_deck": decks,
+            }
+        )
     return rows
 
 
 def _print_table(rows: list[dict]) -> None:
     for row in rows:
-        print(f"vs {row['label']}: {row['wins']}/{row['episodes']} "
-              f"({row['win_rate'] * 100:.1f}%)")
+        print(f"vs {row['label']}: {row['wins']}/{row['episodes']} ({row['win_rate'] * 100:.1f}%)")
         for deck_name, d in row["per_deck"].items():
-            print(f"  deck {deck_name}: {d['wins']}/{d['episodes']} "
-                  f"({d['win_rate'] * 100:.1f}%)")
+            print(f"  deck {deck_name}: {d['wins']}/{d['episodes']} ({d['win_rate'] * 100:.1f}%)")
 
 
 def main(argv: list[str] | None = None) -> int:

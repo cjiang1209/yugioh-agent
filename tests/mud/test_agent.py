@@ -10,16 +10,15 @@ from yugioh_mud.agent import (
     DECLINE,
     END_PHASE,
     FINISH,
-    PassiveAgent,
     RandomAgent,
 )
 from yugioh_mud.cmd_handler import StructuredAction
 from yugioh_mud.text_parser import ParsedPrompt, PromptType
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _prompt(
     ptype: PromptType,
@@ -40,15 +39,14 @@ def _prompt(
     )
     # For IDLE_CMD/BATTLE_MENU, agents use structured_actions
     if ptype in (PromptType.IDLE_CMD, PromptType.BATTLE_MENU):
-        p.structured_actions = [
-            StructuredAction(category=i) for i in range(n_options)
-        ]
+        p.structured_actions = [StructuredAction(category=i) for i in range(n_options)]
     return p
 
 
 # ---------------------------------------------------------------------------
 # RandomAgent: valid actions per prompt type
 # ---------------------------------------------------------------------------
+
 
 class TestRandomAgentValidActions:
     """RandomAgent returns valid actions for every prompt type."""
@@ -123,18 +121,21 @@ class TestRandomAgentValidActions:
             a = agent.choose(p)
             assert 0 <= a < 3
 
-    @pytest.mark.parametrize("ptype", [
-        PromptType.SELECT_CARD,
-        PromptType.SELECT_TRIBUTE,
-        PromptType.SELECT_POSITION,
-        PromptType.SELECT_PLACE,
-        PromptType.SELECT_OPTION,
-        PromptType.SELECT_SUM,
-        PromptType.SELECT_COUNTER,
-        PromptType.ANNOUNCE_RACE,
-        PromptType.ANNOUNCE_ATTRIB,
-        PromptType.ANNOUNCE_NUMBER,
-    ])
+    @pytest.mark.parametrize(
+        "ptype",
+        [
+            PromptType.SELECT_CARD,
+            PromptType.SELECT_TRIBUTE,
+            PromptType.SELECT_POSITION,
+            PromptType.SELECT_PLACE,
+            PromptType.SELECT_OPTION,
+            PromptType.SELECT_SUM,
+            PromptType.SELECT_COUNTER,
+            PromptType.ANNOUNCE_RACE,
+            PromptType.ANNOUNCE_ATTRIB,
+            PromptType.ANNOUNCE_NUMBER,
+        ],
+    )
     def test_standard_selections(self, ptype):
         agent = RandomAgent(seed=10)
         p = _prompt(ptype, n_options=5)
@@ -162,8 +163,8 @@ class TestRandomAgentValidActions:
 # Seed reproducibility
 # ---------------------------------------------------------------------------
 
-class TestRandomAgentReproducibility:
 
+class TestRandomAgentReproducibility:
     def test_same_seed_same_sequence(self):
         """Two agents with the same seed produce identical action sequences."""
         p = _prompt(PromptType.IDLE_CMD, n_options=5)
@@ -194,8 +195,8 @@ class TestRandomAgentReproducibility:
 # All prompt types handled
 # ---------------------------------------------------------------------------
 
-class TestRandomAgentCompleteness:
 
+class TestRandomAgentCompleteness:
     def test_all_prompt_types_handled(self):
         """RandomAgent does not raise for any PromptType."""
         agent = RandomAgent(seed=99)
@@ -210,8 +211,8 @@ class TestRandomAgentCompleteness:
 # Edge cases
 # ---------------------------------------------------------------------------
 
-class TestRandomAgentEdgeCases:
 
+class TestRandomAgentEdgeCases:
     def test_zero_options_select_card(self):
         """Empty options list defaults to 0."""
         agent = RandomAgent(seed=0)

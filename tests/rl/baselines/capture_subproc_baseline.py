@@ -22,6 +22,7 @@ obs at every index.  The window must cross ≥3 ``done=True`` events so the
 comparison exercises the substitution path; the script asserts this
 before writing.
 """
+
 from __future__ import annotations
 
 import sys
@@ -34,6 +35,7 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
 from tests.rl.conftest import hash_obs_field
+
 from yugioh_rl.env_wrapper import SubprocVecEnv, parse_deck_pool
 
 # ----- fixture configuration (pin all knobs so the baseline is reproducible) -----
@@ -63,7 +65,7 @@ def main() -> None:
         opponent=OPPONENT,
         reward_shaping=REWARD_SHAPING,
         seed=SEED,
-        agent_player="first",   # deterministic — no coin-flip variance
+        agent_player="first",  # deterministic — no coin-flip variance
     )
 
     try:
@@ -91,9 +93,7 @@ def main() -> None:
             rewards_log.append(rewards.copy())
             dones_log.append(dones.copy())
             for k in obs:
-                obs_hashes_log[k].append([
-                    hash_obs_field(next_obs[k][i]) for i in range(NUM_ENVS)
-                ])
+                obs_hashes_log[k].append([hash_obs_field(next_obs[k][i]) for i in range(NUM_ENVS)])
 
             done_events += int(dones.sum())
             obs = next_obs
@@ -108,12 +108,11 @@ def main() -> None:
             )
             sys.exit(2)
 
-        actions_arr = np.stack(actions_log)             # (T, N)
-        rewards_arr = np.stack(rewards_log)             # (T, N)
-        dones_arr = np.stack(dones_log)                 # (T, N)
+        actions_arr = np.stack(actions_log)  # (T, N)
+        rewards_arr = np.stack(rewards_log)  # (T, N)
+        dones_arr = np.stack(dones_log)  # (T, N)
         obs_hashes_arrs = {
-            f"obs_hashes_{k}": np.array(obs_hashes_log[k], dtype="U40")
-            for k in obs_hashes_log
+            f"obs_hashes_{k}": np.array(obs_hashes_log[k], dtype="U40") for k in obs_hashes_log
         }
 
         OUTPUT.parent.mkdir(parents=True, exist_ok=True)
@@ -127,8 +126,7 @@ def main() -> None:
             **obs_hashes_arrs,
         )
         print(
-            f"captured {step} steps, {done_events} done events across "
-            f"{NUM_ENVS} envs → {OUTPUT}",
+            f"captured {step} steps, {done_events} done events across {NUM_ENVS} envs → {OUTPUT}",
         )
     finally:
         vec_env.close()

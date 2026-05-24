@@ -12,7 +12,6 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-
 from cli.utils import (
     DEVICE_CHOICES,
     fatal,
@@ -20,9 +19,9 @@ from cli.utils import (
     validate_opponent_spec,
     was_provided,
 )
+
 from yugioh_rl.config import VEC_ENV_TYPES, TrainingConfig, normalize_legacy_config
 from yugioh_rl.opponent_pool import SAMPLING_CHOICES
-
 
 # Flags whose values may override the checkpoint's stored config on --resume.
 # Map CLI flag → TrainingConfig field name.
@@ -41,9 +40,14 @@ _RESUME_OVERRIDE_ALLOWLIST: dict[str, str] = {
 # Flags that are legal alongside --resume but do not correspond to a
 # TrainingConfig override. --base-dir is tolerated with a warning in
 # validate_cli_args; the others are session-scoped meta controls.
-_RESUME_META_FLAGS: frozenset[str] = frozenset({
-    "--resume", "--init-checkpoint", "--init-optimizer", "--base-dir",
-})
+_RESUME_META_FLAGS: frozenset[str] = frozenset(
+    {
+        "--resume",
+        "--init-checkpoint",
+        "--init-optimizer",
+        "--base-dir",
+    }
+)
 
 # TrainingConfig fields that are session-scoped; drop from ckpt_config on merge.
 _META_FIELDS: frozenset[str] = frozenset(
@@ -98,128 +102,272 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train a Yu-Gi-Oh! RL agent with PPO")
 
     env = parser.add_argument_group("environment")
-    env.add_argument("--num-envs", type=int, default=8,
-                     help="Number of parallel environments (default: 8)")
-    env.add_argument("--deck-paths", nargs="+", default=["assets/decks/blue_eyes.ydk"],
-                     help="One or more .ydk deck files; agent and opponent sample from this pool "
-                          "each episode (default: assets/decks/blue_eyes.ydk)")
-    env.add_argument("--opponent", type=str, default="greedy",
-                     help="Opponent spec: 'random', 'greedy', or 'model:path/to/checkpoint.pt' "
-                          "(default: greedy)")
-    env.add_argument("--self-play", action="store_true",
-                     help="Enable snapshot-pool self-play. The agent periodically "
-                          "plays against past versions of itself.")
-    env.add_argument("--self-play-pool-size", type=int, default=10,
-                     help="Max self-play pool size (FIFO ring buffer). Default 10.")
-    env.add_argument("--self-play-temperature", type=float, default=1.0,
-                     help="Sampling temperature for past snapshots. "
-                          "1.0 = use the policy distribution; lower = sharper; "
-                          "higher = more exploratory.")
-    env.add_argument("--self-play-sampling", type=str, default="uniform",
-                     choices=SAMPLING_CHOICES,
-                     help="How the trainer picks opponents from the self-play pool. "
-                          "'uniform' (default) gives each occupied slot equal "
-                          "probability. 'pfsp' = Prioritized Fictitious Self-Play: "
-                          "weight each slot by (1 - P(agent beats it))^2 to "
-                          "concentrate training on hard-but-beatable opponents, "
-                          "with a 20%% uniform-exploration mix so weak snapshots "
-                          "are not starved.")
-    env.add_argument("--no-reward-shaping", action="store_true",
-                     help="Disable LP/card-advantage reward shaping (use sparse win/loss only)")
-    env.add_argument("--shaping-lp-weight", type=float, default=0.01,
-                     help="Weight for LP-delta shaping term (default: 0.01)")
-    env.add_argument("--shaping-card-weight", type=float, default=0.005,
-                     help="Weight for card-advantage shaping term (default: 0.005)")
-    env.add_argument("--agent-player", type=str, default="random",
-                     choices=["first", "second", "random"],
-                     help="Agent turn order: 'first' (player 0), 'second' (player 1), "
-                          "or 'random' (coin flip per episode, default: random)")
+    env.add_argument(
+        "--num-envs", type=int, default=8, help="Number of parallel environments (default: 8)"
+    )
+    env.add_argument(
+        "--deck-paths",
+        nargs="+",
+        default=["assets/decks/blue_eyes.ydk"],
+        help="One or more .ydk deck files; agent and opponent sample from this pool "
+        "each episode (default: assets/decks/blue_eyes.ydk)",
+    )
+    env.add_argument(
+        "--opponent",
+        type=str,
+        default="greedy",
+        help="Opponent spec: 'random', 'greedy', or 'model:path/to/checkpoint.pt' "
+        "(default: greedy)",
+    )
+    env.add_argument(
+        "--self-play",
+        action="store_true",
+        help="Enable snapshot-pool self-play. The agent periodically "
+        "plays against past versions of itself.",
+    )
+    env.add_argument(
+        "--self-play-pool-size",
+        type=int,
+        default=10,
+        help="Max self-play pool size (FIFO ring buffer). Default 10.",
+    )
+    env.add_argument(
+        "--self-play-temperature",
+        type=float,
+        default=1.0,
+        help="Sampling temperature for past snapshots. "
+        "1.0 = use the policy distribution; lower = sharper; "
+        "higher = more exploratory.",
+    )
+    env.add_argument(
+        "--self-play-sampling",
+        type=str,
+        default="uniform",
+        choices=SAMPLING_CHOICES,
+        help="How the trainer picks opponents from the self-play pool. "
+        "'uniform' (default) gives each occupied slot equal "
+        "probability. 'pfsp' = Prioritized Fictitious Self-Play: "
+        "weight each slot by (1 - P(agent beats it))^2 to "
+        "concentrate training on hard-but-beatable opponents, "
+        "with a 20%% uniform-exploration mix so weak snapshots "
+        "are not starved.",
+    )
+    env.add_argument(
+        "--no-reward-shaping",
+        action="store_true",
+        help="Disable LP/card-advantage reward shaping (use sparse win/loss only)",
+    )
+    env.add_argument(
+        "--shaping-lp-weight",
+        type=float,
+        default=0.01,
+        help="Weight for LP-delta shaping term (default: 0.01)",
+    )
+    env.add_argument(
+        "--shaping-card-weight",
+        type=float,
+        default=0.005,
+        help="Weight for card-advantage shaping term (default: 0.005)",
+    )
+    env.add_argument(
+        "--agent-player",
+        type=str,
+        default="random",
+        choices=["first", "second", "random"],
+        help="Agent turn order: 'first' (player 0), 'second' (player 1), "
+        "or 'random' (coin flip per episode, default: random)",
+    )
 
     ppo = parser.add_argument_group("PPO algorithm")
-    ppo.add_argument("--total-timesteps", type=int, default=1_000_000,
-                     help="Total env steps across all envs (default: 1000000)")
-    ppo.add_argument("--rollout-steps", type=int, default=256,
-                     help="Steps per env per rollout collection (default: 256)")
-    ppo.add_argument("--num-epochs", type=int, default=4,
-                     help="PPO optimization epochs per rollout (default: 4)")
-    ppo.add_argument("--minibatch-size", type=int, default=256,
-                     help="Minibatch size for PPO updates (default: 256)")
-    ppo.add_argument("--learning-rate", type=float, default=3e-4,
-                     help="Adam learning rate (default: 3e-4)")
-    ppo.add_argument("--gamma", type=float, default=0.99,
-                     help="Discount factor (default: 0.99)")
-    ppo.add_argument("--gae-lambda", type=float, default=0.95,
-                     help="GAE lambda for advantage estimation (default: 0.95)")
-    ppo.add_argument("--clip-range", type=float, default=0.2,
-                     help="PPO clipping epsilon (default: 0.2)")
-    ppo.add_argument("--value-loss-coef", type=float, default=0.5,
-                     help="Value loss coefficient (default: 0.5)")
-    ppo.add_argument("--entropy-coef", type=float, default=0.01,
-                     help="Entropy bonus coefficient (default: 0.01)")
-    ppo.add_argument("--max-grad-norm", type=float, default=0.5,
-                     help="Max gradient norm for clipping (default: 0.5)")
+    ppo.add_argument(
+        "--total-timesteps",
+        type=int,
+        default=1_000_000,
+        help="Total env steps across all envs (default: 1000000)",
+    )
+    ppo.add_argument(
+        "--rollout-steps",
+        type=int,
+        default=256,
+        help="Steps per env per rollout collection (default: 256)",
+    )
+    ppo.add_argument(
+        "--num-epochs", type=int, default=4, help="PPO optimization epochs per rollout (default: 4)"
+    )
+    ppo.add_argument(
+        "--minibatch-size",
+        type=int,
+        default=256,
+        help="Minibatch size for PPO updates (default: 256)",
+    )
+    ppo.add_argument(
+        "--learning-rate", type=float, default=3e-4, help="Adam learning rate (default: 3e-4)"
+    )
+    ppo.add_argument("--gamma", type=float, default=0.99, help="Discount factor (default: 0.99)")
+    ppo.add_argument(
+        "--gae-lambda",
+        type=float,
+        default=0.95,
+        help="GAE lambda for advantage estimation (default: 0.95)",
+    )
+    ppo.add_argument(
+        "--clip-range", type=float, default=0.2, help="PPO clipping epsilon (default: 0.2)"
+    )
+    ppo.add_argument(
+        "--value-loss-coef", type=float, default=0.5, help="Value loss coefficient (default: 0.5)"
+    )
+    ppo.add_argument(
+        "--entropy-coef", type=float, default=0.01, help="Entropy bonus coefficient (default: 0.01)"
+    )
+    ppo.add_argument(
+        "--max-grad-norm",
+        type=float,
+        default=0.5,
+        help="Max gradient norm for clipping (default: 0.5)",
+    )
 
     net = parser.add_argument_group("network architecture")
-    net.add_argument("--card-embed-dim", type=int, default=64,
-                     help="Card encoder output dimension (default: 64)")
-    net.add_argument("--global-embed-dim", type=int, default=64,
-                     help="Global state encoder dimension (default: 64)")
-    net.add_argument("--board-hidden-dim", type=int, default=256,
-                     help="Board representation hidden dimension (default: 256)")
-    net.add_argument("--action-embed-dim", type=int, default=64,
-                     help="Action encoder output dimension (default: 64)")
-    net.add_argument("--card-embeddings", type=str, default="",
-                     help="Path to pre-computed card text embeddings .pt file (enables text-aware mode)")
-    net.add_argument("--text-embed-dim", type=int, default=64,
-                     help="Projected text embedding dimension (default: 64)")
-    net.add_argument("--learned-embed-dim", type=int, default=8,
-                     help="Collision-free learned embedding dimension in text mode (default: 8)")
-    net.add_argument("--rnn-type", type=str, default="none",
-                     choices=["none", "lstm", "gru"],
-                     help="Recurrent layer between board MLP and the policy/value heads "
-                          "(default: none = feed-forward)")
-    net.add_argument("--rnn-hidden-dim", type=int, default=256,
-                     help="Hidden size of the recurrent layer (default: 256)")
-    net.add_argument("--rnn-num-layers", type=int, default=1,
-                     help="Number of stacked recurrent layers (default: 1)")
-    net.add_argument("--bptt-chunk-len", type=int, default=16,
-                     help="Truncated-BPTT chunk length; must divide rollout_steps when an RNN "
-                          "is enabled (default: 16). Ignored when --rnn-type=none.")
+    net.add_argument(
+        "--card-embed-dim", type=int, default=64, help="Card encoder output dimension (default: 64)"
+    )
+    net.add_argument(
+        "--global-embed-dim",
+        type=int,
+        default=64,
+        help="Global state encoder dimension (default: 64)",
+    )
+    net.add_argument(
+        "--board-hidden-dim",
+        type=int,
+        default=256,
+        help="Board representation hidden dimension (default: 256)",
+    )
+    net.add_argument(
+        "--action-embed-dim",
+        type=int,
+        default=64,
+        help="Action encoder output dimension (default: 64)",
+    )
+    net.add_argument(
+        "--card-embeddings",
+        type=str,
+        default="",
+        help="Path to pre-computed card text embeddings .pt file (enables text-aware mode)",
+    )
+    net.add_argument(
+        "--text-embed-dim",
+        type=int,
+        default=64,
+        help="Projected text embedding dimension (default: 64)",
+    )
+    net.add_argument(
+        "--learned-embed-dim",
+        type=int,
+        default=8,
+        help="Collision-free learned embedding dimension in text mode (default: 8)",
+    )
+    net.add_argument(
+        "--rnn-type",
+        type=str,
+        default="none",
+        choices=["none", "lstm", "gru"],
+        help="Recurrent layer between board MLP and the policy/value heads "
+        "(default: none = feed-forward)",
+    )
+    net.add_argument(
+        "--rnn-hidden-dim",
+        type=int,
+        default=256,
+        help="Hidden size of the recurrent layer (default: 256)",
+    )
+    net.add_argument(
+        "--rnn-num-layers",
+        type=int,
+        default=1,
+        help="Number of stacked recurrent layers (default: 1)",
+    )
+    net.add_argument(
+        "--bptt-chunk-len",
+        type=int,
+        default=16,
+        help="Truncated-BPTT chunk length; must divide rollout_steps when an RNN "
+        "is enabled (default: 16). Ignored when --rnn-type=none.",
+    )
 
     infra = parser.add_argument_group("infrastructure")
-    infra.add_argument("--resume", type=str, default="",
-                       help="Path to .pt checkpoint to resume training from (continues in same run directory)")
-    infra.add_argument("--init-checkpoint", type=str, default="",
-                       help="Path to .pt checkpoint to initialize model weights from (starts a new run)")
-    infra.add_argument("--init-optimizer", action="store_true",
-                       help="When using --init-checkpoint, also load the optimizer state from it (not just the model weights)")
-    infra.add_argument("--seed", type=int, default=42,
-                       help="Random seed for reproducibility (default: 42)")
-    infra.add_argument("--log-interval", type=int, default=10,
-                       help="Log metrics every N updates (default: 10)")
-    infra.add_argument("--eval-interval", type=int, default=50,
-                       help="Evaluate every N updates (default: 50)")
-    infra.add_argument("--eval-opponents", nargs="+", default=["greedy", "random"],
-                       help="Opponent specs for evaluation, e.g. 'greedy', 'random', "
-                            "'model:checkpoints/latest.pt' (default: greedy random)")
-    infra.add_argument("--eval-episodes", type=int, default=100,
-                       help="Episodes per evaluation run (default: 100)")
-    infra.add_argument("--save-interval", type=int, default=100,
-                       help="Save checkpoint every N updates (default: 100)")
-    infra.add_argument("--base-dir", type=str, default="checkpoints",
-                       help="Base directory for runs; each run creates a timestamped "
-                            "subdirectory (default: checkpoints)")
-    infra.add_argument("--device", type=str, default="auto", choices=DEVICE_CHOICES,
-                       help="Compute device: 'auto' picks cuda if available, else mps, else cpu (default: auto).")
-    infra.add_argument("--vec-env-type", type=str, default="subproc",
-                       choices=VEC_ENV_TYPES,
-                       help="Vec-env transport: 'subproc' (synchronous IPC) or "
-                            "'sync_actor_learner' (workers hold a local policy and submit "
-                            "full rollouts; eliminates per-step round-trip).")
-    infra.add_argument("--config", type=str, default="",
-                       help="Path to a JSON file of TrainingConfig field values. "
-                            "Partial files allowed; missing fields use defaults. "
-                            "CLI flags override JSON values. Mutually exclusive with --resume.")
+    infra.add_argument(
+        "--resume",
+        type=str,
+        default="",
+        help="Path to .pt checkpoint to resume training from (continues in same run directory)",
+    )
+    infra.add_argument(
+        "--init-checkpoint",
+        type=str,
+        default="",
+        help="Path to .pt checkpoint to initialize model weights from (starts a new run)",
+    )
+    infra.add_argument(
+        "--init-optimizer",
+        action="store_true",
+        help="When using --init-checkpoint, also load the optimizer state from it (not just the model weights)",
+    )
+    infra.add_argument(
+        "--seed", type=int, default=42, help="Random seed for reproducibility (default: 42)"
+    )
+    infra.add_argument(
+        "--log-interval", type=int, default=10, help="Log metrics every N updates (default: 10)"
+    )
+    infra.add_argument(
+        "--eval-interval", type=int, default=50, help="Evaluate every N updates (default: 50)"
+    )
+    infra.add_argument(
+        "--eval-opponents",
+        nargs="+",
+        default=["greedy", "random"],
+        help="Opponent specs for evaluation, e.g. 'greedy', 'random', "
+        "'model:checkpoints/latest.pt' (default: greedy random)",
+    )
+    infra.add_argument(
+        "--eval-episodes", type=int, default=100, help="Episodes per evaluation run (default: 100)"
+    )
+    infra.add_argument(
+        "--save-interval",
+        type=int,
+        default=100,
+        help="Save checkpoint every N updates (default: 100)",
+    )
+    infra.add_argument(
+        "--base-dir",
+        type=str,
+        default="checkpoints",
+        help="Base directory for runs; each run creates a timestamped "
+        "subdirectory (default: checkpoints)",
+    )
+    infra.add_argument(
+        "--device",
+        type=str,
+        default="auto",
+        choices=DEVICE_CHOICES,
+        help="Compute device: 'auto' picks cuda if available, else mps, else cpu (default: auto).",
+    )
+    infra.add_argument(
+        "--vec-env-type",
+        type=str,
+        default="subproc",
+        choices=VEC_ENV_TYPES,
+        help="Vec-env transport: 'subproc' (synchronous IPC) or "
+        "'sync_actor_learner' (workers hold a local policy and submit "
+        "full rollouts; eliminates per-step round-trip).",
+    )
+    infra.add_argument(
+        "--config",
+        type=str,
+        default="",
+        help="Path to a JSON file of TrainingConfig field values. "
+        "Partial files allowed; missing fields use defaults. "
+        "CLI flags override JSON values. Mutually exclusive with --resume.",
+    )
 
     return parser.parse_args()
 
@@ -238,8 +386,10 @@ def validate_cli_args(args: argparse.Namespace) -> None:
     # --resume is mutually exclusive with --init-checkpoint and --init-optimizer
     if args.resume:
         if args.config:
-            fatal("--config and --resume are mutually exclusive "
-                  "(--resume loads its config from the checkpoint)")
+            fatal(
+                "--config and --resume are mutually exclusive "
+                "(--resume loads its config from the checkpoint)"
+            )
         if args.init_checkpoint:
             fatal("--resume and --init-checkpoint are mutually exclusive")
         if args.init_optimizer:
@@ -259,16 +409,12 @@ def validate_cli_args(args: argparse.Namespace) -> None:
     # --no-reward-shaping voids shaping weight arguments
     if args.no_reward_shaping:
         if was_provided("--shaping-lp-weight"):
-            logger.warning(
-                "--shaping-lp-weight has no effect with --no-reward-shaping"
-            )
+            logger.warning("--shaping-lp-weight has no effect with --no-reward-shaping")
         if was_provided("--shaping-card-weight"):
-            logger.warning(
-                "--shaping-card-weight has no effect with --no-reward-shaping"
-            )
+            logger.warning("--shaping-card-weight has no effect with --no-reward-shaping")
 
 
-def validate_effective_config(config: "TrainingConfig") -> None:  # noqa: F821
+def validate_effective_config(config: TrainingConfig) -> None:  # noqa: F821
     """Validate per-field values on the final merged TrainingConfig."""
     validate_deck_paths(config.deck_paths)
     validate_opponent_spec(config.opponent, "--opponent")
@@ -378,9 +524,7 @@ def _build_resume_config(args: argparse.Namespace, save_dir: str) -> TrainingCon
 
     # Reject non-allowlist CLI overrides before any expensive I/O so the
     # user sees a clear "this flag isn't overridable" error first.
-    disallowed = sorted(
-        provided - set(_RESUME_OVERRIDE_ALLOWLIST) - _RESUME_META_FLAGS
-    )
+    disallowed = sorted(provided - set(_RESUME_OVERRIDE_ALLOWLIST) - _RESUME_META_FLAGS)
     if disallowed:
         allowlist_str = ", ".join(sorted(_RESUME_OVERRIDE_ALLOWLIST.keys()))
         fatal(
@@ -396,10 +540,7 @@ def _build_resume_config(args: argparse.Namespace, save_dir: str) -> TrainingCon
     if ckpt_config is None:
         fatal(f"resume checkpoint has no stored config: {args.resume}")
     if not isinstance(ckpt_config, TrainingConfig):
-        fatal(
-            f"resume checkpoint config is not a TrainingConfig: "
-            f"{type(ckpt_config).__name__}"
-        )
+        fatal(f"resume checkpoint config is not a TrainingConfig: {type(ckpt_config).__name__}")
 
     # Back-fill any fields the pickled config is missing (added since the
     # checkpoint was saved). Lets the schema-drift check below silently
@@ -422,8 +563,7 @@ def _build_resume_config(args: argparse.Namespace, save_dir: str) -> TrainingCon
             parts.append(f"unknown: {sorted(extra)}")
         fatal(
             "resume checkpoint config does not match current TrainingConfig "
-            "schema (" + "; ".join(parts)
-            + "). Use a matching codebase version."
+            "schema (" + "; ".join(parts) + "). Use a matching codebase version."
         )
 
     # Start from the checkpoint's stored values; drop session-scoped fields
@@ -494,6 +634,7 @@ def main() -> None:
     validate_effective_config(config)
 
     import torch
+
     from yugioh_rl.ppo import PPOTrainer
 
     # Create run directory and write a timestamped config snapshot; update
@@ -504,8 +645,11 @@ def main() -> None:
     logger.info("Run directory: %s", run_dir)
     logger.info("Config snapshot: %s", snapshot_path.name)
     if len(config.deck_paths) > 1:
-        logger.info("Multi-deck training: %d decks — %s", len(config.deck_paths),
-                     ", ".join(config.deck_paths))
+        logger.info(
+            "Multi-deck training: %d decks — %s",
+            len(config.deck_paths),
+            ", ".join(config.deck_paths),
+        )
 
     # Set random seeds
     random.seed(config.seed)

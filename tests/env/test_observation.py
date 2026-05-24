@@ -10,6 +10,7 @@ def test_action_meta_length_matches_actions(lib, db_path, script_dirs):
     """action_meta length must equal action_mask length (32 for active obs).
     This is the §6 length-parity invariant from the spec."""
     from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+
     env = YuGiOhEnvironment({})
     obs = env.reset(seed=42)
     assert len(obs.action_meta) == len(obs.actions) == len(obs.action_mask)
@@ -24,8 +25,10 @@ def test_terminal_observation_lists_empty(lib, db_path, script_dirs):
     This is an intentional drift from the previous action_mask=[0]*32 behavior
     (§3 of spec) — kept consistent so the three lists never differ in length."""
     import random
-    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+
     from yugioh_env.models import YuGiOhAction
+    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+
     env = YuGiOhEnvironment({})
     obs = env.reset(seed=42)
     rng = random.Random(0)
@@ -42,25 +45,29 @@ def test_terminal_observation_lists_empty(lib, db_path, script_dirs):
 
 # ─── Board controller relativization invariants (Tests B1, B2) ────────────────
 
+
 def _build_obs_with_card_on_engine_player_1(agent_player: int):
     """Synthesize an observation with one face-up monster on engine player 1's
     field, using a fake query_fn. Returns the cards array."""
-    from yugioh_env.observation import build_observation
     from yugioh_env.game_state import GameState
+    from yugioh_env.observation import build_observation
 
     gs = GameState()  # default LP/zones/phase
 
     def fake_query(player: int, loc: int):
         # One face-up Atk monster on engine player 1's MZONE; nothing elsewhere.
         if player == 1 and loc == 0x04:  # LOCATION_MZONE
-            return [{
-                "code": 46986414, "position": 0x01,  # POS_FACEUP_ATTACK
-                "is_public": 1, "is_hidden": 0,
-            }]
+            return [
+                {
+                    "code": 46986414,
+                    "position": 0x01,  # POS_FACEUP_ATTACK
+                    "is_public": 1,
+                    "is_hidden": 0,
+                }
+            ]
         return []
 
-    obs = build_observation(gs, current_msg=None, agent_player=agent_player,
-                            query_fn=fake_query)
+    obs = build_observation(gs, current_msg=None, agent_player=agent_player, query_fn=fake_query)
     return obs["cards"]
 
 
@@ -68,6 +75,7 @@ def test_board_controller_relativizes_when_agent_player_is_0():
     """B1: with agent_player=0, a card on engine player 1's MZONE shows
     controller=1 (opponent) in the board encoding."""
     from yugioh_core.encoding import decode_u32
+
     cards = _build_obs_with_card_on_engine_player_1(agent_player=0)
     found = None
     for i in range(cards.shape[0]):
@@ -84,6 +92,7 @@ def test_board_controller_relativizes_when_agent_player_is_1():
     """B2: with agent_player=1, the same engine-player-1 card now shows
     controller=0 (agent's own) in the board encoding."""
     from yugioh_core.encoding import decode_u32
+
     cards = _build_obs_with_card_on_engine_player_1(agent_player=1)
     found = None
     for i in range(cards.shape[0]):
@@ -109,9 +118,10 @@ def test_board_and_action_controller_agree_on_real_episode(lib, db_path, script_
     card-less prompts (TO_BP, TO_EP, etc.) would silently no-op.
     """
     import random
-    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
-    from yugioh_env.models import YuGiOhAction
+
     from yugioh_core.encoding import decode_u32
+    from yugioh_env.models import YuGiOhAction
+    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
 
     env = YuGiOhEnvironment({})
     obs = env.reset(seed=1234)
@@ -175,8 +185,9 @@ def test_prompt_meta_populated_on_select_msg(lib, db_path, script_dirs):
     """Reset and step into a SELECT_CARD prompt; assert obs.prompt_meta has
     the expected keys."""
     import random
-    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+
     from yugioh_env.models import YuGiOhAction
+    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
 
     env = YuGiOhEnvironment({})
     obs = env.reset(seed=1234)
@@ -193,8 +204,7 @@ def test_prompt_meta_populated_on_select_msg(lib, db_path, script_dirs):
             # `msg_type` is a documented wire-contract field that openenv
             # HTTP clients receive via Pydantic model_dump().
             assert "msg_type" in obs.prompt_meta, (
-                f"prompt_meta missing required 'msg_type' wire field: "
-                f"{obs.prompt_meta!r}"
+                f"prompt_meta missing required 'msg_type' wire field: {obs.prompt_meta!r}"
             )
             assert isinstance(obs.prompt_meta["msg_type"], int)
             return  # found a populated prompt_meta — test passes
@@ -212,8 +222,9 @@ def test_prompt_meta_populated_on_select_msg(lib, db_path, script_dirs):
 def test_prompt_meta_none_on_terminal(lib, db_path, script_dirs):
     """After the duel ends, obs.prompt_meta is None."""
     import random
-    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+
     from yugioh_env.models import YuGiOhAction
+    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
 
     env = YuGiOhEnvironment({})
     obs = env.reset(seed=1234)

@@ -21,37 +21,36 @@ from yugioh_core.constants import (
     QUERY_RACE,
 )
 
-
 # Flag → key tables for `parse_query_location`. Three families by
 # value width (u32, i32, u8); QUERY_RACE / QUERY_LINK / QUERY_OVERLAY_CARD
 # / QUERY_COUNTERS have non-table-driven shapes and are dispatched inline.
 
 _FLAG_TO_KEY_U32 = {
-    0x1: "code",            # QUERY_CODE
-    0x2: "position",        # QUERY_POSITION
-    0x4: "alias",           # QUERY_ALIAS
-    0x8: "type",            # QUERY_TYPE
-    0x10: "level",          # QUERY_LEVEL
-    0x20: "rank",           # QUERY_RANK
-    0x40: "attribute",      # QUERY_ATTRIBUTE
-    0x1000: "reason",       # QUERY_REASON
-    0x80000: "status",      # QUERY_STATUS
-    0x200000: "lscale",     # QUERY_LSCALE
-    0x400000: "rscale",     # QUERY_RSCALE
-    0x2000000: "cover",     # QUERY_COVER
+    0x1: "code",  # QUERY_CODE
+    0x2: "position",  # QUERY_POSITION
+    0x4: "alias",  # QUERY_ALIAS
+    0x8: "type",  # QUERY_TYPE
+    0x10: "level",  # QUERY_LEVEL
+    0x20: "rank",  # QUERY_RANK
+    0x40: "attribute",  # QUERY_ATTRIBUTE
+    0x1000: "reason",  # QUERY_REASON
+    0x80000: "status",  # QUERY_STATUS
+    0x200000: "lscale",  # QUERY_LSCALE
+    0x400000: "rscale",  # QUERY_RSCALE
+    0x2000000: "cover",  # QUERY_COVER
 }
 
 _FLAG_TO_KEY_I32 = {
-    0x100: "attack",        # QUERY_ATTACK (int32, can be negative)
-    0x200: "defense",       # QUERY_DEFENSE
-    0x400: "base_attack",   # QUERY_BASE_ATTACK
+    0x100: "attack",  # QUERY_ATTACK (int32, can be negative)
+    0x200: "defense",  # QUERY_DEFENSE
+    0x400: "base_attack",  # QUERY_BASE_ATTACK
     0x800: "base_defense",  # QUERY_BASE_DEFENSE
 }
 
 _FLAG_TO_KEY_U8 = {
-    0x40000: "owner",       # QUERY_OWNER
+    0x40000: "owner",  # QUERY_OWNER
     0x100000: "is_public",  # QUERY_IS_PUBLIC
-    0x1000000: "is_hidden", # QUERY_IS_HIDDEN
+    0x1000000: "is_hidden",  # QUERY_IS_HIDDEN
 }
 
 
@@ -106,8 +105,7 @@ def parse_query_location(data: bytes) -> list[dict]:
             field_size = struct.unpack_from("<H", data, pos)[0]
             pos += 2
             assert field_size >= 4, (
-                f"malformed query buffer: field_size={field_size} < 4 "
-                f"at pos={pos - 2}"
+                f"malformed query buffer: field_size={field_size} < 4 at pos={pos - 2}"
             )
             flag = struct.unpack_from("<I", data, pos)[0]
             pos += 4
@@ -118,38 +116,36 @@ def parse_query_location(data: bytes) -> list[dict]:
 
             value_start = pos
             if flag in _FLAG_TO_KEY_U32:
-                assert data_size == 4, (
-                    f"unexpected data_size={data_size} for u32 flag 0x{flag:x}"
-                )
+                assert data_size == 4, f"unexpected data_size={data_size} for u32 flag 0x{flag:x}"
                 card[_FLAG_TO_KEY_U32[flag]] = struct.unpack_from(
-                    "<I", data, value_start,
+                    "<I",
+                    data,
+                    value_start,
                 )[0]
             elif flag in _FLAG_TO_KEY_I32:
-                assert data_size == 4, (
-                    f"unexpected data_size={data_size} for i32 flag 0x{flag:x}"
-                )
+                assert data_size == 4, f"unexpected data_size={data_size} for i32 flag 0x{flag:x}"
                 card[_FLAG_TO_KEY_I32[flag]] = struct.unpack_from(
-                    "<i", data, value_start,
+                    "<i",
+                    data,
+                    value_start,
                 )[0]
             elif flag in _FLAG_TO_KEY_U8:
-                assert data_size == 1, (
-                    f"unexpected data_size={data_size} for u8 flag 0x{flag:x}"
-                )
+                assert data_size == 1, f"unexpected data_size={data_size} for u8 flag 0x{flag:x}"
                 card[_FLAG_TO_KEY_U8[flag]] = data[value_start]
             elif flag == QUERY_RACE:
-                assert data_size == 8, (
-                    f"unexpected data_size={data_size} for QUERY_RACE"
-                )
+                assert data_size == 8, f"unexpected data_size={data_size} for QUERY_RACE"
                 card["race"] = struct.unpack_from("<Q", data, value_start)[0]
             elif flag == QUERY_LINK:
-                assert data_size == 8, (
-                    f"unexpected data_size={data_size} for QUERY_LINK"
-                )
+                assert data_size == 8, f"unexpected data_size={data_size} for QUERY_LINK"
                 card["link_rating"] = struct.unpack_from(
-                    "<I", data, value_start,
+                    "<I",
+                    data,
+                    value_start,
                 )[0]
                 card["link_marker"] = struct.unpack_from(
-                    "<I", data, value_start + 4,
+                    "<I",
+                    data,
+                    value_start + 4,
                 )[0]
             elif flag == QUERY_OVERLAY_CARD:
                 count = struct.unpack_from("<I", data, value_start)[0]
@@ -158,30 +154,24 @@ def parse_query_location(data: bytes) -> list[dict]:
                     f"got {data_size}, expected {4 + 4 * count}"
                 )
                 card["overlay_cards"] = [
-                    struct.unpack_from("<I", data, value_start + 4 + j * 4)[0]
-                    for j in range(count)
+                    struct.unpack_from("<I", data, value_start + 4 + j * 4)[0] for j in range(count)
                 ]
             elif flag == QUERY_COUNTERS:
                 count = struct.unpack_from("<I", data, value_start)[0]
                 assert data_size == 4 + 4 * count, (
-                    f"QUERY_COUNTERS data_size mismatch: "
-                    f"got {data_size}, expected {4 + 4 * count}"
+                    f"QUERY_COUNTERS data_size mismatch: got {data_size}, expected {4 + 4 * count}"
                 )
                 card["counters"] = [
-                    struct.unpack_from("<I", data, value_start + 4 + j * 4)[0]
-                    for j in range(count)
+                    struct.unpack_from("<I", data, value_start + 4 + j * 4)[0] for j in range(count)
                 ]
             else:
-                raise ValueError(
-                    f"unknown query flag 0x{flag:x} at pos={value_start - 6}"
-                )
+                raise ValueError(f"unknown query flag 0x{flag:x} at pos={value_start - 6}")
             pos += data_size
 
         cards.append(card)
         seq += 1
 
     assert pos == end, (
-        f"query buffer parse drift: pos={pos} but end={end} "
-        f"(total_size={total_size})"
+        f"query buffer parse drift: pos={pos} but end={end} (total_size={total_size})"
     )
     return cards

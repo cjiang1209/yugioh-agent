@@ -40,7 +40,7 @@ from yugioh_rl.env_wrapper import DeckDict, TrainingEnv
 logger = logging.getLogger(__name__)
 
 
-_DEFAULT_EVAL_WORKER_TIMEOUT_S = 1800.0   # 30 min — generous for model: opponents on CPU
+_DEFAULT_EVAL_WORKER_TIMEOUT_S = 1800.0  # 30 min — generous for model: opponents on CPU
 
 # Pipe protocol — module-level constants so call sites can't typo a command.
 _CMD_TASK = "task"
@@ -51,8 +51,9 @@ _REPLY_ERROR = "error"
 
 class _Worker(NamedTuple):
     """Pool driver's per-worker handle: parent-side pipe end + process."""
-    conn: "mp.connection.Connection"
-    proc: "mp.Process"
+
+    conn: mp.connection.Connection
+    proc: mp.Process
 
 
 @dataclass
@@ -136,13 +137,15 @@ def _aggregate_partials(
         per_deck: dict[int, list[float]] = {}
         for p in opp_parts:
             per_deck.setdefault(p.agent_deck_idx, []).append(1.0 if p.win else 0.0)
-        results.append(EvalResult(
-            opponent_label=opponent_label_from_spec(spec),
-            episodes=episodes,
-            wins=wins,
-            win_rate=(wins / episodes) if episodes > 0 else 0.0,
-            per_deck_wins=per_deck,
-        ))
+        results.append(
+            EvalResult(
+                opponent_label=opponent_label_from_spec(spec),
+                episodes=episodes,
+                wins=wins,
+                win_rate=(wins / episodes) if episodes > 0 else 0.0,
+                per_deck_wins=per_deck,
+            )
+        )
     return results
 
 
@@ -232,7 +235,10 @@ def run_match(
         return total_wins, per_deck
     for i in range(num_episodes):
         win, deck_idx = _play_one_episode(
-            agent, env, base_seed=base_seed, episode_idx=i + 1,
+            agent,
+            env,
+            base_seed=base_seed,
+            episode_idx=i + 1,
         )
         if win:
             total_wins += 1
@@ -258,8 +264,8 @@ def _eval_worker(
     protocol and shutdown handshake.
     """
     # Deferred imports keep the spawn-context module load minimal.
-    from yugioh_rl.eval import _play_one_episode, make_eval_agent
     from yugioh_rl.env_wrapper import TrainingEnv as _TrainingEnv
+    from yugioh_rl.eval import _play_one_episode, make_eval_agent
 
     env: _TrainingEnv | None = None
     current_spec: str | None = None
@@ -275,20 +281,29 @@ def _eval_worker(
                 if task.opp_spec != current_spec:
                     if env is not None:
                         env.close()
-                    env = _TrainingEnv(**_make_eval_env_kwargs(
-                        deck_pool, task.opp_spec,
-                        seed=seed, agent_player=agent_player,
-                        opponent_device=opponent_device,
-                    ))
+                    env = _TrainingEnv(
+                        **_make_eval_env_kwargs(
+                            deck_pool,
+                            task.opp_spec,
+                            seed=seed,
+                            agent_player=agent_player,
+                            opponent_device=opponent_device,
+                        )
+                    )
                     current_spec = task.opp_spec
 
                 win, agent_deck_idx = _play_one_episode(
-                    agent, env, base_seed=seed, episode_idx=task.episode_idx,
+                    agent,
+                    env,
+                    base_seed=seed,
+                    episode_idx=task.episode_idx,
                 )
-                remote.send((
-                    _REPLY_PARTIAL,
-                    _PartialResult(task.opp_idx, task.episode_idx, win, agent_deck_idx),
-                ))
+                remote.send(
+                    (
+                        _REPLY_PARTIAL,
+                        _PartialResult(task.opp_idx, task.episode_idx, win, agent_deck_idx),
+                    )
+                )
             except Exception:
                 remote.send((_REPLY_ERROR, traceback.format_exc()))
                 return
@@ -402,8 +417,7 @@ def _run_eval_pool(
                     cmd, payload = conn.recv()
                 except (EOFError, ConnectionResetError):
                     raise WorkerDiedError(
-                        f"eval worker pid={proc.pid} died "
-                        f"(exitcode={proc.exitcode}) mid-task"
+                        f"eval worker pid={proc.pid} died (exitcode={proc.exitcode}) mid-task"
                     ) from None
                 if cmd == _REPLY_ERROR:
                     raise EvalWorkerError(outstanding[w_idx].opp_spec, payload)
@@ -468,11 +482,15 @@ def _run_sequential_match_set(
     """Sequential per-opponent loop shared by both public entry points."""
     results: list[EvalResult] = []
     for spec in opponent_specs:
-        env = TrainingEnv(**_make_eval_env_kwargs(
-            deck_pool, spec,
-            seed=seed, agent_player=agent_player,
-            opponent_device=opponent_device,
-        ))
+        env = TrainingEnv(
+            **_make_eval_env_kwargs(
+                deck_pool,
+                spec,
+                seed=seed,
+                agent_player=agent_player,
+                opponent_device=opponent_device,
+            )
+        )
         try:
             wins, per_deck = run_match(agent, env, num_episodes, base_seed=seed)
         finally:
@@ -525,9 +543,13 @@ def evaluate(
     if workers <= 1:
         agent = make_eval_agent(agent_spec, seed=seed, device=agent_device)
         return _run_sequential_match_set(
-            agent, deck_pool, opponent_specs,
-            num_episodes=num_episodes, seed=seed,
-            agent_player=agent_player, opponent_device=opponent_device,
+            agent,
+            deck_pool,
+            opponent_specs,
+            num_episodes=num_episodes,
+            seed=seed,
+            agent_player=agent_player,
+            opponent_device=opponent_device,
         )
     return _run_eval_pool(
         agent_spec=agent_spec,
@@ -564,9 +586,13 @@ def evaluate_with_agent(
     which also supports parallel workers.
     """
     return _run_sequential_match_set(
-        agent, deck_pool, opponent_specs,
-        num_episodes=num_episodes, seed=seed,
-        agent_player=agent_player, opponent_device=opponent_device,
+        agent,
+        deck_pool,
+        opponent_specs,
+        num_episodes=num_episodes,
+        seed=seed,
+        agent_player=agent_player,
+        opponent_device=opponent_device,
     )
 
 
@@ -583,9 +609,7 @@ def log_results_to_tensorboard(
     """
     deck_stems = [Path(p).stem for p in deck_paths]
     for r in results:
-        writer.add_scalar(
-            f"eval/win_rate_vs_{r.opponent_label}", r.win_rate, global_step
-        )
+        writer.add_scalar(f"eval/win_rate_vs_{r.opponent_label}", r.win_rate, global_step)
         for deck_idx, deck_results in r.per_deck_wins.items():
             deck_wr = sum(deck_results) / len(deck_results) if deck_results else 0.0
             writer.add_scalar(

@@ -1,4 +1,5 @@
 """Smoke tests for PPO + self-play wiring."""
+
 from __future__ import annotations
 
 import pytest

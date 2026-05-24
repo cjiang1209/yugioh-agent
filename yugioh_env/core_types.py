@@ -1,18 +1,17 @@
 """ctypes structures matching ygopro-core ocgapi_types.h."""
 
-import ctypes
 from ctypes import (
+    CFUNCTYPE,
+    POINTER,
     Structure,
+    c_char_p,
+    c_int,
+    c_int32,
     c_uint8,
     c_uint16,
     c_uint32,
     c_uint64,
-    c_int32,
     c_void_p,
-    c_char_p,
-    c_int,
-    POINTER,
-    CFUNCTYPE,
 )
 
 # ─── OCG_Duel is an opaque void* ────────────────────────────────────────────

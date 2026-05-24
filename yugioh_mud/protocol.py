@@ -14,7 +14,11 @@ from yugioh_mud.config import MUDBotConfig
 from yugioh_mud.game_state import MUDGameState
 from yugioh_mud.text_parser import (
     DUELREADER_REPROMPTS,
-    EventType, MUDTextParser, ParsedEvent, ParsedPrompt, PromptType,
+    EventType,
+    MUDTextParser,
+    ParsedEvent,
+    ParsedPrompt,
+    PromptType,
     is_duel_end,
 )
 
@@ -243,11 +247,9 @@ class MUDProtocol:
             if isinstance(result, ParsedEvent) and self._game_state is not None:
                 self._game_state.update(result)
                 if self.config.verbose:
-                    logger.info(
-                        "[DUEL] event=%s", result.event_type.name)
+                    logger.info("[DUEL] event=%s", result.event_type.name)
                 # Trigger resync at start of our turn
-                if (result.event_type == EventType.NEW_TURN
-                        and not result.is_opponent):
+                if result.event_type == EventType.NEW_TURN and not result.is_opponent:
                     self._resync_pending = True
             elif isinstance(result, ParsedPrompt):
                 prompt = result
@@ -258,9 +260,11 @@ class MUDProtocol:
             # to re-send the active DuelReader/DuelMenu prompt — both
             # "Select a card:" (idle) and "Select an option:" (battle)
             # are in DUELREADER_REPROMPTS.
-            if (self._resync_pending and self._game_state is not None
-                    and prompt.prompt_type in (
-                        PromptType.IDLE_CMD, PromptType.BATTLE_MENU)):
+            if (
+                self._resync_pending
+                and self._game_state is not None
+                and prompt.prompt_type in (PromptType.IDLE_CMD, PromptType.BATTLE_MENU)
+            ):
                 self._resync_pending = False
                 await self._send_resync()
                 if self.state != State.DUEL:
@@ -272,33 +276,36 @@ class MUDProtocol:
         # Delegate idle/battle to atomic handlers
         if prompt.prompt_type == PromptType.IDLE_CMD:
             ended = await IdleCmdHandler.handle(
-                self.conn, prompt,
+                self.conn,
+                prompt,
                 self._agent,  # type: ignore[arg-type]
                 self._game_state,
                 self._text_parser,  # type: ignore[arg-type]
-                self.config.verbose)
+                self.config.verbose,
+            )
             if ended:
                 self.state = State.FINISHED
             return
 
         if prompt.prompt_type == PromptType.BATTLE_MENU:
             ended = await BattleCmdHandler.handle(
-                self.conn, prompt,
+                self.conn,
+                prompt,
                 self._agent,  # type: ignore[arg-type]
                 self._game_state,
                 self._text_parser,  # type: ignore[arg-type]
-                self.config.verbose)
+                self.config.verbose,
+            )
             if ended:
                 self.state = State.FINISHED
             return
 
         action = self._agent.choose(  # type: ignore[union-attr]
-            prompt, game_state=self._game_state)
+            prompt, game_state=self._game_state
+        )
         text = self._action_translator.translate(action, prompt)  # type: ignore[union-attr]
         if self.config.verbose:
-            logger.info(
-                "[DUEL] prompt=%s action=%d → %r",
-                prompt.prompt_type.name, action, text)
+            logger.info("[DUEL] prompt=%s action=%d → %r", prompt.prompt_type.name, action, text)
         await self._send(text)
 
     async def _send_resync(self) -> None:

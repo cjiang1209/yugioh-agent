@@ -5,24 +5,24 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from yugioh_core.constants import (
+    LOCATION_BANISHED,
+    LOCATION_EXTRA,
+    LOCATION_GRAVE,
     LOCATION_HAND,
     LOCATION_MZONE,
     LOCATION_SZONE,
-    LOCATION_GRAVE,
-    LOCATION_BANISHED,
-    LOCATION_EXTRA,
-    POS_FACEUP_ATTACK,
-    POS_FACEDOWN_ATTACK,
-    POS_FACEUP_DEFENSE,
-    POS_FACEDOWN_DEFENSE,
-    POS_FACEUP,
-    POS_FACEDOWN,
     POS_ATTACK,
     POS_DEFENSE,
+    POS_FACEDOWN,
+    POS_FACEDOWN_ATTACK,
+    POS_FACEDOWN_DEFENSE,
+    POS_FACEUP,
+    POS_FACEUP_ATTACK,
+    POS_FACEUP_DEFENSE,
+    TYPE_LINK,
     TYPE_MONSTER,
     TYPE_SPELL,
     TYPE_TRAP,
-    TYPE_LINK,
 )
 
 if TYPE_CHECKING:
@@ -100,15 +100,29 @@ def _build_card_info(card: dict, card_db) -> dict:
         "type": _card_type_str(type_val),
     }
     if type_val & TYPE_MONSTER:
-        result["attack"] = card.get("attack") if card.get("attack") is not None else (db_card["attack"] if db_card else None)
-        result["defense"] = card.get("defense") if card.get("defense") is not None else (db_card["defense"] if db_card else None)
-        result["level"] = card.get("level", 0) or card.get("rank", 0) or (db_card["level"] if db_card else 0)
+        result["attack"] = (
+            card.get("attack")
+            if card.get("attack") is not None
+            else (db_card["attack"] if db_card else None)
+        )
+        result["defense"] = (
+            card.get("defense")
+            if card.get("defense") is not None
+            else (db_card["defense"] if db_card else None)
+        )
+        result["level"] = (
+            card.get("level", 0) or card.get("rank", 0) or (db_card["level"] if db_card else 0)
+        )
         if type_val & TYPE_LINK:
-            result["link_rating"] = card.get("link_rating", 0) or (db_card["level"] if db_card else 0)
+            result["link_rating"] = card.get("link_rating", 0) or (
+                db_card["level"] if db_card else 0
+            )
     return result
 
 
-def _build_zone(cards: list[dict], card_db, num_slots: int, hidden: bool = False) -> list[dict | None]:
+def _build_zone(
+    cards: list[dict], card_db, num_slots: int, hidden: bool = False
+) -> list[dict | None]:
     """Build a fixed-length zone list (None = empty slot)."""
     zone: list[dict | None] = [None] * num_slots
     for card in cards:

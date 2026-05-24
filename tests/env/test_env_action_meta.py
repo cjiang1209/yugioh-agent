@@ -29,7 +29,9 @@ def test_action_meta_round_trips_through_pydantic_serialization():
             ActionMeta(kind="number", label="Announce 3", raw_value=3),
             None,
             ActionMeta(
-                kind="counter", label="Remove 2 from Card999", raw_value=1,
+                kind="counter",
+                label="Remove 2 from Card999",
+                raw_value=1,
                 extras={"counter_count": 2, "card_code": 999},
             ),
         ]

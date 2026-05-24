@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-
 import pytest
 
 from yugioh_env.server.yugioh_environment import _resolve_opponent_device

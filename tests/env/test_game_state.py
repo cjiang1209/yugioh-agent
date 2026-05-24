@@ -1,22 +1,22 @@
 """Test GameState message-driven updates."""
 
-from yugioh_env.game_state import GameState
 from yugioh_core.constants import (
-    MSG_START,
-    MSG_NEW_TURN,
-    MSG_NEW_PHASE,
-    MSG_DAMAGE,
-    MSG_RECOVER,
-    MSG_LPUPDATE,
-    MSG_PAY_LPCOST,
-    MSG_DRAW,
-    MSG_WIN,
-    MSG_MOVE,
     LOCATION_DECK,
+    LOCATION_GRAVE,
     LOCATION_HAND,
     LOCATION_MZONE,
-    LOCATION_GRAVE,
+    MSG_DAMAGE,
+    MSG_DRAW,
+    MSG_LPUPDATE,
+    MSG_MOVE,
+    MSG_NEW_PHASE,
+    MSG_NEW_TURN,
+    MSG_PAY_LPCOST,
+    MSG_RECOVER,
+    MSG_START,
+    MSG_WIN,
 )
+from yugioh_env.game_state import GameState
 
 
 def test_initial_state():
@@ -32,12 +32,14 @@ def test_initial_state():
 def test_msg_start_initializes_counts():
     """MSG_START should set deck_count and extra_count."""
     gs = GameState()
-    gs.update({
-        "msg_type": MSG_START,
-        "lp": [8000, 8000],
-        "deck_count": [40, 40],
-        "extra_count": [15, 15],
-    })
+    gs.update(
+        {
+            "msg_type": MSG_START,
+            "lp": [8000, 8000],
+            "deck_count": [40, 40],
+            "extra_count": [15, 15],
+        }
+    )
     assert gs.deck_count == [40, 40]
     assert gs.extra_count == [15, 15]
 
@@ -46,11 +48,13 @@ def test_draw_decrements_deck():
     """MSG_DRAW should move cards from deck to hand."""
     gs = GameState()
     gs.deck_count = [40, 40]
-    gs.update({
-        "msg_type": MSG_DRAW,
-        "player": 0,
-        "cards": [{"code": 1}, {"code": 2}, {"code": 3}, {"code": 4}, {"code": 5}],
-    })
+    gs.update(
+        {
+            "msg_type": MSG_DRAW,
+            "player": 0,
+            "cards": [{"code": 1}, {"code": 2}, {"code": 3}, {"code": 4}, {"code": 5}],
+        }
+    )
     assert gs.deck_count[0] == 35
     assert gs.hand_count[0] == 5
     # Player 1 unaffected
@@ -62,11 +66,13 @@ def test_draw_without_initialization_stays_zero():
     """If deck_count is never initialized, draws clamp to 0 (the bug scenario)."""
     gs = GameState()
     assert gs.deck_count == [0, 0]
-    gs.update({
-        "msg_type": MSG_DRAW,
-        "player": 0,
-        "cards": [{"code": 1}, {"code": 2}],
-    })
+    gs.update(
+        {
+            "msg_type": MSG_DRAW,
+            "player": 0,
+            "cards": [{"code": 1}, {"code": 2}],
+        }
+    )
     # deck_count stays at 0 due to max(0, ...) — this is wrong but won't go negative
     assert gs.deck_count[0] == 0
     assert gs.hand_count[0] == 2
@@ -129,29 +135,41 @@ def test_move_updates_zone_counts():
     gs = GameState()
     gs.deck_count = [40, 40]
     # Move a card from deck to hand (player 0)
-    gs.update({
-        "msg_type": MSG_MOVE,
-        "prev_controller": 0, "prev_location": LOCATION_DECK,
-        "cur_controller": 0, "cur_location": LOCATION_HAND,
-    })
+    gs.update(
+        {
+            "msg_type": MSG_MOVE,
+            "prev_controller": 0,
+            "prev_location": LOCATION_DECK,
+            "cur_controller": 0,
+            "cur_location": LOCATION_HAND,
+        }
+    )
     assert gs.deck_count[0] == 39
     assert gs.hand_count[0] == 1
 
     # Move from hand to monster zone
-    gs.update({
-        "msg_type": MSG_MOVE,
-        "prev_controller": 0, "prev_location": LOCATION_HAND,
-        "cur_controller": 0, "cur_location": LOCATION_MZONE,
-    })
+    gs.update(
+        {
+            "msg_type": MSG_MOVE,
+            "prev_controller": 0,
+            "prev_location": LOCATION_HAND,
+            "cur_controller": 0,
+            "cur_location": LOCATION_MZONE,
+        }
+    )
     assert gs.hand_count[0] == 0
     assert gs.mzone_count[0] == 1
 
     # Move from monster zone to graveyard
-    gs.update({
-        "msg_type": MSG_MOVE,
-        "prev_controller": 0, "prev_location": LOCATION_MZONE,
-        "cur_controller": 0, "cur_location": LOCATION_GRAVE,
-    })
+    gs.update(
+        {
+            "msg_type": MSG_MOVE,
+            "prev_controller": 0,
+            "prev_location": LOCATION_MZONE,
+            "cur_controller": 0,
+            "cur_location": LOCATION_GRAVE,
+        }
+    )
     assert gs.mzone_count[0] == 0
     assert gs.grave_count[0] == 1
 

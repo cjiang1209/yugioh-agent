@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import pytest
-
-from cli.leaderboard import build_parser, _validate_subcommand_args
+from cli.leaderboard import _validate_subcommand_args, build_parser
 
 
 def test_parser_accepts_add_with_path():
@@ -55,10 +54,16 @@ def test_tags_default_none_distinct_from_clear_tags():
 
 def test_compare_subcommand_parses_filter():
     parser = build_parser()
-    ns = parser.parse_args([
-        "compare", "--by", "rnn_type",
-        "--filter", "reward_shaping=true", "deck_paths=a,b",
-    ])
+    ns = parser.parse_args(
+        [
+            "compare",
+            "--by",
+            "rnn_type",
+            "--filter",
+            "reward_shaping=true",
+            "deck_paths=a,b",
+        ]
+    )
     assert ns.command == "compare"
     assert ns.by == "rnn_type"
     assert ns.filter == ["reward_shaping=true", "deck_paths=a,b"]
@@ -66,10 +71,15 @@ def test_compare_subcommand_parses_filter():
 
 def test_compare_filter_bad_format_rejected():
     parser = build_parser()
-    ns = parser.parse_args([
-        "compare", "--by", "rnn_type",
-        "--filter", "reward_shaping",
-    ])
+    ns = parser.parse_args(
+        [
+            "compare",
+            "--by",
+            "rnn_type",
+            "--filter",
+            "reward_shaping",
+        ]
+    )
     with pytest.raises(SystemExit):
         _validate_subcommand_args(ns)
 
@@ -154,7 +164,9 @@ def test_add_forwards_workers_to_score_checkpoint(tmp_path, monkeypatch):
     """End-to-end: ``leaderboard add ... --workers 4`` invokes
     ``score_checkpoint(workers=4)``. Mocks the heavy bits."""
     from unittest.mock import patch
+
     from cli.leaderboard import _cmd_add
+
     from yugioh_leaderboard.entry import Entry
 
     fake_ckpt = tmp_path / "checkpoint_latest.pt"
@@ -166,20 +178,28 @@ def test_add_forwards_workers_to_score_checkpoint(tmp_path, monkeypatch):
     def fake_score_checkpoint(*args, **kwargs):
         captured.update(kwargs)
         return Entry(
-            schema_version=1, entry_id="fake", checkpoint_path=str(fake_ckpt),
-            checkpoint_hash="sha256:x", added_at="t",
-            panel_version=1, features={}, tags=[],
-            panel_results=[], pairwise_results=[],
+            schema_version=1,
+            entry_id="fake",
+            checkpoint_path=str(fake_ckpt),
+            checkpoint_hash="sha256:x",
+            added_at="t",
+            panel_version=1,
+            features={},
+            tags=[],
+            panel_results=[],
+            pairwise_results=[],
         )
 
     parser = build_parser()
     ns = parser.parse_args(["add", str(fake_ckpt), "--workers", "4", "--force"])
-    with patch("yugioh_leaderboard.score.score_checkpoint", fake_score_checkpoint), \
-         patch("cli.leaderboard._load_panel"), \
-         patch("yugioh_leaderboard.entry.compute_checkpoint_hash", return_value="sha256:x"), \
-         patch("yugioh_leaderboard.entry.entry_id_for", return_value="fake"), \
-         patch("yugioh_leaderboard.entry.write_entry"), \
-         patch("cli.leaderboard._refresh_index_file"):
+    with (
+        patch("yugioh_leaderboard.score.score_checkpoint", fake_score_checkpoint),
+        patch("cli.leaderboard._load_panel"),
+        patch("yugioh_leaderboard.entry.compute_checkpoint_hash", return_value="sha256:x"),
+        patch("yugioh_leaderboard.entry.entry_id_for", return_value="fake"),
+        patch("yugioh_leaderboard.entry.write_entry"),
+        patch("cli.leaderboard._refresh_index_file"),
+    ):
         _cmd_add(ns)
 
     assert captured["workers"] == 4
@@ -187,7 +207,9 @@ def test_add_forwards_workers_to_score_checkpoint(tmp_path, monkeypatch):
 
 def test_pairwise_forwards_workers_to_run_pairwise(tmp_path, monkeypatch):
     from unittest.mock import patch
+
     from cli.leaderboard import _cmd_pairwise
+
     from yugioh_leaderboard.entry import Entry
 
     # Redirect the leaderboard's entries dir to tmp_path so we can drop in
@@ -202,10 +224,16 @@ def test_pairwise_forwards_workers_to_run_pairwise(tmp_path, monkeypatch):
 
     def _stub_entry(eid: str) -> Entry:
         return Entry(
-            schema_version=1, entry_id=eid, checkpoint_path=str(fake_ckpt),
-            checkpoint_hash="sha256:x", added_at="t",
-            panel_version=1, features={}, tags=[],
-            panel_results=[], pairwise_results=[],
+            schema_version=1,
+            entry_id=eid,
+            checkpoint_path=str(fake_ckpt),
+            checkpoint_hash="sha256:x",
+            added_at="t",
+            panel_version=1,
+            features={},
+            tags=[],
+            panel_results=[],
+            pairwise_results=[],
         )
 
     from yugioh_leaderboard.entry import PairwiseMatchResult
@@ -217,12 +245,24 @@ def test_pairwise_forwards_workers_to_run_pairwise(tmp_path, monkeypatch):
         # Populate pairwise_results so the CLI's post-call `next(...)` lookup
         # can resolve a record by vs_entry_id.
         rec_a = PairwiseMatchResult(
-            vs_entry_id=entry_b.entry_id, vs_checkpoint_hash="sha256:x",
-            episodes=1, wins=1, win_rate=1.0, per_deck={}, seed=0, evaluated_at="t",
+            vs_entry_id=entry_b.entry_id,
+            vs_checkpoint_hash="sha256:x",
+            episodes=1,
+            wins=1,
+            win_rate=1.0,
+            per_deck={},
+            seed=0,
+            evaluated_at="t",
         )
         rec_b = PairwiseMatchResult(
-            vs_entry_id=entry_a.entry_id, vs_checkpoint_hash="sha256:x",
-            episodes=1, wins=0, win_rate=0.0, per_deck={}, seed=0, evaluated_at="t",
+            vs_entry_id=entry_a.entry_id,
+            vs_checkpoint_hash="sha256:x",
+            episodes=1,
+            wins=0,
+            win_rate=0.0,
+            per_deck={},
+            seed=0,
+            evaluated_at="t",
         )
         new_a = entry_a.__class__(**{**entry_a.__dict__, "pairwise_results": [rec_a]})
         new_b = entry_b.__class__(**{**entry_b.__dict__, "pairwise_results": [rec_b]})
@@ -233,11 +273,13 @@ def test_pairwise_forwards_workers_to_run_pairwise(tmp_path, monkeypatch):
 
     parser = build_parser()
     ns = parser.parse_args(["pairwise", "a", "b", "--workers", "2"])
-    with patch("yugioh_leaderboard.pairwise.run_pairwise", fake_run_pairwise), \
-         patch("cli.leaderboard._load_panel"), \
-         patch("yugioh_leaderboard.entry.read_entry", fake_read_entry), \
-         patch("yugioh_leaderboard.entry.write_entry"), \
-         patch("cli.leaderboard._refresh_index_file"):
+    with (
+        patch("yugioh_leaderboard.pairwise.run_pairwise", fake_run_pairwise),
+        patch("cli.leaderboard._load_panel"),
+        patch("yugioh_leaderboard.entry.read_entry", fake_read_entry),
+        patch("yugioh_leaderboard.entry.write_entry"),
+        patch("cli.leaderboard._refresh_index_file"),
+    ):
         _cmd_pairwise(ns)
 
     assert captured["workers"] == 2

@@ -101,16 +101,14 @@ def main():
         card_count = len(content["cards"])
         side_count = len(content["side"])
         for acct_name, acct in accounts.items():
-            existing = (
-                session.query(Deck)
-                .filter_by(account_id=acct.id, name=deck_name)
-                .first()
-            )
+            existing = session.query(Deck).filter_by(account_id=acct.id, name=deck_name).first()
             if existing:
                 existing.content = content_json
                 existing.public = True
                 session.commit()
-                print(f"Updated deck '{deck_name}' ({card_count} cards, {side_count} side) for {acct_name}.")
+                print(
+                    f"Updated deck '{deck_name}' ({card_count} cards, {side_count} side) for {acct_name}."
+                )
             else:
                 deck = Deck()
                 deck.account_id = acct.id
@@ -119,7 +117,9 @@ def main():
                 deck.public = True
                 session.add(deck)
                 session.commit()
-                print(f"Created deck '{deck_name}' ({card_count} cards, {side_count} side) for {acct_name}.")
+                print(
+                    f"Created deck '{deck_name}' ({card_count} cards, {side_count} side) for {acct_name}."
+                )
 
     session.close()
     print("Done.")

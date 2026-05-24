@@ -1,7 +1,5 @@
 """Test the SQLite card database reader."""
 
-import pytest
-
 
 def test_blue_eyes(card_db):
     """Blue-Eyes White Dragon (89631139) should have correct stats."""

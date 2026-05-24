@@ -1,4 +1,5 @@
 """End-to-end smoke test: short PPO run with self-play."""
+
 from __future__ import annotations
 
 import pytest

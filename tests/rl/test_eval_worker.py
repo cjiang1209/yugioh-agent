@@ -4,6 +4,7 @@ Drives one worker process via a parent-side ``mp.Pipe``, sending
 ``("task", _EvalTask)`` messages and asserting the reply shape.  Mirrors
 the harness pattern in ``tests/rl/test_actor_learner_worker.py``.
 """
+
 from __future__ import annotations
 
 import multiprocessing as mp
@@ -11,10 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from yugioh_rl.env_wrapper import parse_deck_pool
-from yugioh_rl.eval import _EvalTask, _eval_worker, _PartialResult
-
 from tests.rl.conftest import requires_engine
+from yugioh_rl.env_wrapper import parse_deck_pool
+from yugioh_rl.eval import _eval_worker, _EvalTask, _PartialResult
 
 
 def _spawn_eval_worker(

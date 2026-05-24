@@ -2,28 +2,24 @@
 
 from __future__ import annotations
 
-import ctypes
 import numpy as np
 
 from yugioh_core.constants import (
+    LOCATION_BANISHED,
+    LOCATION_EXTRA,
+    LOCATION_GRAVE,
     LOCATION_HAND,
     LOCATION_MZONE,
     LOCATION_SZONE,
-    LOCATION_GRAVE,
-    LOCATION_BANISHED,
-    LOCATION_EXTRA,
     POS_FACEUP,
 )
 from yugioh_core.encoding import (
-    MAX_CARDS,
     CARD_FEATURES,
     GLOBAL_FEATURES,
-    MAX_ACTIONS,
-    ACTION_FEATURES,
+    MAX_CARDS,
     ZONE_SLOTS,
-    encode_u16,
-    encode_u32,
     encode_card,
+    encode_u16,
 )
 from yugioh_env.game_state import GameState
 

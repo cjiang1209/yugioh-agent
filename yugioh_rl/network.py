@@ -10,12 +10,12 @@ import torch.nn as nn
 from yugioh_core.encoding import SYSSTRING_VOCAB
 from yugioh_rl.config import TrainingConfig
 from yugioh_rl.features import (
+    ACTION_FEAT_DIM,
     CARD_FEAT_DIM,
     GLOBAL_FEAT_DIM,
-    ACTION_FEAT_DIM,
+    decode_actions,
     decode_cards,
     decode_global,
-    decode_actions,
 )
 
 logger = logging.getLogger(__name__)
@@ -57,9 +57,9 @@ class TextEmbeddingLookup(nn.Module):
     without any disk I/O.
     """
 
-    def __init__(self, sorted_codes: torch.Tensor,
-                 padded_embeddings: torch.Tensor,
-                 text_embed_dim: int) -> None:
+    def __init__(
+        self, sorted_codes: torch.Tensor, padded_embeddings: torch.Tensor, text_embed_dim: int
+    ) -> None:
         super().__init__()
         assert padded_embeddings.shape[0] == len(sorted_codes) + 1, (
             f"padded_embeddings row count ({padded_embeddings.shape[0]}) "
@@ -72,8 +72,7 @@ class TextEmbeddingLookup(nn.Module):
         self._proj = nn.Linear(padded_embeddings.shape[1], text_embed_dim)
 
     @classmethod
-    def from_path(cls, embeddings_path: str,
-                  text_embed_dim: int) -> TextEmbeddingLookup:
+    def from_path(cls, embeddings_path: str, text_embed_dim: int) -> TextEmbeddingLookup:
         """Load card text embeddings from a .pt file (training time)."""
         data = torch.load(embeddings_path, map_location="cpu", weights_only=True)
         codes = data["codes"]  # (N,) int64
@@ -94,14 +93,18 @@ class TextEmbeddingLookup(nn.Module):
 
         logger.info(
             "TextEmbeddingLookup: %d cards, raw_dim=%d, proj_dim=%d",
-            len(sorted_codes), raw_dim, text_embed_dim,
+            len(sorted_codes),
+            raw_dim,
+            text_embed_dim,
         )
         return lookup
 
     @classmethod
-    def from_state_dict_shapes(cls, text_embed_dim: int,
-                               state_dict: dict[str, torch.Tensor],
-                               ) -> TextEmbeddingLookup:
+    def from_state_dict_shapes(
+        cls,
+        text_embed_dim: int,
+        state_dict: dict[str, torch.Tensor],
+    ) -> TextEmbeddingLookup:
         """Build a correctly-shaped skeleton from state dict keys (no disk I/O).
 
         Creates zero-filled buffers/params matching the shapes in *state_dict*.
@@ -159,8 +162,9 @@ class YuGiOhNet(nn.Module):
             text embeddings (projected) + collision-free learned embedding.
     """
 
-    def __init__(self, config: TrainingConfig,
-                 text_lookup: TextEmbeddingLookup | None = None) -> None:
+    def __init__(
+        self, config: TrainingConfig, text_lookup: TextEmbeddingLookup | None = None
+    ) -> None:
         super().__init__()
 
         self._use_text_embeddings = text_lookup is not None
@@ -169,16 +173,12 @@ class YuGiOhNet(nn.Module):
             # Semantic mode
             self.text_lookup = text_lookup
             num_entries = text_lookup.num_cards + 1  # +1 for padding at 0
-            self.card_embedding = nn.Embedding(
-                num_entries, config.learned_embed_dim, padding_idx=0
-            )
+            self.card_embedding = nn.Embedding(num_entries, config.learned_embed_dim, padding_idx=0)
             embed_dim = config.text_embed_dim + config.learned_embed_dim
         else:
             # Symbolic mode
             self.text_lookup = None
-            self.card_embedding = nn.Embedding(
-                _CARD_VOCAB, _CARD_EMBED_DIM, padding_idx=0
-            )
+            self.card_embedding = nn.Embedding(_CARD_VOCAB, _CARD_EMBED_DIM, padding_idx=0)
             embed_dim = _CARD_EMBED_DIM
 
         # Card encoder
@@ -186,7 +186,9 @@ class YuGiOhNet(nn.Module):
         self.card_encoder = _mlp(card_input_dim, 128, config.card_embed_dim)
 
         # Global encoder
-        self.global_encoder = _mlp(GLOBAL_FEAT_DIM, config.global_embed_dim, config.global_embed_dim)
+        self.global_encoder = _mlp(
+            GLOBAL_FEAT_DIM, config.global_embed_dim, config.global_embed_dim
+        )
 
         # Board representation
         board_input_dim = _NUM_ZONES * config.card_embed_dim + config.global_embed_dim
@@ -212,12 +214,14 @@ class YuGiOhNet(nn.Module):
         # + sysstring_emb (masked when per-card) + ACTION_FEAT_DIM floats.
         self.sysstring_emb = nn.Embedding(SYSSTRING_VOCAB, config.desc_n_embed_dim)
         action_input_dim = (
-            embed_dim                       # action_codes → card embedding
-            + embed_dim                     # desc_passcodes → reuses card embedding
-            + config.desc_n_embed_dim       # sysstring desc → dedicated table
+            embed_dim  # action_codes → card embedding
+            + embed_dim  # desc_passcodes → reuses card embedding
+            + config.desc_n_embed_dim  # sysstring desc → dedicated table
             + ACTION_FEAT_DIM
         )
-        self.action_encoder = _mlp(action_input_dim, config.action_embed_dim, config.action_embed_dim)
+        self.action_encoder = _mlp(
+            action_input_dim, config.action_embed_dim, config.action_embed_dim
+        )
 
         # Policy head: project board (or RNN output) → action_embed_dim for dot product
         self.board_proj = nn.Linear(head_in_dim, config.action_embed_dim)
@@ -235,23 +239,24 @@ class YuGiOhNet(nn.Module):
         text_lookup = None
         if config.card_embeddings:
             text_lookup = TextEmbeddingLookup.from_path(
-                config.card_embeddings, config.text_embed_dim)
+                config.card_embeddings, config.text_embed_dim
+            )
         return cls(config, text_lookup)
 
     @classmethod
-    def from_state_dict(cls, config: TrainingConfig,
-                        state_dict: dict[str, torch.Tensor]) -> YuGiOhNet:
+    def from_state_dict(
+        cls, config: TrainingConfig, state_dict: dict[str, torch.Tensor]
+    ) -> YuGiOhNet:
         """Reconstruct from saved state dict (no disk I/O)."""
         text_prefix = "text_lookup."
         has_text_lookup = any(k.startswith(text_prefix) for k in state_dict)
 
         text_lookup = None
         if has_text_lookup:
-            text_sd = {k[len(text_prefix):]: v
-                       for k, v in state_dict.items()
-                       if k.startswith(text_prefix)}
-            text_lookup = TextEmbeddingLookup.from_state_dict_shapes(
-                config.text_embed_dim, text_sd)
+            text_sd = {
+                k[len(text_prefix) :]: v for k, v in state_dict.items() if k.startswith(text_prefix)
+            }
+            text_lookup = TextEmbeddingLookup.from_state_dict_shapes(config.text_embed_dim, text_sd)
 
         has_rnn_keys = any(k.startswith("rnn.") for k in state_dict)
         if has_rnn_keys != config.is_recurrent:
@@ -272,9 +277,7 @@ class YuGiOhNet(nn.Module):
         """
         if self.rnn is None:
             return None
-        h = torch.zeros(
-            self.rnn.num_layers, batch_size, self.rnn.hidden_size, device=device
-        )
+        h = torch.zeros(self.rnn.num_layers, batch_size, self.rnn.hidden_size, device=device)
         if isinstance(self.rnn, nn.LSTM):
             return (h, torch.zeros_like(h))
         return h
@@ -391,8 +394,8 @@ class YuGiOhNet(nn.Module):
         the structure of ``hx`` (or ``None`` if no RNN).
         """
         # --- Decode observations ---
-        card_ids, card_feats = decode_cards(obs_cards)      # (B,200), (B,200,F_card)
-        global_feats = decode_global(obs_global)              # (B,F_global)
+        card_ids, card_feats = decode_cards(obs_cards)  # (B,200), (B,200,F_card)
+        global_feats = decode_global(obs_global)  # (B,F_global)
         # decode_actions returns (codes, desc_passcodes, desc_ns, action_feats);
         # desc_ns is clamped to SYSSTRING_VOCAB-1 for safe embedding lookup.
         action_codes, desc_passcodes, desc_ns, action_feats = decode_actions(obs_actions)
@@ -404,20 +407,20 @@ class YuGiOhNet(nn.Module):
 
         # --- Zone pooling ---
         # Extract raw location byte and controller byte for zone assignment
-        raw_loc = obs_cards[..., 4].long()   # (B, 200)
+        raw_loc = obs_cards[..., 4].long()  # (B, 200)
         raw_ctrl = obs_cards[..., 7].long()  # (B, 200)
 
         zone_parts = []
         for ctrl in (0, 1):
-            ctrl_mask = (raw_ctrl == ctrl)  # (B, 200)
+            ctrl_mask = raw_ctrl == ctrl  # (B, 200)
             for bit in _ZONE_LOC_BITS:
                 # Cards in this zone for this controller
                 loc_mask = ((raw_loc & bit) != 0) & ctrl_mask  # (B, 200)
                 # Masked mean pooling
                 mask_f = loc_mask.float().unsqueeze(-1)  # (B, 200, 1)
                 masked_sum = (card_enc * mask_f).sum(dim=1)  # (B, card_embed_dim)
-                count = mask_f.sum(dim=1).clamp(min=1.0)      # (B, 1)
-                zone_parts.append(masked_sum / count)           # (B, card_embed_dim)
+                count = mask_f.sum(dim=1).clamp(min=1.0)  # (B, 1)
+                zone_parts.append(masked_sum / count)  # (B, card_embed_dim)
 
         zone_flat = torch.cat(zone_parts, dim=-1)  # (B, 12*card_embed_dim)
 
@@ -457,13 +460,14 @@ class YuGiOhNet(nn.Module):
         # sys_emb_masked: sysstring component, masked to 0 when the desc is per-card,
         #   so exactly one of (sys_emb, per_card_desc_n_scalar in action_feats) is
         #   non-zero per action.
-        act_embed = self._embed_codes(action_codes)        # (B, 32, embed_dim)
+        act_embed = self._embed_codes(action_codes)  # (B, 32, embed_dim)
         desc_card_embed = self._embed_codes(desc_passcodes)  # (B, 32, embed_dim)
-        is_sysstring = (desc_passcodes == 0)
-        sys_emb = self.sysstring_emb(desc_ns)              # (B, 32, desc_n_embed_dim)
+        is_sysstring = desc_passcodes == 0
+        sys_emb = self.sysstring_emb(desc_ns)  # (B, 32, desc_n_embed_dim)
         sys_emb_masked = sys_emb * is_sysstring.float().unsqueeze(-1)
         act_input = torch.cat(
-            [act_embed, desc_card_embed, sys_emb_masked, action_feats], dim=-1,
+            [act_embed, desc_card_embed, sys_emb_masked, action_feats],
+            dim=-1,
         )
         act_enc = self.action_encoder(act_input)  # (B, 32, action_embed_dim)
 

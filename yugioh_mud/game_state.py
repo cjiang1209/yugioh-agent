@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from yugioh_mud.card_lookup import CardNameLookup
 from yugioh_mud.text_parser import EventType, ParsedEvent
@@ -23,13 +23,15 @@ logger = logging.getLogger(__name__)
 # Card entry — one card tracked in a zone
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class CardEntry:
     """A single card tracked in a zone."""
+
     name: str = ""
-    code: int = 0       # passcode from CardNameLookup (0 = unknown)
+    code: int = 0  # passcode from CardNameLookup (0 = unknown)
     position: str = ""  # "face-up attack", "face-down defense", etc.
-    spec: str = ""      # zone spec e.g. "m1", "s2"
+    spec: str = ""  # zone spec e.g. "m1", "s2"
 
 
 # ---------------------------------------------------------------------------
@@ -37,10 +39,8 @@ class CardEntry:
 # ---------------------------------------------------------------------------
 
 # Score response: "Your LP: {n} Opponent LP: {n}"
-_SCORE_LP_RE = re.compile(
-    r"^Your LP: (\d+) Opponent LP: (\d+)$")
-_SCORE_COUNTS_RE = re.compile(
-    r"^(Hand|Deck|Grave|Removed): You: (\d+) Opponent: (\d+)$")
+_SCORE_LP_RE = re.compile(r"^Your LP: (\d+) Opponent LP: (\d+)$")
+_SCORE_COUNTS_RE = re.compile(r"^(Hand|Deck|Grave|Removed): You: (\d+) Opponent: (\d+)$")
 _SCORE_TURN_RE = re.compile(r"^It's your turn\.$")
 _SCORE_OPP_TURN_RE = re.compile(r"^It's (.+?)'s turn\.$")
 
@@ -48,8 +48,7 @@ _SCORE_OPP_TURN_RE = re.compile(r"^It's (.+?)'s turn\.$")
 _HAND_CARD_RE = re.compile(r"^(h\d+) (.+)$")
 
 # Tab response: monster zone "m{n}: {name} ({atk}/{def}) ..."
-_TAB_MONSTER_RE = re.compile(
-    r"^(m\d+): (.+?) \((\d+)/(\d+)\)")
+_TAB_MONSTER_RE = re.compile(r"^(m\d+): (.+?) \((\d+)/(\d+)\)")
 # Tab response: spell/trap zone "s{n}: {name} {position}"
 _TAB_SPELL_RE = re.compile(r"^(s\d+): (.+?) (face[- ].+)$")
 # Tab response: face-down (no name) "m{n}: face-down defense" etc.
@@ -63,15 +62,19 @@ _EXTRA_CARD_RE = re.compile(r"^(o?x\d+) (.+)$")
 # Suffix patterns for _parse_card_line (right-to-left parsing)
 _LEVEL_SUFFIX_RE = re.compile(r"\s+(?:level|rank|link rating)\s+\d+$", re.IGNORECASE)
 _POSITION_SUFFIXES = (
-    "face-up attack", "face-down attack",
-    "face-up defense", "face-down defense",
-    "face-up", "face down",
+    "face-up attack",
+    "face-down attack",
+    "face-up defense",
+    "face-down defense",
+    "face-up",
+    "face down",
 )
 
 
 # ---------------------------------------------------------------------------
 # MUDGameState
 # ---------------------------------------------------------------------------
+
 
 class MUDGameState:
     """Tracks duel state from parsed events.
@@ -193,10 +196,12 @@ class MUDGameState:
 
     def _on_draw_card(self, ev: ParsedEvent) -> None:
         """Handle individual drawn card (sub-line after 'Drew N cards:')."""
-        self.my_hand.append(CardEntry(
-            name=ev.card_name,
-            code=self.resolve_code(ev.card_name),
-        ))
+        self.my_hand.append(
+            CardEntry(
+                name=ev.card_name,
+                code=self.resolve_code(ev.card_name),
+            )
+        )
 
     def _on_summon(self, ev: ParsedEvent) -> None:
         entry = CardEntry(
@@ -223,17 +228,20 @@ class MUDGameState:
         # Dedup: if a FROM_GY/FROM_BANISHED event already added this card
         # to the field, skip the duplicate add.
         mzone = self.opp_mzone if ev.is_opponent else self.my_mzone
-        if any(c.name == ev.card_name and c.spec == ev.card_spec
-               for c in mzone):
+        if any(c.name == ev.card_name and c.spec == ev.card_spec for c in mzone):
             return
         if ev.is_opponent:
             # Check if card is a revival from opp GY/banished (tracked zones)
-            in_gy = (any(c.code == code for c in self.opp_graveyard)
-                     if code else
-                     any(c.name == ev.card_name for c in self.opp_graveyard))
-            in_ban = (any(c.code == code for c in self.opp_banished)
-                      if code else
-                      any(c.name == ev.card_name for c in self.opp_banished))
+            in_gy = (
+                any(c.code == code for c in self.opp_graveyard)
+                if code
+                else any(c.name == ev.card_name for c in self.opp_graveyard)
+            )
+            in_ban = (
+                any(c.code == code for c in self.opp_banished)
+                if code
+                else any(c.name == ev.card_name for c in self.opp_banished)
+            )
             if not in_gy and not in_ban:
                 # Not a revival — speculatively assume hand (most common).
                 # Deck-sourced sp summons (e.g. Cyber Dragon) will be
@@ -246,16 +254,19 @@ class MUDGameState:
             # Guarded heuristic: remove from extra deck if the card is NOT
             # already in GY or banished (those are revival targets, not
             # extra deck summons).
-            in_gy = (any(c.code == code for c in self.my_graveyard)
-                     if code else
-                     any(c.name == ev.card_name for c in self.my_graveyard))
-            in_ban = (any(c.code == code for c in self.my_banished)
-                      if code else
-                      any(c.name == ev.card_name for c in self.my_banished))
+            in_gy = (
+                any(c.code == code for c in self.my_graveyard)
+                if code
+                else any(c.name == ev.card_name for c in self.my_graveyard)
+            )
+            in_ban = (
+                any(c.code == code for c in self.my_banished)
+                if code
+                else any(c.name == ev.card_name for c in self.my_banished)
+            )
             removed_extra = None
             if not in_gy and not in_ban:
-                removed_extra = self._remove_from_zone(
-                    self.my_extra, "", ev.card_name)
+                removed_extra = self._remove_from_zone(self.my_extra, "", ev.card_name)
             # If card didn't come from hand, extra, GY, or banished → deck
             if not removed_hand and not removed_extra and not in_gy and not in_ban:
                 self.my_deck_count = max(0, self.my_deck_count - 1)
@@ -271,12 +282,14 @@ class MUDGameState:
                 card.position = ev.position or "face-up attack"
                 return
         # Fallback: card not found (tracking drift) — append
-        zone.append(CardEntry(
-            name=ev.card_name,
-            code=self.resolve_code(ev.card_name),
-            position=ev.position or "face-up attack",
-            spec=ev.card_spec,
-        ))
+        zone.append(
+            CardEntry(
+                name=ev.card_name,
+                code=self.resolve_code(ev.card_name),
+                position=ev.position or "face-up attack",
+                spec=ev.card_spec,
+            )
+        )
 
     def _on_set(self, ev: ParsedEvent) -> None:
         entry = CardEntry(
@@ -306,8 +319,7 @@ class MUDGameState:
     def _on_pos_change(self, ev: ParsedEvent) -> None:
         spec = ev.card_spec
         # Search all field zones (monster + spell/trap) for both players
-        for zone in (self.my_mzone, self.my_szone,
-                     self.opp_mzone, self.opp_szone):
+        for zone in (self.my_mzone, self.my_szone, self.opp_mzone, self.opp_szone):
             for card in zone:
                 if card.spec == spec:
                     card.position = ev.position
@@ -358,8 +370,7 @@ class MUDGameState:
             elif spec.startswith("h"):
                 removed = self._remove_from_hand(ev.card_name)
             elif spec.startswith(self._NONFIELD_PREFIXES):
-                removed = self._remove_from_nonfield(
-                    spec, ev.card_name, ev.is_opponent)
+                removed = self._remove_from_nonfield(spec, ev.card_name, ev.is_opponent)
             elif self._norm_spec(spec).startswith(("m", "s")):
                 # Field-spec card not found — check if already added to GY
                 # by a prior DESTROY/TRIBUTE/DISCARD event
@@ -393,8 +404,7 @@ class MUDGameState:
             elif spec.startswith("h"):
                 removed = self._remove_from_hand(ev.card_name)
             elif spec.startswith(self._NONFIELD_PREFIXES):
-                removed = self._remove_from_nonfield(
-                    spec, ev.card_name, ev.is_opponent)
+                removed = self._remove_from_nonfield(spec, ev.card_name, ev.is_opponent)
             elif self._norm_spec(spec).startswith(("m", "s")):
                 # Field-spec card not found — check if already processed
                 if self._consume_pending_gy(ev.card_name):
@@ -419,13 +429,14 @@ class MUDGameState:
     def _on_to_hand(self, ev: ParsedEvent) -> None:
         removed = self._remove_from_field(ev.card_spec, ev.card_name)
         if not removed:
-            removed = self._remove_from_nonfield(
-                ev.card_spec, ev.card_name, ev.is_opponent)
+            removed = self._remove_from_nonfield(ev.card_spec, ev.card_name, ev.is_opponent)
         if not removed:
             spec = ev.card_spec or ""
-            if (not spec.startswith(("h", "oh"))
-                    and not spec.startswith(self._NONFIELD_PREFIXES)
-                    and not self._norm_spec(spec).startswith(("m", "s"))):
+            if (
+                not spec.startswith(("h", "oh"))
+                and not spec.startswith(self._NONFIELD_PREFIXES)
+                and not self._norm_spec(spec).startswith(("m", "s"))
+            ):
                 # No recognized zone prefix — card likely came from deck
                 if ev.is_opponent:
                     self.opp_deck_count = max(0, self.opp_deck_count - 1)
@@ -434,17 +445,18 @@ class MUDGameState:
         if ev.is_opponent:
             self.opp_hand_count += 1
         else:
-            self.my_hand.append(CardEntry(
-                name=ev.card_name,
-                code=self.resolve_code(ev.card_name),
-                spec=ev.card_spec,
-            ))
+            self.my_hand.append(
+                CardEntry(
+                    name=ev.card_name,
+                    code=self.resolve_code(ev.card_name),
+                    spec=ev.card_spec,
+                )
+            )
 
     def _on_to_deck(self, ev: ParsedEvent) -> None:
         removed = self._remove_from_field(ev.card_spec, ev.card_name)
         if not removed:
-            removed = self._remove_from_nonfield(
-                ev.card_spec, ev.card_name, ev.is_opponent)
+            removed = self._remove_from_nonfield(ev.card_spec, ev.card_name, ev.is_opponent)
         # Also handle opponent hand (tracked as count only, not a list)
         spec = ev.card_spec or ""
         if not removed and spec.startswith("oh"):
@@ -460,8 +472,7 @@ class MUDGameState:
     def _on_to_extra_deck(self, ev: ParsedEvent) -> None:
         removed = self._remove_from_field(ev.card_spec, ev.card_name)
         if not removed:
-            removed = self._remove_from_nonfield(
-                ev.card_spec, ev.card_name, ev.is_opponent)
+            removed = self._remove_from_nonfield(ev.card_spec, ev.card_name, ev.is_opponent)
         entry = removed or CardEntry(
             name=ev.card_name,
             code=self.resolve_code(ev.card_name),
@@ -630,7 +641,9 @@ class MUDGameState:
         return entry.code == 0 and bool(entry.name)
 
     def _remove_from_field(
-        self, spec: str, name: str = "",
+        self,
+        spec: str,
+        name: str = "",
     ) -> CardEntry | None:
         """Remove a card from field zones by spec, returning it if found.
 
@@ -638,15 +651,14 @@ class MUDGameState:
         a card stored as ``"m1"`` and vice-versa.
         """
         norm = self._norm_spec(spec) if spec else ""
-        for zone in (self.my_mzone, self.my_szone,
-                     self.opp_mzone, self.opp_szone):
+        for zone in (self.my_mzone, self.my_szone, self.opp_mzone, self.opp_szone):
             for i, card in enumerate(zone):
                 if norm and self._norm_spec(card.spec) == norm:
                     removed = zone.pop(i)
                     if self._is_token(removed):
                         logger.warning(
-                            "Token-like card removed from field: %s (spec=%s)",
-                            removed.name, spec)
+                            "Token-like card removed from field: %s (spec=%s)", removed.name, spec
+                        )
                     return removed
                 # Also match by name if spec doesn't match or is empty
                 # (spec may have changed after zone switches, or swap
@@ -655,13 +667,16 @@ class MUDGameState:
                     removed = zone.pop(i)
                     if self._is_token(removed):
                         logger.warning(
-                            "Token-like card removed from field: %s (name match)",
-                            removed.name)
+                            "Token-like card removed from field: %s (name match)", removed.name
+                        )
                     return removed
         return None
 
     def _remove_from_zone(
-        self, zone: list[CardEntry], spec: str, name: str = "",
+        self,
+        zone: list[CardEntry],
+        spec: str,
+        name: str = "",
     ) -> CardEntry | None:
         """Remove a card from a single zone list by spec or name."""
         for i, card in enumerate(zone):
@@ -672,7 +687,10 @@ class MUDGameState:
         return None
 
     def _remove_from_nonfield(
-        self, spec: str, name: str, is_opponent: bool,
+        self,
+        spec: str,
+        name: str,
+        is_opponent: bool,
     ) -> CardEntry | None:
         """Try removing from GY, banished, or extra for the given player."""
         if is_opponent:
@@ -686,7 +704,10 @@ class MUDGameState:
         return None
 
     def _add_to_field(
-        self, entry: CardEntry, target_spec: str, is_opponent: bool,
+        self,
+        entry: CardEntry,
+        target_spec: str,
+        is_opponent: bool,
     ) -> None:
         """Add a card entry to the appropriate field zone.
 
@@ -726,7 +747,11 @@ class MUDGameState:
                 if old_my != self.my_lp or old_opp != self.opp_lp:
                     logger.warning(
                         "Resync LP drift: my %d→%d, opp %d→%d",
-                        old_my, self.my_lp, old_opp, self.opp_lp)
+                        old_my,
+                        self.my_lp,
+                        old_opp,
+                        self.opp_lp,
+                    )
                 continue
 
             m = _SCORE_COUNTS_RE.match(line)
@@ -736,43 +761,54 @@ class MUDGameState:
                 if label == "Hand":
                     if len(self.my_hand) != my_count:
                         logger.warning(
-                            "Resync hand drift: tracked %d, actual %d",
-                            len(self.my_hand), my_count)
+                            "Resync hand drift: tracked %d, actual %d", len(self.my_hand), my_count
+                        )
                     if self.opp_hand_count != opp_count:
                         logger.warning(
                             "Resync opp hand drift: tracked %d, actual %d",
-                            self.opp_hand_count, opp_count)
+                            self.opp_hand_count,
+                            opp_count,
+                        )
                         self.opp_hand_count = opp_count
                 elif label == "Deck":
                     if self.my_deck_count != my_count:
                         logger.warning(
-                            "Resync deck drift: tracked %d, actual %d",
-                            self.my_deck_count, my_count)
+                            "Resync deck drift: tracked %d, actual %d", self.my_deck_count, my_count
+                        )
                         self.my_deck_count = my_count
                     if self.opp_deck_count != opp_count:
                         logger.warning(
                             "Resync opp deck drift: tracked %d, actual %d",
-                            self.opp_deck_count, opp_count)
+                            self.opp_deck_count,
+                            opp_count,
+                        )
                         self.opp_deck_count = opp_count
                 elif label == "Grave":
                     if len(self.my_graveyard) != my_count:
                         logger.warning(
                             "Resync GY drift: tracked %d, actual %d",
-                            len(self.my_graveyard), my_count)
+                            len(self.my_graveyard),
+                            my_count,
+                        )
                     if len(self.opp_graveyard) != opp_count:
                         logger.warning(
                             "Resync opp GY drift: tracked %d, actual %d",
-                            len(self.opp_graveyard), opp_count)
+                            len(self.opp_graveyard),
+                            opp_count,
+                        )
                 elif label == "Removed":
                     if len(self.my_banished) != my_count:
                         logger.warning(
                             "Resync banished drift: tracked %d, actual %d",
-                            len(self.my_banished), my_count)
+                            len(self.my_banished),
+                            my_count,
+                        )
                     if len(self.opp_banished) != opp_count:
                         logger.warning(
-                            "Resync opp banished drift: tracked %d, "
-                            "actual %d",
-                            len(self.opp_banished), opp_count)
+                            "Resync opp banished drift: tracked %d, actual %d",
+                            len(self.opp_banished),
+                            opp_count,
+                        )
                 continue
 
             if _SCORE_TURN_RE.match(line):
@@ -789,8 +825,7 @@ class MUDGameState:
         new_mzone: list[CardEntry] = []
         new_szone: list[CardEntry] = []
         for line in lines:
-            if line in ("Your table:", "Opponent's table:",
-                        "Table is empty."):
+            if line in ("Your table:", "Opponent's table:", "Table is empty."):
                 continue
             # Try face-down first (subset of monster/spell patterns)
             m = _TAB_FACEDOWN_RE.match(line)
@@ -805,21 +840,25 @@ class MUDGameState:
             m = _TAB_MONSTER_RE.match(line)
             if m:
                 spec, name = m.group(1), m.group(2)
-                new_mzone.append(CardEntry(
-                    name=name,
-                    code=self.resolve_code(name),
-                    spec=spec,
-                ))
+                new_mzone.append(
+                    CardEntry(
+                        name=name,
+                        code=self.resolve_code(name),
+                        spec=spec,
+                    )
+                )
                 continue
             m = _TAB_SPELL_RE.match(line)
             if m:
                 spec, name, pos = m.group(1), m.group(2), m.group(3)
-                new_szone.append(CardEntry(
-                    name=name,
-                    code=self.resolve_code(name),
-                    position=pos,
-                    spec=spec,
-                ))
+                new_szone.append(
+                    CardEntry(
+                        name=name,
+                        code=self.resolve_code(name),
+                        position=pos,
+                        spec=spec,
+                    )
+                )
                 continue
         prefix = "opp " if opponent else ""
         old_mzone = self.opp_mzone if opponent else self.my_mzone
@@ -827,11 +866,17 @@ class MUDGameState:
         if len(old_mzone) != len(new_mzone):
             logger.warning(
                 "Resync %smzone drift: tracked %d, actual %d",
-                prefix, len(old_mzone), len(new_mzone))
+                prefix,
+                len(old_mzone),
+                len(new_mzone),
+            )
         if len(old_szone) != len(new_szone):
             logger.warning(
                 "Resync %sszone drift: tracked %d, actual %d",
-                prefix, len(old_szone), len(new_szone))
+                prefix,
+                len(old_szone),
+                len(new_szone),
+            )
         if opponent:
             self.opp_mzone = new_mzone
             self.opp_szone = new_szone
@@ -867,9 +912,10 @@ class MUDGameState:
         new_zone = self._parse_zone_lines(lines, card_re)
         if not new_zone and not any(l == "No cards." for l in lines):
             logger.warning(
-                "Resync %s%s: no parseable cards and no 'No cards.' marker, "
-                "skipping overwrite",
-                "opp " if opponent else "", zone)
+                "Resync %s%s: no parseable cards and no 'No cards.' marker, skipping overwrite",
+                "opp " if opponent else "",
+                zone,
+            )
             return
         attr = f"opp_{zone}" if opponent else f"my_{zone}"
         old_zone: list[CardEntry] = getattr(self, attr)
@@ -878,11 +924,16 @@ class MUDGameState:
         if old_count != len(new_zone):
             logger.warning(
                 "Resync %s%s: %d → %d cards",
-                "opp " if opponent else "", zone,
-                old_count, len(new_zone))
+                "opp " if opponent else "",
+                zone,
+                old_count,
+                len(new_zone),
+            )
 
     def _parse_zone_lines(
-        self, lines: list[str], card_re: re.Pattern[str],
+        self,
+        lines: list[str],
+        card_re: re.Pattern[str],
     ) -> list[CardEntry]:
         """Parse zone command response lines into a list of CardEntry."""
         new_zone: list[CardEntry] = []
@@ -893,12 +944,14 @@ class MUDGameState:
             if m:
                 spec = m.group(1)
                 name, position = _parse_card_line(m.group(2))
-                new_zone.append(CardEntry(
-                    name=name,
-                    code=self.resolve_code(name),
-                    position=position,
-                    spec=spec,
-                ))
+                new_zone.append(
+                    CardEntry(
+                        name=name,
+                        code=self.resolve_code(name),
+                        position=position,
+                        spec=spec,
+                    )
+                )
         return new_zone
 
 

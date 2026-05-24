@@ -8,10 +8,8 @@ into properly-typed float32 tensors suitable for neural network input.
 from __future__ import annotations
 
 import torch
-import torch.nn.functional as F
 
 from yugioh_core.encoding import PER_CARD_DESC_N_VOCAB, SYSSTRING_VOCAB
-
 
 # ---------------------------------------------------------------------------
 # Card features: (B, 200, 42) uint8 → card_ids (B,200) int, card_feats (B,200,F)
@@ -25,29 +23,29 @@ _POS_BITS = [0x01, 0x02, 0x04, 0x08]  # FU-Atk, FD-Atk, FU-Def, FD-Def
 
 # Card type bits (bytes 9-12 as uint32)
 _TYPE_BITS = [
-    0x1,        # monster
-    0x2,        # spell
-    0x4,        # trap
-    0x10,       # normal
-    0x20,       # effect
-    0x40,       # fusion
-    0x80,       # ritual
-    0x100,      # trapmonster
-    0x200,      # spirit
-    0x400,      # union
-    0x800,      # gemini
-    0x1000,     # tuner
-    0x2000,     # synchro
-    0x4000,     # token
-    0x8000,     # maximum
-    0x10000,    # quickplay
-    0x20000,    # continuous
-    0x40000,    # equip
-    0x80000,    # field
-    0x100000,   # counter
-    0x200000,   # flip
-    0x400000,   # toon
-    0x800000,   # xyz
+    0x1,  # monster
+    0x2,  # spell
+    0x4,  # trap
+    0x10,  # normal
+    0x20,  # effect
+    0x40,  # fusion
+    0x80,  # ritual
+    0x100,  # trapmonster
+    0x200,  # spirit
+    0x400,  # union
+    0x800,  # gemini
+    0x1000,  # tuner
+    0x2000,  # synchro
+    0x4000,  # token
+    0x8000,  # maximum
+    0x10000,  # quickplay
+    0x20000,  # continuous
+    0x40000,  # equip
+    0x80000,  # field
+    0x100000,  # counter
+    0x200000,  # flip
+    0x400000,  # toon
+    0x800000,  # xyz
     0x1000000,  # pendulum
     0x2000000,  # spsummon
     0x4000000,  # link
@@ -58,38 +56,38 @@ _ATTR_BITS = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40]  # earth,water,fire,wind
 
 # Race bits (bytes 15-18 as uint32)
 _RACE_BITS = [
-    0x0001,     # warrior
-    0x0002,     # spellcaster
-    0x0004,     # fairy
-    0x0008,     # fiend
-    0x0010,     # zombie
-    0x0020,     # machine
-    0x0040,     # aqua
-    0x0080,     # pyro
-    0x0100,     # rock
-    0x0200,     # winged_beast
-    0x0400,     # plant
-    0x0800,     # insect
-    0x1000,     # thunder
-    0x2000,     # dragon
-    0x4000,     # beast
-    0x8000,     # beast-warrior
-    0x10000,    # dinosaur
-    0x20000,    # fish
-    0x40000,    # sea_serpent
-    0x80000,    # reptile
-    0x100000,   # psychic
-    0x200000,   # divine
-    0x400000,   # creator_god
-    0x800000,   # wyrm
+    0x0001,  # warrior
+    0x0002,  # spellcaster
+    0x0004,  # fairy
+    0x0008,  # fiend
+    0x0010,  # zombie
+    0x0020,  # machine
+    0x0040,  # aqua
+    0x0080,  # pyro
+    0x0100,  # rock
+    0x0200,  # winged_beast
+    0x0400,  # plant
+    0x0800,  # insect
+    0x1000,  # thunder
+    0x2000,  # dragon
+    0x4000,  # beast
+    0x8000,  # beast-warrior
+    0x10000,  # dinosaur
+    0x20000,  # fish
+    0x40000,  # sea_serpent
+    0x80000,  # reptile
+    0x100000,  # psychic
+    0x200000,  # divine
+    0x400000,  # creator_god
+    0x800000,  # wyrm
     0x1000000,  # cyberse
     0x2000000,  # illusion
     0x4000000,  # cyborg
     0x8000000,  # magical_knight
-    0x10000000, # high_dragon
-    0x20000000, # omega_psychic
-    0x40000000, # celestial_warrior
-    0x80000000, # galaxy
+    0x10000000,  # high_dragon
+    0x20000000,  # omega_psychic
+    0x40000000,  # celestial_warrior
+    0x80000000,  # galaxy
 ]
 
 # Link marker bits (bytes 25-26 as uint16)
@@ -289,33 +287,33 @@ def decode_global(raw: torch.Tensor) -> torch.Tensor:
 
 # Heuristic normalizers — module-level constants so they're tunable per-experiment.
 # (Rigorous denominators use vocab/dim sizes directly inline.)
-_NORM_MSG_TYPE = 255.0          # msg_type byte (heuristic upper bound)
-_NORM_CATEGORY = 10.0           # category index (heuristic max)
-_NORM_SEQUENCE = 60.0           # sequence (heuristic; deck/banished/GY can grow)
-_NORM_SUBSEQUENCE = 15.0        # Xyz overlay slot (heuristic; common stack depth)
-_NORM_WEIGHT = 12.0             # tribute release_param / sum.param (≈max monster level)
-_NORM_COUNTER_TYPE = 50.0       # counter type id (heuristic; common counters cap)
-_NORM_COUNTER_COUNT = 15.0      # counters on one card (heuristic)
-_NORM_NUM_SELECTED = 5.0        # accumulated picks in a multi-step prompt (heuristic)
+_NORM_MSG_TYPE = 255.0  # msg_type byte (heuristic upper bound)
+_NORM_CATEGORY = 10.0  # category index (heuristic max)
+_NORM_SEQUENCE = 60.0  # sequence (heuristic; deck/banished/GY can grow)
+_NORM_SUBSEQUENCE = 15.0  # Xyz overlay slot (heuristic; common stack depth)
+_NORM_WEIGHT = 12.0  # tribute release_param / sum.param (≈max monster level)
+_NORM_COUNTER_TYPE = 50.0  # counter type id (heuristic; common counters cap)
+_NORM_COUNTER_COUNT = 15.0  # counters on one card (heuristic)
+_NORM_NUM_SELECTED = 5.0  # accumulated picks in a multi-step prompt (heuristic)
 
 # Per-card desc_n vocab — rigorous: cards.cdb texts has str1..str16
 # (Imported at top of module; re-noted here for context.)
 
 ACTION_FEAT_DIM = (
-    1   # msg_type
-    + 1 # category
-    + 1 # controller (binary)
-    + 7 # location bits
-    + 1 # sequence
-    + 1 # subsequence
-    + 4 # position bits
-    + 1 # direct_attackable (binary)
-    + 1 # weight
-    + 1 # counter_type
-    + 1 # counter_count
-    + 1 # index
-    + 1 # num_selected
-    + 1 # per_card_desc_n_scalar (masked to 0 when sysstring)
+    1  # msg_type
+    + 1  # category
+    + 1  # controller (binary)
+    + 7  # location bits
+    + 1  # sequence
+    + 1  # subsequence
+    + 4  # position bits
+    + 1  # direct_attackable (binary)
+    + 1  # weight
+    + 1  # counter_type
+    + 1  # counter_count
+    + 1  # index
+    + 1  # num_selected
+    + 1  # per_card_desc_n_scalar (masked to 0 when sysstring)
 )  # = 23
 
 
@@ -346,9 +344,9 @@ def decode_actions(
     # Per-card desc_n scalar — meaningful only when desc.passcode != 0.
     # Masked to 0 when sysstring so the MLP gets a clean disambiguated signal.
     is_sysstring_mask = (desc_passcodes == 0).float()
-    per_card_desc_n_scalar = (
-        desc_ns.float() / float(PER_CARD_DESC_N_VOCAB - 1)
-    ) * (1.0 - is_sysstring_mask)
+    per_card_desc_n_scalar = (desc_ns.float() / float(PER_CARD_DESC_N_VOCAB - 1)) * (
+        1.0 - is_sysstring_mask
+    )
 
     feats = [
         (raw[..., 0].float() / _NORM_MSG_TYPE).unsqueeze(-1),

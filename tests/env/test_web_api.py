@@ -10,19 +10,22 @@ import pytest
 @pytest.fixture
 def web_client(lib, db_path, script_dirs, deck_path):
     """Create a TestClient wrapping the FastAPI app with a configured web env."""
-    from starlette.testclient import TestClient
-    from yugioh_env.server.web_api import web_router, create_describer, create_web_env
-
     # Build a standalone app with only the web router
     from fastapi import FastAPI
+    from starlette.testclient import TestClient
+
+    from yugioh_env.server.web_api import create_describer, create_web_env, web_router
+
     app = FastAPI()
-    app.state.web_env = create_web_env({
-        "db_path": str(db_path),
-        "script_dirs": [str(d) for d in script_dirs],
-        "deck_path": str(deck_path),
-        "opponent": "random",
-        "opponent_seed": 42,
-    })
+    app.state.web_env = create_web_env(
+        {
+            "db_path": str(db_path),
+            "script_dirs": [str(d) for d in script_dirs],
+            "deck_path": str(deck_path),
+            "opponent": "random",
+            "opponent_seed": 42,
+        }
+    )
     app.state.describer = create_describer(app.state.web_env)
     app.include_router(web_router)
     return TestClient(app)
@@ -167,8 +170,18 @@ def test_game_state_fields(web_client):
     assert "is_my_turn" in gs
     assert "chain_count" in gs
     assert gs["turn"] >= 1
-    assert gs["phase"] in ("draw", "standby", "main1", "battle_start", "battle",
-                           "battle_step", "damage", "damage_calc", "main2", "end")
+    assert gs["phase"] in (
+        "draw",
+        "standby",
+        "main1",
+        "battle_start",
+        "battle",
+        "battle_step",
+        "damage",
+        "damage_calc",
+        "main2",
+        "end",
+    )
     assert isinstance(gs["is_my_turn"], bool)
     assert isinstance(gs["chain_count"], int)
 
@@ -283,14 +296,18 @@ def test_reset_with_custom_deck(web_client):
     """Reset with explicit deck0/deck1 should succeed."""
     # Use a real deck's card IDs inline
     from yugioh_env.deck_parser import parse_ydk
+
     deck = parse_ydk("assets/decks/blue_eyes.ydk")
     payload = {"main": deck["main"], "extra": deck.get("extra", [])}
 
-    resp = web_client.post("/api/web/reset", json={
-        "seed": 42,
-        "deck0": payload,
-        "deck1": payload,
-    })
+    resp = web_client.post(
+        "/api/web/reset",
+        json={
+            "seed": 42,
+            "deck0": payload,
+            "deck1": payload,
+        },
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert data["done"] is False
@@ -300,24 +317,41 @@ def test_reset_with_custom_deck(web_client):
 def test_reset_with_invalid_deck_returns_422(web_client):
     """Reset with a malformed deck should return 422."""
     # Missing 'main' key
-    resp = web_client.post("/api/web/reset", json={
-        "seed": 42,
-        "deck0": {"extra": []},
-    })
+    resp = web_client.post(
+        "/api/web/reset",
+        json={
+            "seed": 42,
+            "deck0": {"extra": []},
+        },
+    )
     assert resp.status_code == 422
 
     # Too few main deck cards
-    resp = web_client.post("/api/web/reset", json={
-        "seed": 42,
-        "deck0": {"main": [89631139] * 10, "extra": []},
-    })
+    resp = web_client.post(
+        "/api/web/reset",
+        json={
+            "seed": 42,
+            "deck0": {"main": [89631139] * 10, "extra": []},
+        },
+    )
     assert resp.status_code == 422
 
 
 # ─── Frame snapshot tests ────────────────────────────────────────────────
 
-_VALID_PHASES = {"draw", "standby", "main1", "battle_start", "battle_step",
-                 "damage", "damage_calc", "battle", "main2", "end", "unknown"}
+_VALID_PHASES = {
+    "draw",
+    "standby",
+    "main1",
+    "battle_start",
+    "battle_step",
+    "damage",
+    "damage_calc",
+    "battle",
+    "main2",
+    "end",
+    "unknown",
+}
 
 
 def _assert_frame_structure(frame):
@@ -407,9 +441,8 @@ def test_multi_select_step_returns_no_frames(web_client):
                 data = _step(web_client, action_index=0)
                 continue
 
-            is_multi = (
-                (prompt.get("type") == "select_card" and prompt.get("max", 1) > 1)
-                or (prompt.get("type") == "tribute" and prompt.get("max_cards", 1) > 1)
+            is_multi = (prompt.get("type") == "select_card" and prompt.get("max", 1) > 1) or (
+                prompt.get("type") == "tribute" and prompt.get("max_cards", 1) > 1
             )
             if is_multi:
                 # Take one intermediate pick
@@ -437,10 +470,12 @@ def test_frames_board_changes_across_steps(web_client):
             # Compare LP or monster zones between first and last frame
             first_board = frames[0]["board"]
             last_board = frames[-1]["board"]
-            if (first_board["player"]["lp"] != last_board["player"]["lp"]
-                    or first_board["opponent"]["lp"] != last_board["opponent"]["lp"]
-                    or first_board["player"]["monsters"] != last_board["player"]["monsters"]
-                    or first_board["opponent"]["monsters"] != last_board["opponent"]["monsters"]):
+            if (
+                first_board["player"]["lp"] != last_board["player"]["lp"]
+                or first_board["opponent"]["lp"] != last_board["opponent"]["lp"]
+                or first_board["player"]["monsters"] != last_board["player"]["monsters"]
+                or first_board["opponent"]["monsters"] != last_board["opponent"]["monsters"]
+            ):
                 found_different = True
                 break
 
@@ -551,15 +586,9 @@ def test_action_controller_relativizes_per_agent_player(agent_player, web_client
         for a in actions:
             if a.get("card_code", 0) == 0:
                 continue
-            assert "side" not in a, (
-                f"action carries legacy side field: {a!r}"
-            )
-            assert "controller" in a, (
-                f"action missing controller: {a!r}"
-            )
-            assert a["controller"] in (0, 1), (
-                f"controller must be 0 or 1, got {a['controller']!r}"
-            )
+            assert "side" not in a, f"action carries legacy side field: {a!r}"
+            assert "controller" in a, f"action missing controller: {a!r}"
+            assert a["controller"] in (0, 1), f"controller must be 0 or 1, got {a['controller']!r}"
             card_actions_seen += 1
         if card_actions_seen >= 1 or state.get("done"):
             break
@@ -567,7 +596,8 @@ def test_action_controller_relativizes_per_agent_player(agent_player, web_client
             break
         # Web API returns only legal actions; step the first by its index.
         step_response = web_client.post(
-            "/api/web/step", json={"action_index": actions[0]["index"]},
+            "/api/web/step",
+            json={"action_index": actions[0]["index"]},
         )
         assert step_response.status_code == 200, step_response.text
         state = step_response.json()

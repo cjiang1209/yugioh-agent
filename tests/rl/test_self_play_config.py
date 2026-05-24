@@ -1,4 +1,5 @@
 """Tests for self-play TrainingConfig fields."""
+
 from __future__ import annotations
 
 from yugioh_rl.config import TrainingConfig

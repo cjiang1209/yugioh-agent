@@ -13,12 +13,10 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import Optional
 
 import numpy as np
 
 from yugioh_leaderboard.entry import Entry
-
 
 _BOOTSTRAP_SEED = 42
 _DEFAULT_ITERS = 10_000
@@ -39,9 +37,7 @@ def _seed_for(values: np.ndarray) -> tuple[int, int]:
     return (_BOOTSTRAP_SEED, hash(values.tobytes()) & _HASH_MASK)
 
 
-def _resample_quantiles(
-    arr: np.ndarray, n_iters: int, alpha: float
-) -> tuple[float, float]:
+def _resample_quantiles(arr: np.ndarray, n_iters: int, alpha: float) -> tuple[float, float]:
     """Resample ``arr`` with replacement and return ``(lo, hi)`` percentile bounds."""
     rng = np.random.default_rng(_seed_for(arr))
     means = arr[rng.integers(0, arr.size, size=(n_iters, arr.size))].mean(axis=1)
@@ -98,6 +94,7 @@ def paired_bootstrap_delta(
 @dataclass
 class GroupStats:
     """Per-group, per-opponent: mean win rate + bootstrap CI across seeds."""
+
     n_seeds: int
     seeds: list[int]
     by_opponent: dict[str, tuple[float, float, float]]
@@ -106,12 +103,12 @@ class GroupStats:
 @dataclass
 class ComparisonResult:
     by_field: str
-    groups: "OrderedDict[str, GroupStats]"
+    groups: OrderedDict[str, GroupStats]
     paired_delta_by_group: dict[str, dict[str, tuple[float, float, float]]] = field(
         default_factory=dict
     )
     baseline_group: str = ""
-    skip_reason: Optional[str] = None
+    skip_reason: str | None = None
 
 
 def _entry_winrates_by_opponent(entry: Entry) -> dict[str, float]:
@@ -127,7 +124,7 @@ def value_repr(value: object) -> str:
     return str(value)
 
 
-def matches_filter(entry: Entry, filter_: Optional[dict[str, object]]) -> bool:
+def matches_filter(entry: Entry, filter_: dict[str, object] | None) -> bool:
     """Filter values are compared case-insensitively so CLI strings like
     ``true`` match Python bool ``True`` (which ``value_repr`` lower-cases) and
     ``LSTM`` matches a feature literal ``"lstm"``."""
@@ -143,8 +140,8 @@ def compare_groups(
     entries: list[Entry],
     *,
     by_field: str,
-    filter: Optional[dict[str, object]] = None,
-    opponents: Optional[list[str]] = None,
+    filter: dict[str, object] | None = None,
+    opponents: list[str] | None = None,
 ) -> ComparisonResult:
     """Group entries by ``features[by_field]`` and compute per-group stats."""
     matched = [e for e in entries if matches_filter(e, filter)]
@@ -159,8 +156,7 @@ def compare_groups(
     if len(by_group) < 2:
         if filter:
             reason = (
-                f"filter left {len(by_group)} group(s) for `{by_field}`; "
-                "need at least 2 to compare"
+                f"filter left {len(by_group)} group(s) for `{by_field}`; need at least 2 to compare"
             )
         else:
             reason = f"only {len(by_group)} value of `{by_field}`"

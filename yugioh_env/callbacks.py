@@ -13,16 +13,15 @@ from typing import TYPE_CHECKING
 
 from yugioh_core.constants import split_setcodes
 from yugioh_env.core_types import (
+    POINTER,
     OCG_CardData,
     OCG_DataReader,
     OCG_DataReaderDone,
     OCG_LogHandler,
     OCG_ScriptReader,
-    POINTER,
+    c_char_p,
     c_uint16,
     c_void_p,
-    c_int,
-    c_char_p,
 )
 
 if TYPE_CHECKING:
@@ -63,9 +62,7 @@ class DuelCallbacks:
         self.script_reader_cb = OCG_ScriptReader(self._script_reader)
         self.log_handler_cb = OCG_LogHandler(self._log_handler)
 
-    def _card_reader(
-        self, payload: c_void_p, code: int, data_ptr: POINTER(OCG_CardData)
-    ) -> None:
+    def _card_reader(self, payload: c_void_p, code: int, data_ptr: POINTER(OCG_CardData)) -> None:
         """Fill OCG_CardData struct from card database."""
         card = self._card_db.get_card(code)
         data = data_ptr[0]
@@ -108,16 +105,12 @@ class DuelCallbacks:
         data.rscale = card.get("rscale", 0)
         data.link_marker = card.get("link_marker", 0)
 
-    def _card_reader_done(
-        self, payload: c_void_p, data_ptr: POINTER(OCG_CardData)
-    ) -> None:
+    def _card_reader_done(self, payload: c_void_p, data_ptr: POINTER(OCG_CardData)) -> None:
         """Cleanup after card data has been consumed by the engine."""
         code = data_ptr[0].code
         self._setcode_storage.pop(code, None)
 
-    def _script_reader(
-        self, payload: c_void_p, duel: c_void_p, name: c_char_p
-    ) -> int:
+    def _script_reader(self, payload: c_void_p, duel: c_void_p, name: c_char_p) -> int:
         """Load a Lua script file into the duel engine."""
         script_name = name.decode("utf-8") if isinstance(name, bytes) else name
         if script_name in self._loaded_scripts:

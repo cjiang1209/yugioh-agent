@@ -9,12 +9,11 @@ resolved, and how --json output is shaped.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
 from cli import eval as cli_eval
+
 from yugioh_rl.eval import EvalResult
 
 
@@ -27,9 +26,11 @@ def stub_eval_pipeline():
     via ``make_eval_agent`` for the sequential path, or workers do for the
     parallel path — the CLI no longer touches make_eval_agent directly.
     """
-    captured: dict = {"results": [
-        EvalResult("greedy", episodes=2, wins=1, win_rate=0.5, per_deck_wins={0: [1.0, 0.0]}),
-    ]}
+    captured: dict = {
+        "results": [
+            EvalResult("greedy", episodes=2, wins=1, win_rate=0.5, per_deck_wins={0: [1.0, 0.0]}),
+        ]
+    }
 
     def fake_parse_deck_pool(paths):
         captured["deck_paths"] = list(paths)
@@ -39,8 +40,10 @@ def stub_eval_pipeline():
         captured.update(kwargs)
         return captured["results"]
 
-    with patch("yugioh_rl.env_wrapper.parse_deck_pool", fake_parse_deck_pool), \
-         patch("yugioh_rl.eval.evaluate", fake_evaluate):
+    with (
+        patch("yugioh_rl.env_wrapper.parse_deck_pool", fake_parse_deck_pool),
+        patch("yugioh_rl.eval.evaluate", fake_evaluate),
+    ):
         yield captured
 
 
@@ -48,15 +51,25 @@ def stub_eval_pipeline():
 # Kwarg forwarding
 # ---------------------------------------------------------------------------
 
+
 def test_forwards_args_to_evaluate(stub_eval_pipeline, deck_path_str):
-    cli_eval.main([
-        "--agent", "greedy",
-        "--opponents", "random", "greedy",
-        "--deck-paths", deck_path_str,
-        "--episodes", "5",
-        "--seed", "7",
-        "--agent-player", "first",
-    ])
+    cli_eval.main(
+        [
+            "--agent",
+            "greedy",
+            "--opponents",
+            "random",
+            "greedy",
+            "--deck-paths",
+            deck_path_str,
+            "--episodes",
+            "5",
+            "--seed",
+            "7",
+            "--agent-player",
+            "first",
+        ]
+    )
 
     cap = stub_eval_pipeline
     assert cap["agent_spec"] == "greedy"
@@ -72,14 +85,22 @@ def test_forwards_args_to_evaluate(stub_eval_pipeline, deck_path_str):
 # --device threads to both sides
 # ---------------------------------------------------------------------------
 
+
 def test_device_threads_to_both_agent_and_opponent(stub_eval_pipeline, deck_path_str):
-    cli_eval.main([
-        "--agent", "greedy",
-        "--opponents", "greedy",
-        "--deck-paths", deck_path_str,
-        "--episodes", "1",
-        "--device", "cpu",
-    ])
+    cli_eval.main(
+        [
+            "--agent",
+            "greedy",
+            "--opponents",
+            "greedy",
+            "--deck-paths",
+            deck_path_str,
+            "--episodes",
+            "1",
+            "--device",
+            "cpu",
+        ]
+    )
     cap = stub_eval_pipeline
     assert cap["agent_device"] == "cpu"
     assert cap["opponent_device"] == "cpu"
@@ -89,13 +110,20 @@ def test_device_auto_resolved_before_forwarding(stub_eval_pipeline, deck_path_st
     """--device auto must be resolved to a concrete cpu/cuda string."""
     with patch("cli.eval.resolve_device") as resolve_mock:
         resolve_mock.return_value = "cuda"
-        cli_eval.main([
-            "--agent", "greedy",
-            "--opponents", "greedy",
-            "--deck-paths", deck_path_str,
-            "--episodes", "1",
-            "--device", "auto",
-        ])
+        cli_eval.main(
+            [
+                "--agent",
+                "greedy",
+                "--opponents",
+                "greedy",
+                "--deck-paths",
+                deck_path_str,
+                "--episodes",
+                "1",
+                "--device",
+                "auto",
+            ]
+        )
     resolve_mock.assert_called_once_with("auto")
     cap = stub_eval_pipeline
     assert cap["agent_device"] == "cuda"
@@ -106,21 +134,32 @@ def test_device_auto_resolved_before_forwarding(stub_eval_pipeline, deck_path_st
 # --json output
 # ---------------------------------------------------------------------------
 
+
 def test_json_output_writes_expected_shape(stub_eval_pipeline, deck_path_str, tmp_path):
     out = tmp_path / "results.json"
     stub_eval_pipeline["results"] = [
-        EvalResult("greedy", episodes=4, wins=3, win_rate=0.75,
-                   per_deck_wins={0: [1.0, 1.0, 1.0, 0.0]}),
-        EvalResult("random", episodes=4, wins=2, win_rate=0.5,
-                   per_deck_wins={0: [1.0, 0.0, 1.0, 0.0]}),
+        EvalResult(
+            "greedy", episodes=4, wins=3, win_rate=0.75, per_deck_wins={0: [1.0, 1.0, 1.0, 0.0]}
+        ),
+        EvalResult(
+            "random", episodes=4, wins=2, win_rate=0.5, per_deck_wins={0: [1.0, 0.0, 1.0, 0.0]}
+        ),
     ]
-    cli_eval.main([
-        "--agent", "greedy",
-        "--opponents", "greedy", "random",
-        "--deck-paths", deck_path_str,
-        "--episodes", "4",
-        "--json", str(out),
-    ])
+    cli_eval.main(
+        [
+            "--agent",
+            "greedy",
+            "--opponents",
+            "greedy",
+            "random",
+            "--deck-paths",
+            deck_path_str,
+            "--episodes",
+            "4",
+            "--json",
+            str(out),
+        ]
+    )
 
     payload = json.loads(out.read_text())
     assert len(payload["opponents"]) == 2
@@ -134,12 +173,18 @@ def test_json_output_writes_expected_shape(stub_eval_pipeline, deck_path_str, tm
 
 
 def test_no_json_flag_skips_file_write(stub_eval_pipeline, deck_path_str, capsys):
-    cli_eval.main([
-        "--agent", "greedy",
-        "--opponents", "greedy",
-        "--deck-paths", deck_path_str,
-        "--episodes", "1",
-    ])
+    cli_eval.main(
+        [
+            "--agent",
+            "greedy",
+            "--opponents",
+            "greedy",
+            "--deck-paths",
+            deck_path_str,
+            "--episodes",
+            "1",
+        ]
+    )
     # No file written; stdout has the table but no JSON path message.
     out = capsys.readouterr().out
     assert "Wrote JSON results" not in out
@@ -150,13 +195,20 @@ def test_no_json_flag_skips_file_write(stub_eval_pipeline, deck_path_str, capsys
 # Console table output
 # ---------------------------------------------------------------------------
 
+
 def test_console_table_includes_per_deck(stub_eval_pipeline, deck_path_str, capsys):
-    cli_eval.main([
-        "--agent", "greedy",
-        "--opponents", "greedy",
-        "--deck-paths", deck_path_str,
-        "--episodes", "2",
-    ])
+    cli_eval.main(
+        [
+            "--agent",
+            "greedy",
+            "--opponents",
+            "greedy",
+            "--deck-paths",
+            deck_path_str,
+            "--episodes",
+            "2",
+        ]
+    )
     out = capsys.readouterr().out
     assert "vs greedy: 1/2 (50.0%)" in out
     assert "deck blue_eyes:" in out
@@ -166,23 +218,38 @@ def test_console_table_includes_per_deck(stub_eval_pipeline, deck_path_str, caps
 # --workers plumbing
 # ---------------------------------------------------------------------------
 
+
 def test_workers_forwarded_when_set(stub_eval_pipeline, deck_path_str):
-    cli_eval.main([
-        "--agent", "greedy",
-        "--opponents", "greedy",
-        "--deck-paths", deck_path_str,
-        "--episodes", "1",
-        "--workers", "4",
-    ])
+    cli_eval.main(
+        [
+            "--agent",
+            "greedy",
+            "--opponents",
+            "greedy",
+            "--deck-paths",
+            deck_path_str,
+            "--episodes",
+            "1",
+            "--workers",
+            "4",
+        ]
+    )
     assert stub_eval_pipeline["workers"] == 4
 
 
 def test_workers_zero_rejected(deck_path_str):
     with pytest.raises(SystemExit):
-        cli_eval.main([
-            "--agent", "greedy",
-            "--opponents", "greedy",
-            "--deck-paths", deck_path_str,
-            "--episodes", "1",
-            "--workers", "0",
-        ])
+        cli_eval.main(
+            [
+                "--agent",
+                "greedy",
+                "--opponents",
+                "greedy",
+                "--deck-paths",
+                deck_path_str,
+                "--episodes",
+                "1",
+                "--workers",
+                "0",
+            ]
+        )

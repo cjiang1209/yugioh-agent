@@ -9,28 +9,54 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from yugioh_core.action_categories import (
-    BATTLE_ACTIVATE, BATTLE_ATTACK, BATTLE_TO_EP, BATTLE_TO_M2,
-    IDLE_ACTIVATE, IDLE_MSET, IDLE_REPOSITION, IDLE_SP_SUMMON,
-    IDLE_SSET, IDLE_SUMMON, IDLE_TO_BP, IDLE_TO_EP,
+    BATTLE_ACTIVATE,
+    BATTLE_ATTACK,
+    BATTLE_TO_EP,
+    BATTLE_TO_M2,
+    IDLE_ACTIVATE,
+    IDLE_MSET,
+    IDLE_REPOSITION,
+    IDLE_SP_SUMMON,
+    IDLE_SSET,
+    IDLE_SUMMON,
+    IDLE_TO_BP,
+    IDLE_TO_EP,
 )
 from yugioh_core.card_database import CardDatabase
 from yugioh_core.constants import (
-    LOCATION_BANISHED, LOCATION_DECK, LOCATION_EXTRA, LOCATION_GRAVE,
-    LOCATION_HAND, LOCATION_MZONE, LOCATION_OVERLAY, LOCATION_SZONE,
-    MSG_ANNOUNCE_ATTRIB, MSG_ANNOUNCE_NUMBER, MSG_ANNOUNCE_RACE,
+    LOCATION_BANISHED,
+    LOCATION_DECK,
+    LOCATION_EXTRA,
+    LOCATION_GRAVE,
+    LOCATION_HAND,
+    LOCATION_MZONE,
+    LOCATION_OVERLAY,
+    LOCATION_SZONE,
+    MSG_ANNOUNCE_ATTRIB,
+    MSG_ANNOUNCE_NUMBER,
+    MSG_ANNOUNCE_RACE,
     MSG_ROCK_PAPER_SCISSORS,
-    MSG_SELECT_BATTLECMD, MSG_SELECT_CARD, MSG_SELECT_CHAIN,
-    MSG_SELECT_COUNTER, MSG_SELECT_DISFIELD, MSG_SELECT_EFFECTYN,
-    MSG_SELECT_IDLECMD, MSG_SELECT_OPTION, MSG_SELECT_PLACE,
-    MSG_SELECT_POSITION, MSG_SELECT_TRIBUTE, MSG_SELECT_UNSELECT_CARD,
+    MSG_SELECT_BATTLECMD,
+    MSG_SELECT_CARD,
+    MSG_SELECT_CHAIN,
+    MSG_SELECT_COUNTER,
+    MSG_SELECT_DISFIELD,
+    MSG_SELECT_EFFECTYN,
+    MSG_SELECT_IDLECMD,
+    MSG_SELECT_OPTION,
+    MSG_SELECT_PLACE,
+    MSG_SELECT_POSITION,
+    MSG_SELECT_TRIBUTE,
+    MSG_SELECT_UNSELECT_CARD,
     MSG_SELECT_YESNO,
-    POS_FACEDOWN_ATTACK, POS_FACEDOWN_DEFENSE,
-    POS_FACEUP_ATTACK, POS_FACEUP_DEFENSE,
+    POS_FACEDOWN_ATTACK,
+    POS_FACEDOWN_DEFENSE,
+    POS_FACEUP_ATTACK,
+    POS_FACEUP_DEFENSE,
 )
 from yugioh_core.encoding import decode_u16, decode_u32
 from yugioh_core.string_resolver import StringResolver
 from yugioh_env.models import ActionMeta, YuGiOhObservation
-
 
 _IDLE_DESCS = {
     IDLE_SUMMON: ("Normal Summon", "summon"),
@@ -125,6 +151,7 @@ class ActionDetails:
     emitted, with `controller` flowing through unchanged (already
     relativized at extraction: 0=mine, 1=opp).
     """
+
     index: int
     description: str
     category: str
@@ -162,30 +189,21 @@ class ActionDescriber:
     ) -> None:
         self._card_db = card_db
         self._resolver: StringResolver | None = (
-            StringResolver(card_db, sys_strings=sys_strings)
-            if sys_strings is not None else None
+            StringResolver(card_db, sys_strings=sys_strings) if sys_strings is not None else None
         )
 
     def describe(self, obs: YuGiOhObservation, action_idx: int) -> ActionDetails:
         """Describe a single legal action by slot index. Raises IndexError
         for out-of-range or inactive slots."""
         if action_idx < 0 or action_idx >= len(obs.action_mask):
-            raise IndexError(
-                f"action_idx {action_idx} out of range (len={len(obs.action_mask)})"
-            )
+            raise IndexError(f"action_idx {action_idx} out of range (len={len(obs.action_mask)})")
         if obs.action_mask[action_idx] != 1:
-            raise IndexError(
-                f"action slot {action_idx} is inactive (action_mask=0)"
-            )
+            raise IndexError(f"action slot {action_idx} is inactive (action_mask=0)")
         return self._describe_one(obs, action_idx)
 
     def describe_all(self, obs: YuGiOhObservation) -> list[ActionDetails]:
         """One ActionDetails per legal action (where action_mask[i] == 1)."""
-        return [
-            self._describe_one(obs, i)
-            for i, m in enumerate(obs.action_mask)
-            if m == 1
-        ]
+        return [self._describe_one(obs, i) for i, m in enumerate(obs.action_mask) if m == 1]
 
     def describe_prompt(self, obs: YuGiOhObservation) -> dict | None:
         """Build the prompt-level metadata dict for the current observation,
@@ -217,10 +235,7 @@ class ActionDescriber:
         # synthesized question.
         if "desc" in result:
             desc = result["desc"]
-            template = (
-                self._resolver.resolve(desc)
-                if (self._resolver and desc) else None
-            )
+            template = self._resolver.resolve(desc) if (self._resolver and desc) else None
             if template is None:
                 result["prompt_text"] = None
             else:
@@ -271,9 +286,17 @@ class ActionDescriber:
         )
 
     def _dispatch(
-        self, *, msg_type: int, category_byte: int, code: int,
-        card_name: str, index_byte: int, num_selected: int,
-        location: int, sequence: int, meta: ActionMeta | None,
+        self,
+        *,
+        msg_type: int,
+        category_byte: int,
+        code: int,
+        card_name: str,
+        index_byte: int,
+        num_selected: int,
+        location: int,
+        sequence: int,
+        meta: ActionMeta | None,
     ) -> tuple[str, str]:
         cat = category_byte
 
@@ -302,7 +325,8 @@ class ActionDescriber:
             if meta is not None:
                 resolved = (
                     self._resolver.resolve(meta.raw_value)
-                    if (self._resolver and meta.raw_value is not None) else None
+                    if (self._resolver and meta.raw_value is not None)
+                    else None
                 )
                 return (resolved or meta.label), "option"
             return f"Option {index_byte + 1}", "option"
@@ -331,8 +355,10 @@ class ActionDescriber:
 
         if msg_type in (MSG_SELECT_PLACE, MSG_SELECT_DISFIELD):
             zone = (
-                "Monster" if location == LOCATION_MZONE
-                else "Spell/Trap" if location == LOCATION_SZONE
+                "Monster"
+                if location == LOCATION_MZONE
+                else "Spell/Trap"
+                if location == LOCATION_SZONE
                 else "Unknown"
             )
             return f"Place in {zone} Zone {sequence + 1}", "place"

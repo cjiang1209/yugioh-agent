@@ -5,8 +5,6 @@ import struct
 import numpy as np
 import pytest
 
-from yugioh_env.action_space import ActionMapper, MAX_ACTIONS, ACTION_FEATURES
-from yugioh_core.encoding import decode_u16, decode_u32
 from yugioh_core.constants import (
     LOCATION_MZONE,
     LOCATION_SZONE,
@@ -16,20 +14,22 @@ from yugioh_core.constants import (
     MSG_ROCK_PAPER_SCISSORS,
     MSG_SELECT_BATTLECMD,
     MSG_SELECT_CARD,
+    MSG_SELECT_CHAIN,
     MSG_SELECT_COUNTER,
     MSG_SELECT_IDLECMD,
+    MSG_SELECT_OPTION,
     MSG_SELECT_PLACE,
+    MSG_SELECT_POSITION,
+    MSG_SELECT_SUM,
     MSG_SELECT_TRIBUTE,
     MSG_SELECT_UNSELECT_CARD,
     MSG_SELECT_YESNO,
-    MSG_SELECT_CHAIN,
-    MSG_SELECT_POSITION,
-    MSG_SELECT_OPTION,
-    MSG_SELECT_SUM,
     POS_FACEUP_ATTACK,
     POS_FACEUP_DEFENSE,
 )
+from yugioh_core.encoding import decode_u16, decode_u32
 from yugioh_env import response_builder as rb
+from yugioh_env.action_space import ACTION_FEATURES, MAX_ACTIONS, ActionMapper
 
 
 def test_yesno_actions():
@@ -59,18 +59,27 @@ def test_yesno_responses():
 def test_chain_no_forced():
     """Non-forced chain should include 'no chain' option."""
     mapper = ActionMapper()
-    mapper.update({
-        "msg_type": MSG_SELECT_CHAIN,
-        "player": 0,
-        "spe_count": 0,
-        "forced": 0,
-        "hint_timing": 0,
-        "other_timing": 0,
-        "chains": [
-            {"code": 100, "controller": 0, "location": 2,
-             "sequence": 0, "position": 0, "desc": 0, "client_mode": 0},
-        ],
-    })
+    mapper.update(
+        {
+            "msg_type": MSG_SELECT_CHAIN,
+            "player": 0,
+            "spe_count": 0,
+            "forced": 0,
+            "hint_timing": 0,
+            "other_timing": 0,
+            "chains": [
+                {
+                    "code": 100,
+                    "controller": 0,
+                    "location": 2,
+                    "sequence": 0,
+                    "position": 0,
+                    "desc": 0,
+                    "client_mode": 0,
+                },
+            ],
+        }
+    )
     # 1 chain + 1 "no chain" = 2 actions
     assert mapper.num_actions == 2
 
@@ -78,23 +87,27 @@ def test_chain_no_forced():
 def test_position_actions():
     """Position selection should list available positions."""
     mapper = ActionMapper()
-    mapper.update({
-        "msg_type": MSG_SELECT_POSITION,
-        "player": 0,
-        "code": 12345,
-        "positions": POS_FACEUP_ATTACK | POS_FACEUP_DEFENSE,
-    })
+    mapper.update(
+        {
+            "msg_type": MSG_SELECT_POSITION,
+            "player": 0,
+            "code": 12345,
+            "positions": POS_FACEUP_ATTACK | POS_FACEUP_DEFENSE,
+        }
+    )
     assert mapper.num_actions == 2
 
 
 def test_option_actions():
     """Option selection should produce correct number of actions."""
     mapper = ActionMapper()
-    mapper.update({
-        "msg_type": MSG_SELECT_OPTION,
-        "player": 0,
-        "options": [100, 200, 300],
-    })
+    mapper.update(
+        {
+            "msg_type": MSG_SELECT_OPTION,
+            "player": 0,
+            "options": [100, 200, 300],
+        }
+    )
     assert mapper.num_actions == 3
 
 
@@ -110,16 +123,18 @@ def test_action_features_shape():
 def test_action_features_card_code_encoding():
     """Card code should be encoded as 4-byte uint32 LE in feat[2:6]."""
     mapper = ActionMapper()
-    mapper.update({
-        "msg_type": MSG_SELECT_CARD,
-        "player": 0,
-        "cancelable": 0,
-        "min": 1,
-        "max": 1,
-        "cards": [
-            {"code": 89631139, "controller": 0, "location": 2, "sequence": 3, "subsequence": 0},
-        ],
-    })
+    mapper.update(
+        {
+            "msg_type": MSG_SELECT_CARD,
+            "player": 0,
+            "cancelable": 0,
+            "min": 1,
+            "max": 1,
+            "cards": [
+                {"code": 89631139, "controller": 0, "location": 2, "sequence": 3, "subsequence": 0},
+            ],
+        }
+    )
     features = mapper.get_action_features()
     feat = features[0]
     # feat[0] = msg_type
@@ -128,10 +143,10 @@ def test_action_features_card_code_encoding():
     code = decode_u32(feat, 2)
     assert code == 89631139
     # New 28-byte layout: [6]=controller, [7]=location, [8:10]=sequence (u16 LE), [16]=index
-    assert feat[7] == 2   # location
+    assert feat[7] == 2  # location
     seq = decode_u16(feat, 8)
-    assert seq == 3   # sequence
-    assert feat[16] == 0   # index
+    assert seq == 3  # sequence
+    assert feat[16] == 0  # index
 
 
 def test_invalid_action_index():
@@ -143,6 +158,7 @@ def test_invalid_action_index():
 
 
 # --- Place action tests (field_mask is from selecting player's perspective) ---
+
 
 def test_place_actions_player0():
     """Player 0 selecting: bits 0-15 = player 0's zones."""
@@ -188,6 +204,7 @@ def test_place_actions_opponent_zones():
 
 # --- Card selection response format tests ---
 
+
 def test_select_card_response_format():
     """Card response must have type(int32=0) + count(uint32) + uint32 indices."""
     resp = rb.build_select_card_response([3])
@@ -221,17 +238,19 @@ def test_select_sum_response_format():
 def test_select_card_actions_response():
     """Full round-trip: MSG_SELECT_CARD -> ActionMapper -> response bytes."""
     mapper = ActionMapper()
-    mapper.update({
-        "msg_type": MSG_SELECT_CARD,
-        "player": 0,
-        "cancelable": 0,
-        "min": 1,
-        "max": 1,
-        "cards": [
-            {"code": 100, "controller": 0, "location": 2, "sequence": 0, "subsequence": 0},
-            {"code": 200, "controller": 0, "location": 2, "sequence": 1, "subsequence": 0},
-        ],
-    })
+    mapper.update(
+        {
+            "msg_type": MSG_SELECT_CARD,
+            "player": 0,
+            "cancelable": 0,
+            "min": 1,
+            "max": 1,
+            "cards": [
+                {"code": 100, "controller": 0, "location": 2, "sequence": 0, "subsequence": 0},
+                {"code": 200, "controller": 0, "location": 2, "sequence": 1, "subsequence": 0},
+            ],
+        }
+    )
     assert mapper.num_actions == 2
     resp = mapper.action_to_response(1)
     typ, count, idx = struct.unpack("<iII", resp)
@@ -241,6 +260,7 @@ def test_select_card_actions_response():
 
 
 # --- MSG_SELECT_UNSELECT_CARD response format ---
+
 
 def test_unselect_card_response_select():
     """Unselect card response sends returns[0]=1 and returns[1]=index."""
@@ -262,20 +282,22 @@ def test_unselect_card_response_finish():
 def test_unselect_card_actions():
     """MSG_SELECT_UNSELECT_CARD actions produce correct response format."""
     mapper = ActionMapper()
-    mapper.update({
-        "msg_type": MSG_SELECT_UNSELECT_CARD,
-        "player": 0,
-        "finishable": 1,
-        "cancelable": 0,
-        "min": 1,
-        "max": 3,
-        "selectable": [
-            {"code": 100, "controller": 0, "location": 2, "sequence": 0, "subsequence": 0},
-            {"code": 200, "controller": 0, "location": 2, "sequence": 1, "subsequence": 0},
-            {"code": 300, "controller": 0, "location": 2, "sequence": 2, "subsequence": 0},
-        ],
-        "unselectable": [],
-    })
+    mapper.update(
+        {
+            "msg_type": MSG_SELECT_UNSELECT_CARD,
+            "player": 0,
+            "finishable": 1,
+            "cancelable": 0,
+            "min": 1,
+            "max": 3,
+            "selectable": [
+                {"code": 100, "controller": 0, "location": 2, "sequence": 0, "subsequence": 0},
+                {"code": 200, "controller": 0, "location": 2, "sequence": 1, "subsequence": 0},
+                {"code": 300, "controller": 0, "location": 2, "sequence": 2, "subsequence": 0},
+            ],
+            "unselectable": [],
+        }
+    )
     # 3 selectable + 1 finish = 4 actions
     assert mapper.num_actions == 4
 
@@ -292,6 +314,7 @@ def test_unselect_card_actions():
 
 
 # --- Multi-select card tests ---
+
 
 def test_select_card_multi_select():
     """MSG_SELECT_CARD with min=2, max=2 uses two-step selection."""
@@ -329,6 +352,7 @@ def test_select_card_multi_select():
 
 
 # --- Tribute tests ---
+
 
 def test_tribute_two_tributes():
     """MSG_SELECT_TRIBUTE with min=2, max=2 uses two-step selection."""
@@ -491,6 +515,7 @@ def test_tribute_double_release():
 
 # --- MSG_SELECT_COUNTER response format ---
 
+
 def test_select_counter_response_no_length_prefix():
     """Counter response is just int16 values — no length prefix."""
     resp = rb.build_select_counter_response([3, 0, 2])
@@ -513,16 +538,18 @@ def test_select_counter_response_single():
 def test_select_counter_actions_response():
     """Full round-trip: MSG_SELECT_COUNTER -> ActionMapper -> response bytes."""
     mapper = ActionMapper()
-    mapper.update({
-        "msg_type": MSG_SELECT_COUNTER,
-        "player": 0,
-        "counter_type": 0x01,
-        "count": 3,
-        "cards": [
-            {"code": 100, "controller": 0, "location": 4, "sequence": 0, "counter_count": 2},
-            {"code": 200, "controller": 0, "location": 4, "sequence": 1, "counter_count": 5},
-        ],
-    })
+    mapper.update(
+        {
+            "msg_type": MSG_SELECT_COUNTER,
+            "player": 0,
+            "counter_type": 0x01,
+            "count": 3,
+            "cards": [
+                {"code": 100, "controller": 0, "location": 4, "sequence": 0, "counter_count": 2},
+                {"code": 200, "controller": 0, "location": 4, "sequence": 1, "counter_count": 5},
+            ],
+        }
+    )
     assert mapper.num_actions >= 1
     resp = mapper.action_to_response(0)
     # Response should be raw int16 values, no length prefix
@@ -533,6 +560,7 @@ def test_select_counter_actions_response():
 
 
 # --- Tribute multi-step tests ---
+
 
 def test_tribute_multi_step_with_finish():
     """Tribute with min=2, max=3: finish offered after 2 cards, completes at 3."""
@@ -649,10 +677,12 @@ def test_tribute_num_selected_feature():
 
 # --- Meta field boundary-case tests (Tasks 3-9) ---
 
+
 def test_announce_race_meta_unknown_race_falls_back_to_hex():
     """An unmapped race bit must produce a hex placeholder rather than crash or
     silently drop the action. Ygopro-core may add new races over time."""
     from yugioh_core.constants import MSG_ANNOUNCE_RACE
+
     mapper = ActionMapper()
     # bit 50 — well outside any current RACE_NAMES entry
     mapper.update({"msg_type": MSG_ANNOUNCE_RACE, "player": 0, "available": 1 << 50})
@@ -664,16 +694,26 @@ def test_chain_pass_action_has_no_meta():
     """The pass action (category=1) must not carry meta — the describer falls
     through to the legacy 'Pass (no chain)' label when meta is absent."""
     from yugioh_core.constants import MSG_SELECT_CHAIN
+
     mapper = ActionMapper()
-    mapper.update({
-        "msg_type": MSG_SELECT_CHAIN,
-        "player": 0,
-        "forced": 0,
-        "chains": [
-            {"code": 12345, "controller": 0, "location": 0x10, "sequence": 0,
-             "position": 0, "desc": 0xabcdef, "client_mode": 0},
-        ],
-    })
+    mapper.update(
+        {
+            "msg_type": MSG_SELECT_CHAIN,
+            "player": 0,
+            "forced": 0,
+            "chains": [
+                {
+                    "code": 12345,
+                    "controller": 0,
+                    "location": 0x10,
+                    "sequence": 0,
+                    "position": 0,
+                    "desc": 0xABCDEF,
+                    "client_mode": 0,
+                },
+            ],
+        }
+    )
     assert mapper.num_actions == 2  # 1 chain + 1 pass
     assert mapper.actions[0]["meta"]["kind"] == "chain_link"
     assert mapper.actions[1].get("meta") is None
@@ -684,67 +724,122 @@ def test_counter_skips_cards_with_zero_counters():
     """Cards with counter_count=0 must NOT produce actions — they have nothing to remove.
     Existing extractor already filters these; this test guards against future regression."""
     from yugioh_core.constants import MSG_SELECT_COUNTER
+
     mapper = ActionMapper()
-    mapper.update({
-        "msg_type": MSG_SELECT_COUNTER,
-        "player": 0,
-        "counter_type": 0x1,
-        "count": 2,
-        "cards": [
-            {"code": 111, "controller": 0, "location": 0x4, "sequence": 0, "counter_count": 3},
-            {"code": 222, "controller": 0, "location": 0x4, "sequence": 1, "counter_count": 0},
-            {"code": 333, "controller": 0, "location": 0x4, "sequence": 2, "counter_count": 5},
-        ],
-    })
+    mapper.update(
+        {
+            "msg_type": MSG_SELECT_COUNTER,
+            "player": 0,
+            "counter_type": 0x1,
+            "count": 2,
+            "cards": [
+                {"code": 111, "controller": 0, "location": 0x4, "sequence": 0, "counter_count": 3},
+                {"code": 222, "controller": 0, "location": 0x4, "sequence": 1, "counter_count": 0},
+                {"code": 333, "controller": 0, "location": 0x4, "sequence": 2, "counter_count": 5},
+            ],
+        }
+    )
     assert mapper.num_actions == 2
     assert {a["code"] for a in mapper.actions} == {111, 333}
 
 
-@pytest.mark.parametrize("setup", [
-    # (msg_dict, kind_string, has_card_code_flag)
-    (
-        {"msg_type": MSG_ANNOUNCE_NUMBER, "player": 0, "numbers": [3]},
-        "number", False,
-    ),
-    (
-        {"msg_type": MSG_ANNOUNCE_RACE, "player": 0, "available": 0x1},
-        "race", False,
-    ),
-    (
-        {"msg_type": MSG_ANNOUNCE_ATTRIB, "player": 0, "available": 0x1},
-        "attribute", False,
-    ),
-    (
-        {"msg_type": MSG_ROCK_PAPER_SCISSORS, "player": 0},
-        "rps", False,
-    ),
-    (
-        {"msg_type": MSG_SELECT_OPTION, "player": 0, "options": [0xdead]},
-        "option", False,
-    ),
-    (
-        {"msg_type": MSG_SELECT_CHAIN, "player": 0, "forced": 1,
-         "chains": [{"code": 555, "controller": 0, "location": 0x10,
-                     "sequence": 0, "position": 0, "desc": 0x1, "client_mode": 0}]},
-        "chain_link", True,
-    ),
-    (
-        {"msg_type": MSG_SELECT_COUNTER, "player": 0, "counter_type": 0x1, "count": 1,
-         "cards": [{"code": 666, "controller": 0, "location": 0x4,
-                    "sequence": 0, "counter_count": 1}]},
-        "counter", True,
-    ),
-    # Card-bearing effect (IDLE_ACTIVATE)
-    (
-        {"msg_type": MSG_SELECT_IDLECMD, "player": 0,
-         "summonable": [], "sp_summonable": [], "repositionable": [],
-         "mset": [], "sset": [],
-         "activatable": [{"code": 444, "controller": 0, "location": 0x4,
-                          "sequence": 0, "desc": 0x1, "client_mode": 0}],
-         "to_bp": 0, "to_ep": 0, "shuffle_hand": 0},
-        "effect", True,
-    ),
-])
+@pytest.mark.parametrize(
+    "setup",
+    [
+        # (msg_dict, kind_string, has_card_code_flag)
+        (
+            {"msg_type": MSG_ANNOUNCE_NUMBER, "player": 0, "numbers": [3]},
+            "number",
+            False,
+        ),
+        (
+            {"msg_type": MSG_ANNOUNCE_RACE, "player": 0, "available": 0x1},
+            "race",
+            False,
+        ),
+        (
+            {"msg_type": MSG_ANNOUNCE_ATTRIB, "player": 0, "available": 0x1},
+            "attribute",
+            False,
+        ),
+        (
+            {"msg_type": MSG_ROCK_PAPER_SCISSORS, "player": 0},
+            "rps",
+            False,
+        ),
+        (
+            {"msg_type": MSG_SELECT_OPTION, "player": 0, "options": [0xDEAD]},
+            "option",
+            False,
+        ),
+        (
+            {
+                "msg_type": MSG_SELECT_CHAIN,
+                "player": 0,
+                "forced": 1,
+                "chains": [
+                    {
+                        "code": 555,
+                        "controller": 0,
+                        "location": 0x10,
+                        "sequence": 0,
+                        "position": 0,
+                        "desc": 0x1,
+                        "client_mode": 0,
+                    }
+                ],
+            },
+            "chain_link",
+            True,
+        ),
+        (
+            {
+                "msg_type": MSG_SELECT_COUNTER,
+                "player": 0,
+                "counter_type": 0x1,
+                "count": 1,
+                "cards": [
+                    {
+                        "code": 666,
+                        "controller": 0,
+                        "location": 0x4,
+                        "sequence": 0,
+                        "counter_count": 1,
+                    }
+                ],
+            },
+            "counter",
+            True,
+        ),
+        # Card-bearing effect (IDLE_ACTIVATE)
+        (
+            {
+                "msg_type": MSG_SELECT_IDLECMD,
+                "player": 0,
+                "summonable": [],
+                "sp_summonable": [],
+                "repositionable": [],
+                "mset": [],
+                "sset": [],
+                "activatable": [
+                    {
+                        "code": 444,
+                        "controller": 0,
+                        "location": 0x4,
+                        "sequence": 0,
+                        "desc": 0x1,
+                        "client_mode": 0,
+                    }
+                ],
+                "to_bp": 0,
+                "to_ep": 0,
+                "shuffle_hand": 0,
+            },
+            "effect",
+            True,
+        ),
+    ],
+)
 def test_action_meta_card_code_consistency(setup):
     """§6 invariant: for each kind, action_feats[2:6] code matches meta.extras['card_code']
     iff the kind is card-bearing. This catches drift between the feature vector and the
@@ -790,7 +885,9 @@ def test_announce_number_response_is_index_not_value():
     Sending the value (e.g. 3 for [3,2,1]) makes the engine see 3 >= len(options)=3
     and emit MSG_RETRY → silent forfeit. This regression test pins the index semantics."""
     import struct
+
     from yugioh_core.constants import MSG_ANNOUNCE_NUMBER
+
     mapper = ActionMapper()
     mapper.update({"msg_type": MSG_ANNOUNCE_NUMBER, "player": 0, "numbers": [3, 2, 1]})
     # Action 0 is "Announce 3" — the engine must receive index=0, NOT value=3.
@@ -803,9 +900,13 @@ def test_announce_attrib_multi_step_two_picks_produces_or_mask():
     """Multi-bit AnnounceAttribute (count=2): step-by-step picks accumulate
     via _selected; the second pick's response packs the OR'd mask."""
     import struct
+
     from yugioh_core.constants import (
-        ATTRIBUTE_DARK, ATTRIBUTE_LIGHT, ATTRIBUTE_WIND,
+        ATTRIBUTE_DARK,
+        ATTRIBUTE_LIGHT,
+        ATTRIBUTE_WIND,
     )
+
     mapper = ActionMapper()
     msg = {
         "msg_type": MSG_ANNOUNCE_ATTRIB,
@@ -839,20 +940,25 @@ def test_announce_attrib_count_one_emits_terminal_picks():
     """count=1 (the common case): each available bit becomes a terminal action,
     not an intermediate pick."""
     import struct
+
     from yugioh_core.constants import ATTRIBUTE_DARK
+
     mapper = ActionMapper()
-    mapper.update({
-        "msg_type": MSG_ANNOUNCE_ATTRIB,
-        "player": 0,
-        "count": 1,
-        "available": ATTRIBUTE_DARK,
-    })
+    mapper.update(
+        {
+            "msg_type": MSG_ANNOUNCE_ATTRIB,
+            "player": 0,
+            "count": 1,
+            "available": ATTRIBUTE_DARK,
+        }
+    )
     assert mapper.num_actions == 1
     response = mapper.action_to_response(0)
     assert response == struct.pack("<I", ATTRIBUTE_DARK)
 
 
 # --- Test C: action controller relativization (engine-absolute → 0=agent/1=opp) ---
+
 
 @pytest.mark.parametrize("agent_player", [0, 1])
 def test_action_controller_relativizes_per_agent_player(agent_player):
@@ -864,22 +970,38 @@ def test_action_controller_relativizes_per_agent_player(agent_player):
     relativize the engine-absolute controller into agent-relative form.
     """
     mapper = ActionMapper()
-    mapper.update({
-        "msg_type": MSG_SELECT_CHAIN,
-        "player": agent_player,
-        "_agent_player": agent_player,
-        "forced": 1,  # no "no chain" option, just the entries
-        "chains": [
-            # Chain on engine player 0
-            {"flag": 0, "code": 100, "controller": 0,
-             "location": 0x04, "sequence": 0, "subsequence": 0,
-             "position": 0x01, "desc": 0},
-            # Chain on engine player 1
-            {"flag": 0, "code": 200, "controller": 1,
-             "location": 0x04, "sequence": 0, "subsequence": 0,
-             "position": 0x01, "desc": 0},
-        ],
-    })
+    mapper.update(
+        {
+            "msg_type": MSG_SELECT_CHAIN,
+            "player": agent_player,
+            "_agent_player": agent_player,
+            "forced": 1,  # no "no chain" option, just the entries
+            "chains": [
+                # Chain on engine player 0
+                {
+                    "flag": 0,
+                    "code": 100,
+                    "controller": 0,
+                    "location": 0x04,
+                    "sequence": 0,
+                    "subsequence": 0,
+                    "position": 0x01,
+                    "desc": 0,
+                },
+                # Chain on engine player 1
+                {
+                    "flag": 0,
+                    "code": 200,
+                    "controller": 1,
+                    "location": 0x04,
+                    "sequence": 0,
+                    "subsequence": 0,
+                    "position": 0x01,
+                    "desc": 0,
+                },
+            ],
+        }
+    )
     features = mapper.get_action_features()
     # New 28-byte layout: byte 6 = controller (relativized: 0=agent, 1=opp)
     ctrl_p0 = int(features[0][6])  # chain on engine player 0
@@ -897,83 +1019,121 @@ def test_action_controller_relativizes_per_agent_player(agent_player):
 # corresponding feats byte (per the 28-byte layout in _encode_action),
 # and asserts the value survived. Catches drop/typo bugs in extractors.
 
+
 def _idle_msg_with_card(**card_overrides) -> dict:
     """SELECT_IDLECMD with a single summonable card carrying the given fields."""
     card = {"code": 100, "controller": 0, "location": 0x02, "sequence": 0}
     card.update(card_overrides)
     return {
-        "msg_type": MSG_SELECT_IDLECMD, "player": 0, "_agent_player": 0,
-        "summonable": [card], "sp_summonable": [], "repositionable": [],
-        "mset": [], "sset": [], "activatable": [],
-        "to_bp": False, "to_ep": False, "shuffle_hand": False,
+        "msg_type": MSG_SELECT_IDLECMD,
+        "player": 0,
+        "_agent_player": 0,
+        "summonable": [card],
+        "sp_summonable": [],
+        "repositionable": [],
+        "mset": [],
+        "sset": [],
+        "activatable": [],
+        "to_bp": False,
+        "to_ep": False,
+        "shuffle_hand": False,
     }
 
 
 def _battle_msg_with_attackable(**card_overrides) -> dict:
     """SELECT_BATTLECMD with a single attackable card."""
-    card = {"code": 100, "controller": 0, "location": 0x04,
-            "sequence": 0, "direct_attackable": 0}
+    card = {"code": 100, "controller": 0, "location": 0x04, "sequence": 0, "direct_attackable": 0}
     card.update(card_overrides)
     return {
-        "msg_type": MSG_SELECT_BATTLECMD, "player": 0, "_agent_player": 0,
-        "activatable": [], "attackable": [card],
-        "to_m2": False, "to_ep": False,
+        "msg_type": MSG_SELECT_BATTLECMD,
+        "player": 0,
+        "_agent_player": 0,
+        "activatable": [],
+        "attackable": [card],
+        "to_m2": False,
+        "to_ep": False,
     }
 
 
 def _tribute_msg(**card_overrides) -> dict:
     """SELECT_TRIBUTE with a single card; release_param overridable."""
-    card = {"code": 100, "controller": 0, "location": 0x04,
-            "sequence": 0, "release_param": 1}
+    card = {"code": 100, "controller": 0, "location": 0x04, "sequence": 0, "release_param": 1}
     card.update(card_overrides)
     return {
-        "msg_type": MSG_SELECT_TRIBUTE, "player": 0, "_agent_player": 0,
-        "cancelable": 0, "min": 1, "max": 1, "cards": [card],
+        "msg_type": MSG_SELECT_TRIBUTE,
+        "player": 0,
+        "_agent_player": 0,
+        "cancelable": 0,
+        "min": 1,
+        "max": 1,
+        "cards": [card],
     }
 
 
 def _sum_msg(**card_overrides) -> dict:
     """SELECT_SUM with a single optional card; param overridable."""
-    card = {"code": 100, "controller": 0, "location": 0x04,
-            "sequence": 0, "param": 1}
+    card = {"code": 100, "controller": 0, "location": 0x04, "sequence": 0, "param": 1}
     card.update(card_overrides)
     return {
-        "msg_type": MSG_SELECT_SUM, "player": 0, "_agent_player": 0,
-        "select_type": 0, "target_sum": 5, "min": 1, "max": 1,
-        "must_cards": [], "optional_cards": [card],
+        "msg_type": MSG_SELECT_SUM,
+        "player": 0,
+        "_agent_player": 0,
+        "select_type": 0,
+        "target_sum": 5,
+        "min": 1,
+        "max": 1,
+        "must_cards": [],
+        "optional_cards": [card],
     }
 
 
 def _card_msg(**card_overrides) -> dict:
     """SELECT_CARD with a single card; subsequence overridable."""
-    card = {"code": 100, "controller": 0, "location": 0x04,
-            "sequence": 0, "subsequence": 0}
+    card = {"code": 100, "controller": 0, "location": 0x04, "sequence": 0, "subsequence": 0}
     card.update(card_overrides)
     return {
-        "msg_type": MSG_SELECT_CARD, "player": 0, "_agent_player": 0,
-        "cancelable": 0, "min": 1, "max": 1, "cards": [card],
+        "msg_type": MSG_SELECT_CARD,
+        "player": 0,
+        "_agent_player": 0,
+        "cancelable": 0,
+        "min": 1,
+        "max": 1,
+        "cards": [card],
     }
 
 
 def _chain_msg_with_chain(**chain_overrides) -> dict:
     """SELECT_CHAIN with one forced chain entry; position overridable."""
-    chain = {"flag": 0, "code": 100, "controller": 0,
-             "location": 0x04, "sequence": 0, "subsequence": 0,
-             "position": 0x01, "desc": 0}
+    chain = {
+        "flag": 0,
+        "code": 100,
+        "controller": 0,
+        "location": 0x04,
+        "sequence": 0,
+        "subsequence": 0,
+        "position": 0x01,
+        "desc": 0,
+    }
     chain.update(chain_overrides)
     return {
-        "msg_type": MSG_SELECT_CHAIN, "player": 0, "_agent_player": 0,
-        "forced": 1, "chains": [chain],
+        "msg_type": MSG_SELECT_CHAIN,
+        "player": 0,
+        "_agent_player": 0,
+        "forced": 1,
+        "chains": [chain],
     }
 
 
 def _counter_msg(**msg_overrides) -> dict:
     """SELECT_COUNTER with one card carrying counters."""
-    card = {"code": 100, "controller": 0, "location": 0x04,
-            "sequence": 0, "counter_count": 3}
+    card = {"code": 100, "controller": 0, "location": 0x04, "sequence": 0, "counter_count": 3}
     base = {
-        "msg_type": MSG_SELECT_COUNTER, "player": 0, "_agent_player": 0,
-        "counter_type": 0x01, "count": 1, "cards": [card],
+        "msg_type": MSG_SELECT_COUNTER,
+        "player": 0,
+        "_agent_player": 0,
+        "counter_type": 0x01,
+        "count": 1,
+        "cards": [card],
     }
     base.update(msg_overrides)
     return base
@@ -1006,19 +1166,21 @@ def test_extractor_single_byte_field_roundtrip(case_name, msg_factory, byte_idx,
     mapper.update(msg_factory())
     features = mapper.get_action_features()
     assert features[0][byte_idx] == expected, (
-        f"case {case_name}: feats[0][{byte_idx}]={int(features[0][byte_idx])}, "
-        f"expected {expected}"
+        f"case {case_name}: feats[0][{byte_idx}]={int(features[0][byte_idx])}, expected {expected}"
     )
 
 
 # --- Test 2: desc decomposition (bytes 20-27 as u64 LE) ---
+
 
 def test_extractor_desc_packs_into_bytes_20_27():
     """desc is encoded as u64 LE in bytes 20-27. Pack a known value with
     distinguishable passcode/n halves and verify decomposition."""
     desc_value = (0x12345 << 20) | 0x67  # passcode=0x12345, n=0x67
     msg = {
-        "msg_type": MSG_SELECT_YESNO, "player": 0, "_agent_player": 0,
+        "msg_type": MSG_SELECT_YESNO,
+        "player": 0,
+        "_agent_player": 0,
         "desc": desc_value,
     }
     mapper = ActionMapper()
@@ -1033,6 +1195,7 @@ def test_extractor_desc_packs_into_bytes_20_27():
 
 
 # --- Test 3: sequence widening regression (u8 → u16) ---
+
 
 def test_extractor_sequence_widens_to_u16():
     """Sequence values >255 must survive encoding (deck/banished/GY targeting).

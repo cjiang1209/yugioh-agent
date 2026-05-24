@@ -22,9 +22,14 @@ def test_no_shared_decks_error_is_value_error_subclass():
 
 def _make_record(vs_id: str, wins: int, episodes: int = 10) -> PairwiseMatchResult:
     return PairwiseMatchResult(
-        vs_entry_id=vs_id, vs_checkpoint_hash="sha256:x",
-        episodes=episodes, wins=wins, win_rate=wins / episodes,
-        per_deck={}, seed=1, evaluated_at="t",
+        vs_entry_id=vs_id,
+        vs_checkpoint_hash="sha256:x",
+        episodes=episodes,
+        wins=wins,
+        win_rate=wins / episodes,
+        per_deck={},
+        seed=1,
+        evaluated_at="t",
     )
 
 
@@ -53,6 +58,7 @@ def _engine_available() -> bool:
         return False
     try:
         from yugioh_env.lib_loader import load_library
+
         load_library()
     except Exception:
         return False
@@ -67,8 +73,6 @@ def test_pairwise_mirrors_symmetrically(tmp_path):
     pytest.importorskip("torch")
 
     from tests.rl.test_resume import _make_checkpoint
-    from yugioh_rl.config import TrainingConfig
-
     from yugioh_leaderboard.entry import Entry
     from yugioh_leaderboard.features import extract_features
     from yugioh_leaderboard.pairwise import run_pairwise
@@ -77,25 +81,36 @@ def test_pairwise_mirrors_symmetrically(tmp_path):
         PanelEntry,
         PanelMatchOptions,
     )
+    from yugioh_rl.config import TrainingConfig
 
     def _stub_entry(ckpt: Path, eid: str, cfg: TrainingConfig) -> Entry:
         return Entry(
-            schema_version=1, entry_id=eid, checkpoint_path=str(ckpt),
-            checkpoint_hash="sha256:placeholder", added_at="t",
-            panel_version=1, features=extract_features(cfg),
-            tags=[], panel_results=[], pairwise_results=[],
+            schema_version=1,
+            entry_id=eid,
+            checkpoint_path=str(ckpt),
+            checkpoint_hash="sha256:placeholder",
+            added_at="t",
+            panel_version=1,
+            features=extract_features(cfg),
+            tags=[],
+            panel_results=[],
+            pairwise_results=[],
         )
 
     cfg = TrainingConfig(num_envs=1, deck_paths=["assets/decks/blue_eyes.ydk"], seed=42)
-    a_dir = tmp_path / "a_run"; a_dir.mkdir()
-    b_dir = tmp_path / "b_run"; b_dir.mkdir()
+    a_dir = tmp_path / "a_run"
+    a_dir.mkdir()
+    b_dir = tmp_path / "b_run"
+    b_dir.mkdir()
     a_ckpt = a_dir / "checkpoint_latest.pt"
     b_ckpt = b_dir / "checkpoint_latest.pt"
     _make_checkpoint(str(a_ckpt), config=cfg)
     _make_checkpoint(str(b_ckpt), config=cfg)
 
     panel = PanelConfig(
-        schema_version=1, panel_version=1, panel=[PanelEntry("greedy", "greedy")],
+        schema_version=1,
+        panel_version=1,
+        panel=[PanelEntry("greedy", "greedy")],
         match=PanelMatchOptions(episodes=2, agent_player="random", device="cpu"),
         history=[],
     )
@@ -125,8 +140,6 @@ def test_pairwise_parity_across_worker_counts(tmp_path):
     pytest.importorskip("torch")
 
     from tests.rl.test_resume import _make_checkpoint
-    from yugioh_rl.config import TrainingConfig
-
     from yugioh_leaderboard.entry import Entry
     from yugioh_leaderboard.features import extract_features
     from yugioh_leaderboard.pairwise import run_pairwise
@@ -135,10 +148,13 @@ def test_pairwise_parity_across_worker_counts(tmp_path):
         PanelEntry,
         PanelMatchOptions,
     )
+    from yugioh_rl.config import TrainingConfig
 
     cfg = TrainingConfig(num_envs=1, deck_paths=["assets/decks/blue_eyes.ydk"], seed=42)
-    a_dir = tmp_path / "a_run"; a_dir.mkdir()
-    b_dir = tmp_path / "b_run"; b_dir.mkdir()
+    a_dir = tmp_path / "a_run"
+    a_dir.mkdir()
+    b_dir = tmp_path / "b_run"
+    b_dir.mkdir()
     a_ckpt = a_dir / "checkpoint_latest.pt"
     b_ckpt = b_dir / "checkpoint_latest.pt"
     _make_checkpoint(str(a_ckpt), config=cfg)
@@ -147,24 +163,35 @@ def test_pairwise_parity_across_worker_counts(tmp_path):
     # episodes=4 + workers=4 yields 1 episode per shard — strongest
     # shard-granularity check on the single-opponent codepath.
     panel = PanelConfig(
-        schema_version=1, panel_version=1, panel=[PanelEntry("greedy", "greedy")],
+        schema_version=1,
+        panel_version=1,
+        panel=[PanelEntry("greedy", "greedy")],
         match=PanelMatchOptions(episodes=4, agent_player="random", device="cpu"),
         history=[],
     )
 
     def _entry(ckpt: Path, eid: str) -> Entry:
         return Entry(
-            schema_version=1, entry_id=eid, checkpoint_path=str(ckpt),
-            checkpoint_hash="sha256:placeholder", added_at="t",
-            panel_version=1, features=extract_features(cfg),
-            tags=[], panel_results=[], pairwise_results=[],
+            schema_version=1,
+            entry_id=eid,
+            checkpoint_path=str(ckpt),
+            checkpoint_hash="sha256:placeholder",
+            added_at="t",
+            panel_version=1,
+            features=extract_features(cfg),
+            tags=[],
+            panel_results=[],
+            pairwise_results=[],
         )
 
     runs = {}
     for k in (1, 2, 4):
         a_out, b_out = run_pairwise(
-            _entry(a_ckpt, "a"), _entry(b_ckpt, "b"),
-            panel, episodes=4, workers=k,
+            _entry(a_ckpt, "a"),
+            _entry(b_ckpt, "b"),
+            panel,
+            episodes=4,
+            workers=k,
         )
         runs[k] = (a_out.pairwise_results[0], b_out.pairwise_results[0])
 

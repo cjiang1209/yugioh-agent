@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 import tempfile
-from pathlib import Path
 
-import numpy as np
 import pytest
 
 torch = pytest.importorskip("torch")
@@ -21,10 +19,10 @@ from yugioh_core.encoding import (
 from yugioh_rl.config import TrainingConfig
 from yugioh_rl.network import TextEmbeddingLookup, YuGiOhNet
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_embeddings_file(
     codes: list[int],
@@ -39,11 +37,14 @@ def _make_embeddings_file(
         tmp = tempfile.NamedTemporaryFile(suffix=".pt", delete=False)
         path = tmp.name
         tmp.close()
-    torch.save({
-        "embeddings": embeddings,
-        "codes": codes_tensor,
-        "model_name": "test-model",
-    }, path)
+    torch.save(
+        {
+            "embeddings": embeddings,
+            "codes": codes_tensor,
+            "model_name": "test-model",
+        },
+        path,
+    )
     return path
 
 
@@ -61,6 +62,7 @@ def _make_dummy_obs(batch_size: int = 2):
 # ---------------------------------------------------------------------------
 # TextEmbeddingLookup tests
 # ---------------------------------------------------------------------------
+
 
 class TestTextEmbeddingLookup:
     def test_basic_lookup_shape(self, tmp_path):
@@ -151,8 +153,7 @@ class TestTextEmbeddingLookup:
         lookup = TextEmbeddingLookup.from_path(path, text_embed_dim=64)
 
         frozen_params = [
-            n for n, p in lookup.named_parameters()
-            if "_frozen_embed" in n and p.requires_grad
+            n for n, p in lookup.named_parameters() if "_frozen_embed" in n and p.requires_grad
         ]
         assert len(frozen_params) == 0
 
@@ -160,6 +161,7 @@ class TestTextEmbeddingLookup:
 # ---------------------------------------------------------------------------
 # YuGiOhNet symbolic mode (default, no text embeddings) — regression test
 # ---------------------------------------------------------------------------
+
 
 class TestSymbolicMode:
     def test_forward_pass_no_text_embeddings(self):
@@ -178,6 +180,7 @@ class TestSymbolicMode:
 # ---------------------------------------------------------------------------
 # YuGiOhNet semantic mode (text embeddings enabled)
 # ---------------------------------------------------------------------------
+
 
 class TestSemanticMode:
     def test_forward_pass_with_text_embeddings(self, tmp_path):
@@ -227,6 +230,7 @@ class TestSemanticMode:
 
         # Card encoder input should be text_embed_dim + learned_embed_dim + CARD_FEAT_DIM
         from yugioh_rl.features import CARD_FEAT_DIM
+
         expected_input_dim = 48 + 12 + CARD_FEAT_DIM
         assert net.card_encoder[0].in_features == expected_input_dim
 
@@ -257,8 +261,12 @@ class TestSemanticMode:
         path = _make_embeddings_file(codes, dim=384, path=str(tmp_path / "emb.pt"))
 
         config = TrainingConfig(
-            card_embeddings=path, text_embed_dim=32, learned_embed_dim=8,
-            rnn_type=rnn_type, rnn_hidden_dim=64, rnn_num_layers=1,
+            card_embeddings=path,
+            text_embed_dim=32,
+            learned_embed_dim=8,
+            rnn_type=rnn_type,
+            rnn_hidden_dim=64,
+            rnn_num_layers=1,
         )
         net = YuGiOhNet.from_config(config)
         if rnn_type == "none":
@@ -283,7 +291,8 @@ class TestSemanticMode:
 
         sd = net_orig.state_dict()
         net_copy = YuGiOhNet.from_state_dict(
-            TrainingConfig(text_embed_dim=32, learned_embed_dim=8), sd)
+            TrainingConfig(text_embed_dim=32, learned_embed_dim=8), sd
+        )
         net_copy.eval()
 
         obs_cards, obs_global, obs_actions, action_mask = _make_dummy_obs(batch_size=2)
@@ -299,6 +308,7 @@ class TestSemanticMode:
 # build_card_embeddings.py end-to-end test
 # ---------------------------------------------------------------------------
 
+
 class TestBuildEmbeddingsScript:
     @pytest.fixture
     def mock_db(self, tmp_path):
@@ -309,7 +319,11 @@ class TestBuildEmbeddingsScript:
         conn.executemany(
             "INSERT INTO texts (id, name, desc) VALUES (?, ?, ?)",
             [
-                (12345, "Blue-Eyes White Dragon", "This legendary dragon is a powerful engine of destruction."),
+                (
+                    12345,
+                    "Blue-Eyes White Dragon",
+                    "This legendary dragon is a powerful engine of destruction.",
+                ),
                 (67890, "Dark Magician", "The ultimate wizard in terms of attack and defense."),
                 (11111, "Empty Card", ""),
             ],
@@ -337,13 +351,17 @@ class TestBuildEmbeddingsScript:
         st = pytest.importorskip("sentence_transformers")
 
         import sys
+
         sys.argv = [
             "build_card_embeddings.py",
-            "--db", mock_db,
-            "--output", str(tmp_path / "test_emb.pt"),
+            "--db",
+            mock_db,
+            "--output",
+            str(tmp_path / "test_emb.pt"),
         ]
 
         from cli.build_card_embeddings import main
+
         main()
 
         output_path = tmp_path / "test_emb.pt"

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
+
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
@@ -21,6 +22,7 @@ web_router = APIRouter(prefix="/api/web")
 
 
 # ─── Request / response models ─────────────────────────────────────────────
+
 
 class ResetRequest(BaseModel):
     seed: int | None = None
@@ -85,7 +87,9 @@ def create_web_env(config: dict | None = None) -> YuGiOhEnvironment:
     return YuGiOhEnvironment(config)
 
 
-def create_describer(env: YuGiOhEnvironment, strings_path: str | Path | None = None) -> ActionDescriber:
+def create_describer(
+    env: YuGiOhEnvironment, strings_path: str | Path | None = None
+) -> ActionDescriber:
     """Construct the ActionDescriber the web UI shares across all requests.
 
     Reuses the env's `cards.cdb` connection. Loads sysstring labels from
@@ -102,12 +106,14 @@ def create_describer(env: YuGiOhEnvironment, strings_path: str | Path | None = N
     if sys_strings is None:
         logger.warning(
             "strings.conf not found at %s; sysstring labels will use placeholders. "
-            "Run scripts/setup.sh to download.", strings_path
+            "Run scripts/setup.sh to download.",
+            strings_path,
         )
     return ActionDescriber(env._card_db, sys_strings=sys_strings)
 
 
 # ─── Endpoints ──────────────────────────────────────────────────────────────
+
 
 @web_router.post("/reset")
 def reset_duel(body: ResetRequest, request: Request) -> dict:
@@ -124,7 +130,9 @@ def reset_duel(body: ResetRequest, request: Request) -> dict:
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    return _build_response(env, describer, obs, obs.event_log, obs.done, obs.reward, include_frames=True)
+    return _build_response(
+        env, describer, obs, obs.event_log, obs.done, obs.reward, include_frames=True
+    )
 
 
 @web_router.get("/decks")
@@ -150,12 +158,14 @@ def list_decks(request: Request) -> list[dict]:
     result = []
     for ydk_path, main, extra in parsed:
         name = ydk_path.stem.replace("_", " ").title()
-        result.append({
-            "name": name,
-            "filename": ydk_path.name,
-            "main": [{"code": c, "name": names.get(c, f"Unknown({c})")} for c in main],
-            "extra": [{"code": c, "name": names.get(c, f"Unknown({c})")} for c in extra],
-        })
+        result.append(
+            {
+                "name": name,
+                "filename": ydk_path.name,
+                "main": [{"code": c, "name": names.get(c, f"Unknown({c})")} for c in main],
+                "extra": [{"code": c, "name": names.get(c, f"Unknown({c})")} for c in extra],
+            }
+        )
     return result
 
 
@@ -165,9 +175,13 @@ def step_duel(body: StepRequest, request: Request) -> dict:
     env: YuGiOhEnvironment = request.app.state.web_env
     describer: ActionDescriber = request.app.state.describer
     if env._duel is None:
-        return _build_response(env, describer, None, ["No active duel. Call /reset first."], True, 0.0)
+        return _build_response(
+            env, describer, None, ["No active duel. Call /reset first."], True, 0.0
+        )
     obs = env.step(YuGiOhAction(action_index=body.action_index))
-    return _build_response(env, describer, obs, obs.event_log, obs.done, obs.reward, include_frames=True)
+    return _build_response(
+        env, describer, obs, obs.event_log, obs.done, obs.reward, include_frames=True
+    )
 
 
 @web_router.get("/state")

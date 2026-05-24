@@ -1,4 +1,5 @@
 """Tests for pure Elo math (yugioh_rl.elo)."""
+
 from __future__ import annotations
 
 import pytest

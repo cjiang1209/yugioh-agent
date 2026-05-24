@@ -11,8 +11,6 @@ import logging
 import random
 from typing import TYPE_CHECKING, Protocol
 
-import numpy as np
-
 from yugioh_mud.text_parser import ParsedPrompt, PromptType
 
 if TYPE_CHECKING:
@@ -33,6 +31,7 @@ FINISH = -5
 # Agent protocol
 # ---------------------------------------------------------------------------
 
+
 class Agent(Protocol):
     """Decides *what* to do given a parsed prompt.
 
@@ -51,6 +50,7 @@ class Agent(Protocol):
 # ---------------------------------------------------------------------------
 # PassiveAgent — always end phase, decline effects, cancel chains
 # ---------------------------------------------------------------------------
+
 
 class PassiveAgent:
     """Passive bot: ends phases, declines effects, cancels chains.
@@ -77,8 +77,7 @@ class PassiveAgent:
         if pt == PromptType.SELECT_YESNO:
             return DECLINE
 
-        if pt in (PromptType.SELECT_CARD, PromptType.SELECT_TRIBUTE,
-                  PromptType.SELECT_SUM):
+        if pt in (PromptType.SELECT_CARD, PromptType.SELECT_TRIBUTE, PromptType.SELECT_SUM):
             return 0  # translator picks first min_select options
 
         if pt == PromptType.SELECT_POSITION:
@@ -111,6 +110,7 @@ class PassiveAgent:
 # RandomAgent — picks uniformly from legal actions
 # ---------------------------------------------------------------------------
 
+
 class RandomAgent:
     """Random bot: picks uniformly from legal actions.
 
@@ -135,8 +135,7 @@ class RandomAgent:
             if not sa:
                 return END_PHASE
             choices = list(range(len(sa))) + [END_PHASE]
-            self._log.debug(
-                "[RandomAgent] %s structured_actions=%d", pt.name, len(sa))
+            self._log.debug("[RandomAgent] %s structured_actions=%d", pt.name, len(sa))
             return self._rng.choice(choices)
 
         # Chain with optional cancel
@@ -162,8 +161,7 @@ class RandomAgent:
             return self._rng.randrange(n)
 
         # Sort/announce card — always cancel
-        if pt in (PromptType.SORT_CARD, PromptType.ANNOUNCE_CARD,
-                  PromptType.UNKNOWN):
+        if pt in (PromptType.SORT_CARD, PromptType.ANNOUNCE_CARD, PromptType.UNKNOWN):
             return CANCEL
 
         # Standard selections: random index
@@ -214,6 +212,7 @@ def map_model_action(action_idx: int, prompt: ParsedPrompt) -> int:
 # ModelAgent — uses a trained YuGiOhNet checkpoint
 # ---------------------------------------------------------------------------
 
+
 class ModelAgent:
     """Agent that uses a trained YuGiOhNet checkpoint to select actions.
 
@@ -227,11 +226,11 @@ class ModelAgent:
         device: str = "cpu",
     ) -> None:
         import torch
-        from yugioh_rl.config import TrainingConfig, normalize_legacy_config
-        from yugioh_rl.network import YuGiOhNet
 
         from yugioh_core.card_database import CardDatabase
         from yugioh_mud.observation import MUDObservationBuilder
+        from yugioh_rl.config import TrainingConfig, normalize_legacy_config
+        from yugioh_rl.network import YuGiOhNet
 
         checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
         config: TrainingConfig = normalize_legacy_config(checkpoint["config"])
@@ -272,7 +271,11 @@ class ModelAgent:
 
         with torch.no_grad():
             logits, _, self._hx = self._network(
-                t_cards, t_global, t_actions, t_mask, hx=self._hx,
+                t_cards,
+                t_global,
+                t_actions,
+                t_mask,
+                hx=self._hx,
             )
             action_idx = logits.argmax(dim=-1).item()
 

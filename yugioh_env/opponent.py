@@ -148,9 +148,7 @@ class NetworkOpponent(Opponent):
         self._stochastic = stochastic
         self._temperature = temperature
         if temperature <= 0:
-            raise ValueError(
-                f"temperature must be > 0, got {temperature!r}"
-            )
+            raise ValueError(f"temperature must be > 0, got {temperature!r}")
         self._obs: dict[str, np.ndarray] | None = None
         # Per-episode recurrent state.  reseed() — called per duel by both
         # the HTTP env and the eval loop — re-zeros it.
@@ -182,7 +180,11 @@ class NetworkOpponent(Opponent):
 
         with torch.no_grad():
             logits, _, self._hx = self._network(
-                t_cards, t_global, t_actions, t_mask, hx=self._hx,
+                t_cards,
+                t_global,
+                t_actions,
+                t_mask,
+                hx=self._hx,
             )
             masked = logits.masked_fill(~t_mask.bool(), float("-inf"))
             if self._stochastic:
@@ -207,6 +209,7 @@ class ModelOpponent(Opponent):
 
     def __init__(self, checkpoint_path: str, device: str = "cpu") -> None:
         import torch
+
         from yugioh_rl.config import normalize_legacy_config
         from yugioh_rl.network import YuGiOhNet
 
@@ -235,6 +238,7 @@ class ModelOpponent(Opponent):
 # Opponent-spec parsing and factory
 # ---------------------------------------------------------------------------
 
+
 def parse_opponent_spec(spec: str) -> tuple[str, str]:
     """Parse an opponent spec string.
 
@@ -246,7 +250,7 @@ def parse_opponent_spec(spec: str) -> tuple[str, str]:
     Does not validate that checkpoint files exist — that's a CLI-layer concern.
     """
     if spec.startswith("model:"):
-        return "model", spec[len("model:"):]
+        return "model", spec[len("model:") :]
     return spec, ""
 
 
@@ -270,8 +274,7 @@ def make_opponent(
     if opponent_type == "model":
         if not checkpoint:
             raise ValueError(
-                "model opponent requires a checkpoint path "
-                "(e.g. 'model:path/to/ckpt.pt')"
+                "model opponent requires a checkpoint path (e.g. 'model:path/to/ckpt.pt')"
             )
         return ModelOpponent(checkpoint, device=device)
     if opponent_type == "greedy":

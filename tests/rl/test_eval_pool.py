@@ -8,6 +8,7 @@ dependency: the fakes never construct a ``TrainingEnv``.
 Module-level definitions are required so ``mp.get_context("spawn")`` can
 pickle them across the process boundary.
 """
+
 from __future__ import annotations
 
 import os
@@ -17,7 +18,6 @@ import pytest
 
 from yugioh_rl.actor_learner import WorkerDiedError, WorkerTimeoutError
 from yugioh_rl.eval import EvalWorkerError, _PartialResult, _run_eval_pool
-
 
 # ---------------------------------------------------------------------------
 # Fake worker entrypoints — all match the _eval_worker signature.
@@ -98,6 +98,7 @@ def test_eval_worker_signature_stable():
     fails this test loudly instead of silently absorbing into the fakes.
     """
     import inspect
+
     from yugioh_rl.eval import _eval_worker
 
     params = inspect.signature(_eval_worker).parameters

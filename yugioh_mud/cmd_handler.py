@@ -37,6 +37,20 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, NamedTuple
 
+from yugioh_core.action_categories import (
+    BATTLE_ACTIVATE,
+    BATTLE_ATTACK,
+    BATTLE_TO_EP,
+    BATTLE_TO_M2,
+    IDLE_ACTIVATE,
+    IDLE_MSET,
+    IDLE_REPOSITION,
+    IDLE_SP_SUMMON,
+    IDLE_SSET,
+    IDLE_SUMMON,
+    IDLE_TO_BP,
+    IDLE_TO_EP,
+)
 from yugioh_core.constants import (
     LOCATION_BANISHED,
     LOCATION_EXTRA,
@@ -45,14 +59,11 @@ from yugioh_core.constants import (
     LOCATION_MZONE,
     LOCATION_SZONE,
 )
-from yugioh_core.action_categories import (
-    IDLE_SUMMON, IDLE_SP_SUMMON, IDLE_REPOSITION, IDLE_MSET,
-    IDLE_SSET, IDLE_ACTIVATE, IDLE_TO_BP, IDLE_TO_EP,
-    BATTLE_ACTIVATE, BATTLE_ATTACK, BATTLE_TO_M2, BATTLE_TO_EP,
-)
 from yugioh_mud.text_parser import (
+    _CARDSPEC_LINE_RE,
     DUELREADER_REPROMPTS,
-    ParsedEvent, ParsedPrompt, PromptType, _CARDSPEC_LINE_RE,
+    ParsedEvent,
+    ParsedPrompt,
     is_duel_end,
 )
 
@@ -81,17 +92,19 @@ _SPEC_PREFIX_TO_LOCATION = {
 @dataclass
 class StructuredAction:
     """A single atomic action in the idle or battle menu."""
-    category: int         # idle: 0-7, battle: 0-3
-    cardspec: str = ""    # e.g. "h1", "m2"
-    card_code: int = 0    # passcode from game state (0 = unknown/phase)
-    location: int = 0     # LOCATION_* constant
-    sequence: int = 0     # zone slot (0-indexed)
+
+    category: int  # idle: 0-7, battle: 0-3
+    cardspec: str = ""  # e.g. "h1", "m2"
+    card_code: int = 0  # passcode from game state (0 = unknown/phase)
+    location: int = 0  # LOCATION_* constant
+    sequence: int = 0  # zone slot (0-indexed)
     sub_action: str = ""  # MUD text for step 2
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 class DuelEndedError(Exception):
     """Raised when a duel-end line is received during a handler flow."""
@@ -114,7 +127,8 @@ def parse_cardspec(spec: str) -> tuple[int, int]:
 
 
 def _resolve_card_code(
-    spec: str, game_state: MUDGameState | None,
+    spec: str,
+    game_state: MUDGameState | None,
 ) -> int:
     """Look up card_code from game_state zones by cardspec."""
     if game_state is None:
@@ -178,10 +192,12 @@ async def _send(conn: Connection, text: str, verbose: bool) -> None:
 # Idle "?" response category regexes
 # ---------------------------------------------------------------------------
 
+
 class _IdleCategory(NamedTuple):
     regex: re.Pattern[str]
-    category: int       # IDLE_* action category constant
-    sub_action: str     # submenu letter to send
+    category: int  # IDLE_* action category constant
+    sub_action: str  # submenu letter to send
+
 
 _IDLE_CATEGORIES = [
     _IdleCategory(re.compile(r"^Summonable in attack position:\s*(.+)$"), IDLE_SUMMON, "s"),
@@ -189,7 +205,9 @@ _IDLE_CATEGORIES = [
     _IdleCategory(re.compile(r"^Repositionable:\s*(.+)$"), IDLE_REPOSITION, "r"),
     _IdleCategory(re.compile(r"^Summonable in defense position:\s*(.+)$"), IDLE_MSET, "m"),
     _IdleCategory(re.compile(r"^Settable:\s*(.+)$"), IDLE_SSET, "t"),
-    _IdleCategory(re.compile(r"^Activatable:\s*(.+)$"), IDLE_ACTIVATE, "v"),  # see multi-effect TODO below
+    _IdleCategory(
+        re.compile(r"^Activatable:\s*(.+)$"), IDLE_ACTIVATE, "v"
+    ),  # see multi-effect TODO below
 ]
 
 
@@ -199,6 +217,7 @@ _SUBMENU_LETTER_RE = re.compile(r"^([a-z]{1,2}): ")
 # ---------------------------------------------------------------------------
 # IdleCmdHandler
 # ---------------------------------------------------------------------------
+
 
 class IdleCmdHandler:
     """Handles IDLE_CMD prompts atomically: probe → build → decide → execute."""
@@ -215,7 +234,8 @@ class IdleCmdHandler:
         """Handle an idle prompt. Returns True if duel ended."""
         try:
             return await IdleCmdHandler._handle_inner(
-                conn, prompt, agent, game_state, text_parser, verbose)
+                conn, prompt, agent, game_state, text_parser, verbose
+            )
         except DuelEndedError as e:
             logger.info("Duel ended during idle handler: %s", e)
             return True
@@ -238,8 +258,7 @@ class IdleCmdHandler:
         # Collect (category, sub_action_letter, cardspec) tuples
         card_actions: list[tuple[int, str, str]] = []
         while True:
-            line, result = await _recv_and_process(
-                conn, text_parser, game_state, verbose)
+            line, result = await _recv_and_process(conn, text_parser, game_state, verbose)
 
             # Check for category lines
             matched = False
@@ -270,14 +289,16 @@ class IdleCmdHandler:
         for category, sub_letter, spec in card_actions:
             loc, seq = parse_cardspec(spec)
             code = _resolve_card_code(spec, game_state)
-            actions.append(StructuredAction(
-                category=category,
-                cardspec=spec,
-                card_code=code,
-                location=loc,
-                sequence=seq,
-                sub_action=sub_letter,
-            ))
+            actions.append(
+                StructuredAction(
+                    category=category,
+                    cardspec=spec,
+                    card_code=code,
+                    location=loc,
+                    sequence=seq,
+                    sub_action=sub_letter,
+                )
+            )
 
         # Add phase transitions from original prompt.options
         for opt in prompt.options:
@@ -292,13 +313,12 @@ class IdleCmdHandler:
         action_idx = agent.choose(prompt, game_state=game_state)
 
         if verbose:
-            logger.info(
-                "[IDLE] structured_actions=%d, agent chose=%d",
-                len(actions), action_idx)
+            logger.info("[IDLE] structured_actions=%d, agent chose=%d", len(actions), action_idx)
 
         # -- Execution phase --
         # Handle END_PHASE meta-command
         from yugioh_mud.agent import END_PHASE
+
         if action_idx == END_PHASE or action_idx < 0:
             # Send "e" for end phase
             await _send(conn, "e", verbose)
@@ -322,8 +342,7 @@ class IdleCmdHandler:
         # Read lines until submenu arrives ("Select action for " prefix)
         submenu_letters: list[str] = []
         while True:
-            line, result = await _recv_and_process(
-                conn, text_parser, game_state, verbose)
+            line, result = await _recv_and_process(conn, text_parser, game_state, verbose)
             # Collect submenu letter lines
             m = _SUBMENU_LETTER_RE.match(line)
             if m:
@@ -366,6 +385,7 @@ class IdleCmdHandler:
 # BattleCmdHandler
 # ---------------------------------------------------------------------------
 
+
 class BattleCmdHandler:
     """Handles BATTLE_MENU prompts atomically: probe → build → decide → execute."""
 
@@ -381,7 +401,8 @@ class BattleCmdHandler:
         """Handle a battle prompt. Returns True if duel ended."""
         try:
             return await BattleCmdHandler._handle_inner(
-                conn, prompt, agent, game_state, text_parser, verbose)
+                conn, prompt, agent, game_state, text_parser, verbose
+            )
         except DuelEndedError as e:
             logger.info("Duel ended during battle handler: %s", e)
             return True
@@ -410,8 +431,7 @@ class BattleCmdHandler:
             await _send(conn, "a", verbose)
             # Read until "Select a card:" terminal
             while True:
-                line, result = await _recv_and_process(
-                    conn, text_parser, game_state, verbose)
+                line, result = await _recv_and_process(conn, text_parser, game_state, verbose)
                 m = _CARDSPEC_LINE_RE.match(line)
                 if m:
                     attack_specs.append(m.group(1))
@@ -439,8 +459,7 @@ class BattleCmdHandler:
             await _send(conn, "c", verbose)
             # Read until "Enter a line of text." terminal
             while True:
-                line, result = await _recv_and_process(
-                    conn, text_parser, game_state, verbose)
+                line, result = await _recv_and_process(conn, text_parser, game_state, verbose)
                 m = _CARDSPEC_LINE_RE.match(line)
                 if m:
                     activate_specs.append(m.group(1))
@@ -466,18 +485,30 @@ class BattleCmdHandler:
         for spec in activate_specs:
             loc, seq = parse_cardspec(spec)
             code = _resolve_card_code(spec, game_state)
-            actions.append(StructuredAction(
-                category=BATTLE_ACTIVATE, cardspec=spec, card_code=code,
-                location=loc, sequence=seq, sub_action=spec,
-            ))
+            actions.append(
+                StructuredAction(
+                    category=BATTLE_ACTIVATE,
+                    cardspec=spec,
+                    card_code=code,
+                    location=loc,
+                    sequence=seq,
+                    sub_action=spec,
+                )
+            )
 
         for spec in attack_specs:
             loc, seq = parse_cardspec(spec)
             code = _resolve_card_code(spec, game_state)
-            actions.append(StructuredAction(
-                category=BATTLE_ATTACK, cardspec=spec, card_code=code,
-                location=loc, sequence=seq, sub_action=spec,
-            ))
+            actions.append(
+                StructuredAction(
+                    category=BATTLE_ATTACK,
+                    cardspec=spec,
+                    card_code=code,
+                    location=loc,
+                    sequence=seq,
+                    sub_action=spec,
+                )
+            )
 
         if "m" in prompt.options:
             actions.append(StructuredAction(category=BATTLE_TO_M2, sub_action="m"))
@@ -490,12 +521,11 @@ class BattleCmdHandler:
         action_idx = agent.choose(prompt, game_state=game_state)
 
         if verbose:
-            logger.info(
-                "[BATTLE] structured_actions=%d, agent chose=%d",
-                len(actions), action_idx)
+            logger.info("[BATTLE] structured_actions=%d, agent chose=%d", len(actions), action_idx)
 
         # -- Execution phase --
         from yugioh_mud.agent import END_PHASE
+
         if action_idx == END_PHASE or action_idx < 0:
             await _send(conn, "e", verbose)
             return False
@@ -516,8 +546,7 @@ class BattleCmdHandler:
             await _send(conn, "a", verbose)
             # Wait for "Select a card:" (BATTLE_SELECT)
             while True:
-                line, result = await _recv_and_process(
-                    conn, text_parser, game_state, verbose)
+                line, result = await _recv_and_process(conn, text_parser, game_state, verbose)
                 if line == "Select a card:":
                     break
             # Send the attacker cardspec
@@ -530,8 +559,7 @@ class BattleCmdHandler:
             await _send(conn, "c", verbose)
             # Wait for "Enter a line of text." (BATTLE_SELECT)
             while True:
-                line, result = await _recv_and_process(
-                    conn, text_parser, game_state, verbose)
+                line, result = await _recv_and_process(conn, text_parser, game_state, verbose)
                 if line == "Enter a line of text.":
                     break
             # Send the cardspec

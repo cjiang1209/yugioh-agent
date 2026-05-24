@@ -7,9 +7,6 @@ import json
 import pytest
 
 from yugioh_leaderboard.panel import (
-    PanelConfig,
-    PanelEntry,
-    PanelMatchOptions,
     load_panel_config,
 )
 
@@ -24,8 +21,11 @@ def _sample_dict() -> dict:
         ],
         "match": {"episodes": 100, "agent_player": "random", "device": "cpu"},
         "history": [
-            {"panel_version": 1, "panel": [{"label": "random", "spec": "random"}],
-             "retired_at": "2026-03-01T00:00:00Z"},
+            {
+                "panel_version": 1,
+                "panel": [{"label": "random", "spec": "random"}],
+                "retired_at": "2026-03-01T00:00:00Z",
+            },
         ],
     }
 

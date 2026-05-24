@@ -4,8 +4,8 @@ import random
 
 import pytest
 
-from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
 from yugioh_env.models import YuGiOhAction
+from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
 
 
 @pytest.fixture

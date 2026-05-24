@@ -184,6 +184,7 @@ PHASE_NAMES = {
 
 # ─── Utilities ───────────────────────────────────────────────────────────────
 
+
 def split_setcodes(packed: int) -> list[int]:
     """Split a packed 64-bit setcode value into individual 16-bit codes."""
     codes: list[int] = []
@@ -293,29 +294,31 @@ MSG_CUSTOM_MSG = 180
 MSG_REMOVE_CARDS = 190
 
 # Messages requiring a player response
-SELECT_MSGS = frozenset({
-    MSG_SELECT_BATTLECMD,
-    MSG_SELECT_IDLECMD,
-    MSG_SELECT_EFFECTYN,
-    MSG_SELECT_YESNO,
-    MSG_SELECT_OPTION,
-    MSG_SELECT_CARD,
-    MSG_SELECT_CHAIN,
-    MSG_SELECT_PLACE,
-    MSG_SELECT_POSITION,
-    MSG_SELECT_TRIBUTE,
-    MSG_SORT_CHAIN,
-    MSG_SELECT_COUNTER,
-    MSG_SELECT_SUM,
-    MSG_SELECT_DISFIELD,
-    MSG_SORT_CARD,
-    MSG_SELECT_UNSELECT_CARD,
-    MSG_ANNOUNCE_RACE,
-    MSG_ANNOUNCE_ATTRIB,
-    MSG_ANNOUNCE_CARD,
-    MSG_ANNOUNCE_NUMBER,
-    MSG_ROCK_PAPER_SCISSORS,
-})
+SELECT_MSGS = frozenset(
+    {
+        MSG_SELECT_BATTLECMD,
+        MSG_SELECT_IDLECMD,
+        MSG_SELECT_EFFECTYN,
+        MSG_SELECT_YESNO,
+        MSG_SELECT_OPTION,
+        MSG_SELECT_CARD,
+        MSG_SELECT_CHAIN,
+        MSG_SELECT_PLACE,
+        MSG_SELECT_POSITION,
+        MSG_SELECT_TRIBUTE,
+        MSG_SORT_CHAIN,
+        MSG_SELECT_COUNTER,
+        MSG_SELECT_SUM,
+        MSG_SELECT_DISFIELD,
+        MSG_SORT_CARD,
+        MSG_SELECT_UNSELECT_CARD,
+        MSG_ANNOUNCE_RACE,
+        MSG_ANNOUNCE_ATTRIB,
+        MSG_ANNOUNCE_CARD,
+        MSG_ANNOUNCE_NUMBER,
+        MSG_ROCK_PAPER_SCISSORS,
+    }
+)
 
 # ─── Query Flags ─────────────────────────────────────────────────────────────
 QUERY_CODE = 0x1
@@ -348,22 +351,34 @@ QUERY_END = 0x80000000
 
 # Common query flag combination for observation building
 QUERY_BASIC = (
-    QUERY_CODE | QUERY_POSITION | QUERY_TYPE | QUERY_LEVEL |
-    QUERY_RANK | QUERY_ATTRIBUTE | QUERY_RACE | QUERY_ATTACK |
-    QUERY_DEFENSE | QUERY_LSCALE | QUERY_RSCALE | QUERY_LINK |
-    QUERY_OWNER | QUERY_STATUS | QUERY_IS_PUBLIC | QUERY_COUNTERS |
-    QUERY_OVERLAY_CARD
+    QUERY_CODE
+    | QUERY_POSITION
+    | QUERY_TYPE
+    | QUERY_LEVEL
+    | QUERY_RANK
+    | QUERY_ATTRIBUTE
+    | QUERY_RACE
+    | QUERY_ATTACK
+    | QUERY_DEFENSE
+    | QUERY_LSCALE
+    | QUERY_RSCALE
+    | QUERY_LINK
+    | QUERY_OWNER
+    | QUERY_STATUS
+    | QUERY_IS_PUBLIC
+    | QUERY_COUNTERS
+    | QUERY_OVERLAY_CARD
 )
 
 # ─── Link Markers ────────────────────────────────────────────────────────────
-LINK_MARKER_BOTTOM_LEFT = 0o001   # 1
-LINK_MARKER_BOTTOM = 0o002       # 2
-LINK_MARKER_BOTTOM_RIGHT = 0o004 # 4
-LINK_MARKER_LEFT = 0o010         # 8
-LINK_MARKER_RIGHT = 0o040        # 32
-LINK_MARKER_TOP_LEFT = 0o100     # 64
-LINK_MARKER_TOP = 0o200          # 128
-LINK_MARKER_TOP_RIGHT = 0o400    # 256
+LINK_MARKER_BOTTOM_LEFT = 0o001  # 1
+LINK_MARKER_BOTTOM = 0o002  # 2
+LINK_MARKER_BOTTOM_RIGHT = 0o004  # 4
+LINK_MARKER_LEFT = 0o010  # 8
+LINK_MARKER_RIGHT = 0o040  # 32
+LINK_MARKER_TOP_LEFT = 0o100  # 64
+LINK_MARKER_TOP = 0o200  # 128
+LINK_MARKER_TOP_RIGHT = 0o400  # 256
 
 # ─── Duel Creation Status ────────────────────────────────────────────────────
 OCG_DUEL_CREATION_SUCCESS = 0
@@ -420,8 +435,11 @@ DUEL_NORMAL_SUMMON_FACEUP_DEF = 0x1000000000
 
 # ─── Predefined Duel Modes ──────────────────────────────────────────────────
 DUEL_MODE_MR5 = (
-    DUEL_PZONE | DUEL_EMZONE | DUEL_FSX_MMZONE |
-    DUEL_TRAP_MONSTERS_NOT_USE_ZONE | DUEL_TRIGGER_ONLY_IN_LOCATION
+    DUEL_PZONE
+    | DUEL_EMZONE
+    | DUEL_FSX_MMZONE
+    | DUEL_TRAP_MONSTERS_NOT_USE_ZONE
+    | DUEL_TRIGGER_ONLY_IN_LOCATION
 )
 
 # ─── Hints ───────────────────────────────────────────────────────────────────

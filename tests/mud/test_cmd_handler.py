@@ -7,24 +7,21 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
-from dataclasses import replace
 
 import pytest
 
-from yugioh_mud.agent import END_PHASE, PassiveAgent, RandomAgent
+from yugioh_core.constants import LOCATION_BANISHED
+from yugioh_mud.agent import PassiveAgent, RandomAgent
 from yugioh_mud.cmd_handler import (
-    BattleCmdHandler,
-    DuelEndedError,
-    IdleCmdHandler,
-    StructuredAction,
-    parse_cardspec,
     LOCATION_EXTRA,
+    LOCATION_GRAVE,
     LOCATION_HAND,
     LOCATION_MZONE,
     LOCATION_SZONE,
-    LOCATION_GRAVE,
+    BattleCmdHandler,
+    IdleCmdHandler,
+    parse_cardspec,
 )
-from yugioh_core.constants import LOCATION_BANISHED
 from yugioh_mud.game_state import CardEntry, MUDGameState
 from yugioh_mud.text_parser import MUDTextParser, ParsedPrompt, PromptType
 
@@ -55,6 +52,7 @@ def _run(coro):
 # ---------------------------------------------------------------------------
 # parse_cardspec
 # ---------------------------------------------------------------------------
+
 
 class TestParseCardspec:
     def test_hand(self):
@@ -87,6 +85,7 @@ class TestParseCardspec:
 # IdleCmdHandler
 # ---------------------------------------------------------------------------
 
+
 def _make_idle_prompt(options: list[str] | None = None) -> ParsedPrompt:
     """Create a minimal IDLE_CMD prompt."""
     return ParsedPrompt(
@@ -100,16 +99,17 @@ class TestIdleCmdHandlerPassive:
 
     def test_passive_ends_phase_no_usable_cards(self):
         """With no usable cards, passive agent sends 'e'."""
-        conn = FakeConnection([
-            # Response to "?" — no usable cards, just re-prompt
-            "Select a card:",
-        ])
+        conn = FakeConnection(
+            [
+                # Response to "?" — no usable cards, just re-prompt
+                "Select a card:",
+            ]
+        )
         prompt = _make_idle_prompt(["b", "e"])
         agent = PassiveAgent()
         parser = MUDTextParser()
 
-        ended = _run(IdleCmdHandler.handle(
-            conn, prompt, agent, None, parser, verbose=False))
+        ended = _run(IdleCmdHandler.handle(conn, prompt, agent, None, parser, verbose=False))
 
         assert not ended
         assert conn.sent[0] == "?"
@@ -121,18 +121,19 @@ class TestIdleCmdHandlerPassive:
 
     def test_passive_ends_phase_with_usable_cards(self):
         """Even with usable cards, passive agent still sends 'e'."""
-        conn = FakeConnection([
-            # Response to "?"
-            "Summonable in attack position: h1, h3",
-            "Activatable: h2",
-            "Select a card:",
-        ])
+        conn = FakeConnection(
+            [
+                # Response to "?"
+                "Summonable in attack position: h1, h3",
+                "Activatable: h2",
+                "Select a card:",
+            ]
+        )
         prompt = _make_idle_prompt(["b", "e"])
         agent = PassiveAgent()
         parser = MUDTextParser()
 
-        ended = _run(IdleCmdHandler.handle(
-            conn, prompt, agent, None, parser, verbose=False))
+        ended = _run(IdleCmdHandler.handle(conn, prompt, agent, None, parser, verbose=False))
 
         assert not ended
         assert conn.sent == ["?", "e"]
@@ -152,22 +153,23 @@ class TestIdleCmdHandlerRandom:
         """RandomAgent can pick a card action and execute submenu."""
         # We need a seed that picks a card action (not END_PHASE)
         for seed in range(50):
-            conn = FakeConnection([
-                # Response to "?"
-                "Summonable in attack position: h1",
-                "Select a card:",
-                # Submenu after selecting h1
-                "s: Summon in attack position.",
-                "t: Set in defense position.",
-                "z: back.",
-                "Select action for Blue-Eyes White Dragon",
-            ])
+            conn = FakeConnection(
+                [
+                    # Response to "?"
+                    "Summonable in attack position: h1",
+                    "Select a card:",
+                    # Submenu after selecting h1
+                    "s: Summon in attack position.",
+                    "t: Set in defense position.",
+                    "z: back.",
+                    "Select action for Blue-Eyes White Dragon",
+                ]
+            )
             prompt = _make_idle_prompt(["b", "e"])
             agent = RandomAgent(seed=seed)
             parser = MUDTextParser()
 
-            ended = _run(IdleCmdHandler.handle(
-                conn, prompt, agent, None, parser, verbose=False))
+            ended = _run(IdleCmdHandler.handle(conn, prompt, agent, None, parser, verbose=False))
 
             assert not ended
             # Check if agent picked the card action (h1)
@@ -182,16 +184,17 @@ class TestIdleCmdHandlerRandom:
     def test_random_picks_phase_transition(self):
         """RandomAgent can pick a phase transition."""
         for seed in range(50):
-            conn = FakeConnection([
-                "Summonable in attack position: h1",
-                "Select a card:",
-            ])
+            conn = FakeConnection(
+                [
+                    "Summonable in attack position: h1",
+                    "Select a card:",
+                ]
+            )
             prompt = _make_idle_prompt(["b", "e"])
             agent = RandomAgent(seed=seed)
             parser = MUDTextParser()
 
-            ended = _run(IdleCmdHandler.handle(
-                conn, prompt, agent, None, parser, verbose=False))
+            ended = _run(IdleCmdHandler.handle(conn, prompt, agent, None, parser, verbose=False))
 
             if not ended and conn.sent[-1] in ("b", "e"):
                 assert conn.sent[0] == "?"
@@ -200,21 +203,21 @@ class TestIdleCmdHandlerRandom:
 
     def test_multi_category_same_card(self):
         """A card in multiple categories creates multiple actions."""
-        conn = FakeConnection([
-            "Summonable in attack position: h1",
-            "Settable: h1",
-            "Select a card:",
-        ])
+        conn = FakeConnection(
+            [
+                "Summonable in attack position: h1",
+                "Settable: h1",
+                "Select a card:",
+            ]
+        )
         prompt = _make_idle_prompt(["e"])
         agent = PassiveAgent()
         parser = MUDTextParser()
 
-        _run(IdleCmdHandler.handle(
-            conn, prompt, agent, None, parser, verbose=False))
+        _run(IdleCmdHandler.handle(conn, prompt, agent, None, parser, verbose=False))
 
         # h1 appears in both summon (cat 0) and settable (cat 4)
-        card_actions = [a for a in prompt.structured_actions
-                        if a.cardspec == "h1"]
+        card_actions = [a for a in prompt.structured_actions if a.cardspec == "h1"]
         assert len(card_actions) == 2
         cats = {a.category for a in card_actions}
         assert cats == {0, 4}
@@ -224,33 +227,35 @@ class TestIdleCmdHandlerDuelEnd:
     """Duel-end detection during idle handler."""
 
     def test_duel_end_during_probe(self):
-        conn = FakeConnection([
-            "You won (ran out of cards to draw).",
-        ])
+        conn = FakeConnection(
+            [
+                "You won (ran out of cards to draw).",
+            ]
+        )
         prompt = _make_idle_prompt(["e"])
         agent = PassiveAgent()
         parser = MUDTextParser()
 
-        ended = _run(IdleCmdHandler.handle(
-            conn, prompt, agent, None, parser, verbose=False))
+        ended = _run(IdleCmdHandler.handle(conn, prompt, agent, None, parser, verbose=False))
 
         assert ended
 
     def test_duel_end_during_submenu(self):
         """Duel ends while waiting for submenu after card selection."""
         for seed in range(50):
-            conn = FakeConnection([
-                "Summonable in attack position: h1",
-                "Select a card:",
-                # After sending h1, duel ends
-                "You lost (LP became 0).",
-            ])
+            conn = FakeConnection(
+                [
+                    "Summonable in attack position: h1",
+                    "Select a card:",
+                    # After sending h1, duel ends
+                    "You lost (LP became 0).",
+                ]
+            )
             prompt = _make_idle_prompt(["e"])
             agent = RandomAgent(seed=seed)
             parser = MUDTextParser()
 
-            ended = _run(IdleCmdHandler.handle(
-                conn, prompt, agent, None, parser, verbose=False))
+            ended = _run(IdleCmdHandler.handle(conn, prompt, agent, None, parser, verbose=False))
 
             if "h1" in conn.sent:
                 assert ended
@@ -264,20 +269,21 @@ class TestIdleCmdHandlerMultiEffect:
     def test_single_effect_sends_v(self):
         """Single-effect card: submenu has 'v', handler sends 'v'."""
         for seed in range(100):
-            conn = FakeConnection([
-                "Activatable: s1",
-                "Select a card:",
-                # Submenu for s1
-                "v: Activate Mirror Force.",
-                "z: back.",
-                "Select action for Mirror Force",
-            ])
+            conn = FakeConnection(
+                [
+                    "Activatable: s1",
+                    "Select a card:",
+                    # Submenu for s1
+                    "v: Activate Mirror Force.",
+                    "z: back.",
+                    "Select action for Mirror Force",
+                ]
+            )
             prompt = _make_idle_prompt(["e"])
             agent = RandomAgent(seed=seed)
             parser = MUDTextParser()
 
-            _run(IdleCmdHandler.handle(
-                conn, prompt, agent, None, parser, verbose=False))
+            _run(IdleCmdHandler.handle(conn, prompt, agent, None, parser, verbose=False))
 
             if "s1" in conn.sent:
                 assert conn.sent[-1] == "v"
@@ -287,21 +293,22 @@ class TestIdleCmdHandlerMultiEffect:
     def test_multi_effect_sends_va(self):
         """Multi-effect card: submenu has 'va'/'vb', handler sends 'va'."""
         for seed in range(100):
-            conn = FakeConnection([
-                "Activatable: s1",
-                "Select a card:",
-                # Submenu with multi-effect
-                "va: First effect.",
-                "vb: Second effect.",
-                "z: back.",
-                "Select action for Mystic Card",
-            ])
+            conn = FakeConnection(
+                [
+                    "Activatable: s1",
+                    "Select a card:",
+                    # Submenu with multi-effect
+                    "va: First effect.",
+                    "vb: Second effect.",
+                    "z: back.",
+                    "Select action for Mystic Card",
+                ]
+            )
             prompt = _make_idle_prompt(["e"])
             agent = RandomAgent(seed=seed)
             parser = MUDTextParser()
 
-            _run(IdleCmdHandler.handle(
-                conn, prompt, agent, None, parser, verbose=False))
+            _run(IdleCmdHandler.handle(conn, prompt, agent, None, parser, verbose=False))
 
             if "s1" in conn.sent:
                 # Should send "va" (first effect) since "v" is not in menu
@@ -314,10 +321,12 @@ class TestIdleCmdHandlerGameState:
     """Card code resolution from game state."""
 
     def test_resolves_card_code_from_hand(self):
-        conn = FakeConnection([
-            "Summonable in attack position: h1",
-            "Select a card:",
-        ])
+        conn = FakeConnection(
+            [
+                "Summonable in attack position: h1",
+                "Select a card:",
+            ]
+        )
         prompt = _make_idle_prompt(["e"])
         agent = PassiveAgent()
         parser = MUDTextParser()
@@ -326,20 +335,20 @@ class TestIdleCmdHandlerGameState:
             CardEntry(name="Blue-Eyes", code=89631139, spec="h1"),
         ]
 
-        _run(IdleCmdHandler.handle(
-            conn, prompt, agent, gs, parser, verbose=False))
+        _run(IdleCmdHandler.handle(conn, prompt, agent, gs, parser, verbose=False))
 
-        h1_action = [a for a in prompt.structured_actions
-                     if a.cardspec == "h1"][0]
+        h1_action = [a for a in prompt.structured_actions if a.cardspec == "h1"][0]
         assert h1_action.card_code == 89631139
         assert h1_action.location == LOCATION_HAND
         assert h1_action.sequence == 0
 
     def test_resolves_card_code_from_graveyard(self):
-        conn = FakeConnection([
-            "Activatable: g1",
-            "Select a card:",
-        ])
+        conn = FakeConnection(
+            [
+                "Activatable: g1",
+                "Select a card:",
+            ]
+        )
         prompt = _make_idle_prompt(["e"])
         agent = PassiveAgent()
         parser = MUDTextParser()
@@ -348,20 +357,20 @@ class TestIdleCmdHandlerGameState:
             CardEntry(name="Monster Reborn", code=83764718, spec="g1"),
         ]
 
-        _run(IdleCmdHandler.handle(
-            conn, prompt, agent, gs, parser, verbose=False))
+        _run(IdleCmdHandler.handle(conn, prompt, agent, gs, parser, verbose=False))
 
-        g1_action = [a for a in prompt.structured_actions
-                     if a.cardspec == "g1"][0]
+        g1_action = [a for a in prompt.structured_actions if a.cardspec == "g1"][0]
         assert g1_action.card_code == 83764718
         assert g1_action.location == LOCATION_GRAVE
         assert g1_action.sequence == 0
 
     def test_resolves_card_code_from_banished(self):
-        conn = FakeConnection([
-            "Activatable: r1",
-            "Select a card:",
-        ])
+        conn = FakeConnection(
+            [
+                "Activatable: r1",
+                "Select a card:",
+            ]
+        )
         prompt = _make_idle_prompt(["e"])
         agent = PassiveAgent()
         parser = MUDTextParser()
@@ -370,11 +379,9 @@ class TestIdleCmdHandlerGameState:
             CardEntry(name="Necroface", code=70426919, spec="r1"),
         ]
 
-        _run(IdleCmdHandler.handle(
-            conn, prompt, agent, gs, parser, verbose=False))
+        _run(IdleCmdHandler.handle(conn, prompt, agent, gs, parser, verbose=False))
 
-        r1_action = [a for a in prompt.structured_actions
-                     if a.cardspec == "r1"][0]
+        r1_action = [a for a in prompt.structured_actions if a.cardspec == "r1"][0]
         assert r1_action.card_code == 70426919
         assert r1_action.location == LOCATION_BANISHED
         assert r1_action.sequence == 0
@@ -385,20 +392,21 @@ class TestIdleCmdHandlerReprompt:
 
     def test_reprompt_as_terminator(self):
         """When '?' response includes a re-sent prompt, use it as terminator."""
-        conn = FakeConnection([
-            "Summonable in attack position: h1",
-            # Full re-sent prompt (parser accumulates this)
-            "Select a card on which to perform an action.",
-            "b: Enter the battle phase.",
-            "e: End phase.",
-            "Select a card:",
-        ])
+        conn = FakeConnection(
+            [
+                "Summonable in attack position: h1",
+                # Full re-sent prompt (parser accumulates this)
+                "Select a card on which to perform an action.",
+                "b: Enter the battle phase.",
+                "e: End phase.",
+                "Select a card:",
+            ]
+        )
         prompt = _make_idle_prompt(["b", "e"])
         agent = PassiveAgent()
         parser = MUDTextParser()
 
-        ended = _run(IdleCmdHandler.handle(
-            conn, prompt, agent, None, parser, verbose=False))
+        ended = _run(IdleCmdHandler.handle(conn, prompt, agent, None, parser, verbose=False))
 
         assert not ended
         assert len(prompt.structured_actions) >= 1
@@ -407,6 +415,7 @@ class TestIdleCmdHandlerReprompt:
 # ---------------------------------------------------------------------------
 # BattleCmdHandler
 # ---------------------------------------------------------------------------
+
 
 def _make_battle_prompt(options: list[str] | None = None) -> ParsedPrompt:
     return ParsedPrompt(
@@ -420,23 +429,24 @@ class TestBattleCmdHandlerPassive:
         """PassiveAgent sends 'e' without probing."""
         # No attack/activate probing needed since agent will pick END_PHASE
         # But the handler probes first, then decides.
-        conn = FakeConnection([
-            # Probe attack: send "a" → card list → "Select a card:"
-            "m1: Blue-Eyes White Dragon",
-            "z: back.",
-            "Select a card:",
-            # Back: re-sent battle menu (discarded)
-            "Battle menu:",
-            "a: Attack.",
-            "e: End phase.",
-            "Select an option:",
-        ])
+        conn = FakeConnection(
+            [
+                # Probe attack: send "a" → card list → "Select a card:"
+                "m1: Blue-Eyes White Dragon",
+                "z: back.",
+                "Select a card:",
+                # Back: re-sent battle menu (discarded)
+                "Battle menu:",
+                "a: Attack.",
+                "e: End phase.",
+                "Select an option:",
+            ]
+        )
         prompt = _make_battle_prompt(["a", "e"])
         agent = PassiveAgent()
         parser = MUDTextParser()
 
-        ended = _run(BattleCmdHandler.handle(
-            conn, prompt, agent, None, parser, verbose=False))
+        ended = _run(BattleCmdHandler.handle(conn, prompt, agent, None, parser, verbose=False))
 
         assert not ended
         # Should probe "a", then "z" back, then send "e"
@@ -451,8 +461,7 @@ class TestBattleCmdHandlerPassive:
         agent = PassiveAgent()
         parser = MUDTextParser()
 
-        ended = _run(BattleCmdHandler.handle(
-            conn, prompt, agent, None, parser, verbose=False))
+        ended = _run(BattleCmdHandler.handle(conn, prompt, agent, None, parser, verbose=False))
 
         assert not ended
         assert conn.sent == ["e"]
@@ -462,27 +471,28 @@ class TestBattleCmdHandlerRandom:
     def test_random_picks_attack(self):
         """RandomAgent can pick an attack action."""
         for seed in range(100):
-            conn = FakeConnection([
-                # Probe attack
-                "m1: Blue-Eyes White Dragon",
-                "z: back.",
-                "Select a card:",
-                # Discard re-sent menu
-                "Battle menu:",
-                "a: Attack.",
-                "e: End phase.",
-                "Select an option:",
-                # Execution: send "a" again, then card list, then send cardspec
-                "m1: Blue-Eyes White Dragon",
-                "z: back.",
-                "Select a card:",
-            ])
+            conn = FakeConnection(
+                [
+                    # Probe attack
+                    "m1: Blue-Eyes White Dragon",
+                    "z: back.",
+                    "Select a card:",
+                    # Discard re-sent menu
+                    "Battle menu:",
+                    "a: Attack.",
+                    "e: End phase.",
+                    "Select an option:",
+                    # Execution: send "a" again, then card list, then send cardspec
+                    "m1: Blue-Eyes White Dragon",
+                    "z: back.",
+                    "Select a card:",
+                ]
+            )
             prompt = _make_battle_prompt(["a", "e"])
             agent = RandomAgent(seed=seed)
             parser = MUDTextParser()
 
-            ended = _run(BattleCmdHandler.handle(
-                conn, prompt, agent, None, parser, verbose=False))
+            ended = _run(BattleCmdHandler.handle(conn, prompt, agent, None, parser, verbose=False))
 
             # Check if agent picked the attack
             if conn.sent.count("a") == 2:  # probe + execute
@@ -494,24 +504,25 @@ class TestBattleCmdHandlerRandom:
     def test_random_picks_to_m2(self):
         """RandomAgent can pick 'to main phase 2' transition."""
         for seed in range(100):
-            conn = FakeConnection([
-                # Probe attack
-                "m1: Blue-Eyes White Dragon",
-                "z: back.",
-                "Select a card:",
-                # Discard re-sent menu
-                "Battle menu:",
-                "a: Attack.",
-                "m: Main phase 2.",
-                "e: End phase.",
-                "Select an option:",
-            ])
+            conn = FakeConnection(
+                [
+                    # Probe attack
+                    "m1: Blue-Eyes White Dragon",
+                    "z: back.",
+                    "Select a card:",
+                    # Discard re-sent menu
+                    "Battle menu:",
+                    "a: Attack.",
+                    "m: Main phase 2.",
+                    "e: End phase.",
+                    "Select an option:",
+                ]
+            )
             prompt = _make_battle_prompt(["a", "m", "e"])
             agent = RandomAgent(seed=seed)
             parser = MUDTextParser()
 
-            ended = _run(BattleCmdHandler.handle(
-                conn, prompt, agent, None, parser, verbose=False))
+            ended = _run(BattleCmdHandler.handle(conn, prompt, agent, None, parser, verbose=False))
 
             if not ended and conn.sent[-1] == "m":
                 return
@@ -522,27 +533,28 @@ class TestBattleCmdHandlerActivate:
     def test_probe_and_execute_activate(self):
         """Probes activate cards and can execute activation."""
         for seed in range(100):
-            conn = FakeConnection([
-                # Probe activate ("c")
-                "s1: Mirror Force",
-                "z: back.",
-                "Enter a line of text.",
-                # Discard re-sent menu
-                "Battle menu:",
-                "c: Activate.",
-                "e: End phase.",
-                "Select an option:",
-                # Execution: send "c", then card list, then cardspec
-                "s1: Mirror Force",
-                "z: back.",
-                "Enter a line of text.",
-            ])
+            conn = FakeConnection(
+                [
+                    # Probe activate ("c")
+                    "s1: Mirror Force",
+                    "z: back.",
+                    "Enter a line of text.",
+                    # Discard re-sent menu
+                    "Battle menu:",
+                    "c: Activate.",
+                    "e: End phase.",
+                    "Select an option:",
+                    # Execution: send "c", then card list, then cardspec
+                    "s1: Mirror Force",
+                    "z: back.",
+                    "Enter a line of text.",
+                ]
+            )
             prompt = _make_battle_prompt(["c", "e"])
             agent = RandomAgent(seed=seed)
             parser = MUDTextParser()
 
-            ended = _run(BattleCmdHandler.handle(
-                conn, prompt, agent, None, parser, verbose=False))
+            ended = _run(BattleCmdHandler.handle(conn, prompt, agent, None, parser, verbose=False))
 
             if conn.sent.count("c") == 2:  # probe + execute
                 assert not ended
@@ -553,35 +565,37 @@ class TestBattleCmdHandlerActivate:
 
 class TestBattleCmdHandlerDuelEnd:
     def test_duel_end_during_probe(self):
-        conn = FakeConnection([
-            # Probe attack, then duel ends
-            "You won (opponent LP became 0).",
-        ])
+        conn = FakeConnection(
+            [
+                # Probe attack, then duel ends
+                "You won (opponent LP became 0).",
+            ]
+        )
         prompt = _make_battle_prompt(["a", "e"])
         agent = PassiveAgent()
         parser = MUDTextParser()
 
-        ended = _run(BattleCmdHandler.handle(
-            conn, prompt, agent, None, parser, verbose=False))
+        ended = _run(BattleCmdHandler.handle(conn, prompt, agent, None, parser, verbose=False))
 
         assert ended
 
     def test_duel_end_during_discard(self):
         """Duel ends while discarding re-sent battle menu after probe."""
-        conn = FakeConnection([
-            # Probe attack
-            "m1: Blue-Eyes White Dragon",
-            "z: back.",
-            "Select a card:",
-            # Duel ends during discard
-            "You lost (LP became 0).",
-        ])
+        conn = FakeConnection(
+            [
+                # Probe attack
+                "m1: Blue-Eyes White Dragon",
+                "z: back.",
+                "Select a card:",
+                # Duel ends during discard
+                "You lost (LP became 0).",
+            ]
+        )
         prompt = _make_battle_prompt(["a", "e"])
         agent = PassiveAgent()
         parser = MUDTextParser()
 
-        ended = _run(BattleCmdHandler.handle(
-            conn, prompt, agent, None, parser, verbose=False))
+        ended = _run(BattleCmdHandler.handle(conn, prompt, agent, None, parser, verbose=False))
 
         assert ended
 
@@ -589,35 +603,36 @@ class TestBattleCmdHandlerDuelEnd:
 class TestBattleCmdHandlerBothProbes:
     def test_attack_and_activate_probed(self):
         """Both attack and activate options are probed."""
-        conn = FakeConnection([
-            # Probe attack
-            "m1: Blue-Eyes White Dragon",
-            "m2: Dark Magician",
-            "z: back.",
-            "Select a card:",
-            # Discard re-sent menu
-            "Battle menu:",
-            "a: Attack.",
-            "c: Activate.",
-            "e: End phase.",
-            "Select an option:",
-            # Probe activate
-            "s1: Mirror Force",
-            "z: back.",
-            "Enter a line of text.",
-            # Discard re-sent menu
-            "Battle menu:",
-            "a: Attack.",
-            "c: Activate.",
-            "e: End phase.",
-            "Select an option:",
-        ])
+        conn = FakeConnection(
+            [
+                # Probe attack
+                "m1: Blue-Eyes White Dragon",
+                "m2: Dark Magician",
+                "z: back.",
+                "Select a card:",
+                # Discard re-sent menu
+                "Battle menu:",
+                "a: Attack.",
+                "c: Activate.",
+                "e: End phase.",
+                "Select an option:",
+                # Probe activate
+                "s1: Mirror Force",
+                "z: back.",
+                "Enter a line of text.",
+                # Discard re-sent menu
+                "Battle menu:",
+                "a: Attack.",
+                "c: Activate.",
+                "e: End phase.",
+                "Select an option:",
+            ]
+        )
         prompt = _make_battle_prompt(["a", "c", "e"])
         agent = PassiveAgent()  # will pick END_PHASE
         parser = MUDTextParser()
 
-        ended = _run(BattleCmdHandler.handle(
-            conn, prompt, agent, None, parser, verbose=False))
+        ended = _run(BattleCmdHandler.handle(conn, prompt, agent, None, parser, verbose=False))
 
         assert not ended
         # Should have probed both: "a", "z", "c", "z", then "e"
@@ -636,17 +651,19 @@ class TestBattleCmdHandlerBothProbes:
 
 class TestBattleCmdHandlerGameState:
     def test_resolves_card_code_from_mzone(self):
-        conn = FakeConnection([
-            # Probe attack
-            "m1: Blue-Eyes White Dragon",
-            "z: back.",
-            "Select a card:",
-            # Discard menu
-            "Battle menu:",
-            "a: Attack.",
-            "e: End phase.",
-            "Select an option:",
-        ])
+        conn = FakeConnection(
+            [
+                # Probe attack
+                "m1: Blue-Eyes White Dragon",
+                "z: back.",
+                "Select a card:",
+                # Discard menu
+                "Battle menu:",
+                "a: Attack.",
+                "e: End phase.",
+                "Select an option:",
+            ]
+        )
         prompt = _make_battle_prompt(["a", "e"])
         agent = PassiveAgent()
         parser = MUDTextParser()
@@ -655,10 +672,8 @@ class TestBattleCmdHandlerGameState:
             CardEntry(name="Blue-Eyes", code=89631139, spec="m1"),
         ]
 
-        _run(BattleCmdHandler.handle(
-            conn, prompt, agent, gs, parser, verbose=False))
+        _run(BattleCmdHandler.handle(conn, prompt, agent, gs, parser, verbose=False))
 
-        m1_action = [a for a in prompt.structured_actions
-                     if a.cardspec == "m1"][0]
+        m1_action = [a for a in prompt.structured_actions if a.cardspec == "m1"][0]
         assert m1_action.card_code == 89631139
         assert m1_action.location == LOCATION_MZONE

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from openenv.core.env_client import EnvClient
 from openenv.core.client_types import StepResult
+from openenv.core.env_client import EnvClient
 
 from yugioh_env.models import YuGiOhAction, YuGiOhObservation, YuGiOhState
 

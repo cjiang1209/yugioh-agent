@@ -58,6 +58,7 @@ def lib():
     """Load the OCG core library."""
     try:
         from yugioh_env.lib_loader import load_library
+
         return load_library()
     except FileNotFoundError:
         pytest.skip("libocgcore not found. Run: make build")
@@ -67,6 +68,7 @@ def lib():
 def duel(lib, card_db, script_dirs, deck_path):
     """Create a Duel instance ready to use."""
     from yugioh_env.duel import Duel
+
     d = Duel(lib, card_db, script_dirs)
     yield d
     d.destroy()

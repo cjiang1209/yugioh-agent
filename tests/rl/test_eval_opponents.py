@@ -23,10 +23,10 @@ from yugioh_rl.config import TrainingConfig
 from yugioh_rl.eval import EvalResult
 from yugioh_rl.ppo import PPOTrainer
 
-
 # ---------------------------------------------------------------------------
 # Trainer wrapper integration — patch yugioh_rl.ppo.evaluate_with_agent
 # ---------------------------------------------------------------------------
+
 
 def _make_trainer_stub(config: TrainingConfig) -> PPOTrainer:
     """Build a PPOTrainer-like object without running __init__."""
@@ -87,8 +87,10 @@ class TestEvaluateWrapper:
             def __init__(self, network, device: str = "cpu"):
                 ctor_calls.append((network, device))
 
-        with patch("yugioh_rl.ppo.NetworkOpponent", _FakeNetworkOpponent), \
-             patch("yugioh_rl.ppo.evaluate_with_agent", return_value=[]):
+        with (
+            patch("yugioh_rl.ppo.NetworkOpponent", _FakeNetworkOpponent),
+            patch("yugioh_rl.ppo.evaluate_with_agent", return_value=[]),
+        ):
             trainer._evaluate(num_episodes=1, global_step=0)
 
         assert len(ctor_calls) == 1
@@ -125,8 +127,10 @@ class TestEvaluateWrapper:
         assert trainer._writer is None
 
         results = [EvalResult("greedy", 1, 1, 1.0, {0: [1.0]})]
-        with patch("yugioh_rl.ppo.evaluate_with_agent", return_value=results), \
-             patch("yugioh_rl.ppo.log_results_to_tensorboard") as log_mock:
+        with (
+            patch("yugioh_rl.ppo.evaluate_with_agent", return_value=results),
+            patch("yugioh_rl.ppo.log_results_to_tensorboard") as log_mock,
+        ):
             trainer._evaluate(num_episodes=1, global_step=0)
 
         log_mock.assert_not_called()
@@ -143,10 +147,15 @@ class TestEvaluateWrapper:
         trainer._writer = MagicMock()
 
         results = [EvalResult("greedy", 1, 1, 1.0, {0: [1.0]})]
-        with patch("yugioh_rl.ppo.evaluate_with_agent", return_value=results), \
-             patch("yugioh_rl.ppo.log_results_to_tensorboard") as log_mock:
+        with (
+            patch("yugioh_rl.ppo.evaluate_with_agent", return_value=results),
+            patch("yugioh_rl.ppo.log_results_to_tensorboard") as log_mock,
+        ):
             trainer._evaluate(num_episodes=1, global_step=42)
 
         log_mock.assert_called_once_with(
-            trainer._writer, results, trainer.config.deck_paths, 42,
+            trainer._writer,
+            results,
+            trainer.config.deck_paths,
+            42,
         )

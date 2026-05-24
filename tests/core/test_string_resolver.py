@@ -35,7 +35,7 @@ def db(tmp_path: Path) -> CardDatabase:
 
 
 def _make_stringid(passcode: int, n: int) -> int:
-    return (passcode << 20) | (n & 0xfffff)
+    return (passcode << 20) | (n & 0xFFFFF)
 
 
 def test_per_card_resolution_returns_str_slot(db):
@@ -120,6 +120,6 @@ def test_string_resolver_resolves_sysstring_from_parsed_file(tmp_path, db):
     # `db` fixture is a tiny CardDatabase from existing tests — per-card
     # lookup paths are not exercised here; only sysstring path matters.
     resolver = StringResolver(db, sys_strings=table)
-    assert resolver.resolve(0x46) == "Monster Cards"   # passcode=0, n=70
-    assert resolver.resolve(0x47) == "Spell Cards"     # passcode=0, n=71
-    assert resolver.resolve(0x63) is None              # n=99, unknown sysstring
+    assert resolver.resolve(0x46) == "Monster Cards"  # passcode=0, n=70
+    assert resolver.resolve(0x47) == "Spell Cards"  # passcode=0, n=71
+    assert resolver.resolve(0x63) is None  # n=99, unknown sysstring

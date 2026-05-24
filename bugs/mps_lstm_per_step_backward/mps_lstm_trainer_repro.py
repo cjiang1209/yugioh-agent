@@ -7,6 +7,7 @@ minibatch_size=8, num_epochs=1). No engine, no env, just torch.
 Goal: print before each suspect op so when the assertion fires we know which
 op the Metal driver tripped on.
 """
+
 from __future__ import annotations
 
 import os

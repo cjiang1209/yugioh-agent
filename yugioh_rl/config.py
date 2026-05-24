@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import MISSING, dataclass, field, fields
 from typing import Literal, get_args
 
-
 VecEnvType = Literal["subproc", "sync_actor_learner"]
 VEC_ENV_TYPES: tuple[str, ...] = get_args(VecEnvType)
 
@@ -57,16 +56,20 @@ class TrainingConfig:
     bptt_chunk_len: int = 16  # must divide rollout_steps when rnn_type != "none"
 
     # Infrastructure
-    init_checkpoint: str = ""       # Path to .pt checkpoint to init weights from (new run)
-    resume_checkpoint: str = ""     # Path to checkpoint to resume training from
-    init_optimizer: bool = False    # When using --init-checkpoint, also load optimizer state (not just weights)
+    init_checkpoint: str = ""  # Path to .pt checkpoint to init weights from (new run)
+    resume_checkpoint: str = ""  # Path to checkpoint to resume training from
+    init_optimizer: bool = (
+        False  # When using --init-checkpoint, also load optimizer state (not just weights)
+    )
     seed: int = 42
     log_interval: int = 10
     eval_interval: int = 50
     eval_episodes: int = 100
     eval_opponents: list[str] = field(default_factory=lambda: ["greedy", "random"])
     save_interval: int = 100
-    save_dir: str = "checkpoints"  # Exact run directory (CLI builds this from --base-dir + timestamp)
+    save_dir: str = (
+        "checkpoints"  # Exact run directory (CLI builds this from --base-dir + timestamp)
+    )
     device: str = "auto"
 
     # "sync_actor_learner": workers hold a local policy and submit full

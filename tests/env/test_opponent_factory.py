@@ -13,10 +13,10 @@ from yugioh_env.opponent import (
     parse_opponent_spec,
 )
 
-
 # ---------------------------------------------------------------------------
 # parse_opponent_spec
 # ---------------------------------------------------------------------------
+
 
 class TestParseOpponentSpec:
     def test_greedy(self):
@@ -42,6 +42,7 @@ class TestParseOpponentSpec:
 # ---------------------------------------------------------------------------
 # make_opponent
 # ---------------------------------------------------------------------------
+
 
 class TestMakeOpponent:
     def test_greedy(self):

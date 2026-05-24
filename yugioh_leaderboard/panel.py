@@ -43,7 +43,7 @@ def _validate_spec(spec: str) -> None:
     if spec in ("random", "greedy"):
         return
     if spec.startswith("model:"):
-        if not spec[len("model:"):]:
+        if not spec[len("model:") :]:
             raise ValueError("model: panel entry must include checkpoint path")
         return
     raise ValueError(f"unknown opponent kind in panel spec: {spec!r}")
@@ -84,9 +84,7 @@ def load_panel_config(path: Path | str) -> PanelConfig:
         )
     device = str(match_raw["device"])
     if device not in _VALID_DEVICE:
-        raise ValueError(
-            f"panel.match.device must be one of {_VALID_DEVICE}, got {device!r}"
-        )
+        raise ValueError(f"panel.match.device must be one of {_VALID_DEVICE}, got {device!r}")
     match = PanelMatchOptions(
         episodes=int(match_raw["episodes"]),
         agent_player=agent_player,

@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterable
 from pathlib import Path
-
-from typing import Iterable
 
 from yugioh_core.constants import TYPE_LINK, split_setcodes
 
@@ -32,9 +31,7 @@ class CardDatabase:
         if code in self._cache:
             return self._cache[code]
 
-        cursor = self._conn.execute(
-            "SELECT * FROM datas WHERE id=?", (code,)
-        )
+        cursor = self._conn.execute("SELECT * FROM datas WHERE id=?", (code,))
         row = cursor.fetchone()
         if row is None:
             self._cache[code] = None
@@ -86,9 +83,7 @@ class CardDatabase:
         cached = self._name_cache.get(code)
         if cached is not None:
             return cached
-        cursor = self._conn.execute(
-            "SELECT name FROM texts WHERE id=?", (code,)
-        )
+        cursor = self._conn.execute("SELECT name FROM texts WHERE id=?", (code,))
         row = cursor.fetchone()
         name = row["name"] if row else f"Unknown({code})"
         self._name_cache[code] = name
@@ -104,9 +99,7 @@ class CardDatabase:
         if not 0 <= n <= 15:
             return None
         column = f"str{n + 1}"
-        cursor = self._conn.execute(
-            f"SELECT {column} FROM texts WHERE id=?", (code,)
-        )
+        cursor = self._conn.execute(f"SELECT {column} FROM texts WHERE id=?", (code,))
         row = cursor.fetchone()
         if row is None:
             return None

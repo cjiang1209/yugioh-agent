@@ -1,4 +1,5 @@
 """Pure Elo rating math. No torch, no shared memory — just the formulas."""
+
 from __future__ import annotations
 
 

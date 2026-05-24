@@ -11,7 +11,6 @@ from typing import Any
 
 from yugioh_rl.config import TrainingConfig, normalize_legacy_config
 
-
 GROUPING_FIELDS: tuple[str, ...] = (
     "rnn_type",
     "rnn_hidden_dim",

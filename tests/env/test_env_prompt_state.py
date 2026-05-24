@@ -20,7 +20,6 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from yugioh_env.action_space import ActionMapper
 from yugioh_core.encoding import (
     ACTION_FEATURES,
     CARD_FEATURES,
@@ -28,6 +27,7 @@ from yugioh_core.encoding import (
     MAX_ACTIONS,
     MAX_CARDS,
 )
+from yugioh_env.action_space import ActionMapper
 from yugioh_env.models import YuGiOhAction
 from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
 
@@ -38,8 +38,10 @@ def _stub_build_observation(monkeypatch):
     contents here, only about prompt-state bookkeeping around step() and
     _make_terminal_observation."""
     import yugioh_env.server.yugioh_environment as env_mod
+
     monkeypatch.setattr(
-        env_mod, "build_observation",
+        env_mod,
+        "build_observation",
         lambda gs, msg, agent_player, query_fn=None: {
             "cards": np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8),
             "global_state": np.zeros(GLOBAL_FEATURES, dtype=np.uint8),
@@ -66,6 +68,7 @@ def _bare_env() -> YuGiOhEnvironment:
 # num_actions returns 0 when no prompt is active
 # ---------------------------------------------------------------------------
 
+
 def test_num_actions_zero_when_no_active_prompt():
     env = _bare_env()
     assert env.current_msg is None
@@ -77,6 +80,7 @@ def test_num_actions_matches_mapper_when_prompt_active():
     # Simulate a fresh prompt the way _process_to_agent_choice would: set msg
     # and update mapper. Use MSG_SELECT_YESNO for a simple 2-action prompt.
     from yugioh_core.constants import MSG_SELECT_YESNO
+
     msg = {"msg_type": MSG_SELECT_YESNO, "player": 0, "desc": 0}
     env._current_msg = msg
     env._mapper.update(msg)
@@ -87,6 +91,7 @@ def test_num_actions_matches_mapper_when_prompt_active():
 # ---------------------------------------------------------------------------
 # Multi-step card selection keeps current_msg in sync with the mapper
 # ---------------------------------------------------------------------------
+
 
 def test_multi_step_updates_current_msg_in_sync_with_mapper():
     """In the response-is-None branch, _current_msg should track _selected picks."""
@@ -102,8 +107,12 @@ def test_multi_step_updates_current_msg_in_sync_with_mapper():
     env._mapper.action_to_response = MagicMock(return_value=None)
     env._mapper.get_action_index = MagicMock(return_value=0)
     env._mapper.num_actions = 3
-    env._mapper.get_action_mask = MagicMock(return_value=np.array([1, 1, 1] + [0] * 29, dtype=np.int8))
-    env._mapper.get_action_features = MagicMock(return_value=np.zeros((MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8))
+    env._mapper.get_action_mask = MagicMock(
+        return_value=np.array([1, 1, 1] + [0] * 29, dtype=np.int8)
+    )
+    env._mapper.get_action_features = MagicMock(
+        return_value=np.zeros((MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8)
+    )
 
     # Execute step in the multi-step branch (response is None).
     env.step(YuGiOhAction(action_index=0))
@@ -123,6 +132,7 @@ def test_multi_step_updates_current_msg_in_sync_with_mapper():
 # ---------------------------------------------------------------------------
 # Terminal observation clears the prompt state
 # ---------------------------------------------------------------------------
+
 
 def test_terminal_observation_clears_current_msg():
     env = _bare_env()

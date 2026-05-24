@@ -23,7 +23,6 @@ from yugioh_core.encoding import (
 from yugioh_rl.config import TrainingConfig
 from yugioh_rl.network import YuGiOhNet
 
-
 _RNN_FIELDS = ("rnn_type", "rnn_hidden_dim", "rnn_num_layers", "bptt_chunk_len")
 
 
@@ -120,8 +119,9 @@ def test_feed_forward_state_dict_unchanged_at_rnn_none():
     net = YuGiOhNet.from_config(config)
     keys = set(net.state_dict().keys())
     assert net.rnn is None
-    assert not any(k.startswith("rnn.") for k in keys), \
+    assert not any(k.startswith("rnn.") for k in keys), (
         f"rnn_type='none' should not emit rnn.* keys; got: {sorted(keys)}"
+    )
 
 
 def test_feed_forward_outputs_deterministic_at_rnn_none():
@@ -200,10 +200,7 @@ def test_mask_hx_zeros_only_done_envs():
 
     hx = torch.zeros(num_layers, num_envs, hidden)
     dones_per_step = torch.tensor(
-        [[0, 0],
-         [1, 0],
-         [0, 0],
-         [0, 1]],
+        [[0, 0], [1, 0], [0, 0], [0, 1]],
         dtype=torch.float32,
     )
 
@@ -283,15 +280,17 @@ def test_model_opponent_hx_lifecycle(tmp_path):
     opp.set_observation(obs)
     opp.select_action(msg, num_actions=3)
     h1, c1 = inner._hx
-    assert not torch.equal(h1, h0) or not torch.equal(c1, c0), \
+    assert not torch.equal(h1, h0) or not torch.equal(c1, c0), (
         "select_action must advance hx for an RNN-mode network"
+    )
 
     # A second call should advance hx again.
     opp.set_observation(obs)
     opp.select_action(msg, num_actions=3)
     h2, c2 = inner._hx
-    assert not torch.equal(h2, h1) or not torch.equal(c2, c1), \
+    assert not torch.equal(h2, h1) or not torch.equal(c2, c1), (
         "consecutive select_action calls must not produce identical hx"
+    )
 
     # Reseed clears hx back to zero.
     opp.reseed(7)
@@ -330,8 +329,9 @@ def test_rollout_loop_resets_hx_per_rollout():
     optimizer step would feed pre-update-weights hx into the post-update
     network on step 0, breaking policy/value consistency.
     """
-    import re
     import inspect
+    import re
+
     from yugioh_rl.ppo import PPOTrainer
 
     src = inspect.getsource(PPOTrainer.train)
@@ -363,7 +363,9 @@ def _make_tbptt_trainer(*, rollout_steps: int, num_envs: int, **overrides):
     from yugioh_rl.ppo import PPOTrainer
 
     defaults = {
-        "rnn_type": "lstm", "rnn_hidden_dim": 64, "rnn_num_layers": 1,
+        "rnn_type": "lstm",
+        "rnn_hidden_dim": 64,
+        "rnn_num_layers": 1,
         "bptt_chunk_len": 8,
         "rollout_steps": rollout_steps,
         "num_envs": num_envs,
@@ -508,12 +510,11 @@ def test_tbptt_releases_chunk_graph_each_iteration(monkeypatch):
     assert len(events) == 32
     for i in range(0, 32, 2):
         assert events[i] == "forward", (
-            f"event {i} should be a forward (interleaved per chunk); "
-            f"got: {events[i:i+2]}"
+            f"event {i} should be a forward (interleaved per chunk); got: {events[i : i + 2]}"
         )
         assert events[i + 1] == "backward", (
-            f"event {i+1} should be a backward immediately after the chunk "
-            f"forward; got: {events[i:i+2]}"
+            f"event {i + 1} should be a backward immediately after the chunk "
+            f"forward; got: {events[i : i + 2]}"
         )
 
 
@@ -528,9 +529,7 @@ def test_tbptt_update_changes_network_weights(tmp_path):
     after = trainer.network.state_dict()
 
     assert any(
-        not torch.allclose(before[k], after[k])
-        for k in before
-        if before[k].dtype.is_floating_point
+        not torch.allclose(before[k], after[k]) for k in before if before[k].dtype.is_floating_point
     ), "TBPTT update must move at least one parameter"
 
 
@@ -571,8 +570,10 @@ def test_checkpoint_compat_rejects_rnn_type_mismatch(tmp_path):
     _save_minimal_checkpoint(none_ckpt, TrainingConfig())
 
     cli_with_rnn = TrainingConfig(
-        rnn_type="lstm", rnn_hidden_dim=64,
-        init_checkpoint=none_ckpt, save_dir=str(tmp_path / "run1"),
+        rnn_type="lstm",
+        rnn_hidden_dim=64,
+        init_checkpoint=none_ckpt,
+        save_dir=str(tmp_path / "run1"),
     )
     with pytest.raises(ValueError, match="rnn_type"):
         PPOTrainer(cli_with_rnn)
@@ -581,7 +582,8 @@ def test_checkpoint_compat_rejects_rnn_type_mismatch(tmp_path):
     _make_rnn_checkpoint(rnn_ckpt, rnn_type="lstm")
     cli_without_rnn = TrainingConfig(
         rnn_hidden_dim=64,  # match ckpt to isolate rnn_type as the only mismatch
-        init_checkpoint=rnn_ckpt, save_dir=str(tmp_path / "run2"),
+        init_checkpoint=rnn_ckpt,
+        save_dir=str(tmp_path / "run2"),
     )
     with pytest.raises(ValueError, match="rnn_type"):
         PPOTrainer(cli_without_rnn)
@@ -595,8 +597,10 @@ def test_checkpoint_compat_rejects_rnn_hidden_dim_mismatch(tmp_path):
     _make_rnn_checkpoint(ckpt_path, rnn_type="lstm")  # rnn_hidden_dim=64 from helper
 
     cli = TrainingConfig(
-        rnn_type="lstm", rnn_hidden_dim=128,
-        init_checkpoint=ckpt_path, save_dir=str(tmp_path / "run"),
+        rnn_type="lstm",
+        rnn_hidden_dim=128,
+        init_checkpoint=ckpt_path,
+        save_dir=str(tmp_path / "run"),
     )
     with pytest.raises(ValueError, match="rnn_hidden_dim"):
         PPOTrainer(cli)
@@ -615,8 +619,11 @@ def test_checkpoint_compat_ignores_rnn_dims_when_both_feed_forward(tmp_path):
 
     # CLI carries today's defaults (256 / 1) — different from the saved ckpt.
     cli = TrainingConfig(
-        rnn_type="none", rnn_hidden_dim=256, rnn_num_layers=1,
-        init_checkpoint=ckpt_path, save_dir=str(tmp_path / "run"),
+        rnn_type="none",
+        rnn_hidden_dim=256,
+        rnn_num_layers=1,
+        init_checkpoint=ckpt_path,
+        save_dir=str(tmp_path / "run"),
     )
     PPOTrainer(cli)  # should not raise
 
@@ -631,17 +638,31 @@ def test_validate_effective_config_tbptt_invariants(monkeypatch, capsys, tmp_pat
 
     def cfg(**overrides):
         return TrainingConfig(
-            deck_paths=[real_deck], rnn_type="lstm",
-            rnn_hidden_dim=64, **overrides,
+            deck_paths=[real_deck],
+            rnn_type="lstm",
+            rnn_hidden_dim=64,
+            **overrides,
         )
 
     cases = [
         # (overrides, expected substring in stderr)
         (dict(rollout_steps=10, bptt_chunk_len=3, minibatch_size=10, num_envs=8), "bptt-chunk-len"),
-        (dict(rollout_steps=16, bptt_chunk_len=8, minibatch_size=8, num_envs=8), ">= --rollout-steps"),
-        (dict(rollout_steps=16, bptt_chunk_len=8, minibatch_size=24, num_envs=8), "must be divisible by --rollout-steps"),
-        (dict(rollout_steps=16, bptt_chunk_len=8, minibatch_size=128, num_envs=4), "fewer total samples"),
-        (dict(rollout_steps=16, bptt_chunk_len=8, minibatch_size=48, num_envs=8), "envs_per_minibatch"),
+        (
+            dict(rollout_steps=16, bptt_chunk_len=8, minibatch_size=8, num_envs=8),
+            ">= --rollout-steps",
+        ),
+        (
+            dict(rollout_steps=16, bptt_chunk_len=8, minibatch_size=24, num_envs=8),
+            "must be divisible by --rollout-steps",
+        ),
+        (
+            dict(rollout_steps=16, bptt_chunk_len=8, minibatch_size=128, num_envs=4),
+            "fewer total samples",
+        ),
+        (
+            dict(rollout_steps=16, bptt_chunk_len=8, minibatch_size=48, num_envs=8),
+            "envs_per_minibatch",
+        ),
     ]
     for overrides, expected in cases:
         with pytest.raises(SystemExit):
@@ -650,10 +671,14 @@ def test_validate_effective_config_tbptt_invariants(monkeypatch, capsys, tmp_pat
         assert expected in err, f"{overrides} did not produce '{expected}' in stderr; got: {err}"
 
     # Default RNN combination should pass cleanly.
-    validate_effective_config(cfg(
-        rollout_steps=256, bptt_chunk_len=16,
-        minibatch_size=256, num_envs=8,
-    ))
+    validate_effective_config(
+        cfg(
+            rollout_steps=256,
+            bptt_chunk_len=16,
+            minibatch_size=256,
+            num_envs=8,
+        )
+    )
 
 
 def test_validate_effective_config_skips_tbptt_invariants_when_rnn_none(tmp_path):
@@ -665,8 +690,10 @@ def test_validate_effective_config_skips_tbptt_invariants_when_rnn_none(tmp_path
         deck_paths=["assets/decks/blue_eyes.ydk"],
         rnn_type="none",
         # These would all fail TBPTT invariants but should be ignored at "none".
-        rollout_steps=256, bptt_chunk_len=7,
-        minibatch_size=200, num_envs=8,
+        rollout_steps=256,
+        bptt_chunk_len=7,
+        minibatch_size=200,
+        num_envs=8,
     )
     validate_effective_config(config)
 

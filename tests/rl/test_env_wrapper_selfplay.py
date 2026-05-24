@@ -1,4 +1,5 @@
 """Tests for TrainingEnv self-play integration."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -8,9 +9,8 @@ import pytest
 torch = pytest.importorskip("torch")
 pytest.importorskip("yugioh_env.server.yugioh_environment")
 
-from yugioh_rl.env_wrapper import parse_deck_pool
-
 from tests.rl.conftest import requires_engine
+from yugioh_rl.env_wrapper import parse_deck_pool
 
 
 def _make_deck_pool() -> list[dict[str, list[int]]]:

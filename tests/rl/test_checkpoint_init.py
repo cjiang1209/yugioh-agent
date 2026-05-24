@@ -18,8 +18,9 @@ from yugioh_rl.network import YuGiOhNet
 from yugioh_rl.ppo import PPOTrainer
 
 
-def _make_checkpoint(path: str, config: TrainingConfig | None = None,
-                     run_backward: bool = False) -> YuGiOhNet:
+def _make_checkpoint(
+    path: str, config: TrainingConfig | None = None, run_backward: bool = False
+) -> YuGiOhNet:
     """Create a checkpoint and return the network used to build it."""
     if config is None:
         config = TrainingConfig()
@@ -38,13 +39,16 @@ def _make_checkpoint(path: str, config: TrainingConfig | None = None,
             loss.backward()
             optimizer.step()
 
-    torch.save({
-        "update": 10,
-        "global_step": 1000,
-        "model_state_dict": net.state_dict(),
-        "optimizer_state_dict": optimizer.state_dict(),
-        "config": config,
-    }, path)
+    torch.save(
+        {
+            "update": 10,
+            "global_step": 1000,
+            "model_state_dict": net.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "config": config,
+        },
+        path,
+    )
     return net
 
 
@@ -117,17 +121,26 @@ def test_init_checkpoint_loads_recurrent_weights(tmp_path, rnn_type):
 
     ckpt_path = str(tmp_path / "ckpt.pt")
     config = TrainingConfig(
-        save_dir=str(tmp_path / "run0"), num_envs=1,
-        rnn_type=rnn_type, rnn_hidden_dim=64, rnn_num_layers=1,
-        bptt_chunk_len=8, rollout_steps=8, minibatch_size=8,
+        save_dir=str(tmp_path / "run0"),
+        num_envs=1,
+        rnn_type=rnn_type,
+        rnn_hidden_dim=64,
+        rnn_num_layers=1,
+        bptt_chunk_len=8,
+        rollout_steps=8,
+        minibatch_size=8,
         device="cpu",
     )
     net = _make_checkpoint(ckpt_path, config, run_backward=True)
     ref_param = net.state_dict()["rnn.weight_ih_l0"].detach().clone()
 
-    trainer = PPOTrainer(dataclasses.replace(
-        config, save_dir=str(tmp_path / "run1"), init_checkpoint=ckpt_path,
-    ))
+    trainer = PPOTrainer(
+        dataclasses.replace(
+            config,
+            save_dir=str(tmp_path / "run1"),
+            init_checkpoint=ckpt_path,
+        )
+    )
     loaded_param = trainer.network.state_dict()["rnn.weight_ih_l0"].detach()
 
     assert torch.allclose(ref_param, loaded_param)

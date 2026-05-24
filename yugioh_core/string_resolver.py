@@ -20,7 +20,6 @@ from pathlib import Path
 
 from yugioh_core.card_database import CardDatabase
 
-
 _SYS_STRING_RE = re.compile(r"^!system\s+(\d+)\s+(.*)$")
 
 
@@ -59,7 +58,7 @@ class StringResolver:
 
     def resolve(self, desc_u64: int) -> str | None:
         passcode = desc_u64 >> 20
-        n = desc_u64 & 0xfffff
+        n = desc_u64 & 0xFFFFF
         if passcode == 0:
             return self._sys.get(n)
         return self._card_db.get_card_string(passcode, n)

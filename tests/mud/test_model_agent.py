@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import pytest
-
 from yugioh_mud.agent import (
     CANCEL,
     DECLINE,
@@ -19,14 +17,15 @@ from yugioh_mud.agent import (
 )
 from yugioh_mud.text_parser import ParsedPrompt, PromptType
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class FakeStructuredAction:
     """Minimal stand-in for StructuredAction (avoids importing cmd_handler)."""
+
     category: int = 0
     cardspec: str = ""
     card_code: int = 0
@@ -67,6 +66,7 @@ def _options_prompt(pt: PromptType, n: int, **kwargs) -> ParsedPrompt:
 # IDLE_CMD mapping
 # ---------------------------------------------------------------------------
 
+
 class TestIdleCmdMapping:
     def test_index_zero_maps_to_first_action(self):
         prompt = _idle_prompt(0, 5, 1)  # summon, activate, sp_summon
@@ -102,6 +102,7 @@ class TestIdleCmdMapping:
 # BATTLE_MENU mapping
 # ---------------------------------------------------------------------------
 
+
 class TestBattleMenuMapping:
     def test_activate_returns_index(self):
         prompt = _battle_prompt(0, 1)  # activate, attack
@@ -128,6 +129,7 @@ class TestBattleMenuMapping:
 # SELECT_EFFECTYN / SELECT_YESNO mapping
 # ---------------------------------------------------------------------------
 
+
 class TestEffectYNMapping:
     def test_index_zero_accepts(self):
         prompt = _options_prompt(PromptType.SELECT_EFFECTYN, 2)
@@ -145,6 +147,7 @@ class TestEffectYNMapping:
 # ---------------------------------------------------------------------------
 # SELECT_CHAIN mapping
 # ---------------------------------------------------------------------------
+
 
 class TestChainMapping:
     def test_valid_index(self):
@@ -164,6 +167,7 @@ class TestChainMapping:
 # SELECT_UNSELECT mapping
 # ---------------------------------------------------------------------------
 
+
 class TestUnselectMapping:
     def test_valid_index(self):
         prompt = _options_prompt(PromptType.SELECT_UNSELECT, 3, finishable=True)
@@ -181,6 +185,7 @@ class TestUnselectMapping:
 # ---------------------------------------------------------------------------
 # Generic SELECT_* mapping (clamped)
 # ---------------------------------------------------------------------------
+
 
 class TestGenericSelectMapping:
     def test_select_card_in_range(self):
@@ -212,6 +217,7 @@ class TestGenericSelectMapping:
 # Fallback (no game state → PassiveAgent)
 # ---------------------------------------------------------------------------
 
+
 class TestFallbackWithoutGameState:
     """ModelAgent.choose() with game_state=None delegates to PassiveAgent."""
 
@@ -220,18 +226,21 @@ class TestFallbackWithoutGameState:
         # via ModelAgent.choose() which requires torch. Here we verify the
         # PassiveAgent default directly for the key prompt types.
         from yugioh_mud.agent import PassiveAgent
+
         agent = PassiveAgent()
         prompt = ParsedPrompt(prompt_type=PromptType.IDLE_CMD)
         assert agent.choose(prompt) == END_PHASE
 
     def test_effectyn_returns_decline(self):
         from yugioh_mud.agent import PassiveAgent
+
         agent = PassiveAgent()
         prompt = _options_prompt(PromptType.SELECT_EFFECTYN, 2)
         assert agent.choose(prompt) == DECLINE
 
     def test_chain_returns_cancel(self):
         from yugioh_mud.agent import PassiveAgent
+
         agent = PassiveAgent()
         prompt = _options_prompt(PromptType.SELECT_CHAIN, 3, cancelable=True)
         assert agent.choose(prompt) == CANCEL

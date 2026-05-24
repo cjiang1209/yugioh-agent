@@ -1,4 +1,5 @@
 """Test YuGiOhEnvironment.set_opponent for opponent swapping between episodes."""
+
 from __future__ import annotations
 
 from yugioh_env.opponent import GreedyOpponent, RandomOpponent

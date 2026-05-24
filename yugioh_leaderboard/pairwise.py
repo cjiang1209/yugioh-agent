@@ -18,7 +18,6 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
-from typing import Optional
 
 from yugioh_leaderboard.entry import (
     Entry,
@@ -60,8 +59,8 @@ def run_pairwise(
     panel: PanelConfig,
     *,
     episodes: int = 100,
-    seed: Optional[int] = None,
-    decks_override: Optional[list[str]] = None,
+    seed: int | None = None,
+    decks_override: list[str] | None = None,
     workers: int = 1,
 ) -> tuple[Entry, Entry]:
     """Run one pairwise match and return updated copies of (entry_a, entry_b).
@@ -74,6 +73,7 @@ def run_pairwise(
     Pairwise has a single opponent, so all parallelism is episode-shard.
     """
     from cli.utils import resolve_device
+
     from yugioh_rl.env_wrapper import parse_deck_pool
     from yugioh_rl.eval import evaluate
 
@@ -125,20 +125,29 @@ def run_pairwise(
     a_record = PairwiseMatchResult(
         vs_entry_id=entry_b.entry_id,
         vs_checkpoint_hash=entry_b.checkpoint_hash,
-        episodes=r.episodes, wins=r.wins, win_rate=r.win_rate,
-        per_deck=per_deck_a, seed=base_seed, evaluated_at=now_iso(),
+        episodes=r.episodes,
+        wins=r.wins,
+        win_rate=r.win_rate,
+        per_deck=per_deck_a,
+        seed=base_seed,
+        evaluated_at=now_iso(),
     )
     b_record = PairwiseMatchResult(
         vs_entry_id=entry_a.entry_id,
         vs_checkpoint_hash=entry_a.checkpoint_hash,
-        episodes=r.episodes, wins=b_wins,
+        episodes=r.episodes,
+        wins=b_wins,
         win_rate=b_wins / r.episodes if r.episodes else 0.0,
-        per_deck=per_deck_b, seed=base_seed, evaluated_at=now_iso(),
+        per_deck=per_deck_b,
+        seed=base_seed,
+        evaluated_at=now_iso(),
     )
 
     return (
-        replace(entry_a, pairwise_results=replace_or_append_pairwise(
-            entry_a.pairwise_results, a_record)),
-        replace(entry_b, pairwise_results=replace_or_append_pairwise(
-            entry_b.pairwise_results, b_record)),
+        replace(
+            entry_a, pairwise_results=replace_or_append_pairwise(entry_a.pairwise_results, a_record)
+        ),
+        replace(
+            entry_b, pairwise_results=replace_or_append_pairwise(entry_b.pairwise_results, b_record)
+        ),
     )

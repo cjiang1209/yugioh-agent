@@ -38,6 +38,7 @@ def db_path(assets_dir) -> Path:
 def card_db(db_path):
     """Create a CardDatabase instance."""
     from yugioh_core.card_database import CardDatabase
+
     db = CardDatabase(db_path)
     yield db
     db.close()

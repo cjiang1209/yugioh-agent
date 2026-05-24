@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
 
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.distributions import Categorical
 
 from yugioh_core.encoding import (
@@ -23,7 +22,7 @@ from yugioh_core.encoding import (
 )
 from yugioh_env.opponent import NetworkOpponent
 from yugioh_rl.config import TrainingConfig
-from yugioh_rl.env_wrapper import SubprocVecEnv, TrainingEnv, parse_deck_pool
+from yugioh_rl.env_wrapper import SubprocVecEnv, parse_deck_pool
 from yugioh_rl.eval import evaluate_with_agent, log_results_to_tensorboard
 from yugioh_rl.network import YuGiOhNet
 
@@ -33,6 +32,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Rollout buffer
 # ---------------------------------------------------------------------------
+
 
 def _to_tensor(arr: np.ndarray, device: torch.device, *, long: bool = False) -> torch.Tensor:
     """``np.ndarray`` → ``torch.Tensor`` on ``device``, with optional cast to int64."""
@@ -44,14 +44,14 @@ def _to_tensor(arr: np.ndarray, device: torch.device, *, long: bool = False) -> 
 class MiniBatch:
     """A single minibatch of training data (feed-forward path)."""
 
-    obs_cards: torch.Tensor      # (M, MAX_CARDS, CARD_FEATURES)
-    obs_global: torch.Tensor     # (M, GLOBAL_FEATURES)
-    obs_actions: torch.Tensor    # (M, MAX_ACTIONS, ACTION_FEATURES)
-    action_mask: torch.Tensor    # (M, MAX_ACTIONS)
-    actions: torch.Tensor        # (M,)
+    obs_cards: torch.Tensor  # (M, MAX_CARDS, CARD_FEATURES)
+    obs_global: torch.Tensor  # (M, GLOBAL_FEATURES)
+    obs_actions: torch.Tensor  # (M, MAX_ACTIONS, ACTION_FEATURES)
+    action_mask: torch.Tensor  # (M, MAX_ACTIONS)
+    actions: torch.Tensor  # (M,)
     old_log_probs: torch.Tensor  # (M,)
-    advantages: torch.Tensor     # (M,)
-    returns: torch.Tensor        # (M,)
+    advantages: torch.Tensor  # (M,)
+    returns: torch.Tensor  # (M,)
 
 
 @dataclass
@@ -64,15 +64,15 @@ class RecurrentMiniBatch:
     the network forward.
     """
 
-    obs_cards: torch.Tensor      # (T, env_mb, MAX_CARDS, CARD_FEATURES)
-    obs_global: torch.Tensor     # (T, env_mb, GLOBAL_FEATURES)
-    obs_actions: torch.Tensor    # (T, env_mb, MAX_ACTIONS, ACTION_FEATURES)
-    action_mask: torch.Tensor    # (T, env_mb, MAX_ACTIONS)
-    actions: torch.Tensor        # (T, env_mb)
+    obs_cards: torch.Tensor  # (T, env_mb, MAX_CARDS, CARD_FEATURES)
+    obs_global: torch.Tensor  # (T, env_mb, GLOBAL_FEATURES)
+    obs_actions: torch.Tensor  # (T, env_mb, MAX_ACTIONS, ACTION_FEATURES)
+    action_mask: torch.Tensor  # (T, env_mb, MAX_ACTIONS)
+    actions: torch.Tensor  # (T, env_mb)
     old_log_probs: torch.Tensor  # (T, env_mb)
-    advantages: torch.Tensor     # (T, env_mb)
-    returns: torch.Tensor        # (T, env_mb)
-    dones: torch.Tensor          # (T, env_mb)
+    advantages: torch.Tensor  # (T, env_mb)
+    returns: torch.Tensor  # (T, env_mb)
+    dones: torch.Tensor  # (T, env_mb)
     hx_initial: tuple[torch.Tensor, torch.Tensor] | torch.Tensor | None
 
 
@@ -152,10 +152,10 @@ class RolloutBuffer:
             self.rewards[:T, i] = r["rewards"]
             self.dones[:T, i] = r["dones"].astype(np.float32)
         return {
-            "cards":        np.stack([r["final_obs_cards"]   for r in rollouts]),
-            "global_state": np.stack([r["final_obs_global"]  for r in rollouts]),
-            "actions":      np.stack([r["final_obs_actions"] for r in rollouts]),
-            "action_mask":  np.stack([r["final_action_mask"] for r in rollouts]),
+            "cards": np.stack([r["final_obs_cards"] for r in rollouts]),
+            "global_state": np.stack([r["final_obs_global"] for r in rollouts]),
+            "actions": np.stack([r["final_obs_actions"] for r in rollouts]),
+            "action_mask": np.stack([r["final_action_mask"] for r in rollouts]),
         }
 
     def compute_advantages(
@@ -270,6 +270,7 @@ class RolloutBuffer:
 # PPO trainer
 # ---------------------------------------------------------------------------
 
+
 class PPOTrainer:
     """PPO training loop for Yu-Gi-Oh! agent."""
 
@@ -312,12 +313,10 @@ class PPOTrainer:
         elif config.init_checkpoint:
             ckpt = torch.load(config.init_checkpoint, map_location=self.device, weights_only=False)
             self._validate_checkpoint_compat(config, ckpt)
-            self.network = YuGiOhNet.from_state_dict(
-                config, ckpt["model_state_dict"]
-            ).to(self.device)
-            self.optimizer = torch.optim.Adam(
-                self.network.parameters(), lr=config.learning_rate
+            self.network = YuGiOhNet.from_state_dict(config, ckpt["model_state_dict"]).to(
+                self.device
             )
+            self.optimizer = torch.optim.Adam(self.network.parameters(), lr=config.learning_rate)
             if config.init_optimizer and "optimizer_state_dict" in ckpt:
                 self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
                 # Override LR from CLI so users can change schedule across runs
@@ -364,6 +363,7 @@ class PPOTrainer:
         self._writer = None
         try:
             from torch.utils.tensorboard import SummaryWriter
+
             purge = self._resume_global_step if self._resume_global_step > 0 else None
             self._writer = SummaryWriter(
                 log_dir=str(Path(config.save_dir) / "logs"),
@@ -382,12 +382,8 @@ class PPOTrainer:
         ckpt = torch.load(config.resume_checkpoint, map_location=self.device, weights_only=False)
         self._validate_checkpoint_compat(config, ckpt)
 
-        self.network = YuGiOhNet.from_state_dict(
-            config, ckpt["model_state_dict"]
-        ).to(self.device)
-        self.optimizer = torch.optim.Adam(
-            self.network.parameters(), lr=config.learning_rate
-        )
+        self.network = YuGiOhNet.from_state_dict(config, ckpt["model_state_dict"]).to(self.device)
+        self.optimizer = torch.optim.Adam(self.network.parameters(), lr=config.learning_rate)
         if "optimizer_state_dict" in ckpt:
             self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
             for pg in self.optimizer.param_groups:
@@ -402,15 +398,15 @@ class PPOTrainer:
         self._episode_rewards = list(ckpt.get("episode_rewards", []))
         self._episode_lengths = list(ckpt.get("episode_lengths", []))
         self._episode_wins = list(ckpt.get("episode_wins", []))
-        self._deck_wins = {
-            int(k): list(v) for k, v in ckpt.get("deck_wins", {}).items()
-        }
+        self._deck_wins = {int(k): list(v) for k, v in ckpt.get("deck_wins", {}).items()}
 
         update = ckpt.get("update", 0)
         global_step = ckpt.get("global_step", 0)
         logger.info(
             "Loaded checkpoint for resumption: %s (update=%d, global_step=%d)",
-            config.resume_checkpoint, update, global_step,
+            config.resume_checkpoint,
+            update,
+            global_step,
         )
         return update, global_step
 
@@ -428,8 +424,12 @@ class PPOTrainer:
         # mismatch means the user is hot-adding or hot-removing a
         # recurrent layer, which would silently corrupt trained weights.
         arch_fields = [
-            "card_embed_dim", "global_embed_dim", "board_hidden_dim",
-            "action_embed_dim", "text_embed_dim", "learned_embed_dim",
+            "card_embed_dim",
+            "global_embed_dim",
+            "board_hidden_dim",
+            "action_embed_dim",
+            "text_embed_dim",
+            "learned_embed_dim",
             "rnn_type",
         ]
         arch_defaults = {"rnn_type": "none"}
@@ -462,9 +462,7 @@ class PPOTrainer:
                 if ckpt_val is None:
                     missing.append(field)
                 elif ckpt_val != cli_val:
-                    mismatches.append(
-                        f"  {field}: checkpoint={ckpt_val}, cli={cli_val}"
-                    )
+                    mismatches.append(f"  {field}: checkpoint={ckpt_val}, cli={cli_val}")
         if missing:
             logger.warning(
                 "Checkpoint config missing fields (older version?): %s",
@@ -472,8 +470,7 @@ class PPOTrainer:
             )
         if mismatches:
             raise ValueError(
-                "Architecture mismatch between checkpoint and CLI config:\n"
-                + "\n".join(mismatches)
+                "Architecture mismatch between checkpoint and CLI config:\n" + "\n".join(mismatches)
             )
 
         # deck_paths must match: the index-keyed _deck_wins map was saved
@@ -493,9 +490,7 @@ class PPOTrainer:
 
         # Text embedding mode: from_state_dict auto-detects from keys,
         # but warn if modes disagree so user is aware
-        ckpt_has_text = any(
-            k.startswith("text_lookup.") for k in ckpt["model_state_dict"]
-        )
+        ckpt_has_text = any(k.startswith("text_lookup.") for k in ckpt["model_state_dict"])
         cli_wants_text = bool(config.card_embeddings)
         if ckpt_has_text and not cli_wants_text:
             logger.warning(
@@ -516,22 +511,25 @@ class PPOTrainer:
         if self._resume_update >= num_updates:
             logger.warning(
                 "Resume update %d >= total updates %d — training already complete",
-                self._resume_update, num_updates,
+                self._resume_update,
+                num_updates,
             )
             return
 
         logger.info(
             "Starting training: %d timesteps, %d updates, %d envs",
-            config.total_timesteps, num_updates, config.num_envs,
+            config.total_timesteps,
+            num_updates,
+            config.num_envs,
         )
 
         pool_handles = (
-            self._opponent_pool.share_handles()
-            if self._opponent_pool is not None else None
+            self._opponent_pool.share_handles() if self._opponent_pool is not None else None
         )
 
         if config.vec_env_type == "sync_actor_learner":
             from yugioh_rl.actor_learner import ActorLearnerVecEnv
+
             vec_env = ActorLearnerVecEnv(
                 num_envs=config.num_envs,
                 deck_pool=self._deck_pool,
@@ -609,7 +607,11 @@ class PPOTrainer:
                             t_mask = torch.from_numpy(obs["action_mask"]).to(self.device)
 
                             logits, values, hx_new = self.network(
-                                t_cards, t_global, t_actions, t_mask, hx=hx,
+                                t_cards,
+                                t_global,
+                                t_actions,
+                                t_mask,
+                                hx=hx,
                             )
                             dist = Categorical(logits=logits)
                             actions = dist.sample()
@@ -639,7 +641,8 @@ class PPOTrainer:
                 # --- Compute advantages ---
                 if config.vec_env_type == "sync_actor_learner":
                     bootstrap_hx = self.network.cat_hx(
-                        [r["final_hx"] for r in rollouts], self.device,
+                        [r["final_hx"] for r in rollouts],
+                        self.device,
                     )
                 else:
                     bootstrap_hx = hx
@@ -649,7 +652,11 @@ class PPOTrainer:
                     t_actions = torch.from_numpy(obs["actions"]).to(self.device)
                     t_mask = torch.from_numpy(obs["action_mask"]).to(self.device)
                     _, last_values, _ = self.network(
-                        t_cards, t_global, t_actions, t_mask, hx=bootstrap_hx,
+                        t_cards,
+                        t_global,
+                        t_actions,
+                        t_mask,
+                        hx=bootstrap_hx,
                     )
                     last_values_np = last_values.cpu().numpy()
 
@@ -695,12 +702,14 @@ class PPOTrainer:
                         recent = self._episode_rewards[-100:]
                         recent_wins = self._episode_wins[-100:]
                         recent_lens = self._episode_lengths[-100:]
-                        log_parts.extend([
-                            f"ep_reward={np.mean(recent):.3f}",
-                            f"win_rate={np.mean(recent_wins):.3f}",
-                            f"ep_len={np.mean(recent_lens):.0f}",
-                            f"episodes={len(self._episode_rewards)}",
-                        ])
+                        log_parts.extend(
+                            [
+                                f"ep_reward={np.mean(recent):.3f}",
+                                f"win_rate={np.mean(recent_wins):.3f}",
+                                f"ep_len={np.mean(recent_lens):.0f}",
+                                f"episodes={len(self._episode_rewards)}",
+                            ]
+                        )
 
                     logger.info(" | ".join(log_parts))
 
@@ -711,8 +720,12 @@ class PPOTrainer:
                         self._writer.add_scalar("perf/fps", fps, global_step)
                         if self._episode_rewards:
                             self._writer.add_scalar("episode/reward", np.mean(recent), global_step)
-                            self._writer.add_scalar("episode/win_rate", np.mean(recent_wins), global_step)
-                            self._writer.add_scalar("episode/length", np.mean(recent_lens), global_step)
+                            self._writer.add_scalar(
+                                "episode/win_rate", np.mean(recent_wins), global_step
+                            )
+                            self._writer.add_scalar(
+                                "episode/length", np.mean(recent_lens), global_step
+                            )
                         for deck_idx, wins_list in self._deck_wins.items():
                             if wins_list:
                                 deck_name = Path(self.config.deck_paths[deck_idx]).stem
@@ -724,10 +737,18 @@ class PPOTrainer:
                         if self._opponent_pool is not None:
                             elo = self._opponent_pool.elo_summary()
                             self._writer.add_scalar("selfplay/elo_agent", elo["agent"], global_step)
-                            self._writer.add_scalar("selfplay/elo_pool_mean", elo["pool_mean"], global_step)
-                            self._writer.add_scalar("selfplay/elo_pool_min", elo["pool_min"], global_step)
-                            self._writer.add_scalar("selfplay/elo_pool_max", elo["pool_max"], global_step)
-                            self._writer.add_scalar("selfplay/occupied", elo["occupied"], global_step)
+                            self._writer.add_scalar(
+                                "selfplay/elo_pool_mean", elo["pool_mean"], global_step
+                            )
+                            self._writer.add_scalar(
+                                "selfplay/elo_pool_min", elo["pool_min"], global_step
+                            )
+                            self._writer.add_scalar(
+                                "selfplay/elo_pool_max", elo["pool_max"], global_step
+                            )
+                            self._writer.add_scalar(
+                                "selfplay/occupied", elo["occupied"], global_step
+                            )
 
                 # --- Evaluation ---
                 if update % config.eval_interval == 0:
@@ -787,9 +808,7 @@ class PPOTrainer:
 
         ratio = (log_probs - old_log_probs).exp()
         surr1 = ratio * advantages
-        surr2 = (
-            ratio.clamp(1.0 - config.clip_range, 1.0 + config.clip_range) * advantages
-        )
+        surr2 = ratio.clamp(1.0 - config.clip_range, 1.0 + config.clip_range) * advantages
         pg = -torch.min(surr1, surr2)
         v = (values - returns) ** 2
         ent_loss = -entropy
@@ -804,9 +823,7 @@ class PPOTrainer:
         """Combine the three reduced losses, backward, clip, step."""
         config = self.config
         loss = (
-            policy_loss
-            + config.value_loss_coef * value_loss
-            + config.entropy_coef * entropy_loss
+            policy_loss + config.value_loss_coef * value_loss + config.entropy_coef * entropy_loss
         )
         self.optimizer.zero_grad()
         loss.backward()
@@ -824,12 +841,18 @@ class PPOTrainer:
         for _ in range(config.num_epochs):
             for batch in self.buffer.get_batches(config.minibatch_size, self.device):
                 logits, values, _ = self.network(
-                    batch.obs_cards, batch.obs_global,
-                    batch.obs_actions, batch.action_mask,
+                    batch.obs_cards,
+                    batch.obs_global,
+                    batch.obs_actions,
+                    batch.action_mask,
                 )
                 pg, v, ent_loss, entropy = self._ppo_loss_terms_unreduced(
-                    logits, values, batch.actions,
-                    batch.old_log_probs, batch.advantages, batch.returns,
+                    logits,
+                    values,
+                    batch.actions,
+                    batch.old_log_probs,
+                    batch.advantages,
+                    batch.returns,
                 )
                 policy_loss = pg.mean()
                 value_loss = v.mean()
@@ -870,7 +893,8 @@ class PPOTrainer:
 
         for _ in range(config.num_epochs):
             for batch in self.buffer.get_recurrent_batches(
-                config.minibatch_size, self.device,
+                config.minibatch_size,
+                self.device,
             ):
                 env_mb = batch.obs_cards.shape[1]
                 self.optimizer.zero_grad()
@@ -899,7 +923,8 @@ class PPOTrainer:
                     )
 
                     pg, v, ent_loss, entropy = self._ppo_loss_terms_unreduced(
-                        logits, values,
+                        logits,
+                        values,
                         batch.actions[chunk].reshape(flat),
                         batch.old_log_probs[chunk].reshape(flat),
                         batch.advantages[chunk].reshape(flat),
@@ -922,7 +947,8 @@ class PPOTrainer:
                     mb_entropy += entropy.detach().mean() * scale
 
                 nn.utils.clip_grad_norm_(
-                    self.network.parameters(), config.max_grad_norm,
+                    self.network.parameters(),
+                    config.max_grad_norm,
                 )
                 self.optimizer.step()
 
@@ -953,18 +979,26 @@ class PPOTrainer:
             for r in results:
                 logger.info(
                     "Eval vs %s: %d/%d wins (%.1f%%)",
-                    r.opponent_label, r.wins, r.episodes, r.win_rate * 100,
+                    r.opponent_label,
+                    r.wins,
+                    r.episodes,
+                    r.win_rate * 100,
                 )
                 for deck_idx, deck_results in r.per_deck_wins.items():
                     deck_name = Path(self.config.deck_paths[deck_idx]).stem
                     logger.info(
                         "  deck %s: %d/%d wins (%.1f%%)",
-                        deck_name, int(sum(deck_results)), len(deck_results),
+                        deck_name,
+                        int(sum(deck_results)),
+                        len(deck_results),
                         float(np.mean(deck_results)) * 100,
                     )
             if self._writer is not None:
                 log_results_to_tensorboard(
-                    self._writer, results, self.config.deck_paths, global_step,
+                    self._writer,
+                    results,
+                    self.config.deck_paths,
+                    global_step,
                 )
         finally:
             self.network.train()
@@ -975,17 +1009,20 @@ class PPOTrainer:
         save_dir.mkdir(parents=True, exist_ok=True)
         path = save_dir / f"checkpoint_{update}.pt"
 
-        torch.save({
-            "update": update,
-            "global_step": global_step,
-            "model_state_dict": self.network.state_dict(),
-            "optimizer_state_dict": self.optimizer.state_dict(),
-            "config": self.config,
-            "episode_rewards": self._episode_rewards[-1000:],
-            "episode_lengths": self._episode_lengths[-1000:],
-            "episode_wins": self._episode_wins[-1000:],
-            "deck_wins": {k: v[-1000:] for k, v in self._deck_wins.items()},
-        }, path)
+        torch.save(
+            {
+                "update": update,
+                "global_step": global_step,
+                "model_state_dict": self.network.state_dict(),
+                "optimizer_state_dict": self.optimizer.state_dict(),
+                "config": self.config,
+                "episode_rewards": self._episode_rewards[-1000:],
+                "episode_lengths": self._episode_lengths[-1000:],
+                "episode_wins": self._episode_wins[-1000:],
+                "deck_wins": {k: v[-1000:] for k, v in self._deck_wins.items()},
+            },
+            path,
+        )
 
         latest = save_dir / "checkpoint_latest.pt"
         latest.unlink(missing_ok=True)

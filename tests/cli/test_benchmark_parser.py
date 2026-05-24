@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from cli.benchmark_throughput import parse_log
 
 
@@ -22,10 +21,7 @@ def _write_log(path: Path, rows: list[tuple[int, int, int]]) -> None:
 
 
 def _rows(n: int, *, steps_per_update: int = 1024, seconds_per_update: int = 1):
-    return [
-        (i + 1, (i + 1) * steps_per_update, (i + 1) * seconds_per_update)
-        for i in range(n)
-    ]
+    return [(i + 1, (i + 1) * steps_per_update, (i + 1) * seconds_per_update) for i in range(n)]
 
 
 @pytest.mark.parametrize("n", [2, 3, 4, 5, 6, 7, 8, 10, 15, 25, 35])
@@ -44,8 +40,8 @@ def test_parse_log_skips_warmup_row(tmp_path: Path) -> None:
     """First row's wall-time is contaminated; the window must exclude it."""
     log = tmp_path / "warmup.log"
     rows = [
-        (1, 1024, 100),   # update 1: very slow due to warmup (100s gap from t=0)
-        (2, 2048, 101),   # steady: 1024 steps / 1s = 1024 FPS
+        (1, 1024, 100),  # update 1: very slow due to warmup (100s gap from t=0)
+        (2, 2048, 101),  # steady: 1024 steps / 1s = 1024 FPS
         (3, 3072, 102),
         (4, 4096, 103),
         (5, 5120, 104),
@@ -53,8 +49,9 @@ def test_parse_log_skips_warmup_row(tmp_path: Path) -> None:
     _write_log(log, rows)
     out = parse_log(log)
     assert out is not None
-    assert out["steady_fps"] == pytest.approx(1024.0), \
+    assert out["steady_fps"] == pytest.approx(1024.0), (
         "warmup row should be excluded; expected steady-state FPS"
+    )
 
 
 def test_parse_log_returns_none_for_empty(tmp_path: Path) -> None:
@@ -74,8 +71,8 @@ def test_parse_log_handles_midnight_wrap(tmp_path: Path) -> None:
     log = tmp_path / "midnight.log"
     rows = [
         (1, 1024, 86399),  # 23:59:59
-        (2, 2048, 0),       # 00:00:00 next day
-        (3, 3072, 1),       # 00:00:01
+        (2, 2048, 0),  # 00:00:00 next day
+        (3, 3072, 1),  # 00:00:01
     ]
     _write_log(log, rows)
     out = parse_log(log)

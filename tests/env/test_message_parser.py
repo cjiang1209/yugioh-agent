@@ -2,18 +2,25 @@
 
 import struct
 
-import pytest
-
-from yugioh_env.message_parser import BinaryReader, parse_messages
 from yugioh_core.constants import (
-    MSG_NEW_TURN, MSG_WIN, MSG_SELECT_YESNO,
-    MSG_SELECT_IDLECMD, MSG_SELECT_BATTLECMD,
-    MSG_SELECT_SUM, MSG_SORT_CHAIN,
-    MSG_ATTACK, MSG_BATTLE, MSG_CARD_HINT,
-    MSG_EQUIP, MSG_CARD_TARGET, MSG_CANCEL_TARGET,
-    MSG_BECOME_TARGET, MSG_RANDOM_SELECTED, MSG_CARD_SELECTED,
-    MSG_SELECT_COUNTER,
+    MSG_ATTACK,
+    MSG_BATTLE,
+    MSG_BECOME_TARGET,
+    MSG_CANCEL_TARGET,
+    MSG_CARD_HINT,
+    MSG_CARD_SELECTED,
+    MSG_CARD_TARGET,
+    MSG_EQUIP,
+    MSG_NEW_TURN,
+    MSG_RANDOM_SELECTED,
+    MSG_SELECT_BATTLECMD,
+    MSG_SELECT_IDLECMD,
+    MSG_SELECT_SUM,
+    MSG_SELECT_YESNO,
+    MSG_SORT_CHAIN,
+    MSG_WIN,
 )
+from yugioh_env.message_parser import BinaryReader, parse_messages
 
 
 def _pack_loc_info(controller, location, sequence, position):
@@ -78,8 +85,10 @@ def test_parse_multiple_messages():
     msg1_payload = bytes([MSG_NEW_TURN, 0])
     msg2_payload = bytes([MSG_NEW_TURN, 1])
     data = (
-        struct.pack("<I", len(msg1_payload)) + msg1_payload
-        + struct.pack("<I", len(msg2_payload)) + msg2_payload
+        struct.pack("<I", len(msg1_payload))
+        + msg1_payload
+        + struct.pack("<I", len(msg2_payload))
+        + msg2_payload
     )
     messages = parse_messages(data)
     assert len(messages) == 2
@@ -123,12 +132,14 @@ def _build_idlecmd_payload(
     Activatable: code(u32) + controller(u8) + location(u8) + sequence(u32) + desc(u64) + client_mode(u8).
     """
     buf = bytes([MSG_SELECT_IDLECMD, player])
+
     # Helper for standard card list: code(u32) + con(u8) + loc(u8) + seq(u32)
     def pack_standard(cards):
         data = struct.pack("<I", len(cards))
         for code, con, loc, seq in cards:
             data += struct.pack("<IBBI", code, con, loc, seq)
         return data
+
     buf += pack_standard(summonable)
     buf += pack_standard(sp_summonable)
     # Repositionable: code(u32) + con(u8) + loc(u8) + seq(u8)
@@ -244,6 +255,7 @@ def test_parse_select_battlecmd_client_mode():
 
 # --- MSG_SELECT_SUM: loc_info includes position field ---
 
+
 def test_parse_select_sum_loc_info():
     """MSG_SELECT_SUM card entries use full loc_info (with position)."""
     body = bytes([0])  # player
@@ -286,6 +298,7 @@ def test_parse_select_sum_loc_info():
 
 # --- MSG_SORT_CHAIN: location is u32, not u8 ---
 
+
 def test_parse_sort_chain_location_u32():
     """MSG_SORT_CHAIN uses u32 for location (same as MSG_SORT_CARD)."""
     body = bytes([0])  # player
@@ -317,6 +330,7 @@ def test_parse_sort_chain_location_u32():
 
 # --- MSG_ATTACK: uses full loc_info (10 bytes) per card ---
 
+
 def test_parse_attack_loc_info():
     """MSG_ATTACK uses loc_info (u8,u8,u32,u32) for attacker and target."""
     body = _pack_loc_info(0, 0x04, 2, 0x1)  # attacker
@@ -334,6 +348,7 @@ def test_parse_attack_loc_info():
 
 
 # --- MSG_BATTLE: uses full loc_info ---
+
 
 def test_parse_battle_loc_info():
     """MSG_BATTLE uses loc_info for attacker and target locations."""
@@ -361,6 +376,7 @@ def test_parse_battle_loc_info():
 
 # --- MSG_CARD_HINT: uses full loc_info ---
 
+
 def test_parse_card_hint_loc_info():
     """MSG_CARD_HINT uses loc_info (10 bytes), then u8 hint_type + u64 value."""
     body = _pack_loc_info(0, 0x04, 2, 0x1)  # loc_info
@@ -379,6 +395,7 @@ def test_parse_card_hint_loc_info():
 
 # --- MSG_EQUIP: uses full loc_info × 2 ---
 
+
 def test_parse_equip_loc_info():
     """MSG_EQUIP uses loc_info for equip card and target."""
     body = _pack_loc_info(0, 0x08, 1, 0x1)  # equip card
@@ -396,6 +413,7 @@ def test_parse_equip_loc_info():
 
 
 # --- MSG_CARD_TARGET / MSG_CANCEL_TARGET: use full loc_info × 2 ---
+
 
 def test_parse_card_target_loc_info():
     """MSG_CARD_TARGET uses loc_info for source and target."""
@@ -426,6 +444,7 @@ def test_parse_cancel_target_loc_info():
 
 # --- MSG_BECOME_TARGET: uses full loc_info per card ---
 
+
 def test_parse_become_target_loc_info():
     """MSG_BECOME_TARGET uses full loc_info (with position) per card."""
     body = struct.pack("<I", 2)  # count
@@ -445,6 +464,7 @@ def test_parse_become_target_loc_info():
 
 # --- MSG_RANDOM_SELECTED: has u8(player) prefix + loc_info per card ---
 
+
 def test_parse_random_selected_player_and_loc_info():
     """MSG_RANDOM_SELECTED has a u8 player prefix then loc_info per card."""
     body = bytes([1])  # player
@@ -463,6 +483,7 @@ def test_parse_random_selected_player_and_loc_info():
 
 
 # --- MSG_CARD_SELECTED: uses full loc_info per card ---
+
 
 def test_parse_card_selected_loc_info():
     """MSG_CARD_SELECTED uses full loc_info (position field present)."""
@@ -487,11 +508,11 @@ def test_parser_emits_absolute_player_ids():
     This invariant is load-bearing: every relativized `controller` field in
     the observation depends on the parser side staying engine-absolute.
     """
-    from yugioh_env.message_parser import _parse_select_yesno, _parse_select_chain
+    from yugioh_env.message_parser import _parse_select_chain, _parse_select_yesno
 
     # SELECT_YESNO with player=1 + a known desc.
     # Wire format: u8 player + u64 desc.
-    yesno_bytes = struct.pack("<BQ", 1, 0xdeadbeef)
+    yesno_bytes = struct.pack("<BQ", 1, 0xDEADBEEF)
     parsed = _parse_select_yesno(BinaryReader(yesno_bytes))
     assert parsed["player"] == 1, "parser must pass through engine-absolute player ID"
 
@@ -502,27 +523,34 @@ def test_parser_emits_absolute_player_ids():
     #   + u32 position + u64 desc + u8 client_mode.
     chain_bytes = struct.pack(
         "<BBBIII",
-        1,    # player (engine player 1 is being asked)
-        0,    # spe_count
-        1,    # forced
-        0,    # hint_timing
-        0,    # other_timing
-        2,    # count: 2 chain entries
+        1,  # player (engine player 1 is being asked)
+        0,  # spe_count
+        1,  # forced
+        0,  # hint_timing
+        0,  # other_timing
+        2,  # count: 2 chain entries
     )
     # Entry 0: card on engine player 0's side
     chain_bytes += struct.pack(
         "<IBBIIQB",
-        100,    # code
-        0,      # controller (engine-absolute player 0)
-        0x10,   # location (GRAVE)
-        0, 0, 0, 0,  # sequence, position, desc, client_mode
+        100,  # code
+        0,  # controller (engine-absolute player 0)
+        0x10,  # location (GRAVE)
+        0,
+        0,
+        0,
+        0,  # sequence, position, desc, client_mode
     )
     # Entry 1: card on engine player 1's side
     chain_bytes += struct.pack(
         "<IBBIIQB",
         200,
-        1,      # controller (engine-absolute player 1)
-        0x10, 0, 0, 0, 0,
+        1,  # controller (engine-absolute player 1)
+        0x10,
+        0,
+        0,
+        0,
+        0,
     )
     parsed = _parse_select_chain(BinaryReader(chain_bytes))
     assert parsed["player"] == 1

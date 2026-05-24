@@ -6,7 +6,6 @@ import tempfile
 import numpy as np
 import pytest
 
-from yugioh_env.action_space import ActionMapper
 from yugioh_core.constants import MSG_SELECT_YESNO
 from yugioh_core.encoding import (
     ACTION_FEATURES,
@@ -15,7 +14,8 @@ from yugioh_core.encoding import (
     MAX_ACTIONS,
     MAX_CARDS,
 )
-from yugioh_env.opponent import GreedyOpponent, Opponent, RandomOpponent
+from yugioh_env.action_space import ActionMapper
+from yugioh_env.opponent import GreedyOpponent, RandomOpponent
 
 
 def _make_yesno_mapper() -> ActionMapper:
@@ -76,6 +76,7 @@ def test_pick_action_random_seeded():
     """Client-side pick_action_random is deterministic when random module is seeded."""
     # Import here to avoid polluting module-level random state
     from cli.play_client import pick_action_random
+
     from yugioh_env.models import YuGiOhObservation
 
     mask = [1, 1, 1, 1, 0, 0, 0, 0] + [0] * 24  # 4 legal actions
@@ -226,9 +227,9 @@ def test_model_opponent_no_obs_returns_zero():
 
 def test_model_opponent_semantic_checkpoint():
     """ModelOpponent works with a semantic-mode checkpoint (no embeddings file on disk)."""
+    from yugioh_env.opponent import ModelOpponent
     from yugioh_rl.config import TrainingConfig
     from yugioh_rl.network import TextEmbeddingLookup, YuGiOhNet
-    from yugioh_env.opponent import ModelOpponent
 
     # Build a semantic-mode network from a synthetic embeddings file
     codes = list(range(1, 21))
@@ -245,13 +246,16 @@ def test_model_opponent_semantic_checkpoint():
 
     # Save checkpoint (no embeddings file path in config)
     with tempfile.NamedTemporaryFile(suffix=".pt", delete=False) as f:
-        torch.save({
-            "update": 1,
-            "global_step": 100,
-            "model_state_dict": net.state_dict(),
-            "optimizer_state_dict": {},
-            "config": config,
-        }, f.name)
+        torch.save(
+            {
+                "update": 1,
+                "global_step": 100,
+                "model_state_dict": net.state_dict(),
+                "optimizer_state_dict": {},
+                "config": config,
+            },
+            f.name,
+        )
         ckpt_path = f.name
 
     # Load ModelOpponent — should NOT attempt to read an embeddings file
@@ -268,6 +272,7 @@ def test_model_opponent_semantic_checkpoint():
     assert 0 <= action < mapper.num_actions
 
     import os
+
     os.unlink(ckpt_path)
 
 

@@ -1,9 +1,9 @@
 """Tests for OpponentPool and SharedPoolState (yugioh_rl.opponent_pool)."""
+
 from __future__ import annotations
 
 import multiprocessing as mp
 import random as stdlib_random
-import re
 from pathlib import Path
 
 import pytest
@@ -12,8 +12,8 @@ torch = pytest.importorskip("torch")
 
 import torch.nn as nn
 
-from yugioh_rl.opponent_pool import OpponentPool, SharedPoolState
 from yugioh_env.opponent import GreedyOpponent, NetworkOpponent, RandomOpponent
+from yugioh_rl.opponent_pool import OpponentPool, SharedPoolState
 
 
 class _Tiny(nn.Module):
@@ -28,6 +28,7 @@ class _Tiny(nn.Module):
 # ---------------------------------------------------------------------------
 # Task 1: SharedPoolState skeleton + total_adds counter
 # ---------------------------------------------------------------------------
+
 
 def test_shared_pool_state_total_adds_starts_at_zero() -> None:
     state = SharedPoolState.create(pool_size=3, network=_Tiny())
@@ -44,9 +45,11 @@ def test_shared_pool_state_total_adds_round_trips() -> None:
 # Task 2: SharedPoolState cross-process handoff
 # ---------------------------------------------------------------------------
 
+
 def _child_read_total_adds(handles, send_pipe):
     """Runs in spawned process. Reads total_adds via from_handles."""
     from yugioh_rl.opponent_pool import SharedPoolState
+
     state = SharedPoolState.from_handles(handles)
     send_pipe.send(state.total_adds)
     send_pipe.close()
@@ -73,6 +76,7 @@ def test_shared_pool_state_cross_process_total_adds() -> None:
 # ---------------------------------------------------------------------------
 # Task 3: OpponentPool skeleton + initial-opponent seeding
 # ---------------------------------------------------------------------------
+
 
 def test_create_trainer_seeds_slot_zero_with_greedy() -> None:
     pool = OpponentPool.create_trainer(
@@ -107,6 +111,7 @@ def test_occupied_count_clamps_at_pool_size() -> None:
 # ---------------------------------------------------------------------------
 # Task 4: OpponentPool.add_snapshot — trainer-side ring-buffer write
 # ---------------------------------------------------------------------------
+
 
 def test_add_snapshot_returns_next_slot_id() -> None:
     pool = OpponentPool.create_trainer(
@@ -158,6 +163,7 @@ def test_add_snapshot_bumps_slot_version() -> None:
 # ---------------------------------------------------------------------------
 # Task 6: OpponentPool.sample — worker-side refresh + uniform sample
 # ---------------------------------------------------------------------------
+
 
 def test_sample_returns_initial_opponent_when_no_snapshots() -> None:
     pool = OpponentPool.create_trainer(
@@ -238,6 +244,7 @@ def test_attach_worker_seeds_slot_zero_from_spec() -> None:
 # Task 7: Eviction transition — scripted -> snapshot in slot 0
 # ---------------------------------------------------------------------------
 
+
 def test_initial_opponent_evicted_when_ring_wraps() -> None:
     """After K snapshots, slot 0 should hold a NetworkOpponent, not greedy."""
     pool = OpponentPool.create_trainer(
@@ -275,6 +282,7 @@ def test_initial_opponent_evicted_when_ring_wraps() -> None:
 # ---------------------------------------------------------------------------
 # Task 8: OpponentPool.from_resume — rebuild from disk checkpoints
 # ---------------------------------------------------------------------------
+
 
 def _write_fake_ckpt(path: Path, network: nn.Module) -> None:
     """Write a checkpoint with just the keys from_resume needs."""

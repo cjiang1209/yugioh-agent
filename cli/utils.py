@@ -25,7 +25,7 @@ def was_provided(name: str) -> bool:
 def validate_opponent_spec(spec: str, flag: str) -> None:
     """Validate an opponent spec string like 'greedy' or 'model:path.pt'."""
     if spec.startswith("model:"):
-        path = spec[len("model:"):]
+        path = spec[len("model:") :]
         if not path:
             fatal(f"{flag} model: entries must include a checkpoint path")
         if not Path(path).exists():
@@ -59,6 +59,7 @@ def resolve_device(spec: str) -> str:
     """
     if spec == "auto":
         import torch
+
         if torch.cuda.is_available():
             return "cuda"
         if torch.backends.mps.is_available():

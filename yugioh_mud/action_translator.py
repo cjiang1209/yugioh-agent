@@ -38,8 +38,12 @@ class ActionTranslator:
             return "y"
 
         # Idle/battle prompts: options are the literal command strings
-        if pt in (PromptType.IDLE_CMD, PromptType.IDLE_SUBMENU,
-                  PromptType.BATTLE_MENU, PromptType.BATTLE_SELECT):
+        if pt in (
+            PromptType.IDLE_CMD,
+            PromptType.IDLE_SUBMENU,
+            PromptType.BATTLE_MENU,
+            PromptType.BATTLE_SELECT,
+        ):
             if action < len(prompt.options):
                 return prompt.options[action]
             return prompt.options[0] if prompt.options else "e"
@@ -51,8 +55,7 @@ class ActionTranslator:
         # Numbered card selection: space-separated 1-indexed numbers
         # Pick first min_select items starting from the chosen index,
         # clamped so indices don't exceed the number of available options.
-        if pt in (PromptType.SELECT_CARD, PromptType.SELECT_TRIBUTE,
-                  PromptType.SELECT_SUM):
+        if pt in (PromptType.SELECT_CARD, PromptType.SELECT_TRIBUTE, PromptType.SELECT_SUM):
             n = len(prompt.options) if prompt.options else prompt.min_select
             start = min(action, max(n - prompt.min_select, 0))
             indices = list(range(start + 1, start + 1 + prompt.min_select))
@@ -66,7 +69,7 @@ class ActionTranslator:
 
         # Place selection: send the spec string(s) from options
         if pt == PromptType.SELECT_PLACE:
-            specs = prompt.options[action:action + prompt.min_select]
+            specs = prompt.options[action : action + prompt.min_select]
             return " ".join(specs) if specs else prompt.options[0]
 
         # Counter: send N zeros (one per card)

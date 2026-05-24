@@ -22,7 +22,7 @@ def parse_ydk(path: str | Path) -> dict[str, list[int]]:
     deck: dict[str, list[int]] = {"main": [], "extra": [], "side": []}
     current_section = "main"
 
-    with open(path, "r") as f:
+    with open(path) as f:
         for line in f:
             line = line.strip()
             if not line:

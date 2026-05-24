@@ -7,7 +7,6 @@ SQLite DB (same pattern as test_mud_game_state.py).
 from __future__ import annotations
 
 import sqlite3
-import struct
 from pathlib import Path
 
 import numpy as np
@@ -15,9 +14,6 @@ import pytest
 
 from yugioh_core.card_database import CardDatabase
 from yugioh_core.constants import (
-    LOCATION_BANISHED,
-    LOCATION_EXTRA,
-    LOCATION_GRAVE,
     LOCATION_HAND,
     LOCATION_MZONE,
     LOCATION_SZONE,
@@ -36,18 +32,16 @@ from yugioh_core.encoding import (
     GLOBAL_FEATURES,
     MAX_ACTIONS,
     MAX_CARDS,
-    ZONE_SLOTS,
 )
 from yugioh_mud.cmd_handler import StructuredAction
 from yugioh_mud.game_state import CardEntry, MUDGameState
 from yugioh_mud.observation import (
-    MUDObservationBuilder,
     PHASE_MAP,
     POSITION_MAP,
     PROMPT_MSG_MAP,
+    MUDObservationBuilder,
 )
 from yugioh_mud.text_parser import ParsedPrompt, PromptType
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -75,8 +69,7 @@ def tmp_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
         "level INTEGER DEFAULT 0, race INTEGER DEFAULT 0, "
         "attribute INTEGER DEFAULT 0)"
     )
-    conn.execute(
-        "CREATE TABLE texts (id INTEGER PRIMARY KEY, name TEXT, desc TEXT)")
+    conn.execute("CREATE TABLE texts (id INTEGER PRIMARY KEY, name TEXT, desc TEXT)")
     for cid, name, ctype, atk, dfn, level, race, attr, alias in _CARDS:
         conn.execute(
             "INSERT INTO datas (id, alias, type, atk, def, level, race, attribute) "
@@ -107,21 +100,23 @@ def gs() -> MUDGameState:
     return MUDGameState()
 
 
-
 def _read_u16(arr: np.ndarray, offset: int) -> int:
     return int(arr[offset]) | (int(arr[offset + 1]) << 8)
 
 
 def _read_u32(arr: np.ndarray, offset: int) -> int:
-    return (int(arr[offset])
-            | (int(arr[offset + 1]) << 8)
-            | (int(arr[offset + 2]) << 16)
-            | (int(arr[offset + 3]) << 24))
+    return (
+        int(arr[offset])
+        | (int(arr[offset + 1]) << 8)
+        | (int(arr[offset + 2]) << 16)
+        | (int(arr[offset + 3]) << 24)
+    )
 
 
 # ---------------------------------------------------------------------------
 # 1. Phase/position/prompt mapping completeness
 # ---------------------------------------------------------------------------
+
 
 class TestMappings:
     def test_phase_map_keys(self):
@@ -159,6 +154,7 @@ class TestMappings:
 # ---------------------------------------------------------------------------
 # 2. Global state encoding
 # ---------------------------------------------------------------------------
+
 
 class TestGlobalState:
     def test_global_state_layout(self, builder, gs):
@@ -210,24 +206,24 @@ class TestGlobalState:
         # Agent counts: deck, hand, grave, banished, extra
         assert g[idx] == 30  # deck
         idx += 1
-        assert g[idx] == 1   # hand (len of my_hand)
+        assert g[idx] == 1  # hand (len of my_hand)
         idx += 1
-        assert g[idx] == 2   # grave
+        assert g[idx] == 2  # grave
         idx += 1
-        assert g[idx] == 1   # banished
+        assert g[idx] == 1  # banished
         idx += 1
-        assert g[idx] == 0   # extra
+        assert g[idx] == 0  # extra
         idx += 1
         # Opponent counts
         assert g[idx] == 28  # deck
         idx += 1
-        assert g[idx] == 5   # hand
+        assert g[idx] == 5  # hand
         idx += 1
-        assert g[idx] == 1   # grave
+        assert g[idx] == 1  # grave
         idx += 1
-        assert g[idx] == 0   # banished
+        assert g[idx] == 0  # banished
         idx += 1
-        assert g[idx] == 1   # extra
+        assert g[idx] == 1  # extra
         idx += 1
         # is_finished
         assert g[idx] == 0
@@ -236,6 +232,7 @@ class TestGlobalState:
 # ---------------------------------------------------------------------------
 # 3. Card encoding — known card in hand
 # ---------------------------------------------------------------------------
+
 
 class TestCardEncoding:
     def test_my_hand_card(self, builder, gs):
@@ -269,6 +266,7 @@ class TestCardEncoding:
 # 4. Opponent hand — hidden entries
 # ---------------------------------------------------------------------------
 
+
 class TestOpponentHand:
     def test_opp_hand_hidden_entries(self, builder, gs):
         gs.opp_hand_count = 3
@@ -299,6 +297,7 @@ class TestOpponentHand:
 # 5. Opponent face-down
 # ---------------------------------------------------------------------------
 
+
 class TestOpponentFaceDown:
     def test_opp_facedown_monster(self, builder, gs):
         gs.opp_mzone = [
@@ -325,11 +324,11 @@ class TestOpponentFaceDown:
 # 6. Zone fill order
 # ---------------------------------------------------------------------------
 
+
 class TestZoneFillOrder:
     def test_cards_in_rl_order(self, builder, gs):
         gs.my_hand = [CardEntry(name="A", code=40640057)]
-        gs.my_mzone = [CardEntry(name="B", code=89631139,
-                                 position="face-up attack")]
+        gs.my_mzone = [CardEntry(name="B", code=89631139, position="face-up attack")]
         gs.my_graveyard = [CardEntry(name="C", code=46986414)]
 
         prompt = ParsedPrompt(prompt_type=PromptType.IDLE_CMD, options=["e"])
@@ -344,26 +343,38 @@ class TestZoneFillOrder:
                 codes.append(code)
 
         # hand (Kuriboh), mzone (BEWD), grave (DM)
-        assert codes[0] == 40640057   # hand
-        assert codes[1] == 89631139   # mzone
-        assert codes[2] == 46986414   # grave
+        assert codes[0] == 40640057  # hand
+        assert codes[1] == 89631139  # mzone
+        assert codes[2] == 46986414  # grave
 
 
 # ---------------------------------------------------------------------------
 # 7. Idle action features
 # ---------------------------------------------------------------------------
 
+
 class TestIdleActionFeatures:
     def test_idle_structured_actions(self, builder, gs):
         sa = [
-            StructuredAction(category=0, cardspec="h1", card_code=89631139,
-                             location=LOCATION_HAND, sequence=0, sub_action="s"),
-            StructuredAction(category=5, cardspec="s1", card_code=44095762,
-                             location=LOCATION_SZONE, sequence=0, sub_action="v"),
+            StructuredAction(
+                category=0,
+                cardspec="h1",
+                card_code=89631139,
+                location=LOCATION_HAND,
+                sequence=0,
+                sub_action="s",
+            ),
+            StructuredAction(
+                category=5,
+                cardspec="s1",
+                card_code=44095762,
+                location=LOCATION_SZONE,
+                sequence=0,
+                sub_action="v",
+            ),
             StructuredAction(category=7, sub_action="e"),
         ]
-        prompt = ParsedPrompt(prompt_type=PromptType.IDLE_CMD, options=["e"],
-                              structured_actions=sa)
+        prompt = ParsedPrompt(prompt_type=PromptType.IDLE_CMD, options=["e"], structured_actions=sa)
         obs = builder.build(gs, prompt)
         a = obs["actions"]
         m = obs["action_mask"]
@@ -391,17 +402,36 @@ class TestIdleActionFeatures:
     def test_idle_index_is_per_category(self, builder, gs):
         """index (byte 8) resets per category, matching RL encoding."""
         sa = [
-            StructuredAction(category=0, cardspec="h1", card_code=89631139,
-                             location=LOCATION_HAND, sequence=0, sub_action="s"),
-            StructuredAction(category=0, cardspec="h2", card_code=38517737,
-                             location=LOCATION_HAND, sequence=1, sub_action="s"),
-            StructuredAction(category=5, cardspec="s1", card_code=44095762,
-                             location=LOCATION_SZONE, sequence=0, sub_action="v"),
+            StructuredAction(
+                category=0,
+                cardspec="h1",
+                card_code=89631139,
+                location=LOCATION_HAND,
+                sequence=0,
+                sub_action="s",
+            ),
+            StructuredAction(
+                category=0,
+                cardspec="h2",
+                card_code=38517737,
+                location=LOCATION_HAND,
+                sequence=1,
+                sub_action="s",
+            ),
+            StructuredAction(
+                category=5,
+                cardspec="s1",
+                card_code=44095762,
+                location=LOCATION_SZONE,
+                sequence=0,
+                sub_action="v",
+            ),
             StructuredAction(category=6, sub_action="b"),
             StructuredAction(category=7, sub_action="e"),
         ]
-        prompt = ParsedPrompt(prompt_type=PromptType.IDLE_CMD, options=["b", "e"],
-                              structured_actions=sa)
+        prompt = ParsedPrompt(
+            prompt_type=PromptType.IDLE_CMD, options=["b", "e"], structured_actions=sa
+        )
         obs = builder.build(gs, prompt)
         a = obs["actions"]
 
@@ -424,15 +454,23 @@ class TestIdleActionFeatures:
 # 8. Battle action features
 # ---------------------------------------------------------------------------
 
+
 class TestBattleActionFeatures:
     def test_battle_structured_actions(self, builder, gs):
         sa = [
-            StructuredAction(category=1, cardspec="m1", card_code=89631139,
-                             location=LOCATION_MZONE, sequence=0, sub_action="m1"),
+            StructuredAction(
+                category=1,
+                cardspec="m1",
+                card_code=89631139,
+                location=LOCATION_MZONE,
+                sequence=0,
+                sub_action="m1",
+            ),
             StructuredAction(category=3, sub_action="e"),
         ]
-        prompt = ParsedPrompt(prompt_type=PromptType.BATTLE_MENU, options=["a", "e"],
-                              structured_actions=sa)
+        prompt = ParsedPrompt(
+            prompt_type=PromptType.BATTLE_MENU, options=["a", "e"], structured_actions=sa
+        )
         obs = builder.build(gs, prompt)
         a = obs["actions"]
         m = obs["action_mask"]
@@ -449,11 +487,11 @@ class TestBattleActionFeatures:
 # 9. Action mask
 # ---------------------------------------------------------------------------
 
+
 class TestActionMask:
     def test_mask_valid_and_padding(self, builder, gs):
         sa = [StructuredAction(category=i, sub_action="e") for i in range(5)]
-        prompt = ParsedPrompt(prompt_type=PromptType.IDLE_CMD, options=["e"],
-                              structured_actions=sa)
+        prompt = ParsedPrompt(prompt_type=PromptType.IDLE_CMD, options=["e"], structured_actions=sa)
         obs = builder.build(gs, prompt)
         m = obs["action_mask"]
 
@@ -468,10 +506,8 @@ class TestActionMask:
 
     def test_mask_max_actions_cap(self, builder, gs):
         # More actions than MAX_ACTIONS
-        sa = [StructuredAction(category=0, sub_action="e")
-              for _ in range(40)]
-        prompt = ParsedPrompt(prompt_type=PromptType.IDLE_CMD, options=["e"],
-                              structured_actions=sa)
+        sa = [StructuredAction(category=0, sub_action="e") for _ in range(40)]
+        prompt = ParsedPrompt(prompt_type=PromptType.IDLE_CMD, options=["e"], structured_actions=sa)
         obs = builder.build(gs, prompt)
         m = obs["action_mask"]
 
@@ -483,10 +519,10 @@ class TestActionMask:
 # 10. Non-idle prompt actions
 # ---------------------------------------------------------------------------
 
+
 class TestNonIdlePromptActions:
     def test_effectyn_encodes_two_actions(self, builder, gs):
-        prompt = ParsedPrompt(prompt_type=PromptType.SELECT_EFFECTYN,
-                              options=["yes", "no"])
+        prompt = ParsedPrompt(prompt_type=PromptType.SELECT_EFFECTYN, options=["yes", "no"])
         obs = builder.build(gs, prompt)
         m = obs["action_mask"]
         a = obs["actions"]
@@ -504,6 +540,7 @@ class TestNonIdlePromptActions:
 
     def test_effectyn_extracts_card_code(self, builder, tmp_db):
         from yugioh_mud.card_lookup import CardNameLookup
+
         lookup = CardNameLookup(tmp_db)
         gs_with_lookup = MUDGameState(card_lookup=lookup)
 
@@ -522,8 +559,10 @@ class TestNonIdlePromptActions:
         assert code_no == 44095762
 
     def test_select_card_encodes_from_options(self, builder, gs):
-        prompt = ParsedPrompt(prompt_type=PromptType.SELECT_CARD,
-                              options=["h1: Blue-Eyes", "h2: Kuriboh", "h3: Dark Magician"])
+        prompt = ParsedPrompt(
+            prompt_type=PromptType.SELECT_CARD,
+            options=["h1: Blue-Eyes", "h2: Kuriboh", "h3: Dark Magician"],
+        )
         obs = builder.build(gs, prompt)
         m = obs["action_mask"]
         a = obs["actions"]

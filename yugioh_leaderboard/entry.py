@@ -145,9 +145,7 @@ def _entry_from_dict(d: dict[str, Any]) -> Entry:
 
 
 def write_entry(path: Path | str, entry: Entry) -> None:
-    atomic_write_text(
-        path, json.dumps(dataclasses.asdict(entry), indent=2, sort_keys=True)
-    )
+    atomic_write_text(path, json.dumps(dataclasses.asdict(entry), indent=2, sort_keys=True))
 
 
 def read_entry(path: Path | str) -> Entry:

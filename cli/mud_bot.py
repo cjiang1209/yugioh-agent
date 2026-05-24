@@ -7,7 +7,6 @@ import asyncio
 import logging
 import os.path
 import sys
-
 from copy import copy
 
 from yugioh_mud.action_translator import ActionTranslator
@@ -22,36 +21,53 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Yu-Gi-Oh! MUD bot client")
 
     server = parser.add_argument_group("server")
-    server.add_argument("--host", type=str, default="localhost",
-                        help="MUD server hostname (default: localhost)")
-    server.add_argument("--port", type=int, default=8080,
-                        help="MUD server WebSocket port (default: 8080)")
-    server.add_argument("--nickname", type=str, default=None,
-                        help="Login nickname (default: from profile)")
-    server.add_argument("--password", type=str, default=None,
-                        help="Login password (default: from profile)")
+    server.add_argument(
+        "--host", type=str, default="localhost", help="MUD server hostname (default: localhost)"
+    )
+    server.add_argument(
+        "--port", type=int, default=8080, help="MUD server WebSocket port (default: 8080)"
+    )
+    server.add_argument(
+        "--nickname", type=str, default=None, help="Login nickname (default: from profile)"
+    )
+    server.add_argument(
+        "--password", type=str, default=None, help="Login password (default: from profile)"
+    )
 
     room = parser.add_argument_group("room")
-    room.add_argument("--profile", type=str, default="host",
-                      choices=["host", "guest"],
-                      help="Bot role: 'host' creates room, 'guest' joins (default: host)")
-    room.add_argument("--join", type=str, default=None,
-                      help="Nickname of host to join (guest profile only; default: Player1)")
-    room.add_argument("--deck", type=str, default=None,
-                      help="Deck name loaded in MUD DB (default: blue_eyes)")
+    room.add_argument(
+        "--profile",
+        type=str,
+        default="host",
+        choices=["host", "guest"],
+        help="Bot role: 'host' creates room, 'guest' joins (default: host)",
+    )
+    room.add_argument(
+        "--join",
+        type=str,
+        default=None,
+        help="Nickname of host to join (guest profile only; default: Player1)",
+    )
+    room.add_argument(
+        "--deck", type=str, default=None, help="Deck name loaded in MUD DB (default: blue_eyes)"
+    )
 
     play = parser.add_argument_group("play")
-    play.add_argument("--mode", type=str, default=None,
-                      help="Play mode: passive, random, model:PATH (default: random)")
-    play.add_argument("--seed", type=int, default=None,
-                      help="RNG seed (default: host=42, guest=137)")
-    play.add_argument("--device", type=str, default="cpu",
-                      help="Torch device for model inference (default: cpu)")
-
+    play.add_argument(
+        "--mode",
+        type=str,
+        default=None,
+        help="Play mode: passive, random, model:PATH (default: random)",
+    )
+    play.add_argument(
+        "--seed", type=int, default=None, help="RNG seed (default: host=42, guest=137)"
+    )
+    play.add_argument(
+        "--device", type=str, default="cpu", help="Torch device for model inference (default: cpu)"
+    )
 
     debug = parser.add_argument_group("debug")
-    debug.add_argument("--verbose", action="store_true",
-                       help="Log all sent/received lines")
+    debug.add_argument("--verbose", action="store_true", help="Log all sent/received lines")
 
     return parser.parse_args()
 
@@ -77,7 +93,7 @@ def build_config(args: argparse.Namespace) -> MUDBotConfig:
         mode_spec = args.mode
         if mode_spec.startswith("model:"):
             overrides["mode"] = "model"
-            overrides["checkpoint"] = mode_spec[len("model:"):]
+            overrides["checkpoint"] = mode_spec[len("model:") :]
         else:
             overrides["mode"] = mode_spec
     if args.seed is not None:
@@ -107,8 +123,8 @@ async def run(config: MUDBotConfig) -> None:
                 logging.error("--mode model requires cards.cdb at %s", config.db_path)
                 return
             from yugioh_mud.agent import ModelAgent
-            agent = ModelAgent(
-                config.checkpoint, config.db_path, config.device)
+
+            agent = ModelAgent(config.checkpoint, config.db_path, config.device)
         elif config.mode == "random":
             agent = RandomAgent(seed=config.seed)
         else:
@@ -120,18 +136,23 @@ async def run(config: MUDBotConfig) -> None:
         if os.path.exists(config.db_path):
             from yugioh_mud.card_lookup import CardNameLookup
             from yugioh_mud.game_state import MUDGameState
+
             lookup = CardNameLookup(config.db_path)
             game_state = MUDGameState(card_lookup=lookup)
             logging.info("Game state tracking enabled (db: %s)", config.db_path)
         else:
             logging.warning(
-                "cards.cdb not found at %s — game state tracking disabled",
-                config.db_path)
+                "cards.cdb not found at %s — game state tracking disabled", config.db_path
+            )
 
         proto = MUDProtocol(
-            conn, config,
-            text_parser=parser, agent=agent, action_translator=translator,
-            game_state=game_state)
+            conn,
+            config,
+            text_parser=parser,
+            agent=agent,
+            action_translator=translator,
+            game_state=game_state,
+        )
         await proto.run()
         logging.info("Reached state: %s", proto.state.name)
     finally:

@@ -17,7 +17,7 @@ class MUDBotConfig:
 
     # Room
     profile: str = ""  # "host" or "guest"
-    join: str = ""     # host nickname to join (guest only)
+    join: str = ""  # host nickname to join (guest only)
     deck: str = "blue_eyes"
 
     # Play
@@ -28,8 +28,8 @@ class MUDBotConfig:
     db_path: str = "assets/cards.cdb"
 
     # Model
-    checkpoint: str = ""        # path to .pt checkpoint
-    device: str = "cpu"         # torch device
+    checkpoint: str = ""  # path to .pt checkpoint
+    device: str = "cpu"  # torch device
 
     # Debug
     verbose: bool = False

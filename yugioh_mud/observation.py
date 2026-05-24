@@ -41,10 +41,10 @@ from yugioh_core.constants import (
     PHASE_MAIN1,
     PHASE_MAIN2,
     PHASE_STANDBY,
+    POS_FACEDOWN_ATTACK,
     POS_FACEDOWN_DEFENSE,
     POS_FACEUP_ATTACK,
     POS_FACEUP_DEFENSE,
-    POS_FACEDOWN_ATTACK,
 )
 from yugioh_core.encoding import (
     ACTION_FEATURES,
@@ -53,16 +53,14 @@ from yugioh_core.encoding import (
     MAX_ACTIONS,
     MAX_CARDS,
     ZONE_SLOTS,
+    encode_card,
     encode_u16,
     encode_u32,
-    encode_card,
 )
 from yugioh_mud.game_state import CardEntry, MUDGameState
 from yugioh_mud.text_parser import ParsedPrompt, PromptType
 
-_EFFECTYN_NAME_RE = re.compile(
-    r"Do you want to use the effect from (.+?)(?:\s+in\s+[a-z]+\d+)?\?"
-)
+_EFFECTYN_NAME_RE = re.compile(r"Do you want to use the effect from (.+?)(?:\s+in\s+[a-z]+\d+)?\?")
 
 
 # ---------------------------------------------------------------------------
@@ -122,6 +120,7 @@ PROMPT_MSG_MAP: dict[PromptType, int] = {
 # MUDObservationBuilder
 # ---------------------------------------------------------------------------
 
+
 class MUDObservationBuilder:
     """Convert MUD game state + prompt into RL observation arrays."""
 
@@ -170,8 +169,7 @@ class MUDObservationBuilder:
             for i, entry in enumerate(zone[:max_slots]):
                 if idx >= MAX_CARDS:
                     break
-                cards[idx] = self._encode_entry(
-                    entry, loc, i, controller=0, is_public=True)
+                cards[idx] = self._encode_entry(entry, loc, i, controller=0, is_public=True)
                 idx += 1
 
         # Opponent zones (controller=1)
@@ -190,8 +188,12 @@ class MUDObservationBuilder:
                     if idx >= MAX_CARDS:
                         break
                     cards[idx] = encode_card(
-                        code=0, location=LOCATION_HAND, sequence=i,
-                        position=0, controller=1, is_public=False,
+                        code=0,
+                        location=LOCATION_HAND,
+                        sequence=i,
+                        position=0,
+                        controller=1,
+                        is_public=False,
                     )
                     idx += 1
                 continue
@@ -201,8 +203,7 @@ class MUDObservationBuilder:
                     break
                 is_faceup = self._is_faceup(entry)
                 is_public = is_faceup and entry.code != 0
-                cards[idx] = self._encode_entry(
-                    entry, loc, i, controller=1, is_public=is_public)
+                cards[idx] = self._encode_entry(entry, loc, i, controller=1, is_public=is_public)
                 idx += 1
 
         return cards
@@ -219,16 +220,23 @@ class MUDObservationBuilder:
 
         if not is_public or entry.code == 0:
             return encode_card(
-                code=0, location=location, sequence=sequence,
+                code=0,
+                location=location,
+                sequence=sequence,
                 position=0 if not is_public else position,
-                controller=controller, is_public=False,
+                controller=controller,
+                is_public=False,
             )
 
         card_data = self._card_db.get_card(entry.code)
         if card_data is None:
             return encode_card(
-                code=entry.code, location=location, sequence=sequence,
-                position=position, controller=controller, is_public=True,
+                code=entry.code,
+                location=location,
+                sequence=sequence,
+                position=position,
+                controller=controller,
+                is_public=True,
             )
 
         return encode_card(
@@ -261,7 +269,9 @@ class MUDObservationBuilder:
     # ------------------------------------------------------------------
 
     def _build_global_state(
-        self, gs: MUDGameState, prompt: ParsedPrompt,
+        self,
+        gs: MUDGameState,
+        prompt: ParsedPrompt,
     ) -> np.ndarray:
         g = np.zeros(GLOBAL_FEATURES, dtype=np.uint8)
         idx = 0
@@ -319,7 +329,9 @@ class MUDObservationBuilder:
     # ------------------------------------------------------------------
 
     def _build_actions(
-        self, gs: MUDGameState, prompt: ParsedPrompt,
+        self,
+        gs: MUDGameState,
+        prompt: ParsedPrompt,
     ) -> tuple[np.ndarray, np.ndarray]:
         actions = np.zeros((MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8)
         mask = np.zeros(MAX_ACTIONS, dtype=np.int8)

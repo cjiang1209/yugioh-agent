@@ -18,13 +18,7 @@ def tmp_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Create a minimal cards.cdb with texts + datas tables."""
     db_path = tmp_path_factory.mktemp("cards") / "cards.cdb"
     conn = sqlite3.connect(str(db_path))
-    conn.execute(
-        "CREATE TABLE texts ("
-        "  id INTEGER PRIMARY KEY,"
-        "  name TEXT,"
-        "  desc TEXT"
-        ")"
-    )
+    conn.execute("CREATE TABLE texts (  id INTEGER PRIMARY KEY,  name TEXT,  desc TEXT)")
     conn.execute(
         "CREATE TABLE datas ("
         "  id INTEGER PRIMARY KEY,"
@@ -46,8 +40,8 @@ def tmp_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
     conn.executemany(
         "INSERT INTO datas (id, alias) VALUES (?, ?)",
         [
-            (89631139, 0),          # canonical
-            (89631140, 89631139),   # alt artwork → points to canonical
+            (89631139, 0),  # canonical
+            (89631140, 89631139),  # alt artwork → points to canonical
             (46986414, 0),
             (40640057, 0),
             (99999999, 0),

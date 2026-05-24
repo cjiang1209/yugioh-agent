@@ -7,8 +7,8 @@ followed by a 1-byte message type, then message-specific data.
 
 from __future__ import annotations
 
-import struct
 import logging
+import struct
 from typing import Any
 
 from yugioh_core.constants import *  # noqa: F401,F403
@@ -142,35 +142,51 @@ def _parse_select_idlecmd(r: BinaryReader) -> dict:
     sum_count = r.u32()
     summonable = []
     for _ in range(sum_count):
-        summonable.append({"code": r.u32(), "controller": r.u8(), "location": r.u8(), "sequence": r.u32()})
+        summonable.append(
+            {"code": r.u32(), "controller": r.u8(), "location": r.u8(), "sequence": r.u32()}
+        )
     # Special summonable
     sps_count = r.u32()
     sp_summonable = []
     for _ in range(sps_count):
-        sp_summonable.append({"code": r.u32(), "controller": r.u8(), "location": r.u8(), "sequence": r.u32()})
+        sp_summonable.append(
+            {"code": r.u32(), "controller": r.u8(), "location": r.u8(), "sequence": r.u32()}
+        )
     # Repositionable
     repos_count = r.u32()
     repositionable = []
     for _ in range(repos_count):
-        repositionable.append({"code": r.u32(), "controller": r.u8(), "location": r.u8(), "sequence": r.u8()})
+        repositionable.append(
+            {"code": r.u32(), "controller": r.u8(), "location": r.u8(), "sequence": r.u8()}
+        )
     # Set-able monsters
     mset_count = r.u32()
     mset = []
     for _ in range(mset_count):
-        mset.append({"code": r.u32(), "controller": r.u8(), "location": r.u8(), "sequence": r.u32()})
+        mset.append(
+            {"code": r.u32(), "controller": r.u8(), "location": r.u8(), "sequence": r.u32()}
+        )
     # Set-able spells/traps
     sset_count = r.u32()
     sset = []
     for _ in range(sset_count):
-        sset.append({"code": r.u32(), "controller": r.u8(), "location": r.u8(), "sequence": r.u32()})
+        sset.append(
+            {"code": r.u32(), "controller": r.u8(), "location": r.u8(), "sequence": r.u32()}
+        )
     # Activatable
     act_count = r.u32()
     activatable = []
     for _ in range(act_count):
-        activatable.append({
-            "code": r.u32(), "controller": r.u8(), "location": r.u8(),
-            "sequence": r.u32(), "desc": r.u64(), "client_mode": r.u8(),
-        })
+        activatable.append(
+            {
+                "code": r.u32(),
+                "controller": r.u8(),
+                "location": r.u8(),
+                "sequence": r.u32(),
+                "desc": r.u64(),
+                "client_mode": r.u8(),
+            }
+        )
     # Can enter battle phase?
     to_bp = r.u8()
     # Can enter end phase?
@@ -231,13 +247,15 @@ def _parse_select_card(r: BinaryReader) -> dict:
     count = r.u32()
     cards = []
     for _ in range(count):
-        cards.append({
-            "code": r.u32(),
-            "controller": r.u8(),
-            "location": r.u8(),
-            "sequence": r.u32(),
-            "subsequence": r.u32(),
-        })
+        cards.append(
+            {
+                "code": r.u32(),
+                "controller": r.u8(),
+                "location": r.u8(),
+                "sequence": r.u32(),
+                "subsequence": r.u32(),
+            }
+        )
     return {
         "msg_type": MSG_SELECT_CARD,
         "player": player,
@@ -258,15 +276,17 @@ def _parse_select_chain(r: BinaryReader) -> dict:
     count = r.u32()
     chains = []
     for _ in range(count):
-        chains.append({
-            "code": r.u32(),
-            "controller": r.u8(),
-            "location": r.u8(),
-            "sequence": r.u32(),
-            "position": r.u32(),
-            "desc": r.u64(),
-            "client_mode": r.u8(),
-        })
+        chains.append(
+            {
+                "code": r.u32(),
+                "controller": r.u8(),
+                "location": r.u8(),
+                "sequence": r.u32(),
+                "position": r.u32(),
+                "desc": r.u64(),
+                "client_mode": r.u8(),
+            }
+        )
     return {
         "msg_type": MSG_SELECT_CHAIN,
         "player": player,
@@ -313,13 +333,15 @@ def _parse_select_tribute(r: BinaryReader) -> dict:
     count = r.u32()
     cards = []
     for _ in range(count):
-        cards.append({
-            "code": r.u32(),
-            "controller": r.u8(),
-            "location": r.u8(),
-            "sequence": r.u32(),
-            "release_param": r.u8(),
-        })
+        cards.append(
+            {
+                "code": r.u32(),
+                "controller": r.u8(),
+                "location": r.u8(),
+                "sequence": r.u32(),
+                "release_param": r.u8(),
+            }
+        )
     return {
         "msg_type": MSG_SELECT_TRIBUTE,
         "player": player,
@@ -343,22 +365,26 @@ def _parse_select_sum(r: BinaryReader) -> dict:
     for _ in range(must_count):
         code = r.u32()
         loc = r.read_card_loc()
-        must_cards.append({
-            "code": code,
-            **loc,
-            "param": r.u32(),
-        })
+        must_cards.append(
+            {
+                "code": code,
+                **loc,
+                "param": r.u32(),
+            }
+        )
     # Optional cards
     opt_count = r.u32()
     optional_cards = []
     for _ in range(opt_count):
         code = r.u32()
         loc = r.read_card_loc()
-        optional_cards.append({
-            "code": code,
-            **loc,
-            "param": r.u32(),
-        })
+        optional_cards.append(
+            {
+                "code": code,
+                **loc,
+                "param": r.u32(),
+            }
+        )
     return {
         "msg_type": MSG_SELECT_SUM,
         "player": player,
@@ -381,23 +407,27 @@ def _parse_select_unselect_card(r: BinaryReader) -> dict:
     select_count = r.u32()
     selectable = []
     for _ in range(select_count):
-        selectable.append({
-            "code": r.u32(),
-            "controller": r.u8(),
-            "location": r.u8(),
-            "sequence": r.u32(),
-            "subsequence": r.u32(),
-        })
+        selectable.append(
+            {
+                "code": r.u32(),
+                "controller": r.u8(),
+                "location": r.u8(),
+                "sequence": r.u32(),
+                "subsequence": r.u32(),
+            }
+        )
     unselect_count = r.u32()
     unselectable = []
     for _ in range(unselect_count):
-        unselectable.append({
-            "code": r.u32(),
-            "controller": r.u8(),
-            "location": r.u8(),
-            "sequence": r.u32(),
-            "subsequence": r.u32(),
-        })
+        unselectable.append(
+            {
+                "code": r.u32(),
+                "controller": r.u8(),
+                "location": r.u8(),
+                "sequence": r.u32(),
+                "subsequence": r.u32(),
+            }
+        )
     return {
         "msg_type": MSG_SELECT_UNSELECT_CARD,
         "player": player,
@@ -416,12 +446,14 @@ def _parse_sort_card(r: BinaryReader) -> dict:
     count = r.u32()
     cards = []
     for _ in range(count):
-        cards.append({
-            "code": r.u32(),
-            "controller": r.u8(),
-            "location": r.u32(),
-            "sequence": r.u32(),
-        })
+        cards.append(
+            {
+                "code": r.u32(),
+                "controller": r.u8(),
+                "location": r.u32(),
+                "sequence": r.u32(),
+            }
+        )
     return {"msg_type": MSG_SORT_CARD, "player": player, "cards": cards}
 
 
@@ -481,13 +513,15 @@ def _parse_select_counter(r: BinaryReader) -> dict:
     card_count = r.u32()
     cards = []
     for _ in range(card_count):
-        cards.append({
-            "code": r.u32(),
-            "controller": r.u8(),
-            "location": r.u8(),
-            "sequence": r.u8(),
-            "counter_count": r.u16(),
-        })
+        cards.append(
+            {
+                "code": r.u32(),
+                "controller": r.u8(),
+                "location": r.u8(),
+                "sequence": r.u8(),
+                "counter_count": r.u16(),
+            }
+        )
     return {
         "msg_type": MSG_SELECT_COUNTER,
         "player": player,
@@ -506,16 +540,19 @@ def _parse_sort_chain(r: BinaryReader) -> dict:
     count = r.u32()
     cards = []
     for _ in range(count):
-        cards.append({
-            "code": r.u32(),
-            "controller": r.u8(),
-            "location": r.u32(),
-            "sequence": r.u32(),
-        })
+        cards.append(
+            {
+                "code": r.u32(),
+                "controller": r.u8(),
+                "location": r.u32(),
+                "sequence": r.u32(),
+            }
+        )
     return {"msg_type": MSG_SORT_CHAIN, "player": player, "cards": cards}
 
 
 # ─── Info message parsers (non-response) ─────────────────────────────────────
+
 
 def _parse_new_turn(r: BinaryReader) -> dict:
     player = r.u8()
@@ -621,8 +658,10 @@ def _parse_swap(r: BinaryReader) -> dict:
     loc2 = r.read_card_loc()
     return {
         "msg_type": MSG_SWAP,
-        "code1": code1, **{f"card1_{k}": v for k, v in loc1.items()},
-        "code2": code2, **{f"card2_{k}": v for k, v in loc2.items()},
+        "code1": code1,
+        **{f"card1_{k}": v for k, v in loc1.items()},
+        "code2": code2,
+        **{f"card2_{k}": v for k, v in loc2.items()},
     }
 
 
@@ -834,7 +873,9 @@ def _parse_confirm_decktop(r: BinaryReader) -> dict:
     count = r.u32()
     cards = []
     for _ in range(count):
-        cards.append({"code": r.u32(), "controller": r.u8(), "location": r.u8(), "sequence": r.u32()})
+        cards.append(
+            {"code": r.u32(), "controller": r.u8(), "location": r.u8(), "sequence": r.u32()}
+        )
     return {"msg_type": MSG_CONFIRM_DECKTOP, "player": player, "cards": cards}
 
 
@@ -843,7 +884,9 @@ def _parse_confirm_cards(r: BinaryReader) -> dict:
     count = r.u32()
     cards = []
     for _ in range(count):
-        cards.append({"code": r.u32(), "controller": r.u8(), "location": r.u8(), "sequence": r.u32()})
+        cards.append(
+            {"code": r.u32(), "controller": r.u8(), "location": r.u8(), "sequence": r.u32()}
+        )
     return {"msg_type": MSG_CONFIRM_CARDS, "player": player, "cards": cards}
 
 
@@ -884,9 +927,11 @@ def _parse_card_target(r: BinaryReader) -> dict:
     target = r.read_card_loc()
     return {
         "msg_type": MSG_CARD_TARGET,
-        "equip_controller": source["controller"], "equip_location": source["location"],
+        "equip_controller": source["controller"],
+        "equip_location": source["location"],
         "equip_sequence": source["sequence"],
-        "target_controller": target["controller"], "target_location": target["location"],
+        "target_controller": target["controller"],
+        "target_location": target["location"],
         "target_sequence": target["sequence"],
     }
 
@@ -896,9 +941,11 @@ def _parse_cancel_target(r: BinaryReader) -> dict:
     target = r.read_card_loc()
     return {
         "msg_type": MSG_CANCEL_TARGET,
-        "equip_controller": source["controller"], "equip_location": source["location"],
+        "equip_controller": source["controller"],
+        "equip_location": source["location"],
         "equip_sequence": source["sequence"],
-        "target_controller": target["controller"], "target_location": target["location"],
+        "target_controller": target["controller"],
+        "target_location": target["location"],
         "target_sequence": target["sequence"],
     }
 
@@ -1057,7 +1104,9 @@ def parse_messages(buffer: bytes) -> list[dict]:
         elif r.pos > expected_end:
             logger.warning(
                 "Parser overread for msg_type=%d: read %d bytes but length was %d",
-                msg_type, r.pos - start_pos, msg_len,
+                msg_type,
+                r.pos - start_pos,
+                msg_len,
             )
 
     return messages

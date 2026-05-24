@@ -15,8 +15,7 @@ class TestIdleBattleTranslation:
 
     def test_idle_cmd_sends_option(self):
         tr = ActionTranslator()
-        prompt = ParsedPrompt(
-            PromptType.IDLE_CMD, options=["h1", "h3", "b", "e"])
+        prompt = ParsedPrompt(PromptType.IDLE_CMD, options=["h1", "h3", "b", "e"])
         assert tr.translate(0, prompt) == "h1"
         assert tr.translate(1, prompt) == "h3"
         assert tr.translate(2, prompt) == "b"
@@ -29,23 +28,20 @@ class TestIdleBattleTranslation:
 
     def test_idle_submenu_sends_letter(self):
         tr = ActionTranslator()
-        prompt = ParsedPrompt(
-            PromptType.IDLE_SUBMENU, options=["s", "t", "z"])
+        prompt = ParsedPrompt(PromptType.IDLE_SUBMENU, options=["s", "t", "z"])
         assert tr.translate(0, prompt) == "s"
         assert tr.translate(1, prompt) == "t"
         assert tr.translate(BACK, prompt) == "z"
 
     def test_battle_menu_sends_option(self):
         tr = ActionTranslator()
-        prompt = ParsedPrompt(
-            PromptType.BATTLE_MENU, options=["a", "c", "m", "e"])
+        prompt = ParsedPrompt(PromptType.BATTLE_MENU, options=["a", "c", "m", "e"])
         assert tr.translate(0, prompt) == "a"
         assert tr.translate(2, prompt) == "m"
 
     def test_battle_select_sends_cardspec(self):
         tr = ActionTranslator()
-        prompt = ParsedPrompt(
-            PromptType.BATTLE_SELECT, options=["m1", "m2", "z"])
+        prompt = ParsedPrompt(PromptType.BATTLE_SELECT, options=["m1", "m2", "z"])
         assert tr.translate(0, prompt) == "m1"
         assert tr.translate(1, prompt) == "m2"
 
@@ -62,7 +58,9 @@ class TestTranslatorBounds:
         prompt = ParsedPrompt(
             PromptType.SELECT_CARD,
             options=["Card A", "Card B", "Card C"],
-            min_select=2, max_select=3)
+            min_select=2,
+            max_select=3,
+        )
         # action=2 (0-indexed) → would produce indices 3,4 but only 3 options
         result = tr.translate(2, prompt)
         # Clamped: start = min(2, 3-2) = 1 → indices "2 3"
@@ -73,16 +71,17 @@ class TestTranslatorBounds:
         prompt = ParsedPrompt(
             PromptType.SELECT_CARD,
             options=["Card A", "Card B", "Card C"],
-            min_select=2, max_select=3)
+            min_select=2,
+            max_select=3,
+        )
         result = tr.translate(0, prompt)
         assert result == "1 2"
 
     def test_select_tribute_clamped(self):
         tr = ActionTranslator()
         prompt = ParsedPrompt(
-            PromptType.SELECT_TRIBUTE,
-            options=["Mon A", "Mon B"],
-            min_select=2, max_select=2)
+            PromptType.SELECT_TRIBUTE, options=["Mon A", "Mon B"], min_select=2, max_select=2
+        )
         # action=1 would overflow — clamped to start=0
         result = tr.translate(1, prompt)
         assert result == "1 2"
@@ -92,7 +91,9 @@ class TestTranslatorBounds:
         prompt = ParsedPrompt(
             PromptType.ANNOUNCE_RACE,
             options=["Warrior", "Spellcaster", "Dragon"],
-            min_select=2, max_select=2)
+            min_select=2,
+            max_select=2,
+        )
         result = tr.translate(3, prompt)
         # Clamped: start = min(3, 3-2) = 1 → "2 3"
         assert result == "2 3"

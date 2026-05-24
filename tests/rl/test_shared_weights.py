@@ -1,4 +1,5 @@
 """Tests for SharedPolicyWeights transport buffer."""
+
 from __future__ import annotations
 
 import pytest
@@ -82,6 +83,7 @@ def _child_refresh(handles, pipe):
     # Runs in a spawned process. Reconstructs SharedPolicyWeights from
     # handles, refreshes a fresh model, and sends the result via pipe.
     import torch.nn as nn
+
     from yugioh_rl.shared_weights import SharedPolicyWeights
 
     class _Tiny(nn.Module):

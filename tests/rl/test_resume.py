@@ -130,9 +130,14 @@ def test_resume_restores_recurrent_weights(tmp_path, rnn_type):
 
     ckpt_path = str(tmp_path / "ckpt.pt")
     config = TrainingConfig(
-        save_dir=str(tmp_path), num_envs=1,
-        rnn_type=rnn_type, rnn_hidden_dim=64, rnn_num_layers=1,
-        bptt_chunk_len=8, rollout_steps=8, minibatch_size=8,
+        save_dir=str(tmp_path),
+        num_envs=1,
+        rnn_type=rnn_type,
+        rnn_hidden_dim=64,
+        rnn_num_layers=1,
+        bptt_chunk_len=8,
+        rollout_steps=8,
+        minibatch_size=8,
         device="cpu",
     )
     net = _make_checkpoint(ckpt_path, config, run_backward=True)
@@ -275,6 +280,7 @@ def test_resume_early_return_when_training_complete(tmp_path, caplog):
     trainer = PPOTrainer(config)
 
     import logging
+
     with caplog.at_level(logging.WARNING):
         trainer.train()
 
@@ -375,12 +381,19 @@ def test_resume_cli_override_allowlist(tmp_path, monkeypatch):
     ckpt_config = TrainingConfig(total_timesteps=500_000, learning_rate=1e-3)
     _make_checkpoint(ckpt_path, config=ckpt_config)
 
-    monkeypatch.setattr(sys, "argv", [
-        "cli.train",
-        "--resume", ckpt_path,
-        "--total-timesteps", "2000000",
-        "--learning-rate", "5e-5",
-    ])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "cli.train",
+            "--resume",
+            ckpt_path,
+            "--total-timesteps",
+            "2000000",
+            "--learning-rate",
+            "5e-5",
+        ],
+    )
     args = parse_args()
     config = _build_resume_config(args, str(tmp_path))
 
@@ -396,9 +409,17 @@ def test_resume_non_allowlist_override_rejected(tmp_path, monkeypatch, capsys):
     ckpt_path = str(tmp_path / "ckpt.pt")
     _make_checkpoint(ckpt_path)
 
-    monkeypatch.setattr(sys, "argv", [
-        "cli.train", "--resume", ckpt_path, "--card-embed-dim", "128",
-    ])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "cli.train",
+            "--resume",
+            ckpt_path,
+            "--card-embed-dim",
+            "128",
+        ],
+    )
     args = parse_args()
     with pytest.raises(SystemExit):
         _build_resume_config(args, str(tmp_path))

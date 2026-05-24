@@ -65,6 +65,7 @@ RPS_WIN_TO_DUEL = [
 # Login
 # ---------------------------------------------------------------------------
 
+
 class TestLogin:
     def test_host_login(self):
         lines = [
@@ -157,6 +158,7 @@ class TestLogin:
 # Room Setup — Host
 # ---------------------------------------------------------------------------
 
+
 class TestHostRoomSetup:
     def test_host_sends_room_commands_and_starts_on_guest_deck(self):
         lines = [
@@ -211,6 +213,7 @@ class TestHostRoomSetup:
 # ---------------------------------------------------------------------------
 # Room Setup — Guest
 # ---------------------------------------------------------------------------
+
 
 class TestGuestRoomSetup:
     def test_guest_joins_and_sends_deck(self):
@@ -301,6 +304,7 @@ class TestGuestRoomSetup:
 # RPS
 # ---------------------------------------------------------------------------
 
+
 class TestRPS:
     def test_rps_won_then_decision(self):
         lines = [
@@ -331,7 +335,7 @@ class TestRPS:
 
         assert proto.state == State.DUEL
         create_idx = conn.sent.index("create")
-        post_create = conn.sent[create_idx + 1:]
+        post_create = conn.sent[create_idx + 1 :]
         # Last two sends: one RPS choice in 1-3, then decision "1"
         assert post_create[-2] in ("1", "2", "3")
         assert post_create[-1] == "1"  # decision: go first
@@ -362,10 +366,7 @@ class TestRPS:
         assert proto._rps_winner is False
         # Exactly one numeric send after create: the RPS choice, no decision
         create_idx = conn.sent.index("create")
-        numeric_after_create = [
-            s for s in conn.sent[create_idx + 1:]
-            if s in ("1", "2", "3")
-        ]
+        numeric_after_create = [s for s in conn.sent[create_idx + 1 :] if s in ("1", "2", "3")]
         assert len(numeric_after_create) == 1
 
     def test_rps_tie_then_retry(self):
@@ -407,10 +408,7 @@ class TestRPS:
 
         assert proto.state == State.DUEL
         create_idx = conn.sent.index("create")
-        numeric_after_create = [
-            s for s in conn.sent[create_idx + 1:]
-            if s in ("1", "2", "3")
-        ]
+        numeric_after_create = [s for s in conn.sent[create_idx + 1 :] if s in ("1", "2", "3")]
         # Two RPS choices + one decision = 3 numeric sends
         assert len(numeric_after_create) == 3
         assert numeric_after_create[-1] == "1"  # decision: go first
@@ -436,90 +434,98 @@ def _make_duel_proto(extra_lines: list[str]) -> tuple[FakeConnection, MUDProtoco
     parser = MUDTextParser()
     agent = PassiveAgent()
     translator = ActionTranslator()
-    proto = MUDProtocol(
-        conn, config,
-        text_parser=parser, agent=agent, action_translator=translator)
+    proto = MUDProtocol(conn, config, text_parser=parser, agent=agent, action_translator=translator)
     return conn, proto
 
 
 class TestDuelPassive:
     def test_duel_end_on_win(self):
         """Bot reaches FINISHED after a duel-end line."""
-        conn, proto = _make_duel_proto([
-            "Your turn.",
-            "entering main1 phase.",
-            "Select a card on which to perform an action.",
-            "e: End phase.",
-            "Select a card:",
-            # Server response to "?" (no usable cards)
-            "Select a card on which to perform an action.",
-            "e: End phase.",
-            "Select a card:",
-            "entering end phase.",
-            "You won (ran out of cards to draw).",
-        ])
+        conn, proto = _make_duel_proto(
+            [
+                "Your turn.",
+                "entering main1 phase.",
+                "Select a card on which to perform an action.",
+                "e: End phase.",
+                "Select a card:",
+                # Server response to "?" (no usable cards)
+                "Select a card on which to perform an action.",
+                "e: End phase.",
+                "Select a card:",
+                "entering end phase.",
+                "You won (ran out of cards to draw).",
+            ]
+        )
         _run(proto.run())
         assert proto.state == State.FINISHED
         # Protocol sends "?" then agent sends "e" to end phase
-        duel_sends = conn.sent[conn.sent.index("1"):]
+        duel_sends = conn.sent[conn.sent.index("1") :]
         assert "?" in duel_sends
         assert "e" in duel_sends
 
     def test_duel_end_on_loss(self):
-        conn, proto = _make_duel_proto([
-            "You lost (LP became 0).",
-        ])
+        conn, proto = _make_duel_proto(
+            [
+                "You lost (LP became 0).",
+            ]
+        )
         _run(proto.run())
         assert proto.state == State.FINISHED
 
     def test_passive_declines_effects(self):
         """PassiveAgent sends 'n' for effect prompts."""
-        conn, proto = _make_duel_proto([
-            "Do you want to use the effect from Mirror Force in s1?",
-            "entering end phase.",
-            "You won (ran out of cards to draw).",
-        ])
+        conn, proto = _make_duel_proto(
+            [
+                "Do you want to use the effect from Mirror Force in s1?",
+                "entering end phase.",
+                "You won (ran out of cards to draw).",
+            ]
+        )
         _run(proto.run())
         assert proto.state == State.FINISHED
         # After login/room/RPS commands, the duel sends should include "n"
-        duel_sends = conn.sent[conn.sent.index("1"):]  # after decision "1"
+        duel_sends = conn.sent[conn.sent.index("1") :]  # after decision "1"
         assert "n" in duel_sends
 
     def test_passive_cancels_chain(self):
         """PassiveAgent sends 'c' for optional chains."""
-        conn, proto = _make_duel_proto([
-            "Select chain (c to cancel):",
-            "s1: Mirror Force",
-            "Select card to chain (c = cancel):",
-            "You won (ran out of cards to draw).",
-        ])
+        conn, proto = _make_duel_proto(
+            [
+                "Select chain (c to cancel):",
+                "s1: Mirror Force",
+                "Select card to chain (c = cancel):",
+                "You won (ran out of cards to draw).",
+            ]
+        )
         _run(proto.run())
         assert proto.state == State.FINISHED
-        duel_sends = conn.sent[conn.sent.index("1"):]
+        duel_sends = conn.sent[conn.sent.index("1") :]
         assert "c" in duel_sends
 
     def test_passive_ends_battle(self):
         """PassiveAgent sends 'e' for battle menu."""
-        conn, proto = _make_duel_proto([
-            "Battle menu:",
-            "a: Attack.",
-            "e: End phase.",
-            "Select an option:",
-            # BattleCmdHandler probes "a" → attack card list → back
-            "m1: Blue-Eyes White Dragon",
-            "z: back.",
-            "Select a card:",
-            # Re-sent battle menu after "z" (discarded by handler)
-            "Battle menu:",
-            "a: Attack.",
-            "e: End phase.",
-            "Select an option:",
-            # PassiveAgent picks END_PHASE → handler sends "e"
-            "You lost (LP became 0).",
-        ])
+        conn, proto = _make_duel_proto(
+            [
+                "Battle menu:",
+                "a: Attack.",
+                "e: End phase.",
+                "Select an option:",
+                # BattleCmdHandler probes "a" → attack card list → back
+                "m1: Blue-Eyes White Dragon",
+                "z: back.",
+                "Select a card:",
+                # Re-sent battle menu after "z" (discarded by handler)
+                "Battle menu:",
+                "a: Attack.",
+                "e: End phase.",
+                "Select an option:",
+                # PassiveAgent picks END_PHASE → handler sends "e"
+                "You lost (LP became 0).",
+            ]
+        )
         _run(proto.run())
         assert proto.state == State.FINISHED
-        duel_sends = conn.sent[conn.sent.index("1"):]
+        duel_sends = conn.sent[conn.sent.index("1") :]
         assert "e" in duel_sends
 
     def test_backward_compat_no_duel_components(self):
@@ -535,6 +541,7 @@ class TestDuelPassive:
 # Duel — idle enrichment via "?" command
 # ---------------------------------------------------------------------------
 
+
 def _make_random_duel_proto(
     extra_lines: list[str],
     seed: int = 0,
@@ -545,45 +552,15 @@ def _make_random_duel_proto(
     parser = MUDTextParser()
     agent = RandomAgent(seed=seed)
     translator = ActionTranslator()
-    proto = MUDProtocol(
-        conn, config,
-        text_parser=parser, agent=agent, action_translator=translator)
+    proto = MUDProtocol(conn, config, text_parser=parser, agent=agent, action_translator=translator)
     return conn, proto
 
 
 class TestIdleEnrichment:
     def test_idle_cmd_sends_question_mark(self):
         """Protocol sends '?' when receiving IDLE_CMD to get usable cards."""
-        conn, proto = _make_duel_proto([
-            "Your turn.",
-            "entering main1 phase.",
-            # IDLE_CMD prompt
-            "Select a card on which to perform an action.",
-            "b: Enter the battle phase.",
-            "e: End phase.",
-            "Select a card:",
-            # Server response to "?"
-            "Summonable in attack position: h1, h3",
-            "Activatable: h2",
-            # Re-sent idle prompt after "?"
-            "Select a card on which to perform an action.",
-            "b: Enter the battle phase.",
-            "e: End phase.",
-            "Select a card:",
-            # End duel
-            "You won (ran out of cards to draw).",
-        ])
-        _run(proto.run())
-        assert proto.state == State.FINISHED
-        duel_sends = conn.sent[conn.sent.index("1"):]  # after decision "1"
-        assert "?" in duel_sends
-
-    def test_idle_enrichment_cardspecs_available(self):
-        """RandomAgent can pick cardspecs from enriched idle prompt."""
-        # Use a seed that will pick an index action (not END_PHASE)
-        # We try many seeds to find one that picks a cardspec
-        for seed in range(20):
-            conn, proto = _make_random_duel_proto([
+        conn, proto = _make_duel_proto(
+            [
                 "Your turn.",
                 "entering main1 phase.",
                 # IDLE_CMD prompt
@@ -593,25 +570,57 @@ class TestIdleEnrichment:
                 "Select a card:",
                 # Server response to "?"
                 "Summonable in attack position: h1, h3",
-                "Settable: h2, h4",
+                "Activatable: h2",
                 # Re-sent idle prompt after "?"
                 "Select a card on which to perform an action.",
                 "b: Enter the battle phase.",
                 "e: End phase.",
                 "Select a card:",
-                # Idle submenu after card selection
-                "s: Summon.",
-                "t: Set.",
-                "z: back.",
-                "Select action for Dark Magician",
                 # End duel
                 "You won (ran out of cards to draw).",
-            ], seed=seed)
+            ]
+        )
+        _run(proto.run())
+        assert proto.state == State.FINISHED
+        duel_sends = conn.sent[conn.sent.index("1") :]  # after decision "1"
+        assert "?" in duel_sends
+
+    def test_idle_enrichment_cardspecs_available(self):
+        """RandomAgent can pick cardspecs from enriched idle prompt."""
+        # Use a seed that will pick an index action (not END_PHASE)
+        # We try many seeds to find one that picks a cardspec
+        for seed in range(20):
+            conn, proto = _make_random_duel_proto(
+                [
+                    "Your turn.",
+                    "entering main1 phase.",
+                    # IDLE_CMD prompt
+                    "Select a card on which to perform an action.",
+                    "b: Enter the battle phase.",
+                    "e: End phase.",
+                    "Select a card:",
+                    # Server response to "?"
+                    "Summonable in attack position: h1, h3",
+                    "Settable: h2, h4",
+                    # Re-sent idle prompt after "?"
+                    "Select a card on which to perform an action.",
+                    "b: Enter the battle phase.",
+                    "e: End phase.",
+                    "Select a card:",
+                    # Idle submenu after card selection
+                    "s: Summon.",
+                    "t: Set.",
+                    "z: back.",
+                    "Select action for Dark Magician",
+                    # End duel
+                    "You won (ran out of cards to draw).",
+                ],
+                seed=seed,
+            )
             _run(proto.run())
-            duel_sends = conn.sent[conn.sent.index("1"):]
+            duel_sends = conn.sent[conn.sent.index("1") :]
             # Check if any cardspec was sent
-            cardspecs_sent = [s for s in duel_sends
-                              if s in ("h1", "h2", "h3", "h4")]
+            cardspecs_sent = [s for s in duel_sends if s in ("h1", "h2", "h3", "h4")]
             if cardspecs_sent:
                 return  # success — at least one seed picked a cardspec
         pytest.fail("No seed out of 20 picked a cardspec")

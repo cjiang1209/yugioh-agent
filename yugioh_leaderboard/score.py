@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
-from typing import Optional
 
 from yugioh_leaderboard.entry import (
     Entry,
@@ -27,12 +26,12 @@ def score_checkpoint(
     checkpoint_path: Path | str,
     panel: PanelConfig,
     *,
-    deck_paths_override: Optional[list[str]] = None,
-    episodes_override: Optional[int] = None,
-    seed_override: Optional[int] = None,
-    tags: Optional[list[str]] = None,
-    existing_entry: Optional[Entry] = None,
-    precomputed_hash: Optional[str] = None,
+    deck_paths_override: list[str] | None = None,
+    episodes_override: int | None = None,
+    seed_override: int | None = None,
+    tags: list[str] | None = None,
+    existing_entry: Entry | None = None,
+    precomputed_hash: str | None = None,
     workers: int = 1,
 ) -> Entry:
     """Score ``checkpoint_path`` against ``panel`` and return an Entry.
@@ -47,15 +46,19 @@ def score_checkpoint(
     worker counts (deterministic aggregation).
     """
     import torch
-
     from cli.utils import resolve_device
+
     from yugioh_rl.config import TrainingConfig, normalize_legacy_config
     from yugioh_rl.env_wrapper import parse_deck_pool
     from yugioh_rl.eval import evaluate
 
     checkpoint_path = Path(checkpoint_path)
     eid = entry_id_for(checkpoint_path)
-    chash = precomputed_hash if precomputed_hash is not None else compute_checkpoint_hash(checkpoint_path)
+    chash = (
+        precomputed_hash
+        if precomputed_hash is not None
+        else compute_checkpoint_hash(checkpoint_path)
+    )
     device = resolve_device(panel.match.device)
 
     ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)

@@ -9,6 +9,7 @@ Each variant tries to bisect the failing op:
   V2: per-step LSTM + mask_hx between steps, single backward
   V3: whole-sequence LSTM (passing all T steps in one call), single backward
 """
+
 from __future__ import annotations
 
 import torch
@@ -26,8 +27,14 @@ def mask_hx(hx, dones):
 
 
 def variant(
-    label: str, *, use_mask: bool, whole_seq: bool,
-    T: int, N: int, H: int, device: torch.device,
+    label: str,
+    *,
+    use_mask: bool,
+    whole_seq: bool,
+    T: int,
+    N: int,
+    H: int,
+    device: torch.device,
     cell: str = "lstm",
 ) -> None:
     log(f"=== {label} ===")
@@ -51,8 +58,11 @@ def variant(
             step_out, cur_hx = lstm(seq[t : t + 1], cur_hx)
             outs.append(step_out)
             if use_mask:
-                cur_hx = mask_hx(cur_hx, dones[t]) if cell == "lstm" \
+                cur_hx = (
+                    mask_hx(cur_hx, dones[t])
+                    if cell == "lstm"
                     else cur_hx * (1.0 - dones[t].float()).view(1, -1, 1)
+                )
         out = torch.cat(outs, dim=0)
         log(f"  per-step forward: out.shape={out.shape}")
 
@@ -75,30 +85,59 @@ def main() -> None:
     # per-step RNN backward on MPS.  GRU passing while LSTM crashes is the
     # signature of a kernel bug in MPS's LSTM backward, not a structural
     # autograd issue with the per-step pattern.
-    variant("V0: per-step GRU, no mask", use_mask=False, whole_seq=False,
-            T=T, N=N, H=H, device=device, cell="gru")
+    variant(
+        "V0: per-step GRU, no mask",
+        use_mask=False,
+        whole_seq=False,
+        T=T,
+        N=N,
+        H=H,
+        device=device,
+        cell="gru",
+    )
 
     # LSTM whole-seq — confirms the LSTM kernel itself is healthy when called
     # with a sequence in one shot.
-    variant("V3: whole-seq LSTM", use_mask=False, whole_seq=True,
-            T=T, N=N, H=H, device=device)
+    variant("V3: whole-seq LSTM", use_mask=False, whole_seq=True, T=T, N=N, H=H, device=device)
 
     # LSTM per-step — the smoking gun.
-    variant("V1: per-step LSTM, no mask, T=8 N=1", use_mask=False, whole_seq=False,
-            T=T, N=N, H=H, device=device)
+    variant(
+        "V1: per-step LSTM, no mask, T=8 N=1",
+        use_mask=False,
+        whole_seq=False,
+        T=T,
+        N=N,
+        H=H,
+        device=device,
+    )
 
     # T=2 — does even 2 micro-steps trip the assertion?
-    variant("V1b: per-step LSTM, no mask, T=2 N=1", use_mask=False, whole_seq=False,
-            T=2, N=N, H=H, device=device)
+    variant(
+        "V1b: per-step LSTM, no mask, T=2 N=1",
+        use_mask=False,
+        whole_seq=False,
+        T=2,
+        N=N,
+        H=H,
+        device=device,
+    )
 
     # N=4 (production env count) — does batch dim matter?
-    variant("V1c: per-step LSTM, no mask, T=8 N=4", use_mask=False, whole_seq=False,
-            T=T, N=4, H=H, device=device)
+    variant(
+        "V1c: per-step LSTM, no mask, T=8 N=4",
+        use_mask=False,
+        whole_seq=False,
+        T=T,
+        N=4,
+        H=H,
+        device=device,
+    )
 
     # Mask path — only reachable if V1 is somehow unreliable.  If V1 always
     # crashes we never hit this; left in for completeness.
-    variant("V2: per-step LSTM + mask_hx", use_mask=True, whole_seq=False,
-            T=T, N=N, H=H, device=device)
+    variant(
+        "V2: per-step LSTM + mask_hx", use_mask=True, whole_seq=False, T=T, N=N, H=H, device=device
+    )
 
     log("=== all variants completed ===")
 

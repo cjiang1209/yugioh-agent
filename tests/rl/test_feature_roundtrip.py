@@ -9,43 +9,40 @@ import numpy as np
 import pytest
 import torch
 
-from yugioh_core.encoding import (
-    CARD_FEATURES,
-    GLOBAL_FEATURES,
-    MAX_CARDS,
-    encode_card,
-    ACTION_FEATURES,
-    MAX_ACTIONS,
-)
-from yugioh_env.observation import build_observation
-from yugioh_env.game_state import GameState
-from yugioh_env.action_space import ActionMapper
 from yugioh_core.constants import (
     LOCATION_HAND,
     LOCATION_MZONE,
     MSG_SELECT_CARD,
     MSG_SELECT_IDLECMD,
 )
+from yugioh_core.encoding import (
+    CARD_FEATURES,
+    MAX_ACTIONS,
+    MAX_CARDS,
+    encode_card,
+)
+from yugioh_env.action_space import ActionMapper
+from yugioh_env.game_state import GameState
+from yugioh_env.observation import build_observation
 from yugioh_rl.features import (
+    _ATTR_BITS,
+    _LINK_BITS,
+    _LOC_BITS,
+    _PHASE_BITS,
+    _RACE_BITS,
+    _TYPE_BITS,
+    ACTION_FEAT_DIM,
     CARD_FEAT_DIM,
     GLOBAL_FEAT_DIM,
-    ACTION_FEAT_DIM,
+    decode_actions,
     decode_cards,
     decode_global,
-    decode_actions,
-    _LOC_BITS,
-    _POS_BITS,
-    _TYPE_BITS,
-    _ATTR_BITS,
-    _RACE_BITS,
-    _LINK_BITS,
-    _PHASE_BITS,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _card_tensor(card_array: np.ndarray) -> torch.Tensor:
     """Wrap a single encoded card in a (1, 200, 42) batch tensor."""
@@ -69,13 +66,18 @@ def _bit_index(bits: list[int], value: int) -> list[int]:
 # Card feature roundtrips
 # ---------------------------------------------------------------------------
 
+
 class TestCardRoundtrip:
     """encode_card → decode_cards roundtrips."""
 
     def test_output_shape(self):
         card = encode_card(
-            code=100, location=0x02, sequence=0, position=0x01,
-            controller=0, is_public=True,
+            code=100,
+            location=0x02,
+            sequence=0,
+            position=0x01,
+            controller=0,
+            is_public=True,
         )
         assert card.shape == (CARD_FEATURES,)
         assert card.dtype == np.uint8
@@ -86,8 +88,12 @@ class TestCardRoundtrip:
 
     def test_card_id(self):
         card = encode_card(
-            code=46986414, location=0x02, sequence=0, position=0x01,
-            controller=0, is_public=True,
+            code=46986414,
+            location=0x02,
+            sequence=0,
+            position=0x01,
+            controller=0,
+            is_public=True,
         )
         ids, _ = decode_cards(_card_tensor(card))
         assert ids[0, 0].item() == 46986414
@@ -96,33 +102,49 @@ class TestCardRoundtrip:
         """Card IDs > 65535 survive the uint32 roundtrip."""
         code = 100000123
         card = encode_card(
-            code=code, location=0x02, sequence=0, position=0x01,
-            controller=0, is_public=True,
+            code=code,
+            location=0x02,
+            sequence=0,
+            position=0x01,
+            controller=0,
+            is_public=True,
         )
         ids, _ = decode_cards(_card_tensor(card))
         assert ids[0, 0].item() == code
 
     def test_location(self):
         for loc, expected_bits in [
-            (LOCATION_HAND, [0]),       # 0x02 → _LOC_BITS[0]
-            (LOCATION_MZONE, [1]),      # 0x04 → _LOC_BITS[1]
+            (LOCATION_HAND, [0]),  # 0x02 → _LOC_BITS[0]
+            (LOCATION_MZONE, [1]),  # 0x04 → _LOC_BITS[1]
         ]:
             card = encode_card(
-                code=0, location=loc, sequence=0, position=0,
-                controller=0, is_public=False,
+                code=0,
+                location=loc,
+                sequence=0,
+                position=0,
+                controller=0,
+                is_public=False,
             )
             _, feats = decode_cards(_card_tensor(card))
             loc_feats = feats[0, 0, :7]
             for i in range(7):
                 if i in expected_bits:
-                    assert loc_feats[i].item() == 1.0, f"loc bit {i} should be set for location 0x{loc:02x}"
+                    assert loc_feats[i].item() == 1.0, (
+                        f"loc bit {i} should be set for location 0x{loc:02x}"
+                    )
                 else:
-                    assert loc_feats[i].item() == 0.0, f"loc bit {i} should be clear for location 0x{loc:02x}"
+                    assert loc_feats[i].item() == 0.0, (
+                        f"loc bit {i} should be clear for location 0x{loc:02x}"
+                    )
 
     def test_sequence(self):
         card = encode_card(
-            code=0, location=0x04, sequence=5, position=0,
-            controller=0, is_public=False,
+            code=0,
+            location=0x04,
+            sequence=5,
+            position=0,
+            controller=0,
+            is_public=False,
         )
         _, feats = decode_cards(_card_tensor(card))
         assert feats[0, 0, 7].item() == pytest.approx(5 / 15.0)
@@ -134,8 +156,12 @@ class TestCardRoundtrip:
             (0x08, 3),  # FD-Def
         ]:
             card = encode_card(
-                code=0, location=0x04, sequence=0, position=pos_val,
-                controller=0, is_public=False,
+                code=0,
+                location=0x04,
+                sequence=0,
+                position=pos_val,
+                controller=0,
+                is_public=False,
             )
             _, feats = decode_cards(_card_tensor(card))
             pos_feats = feats[0, 0, 8:12]
@@ -146,8 +172,12 @@ class TestCardRoundtrip:
     def test_controller(self):
         for ctrl in [0, 1]:
             card = encode_card(
-                code=0, location=0x04, sequence=0, position=0,
-                controller=ctrl, is_public=False,
+                code=0,
+                location=0x04,
+                sequence=0,
+                position=0,
+                controller=ctrl,
+                is_public=False,
             )
             _, feats = decode_cards(_card_tensor(card))
             assert feats[0, 0, 12].item() == float(ctrl)
@@ -155,8 +185,12 @@ class TestCardRoundtrip:
     def test_is_public(self):
         for pub in [True, False]:
             card = encode_card(
-                code=0, location=0x04, sequence=0, position=0,
-                controller=0, is_public=pub,
+                code=0,
+                location=0x04,
+                sequence=0,
+                position=0,
+                controller=0,
+                is_public=pub,
             )
             _, feats = decode_cards(_card_tensor(card))
             assert feats[0, 0, 13].item() == (1.0 if pub else 0.0)
@@ -165,12 +199,17 @@ class TestCardRoundtrip:
         # Monster + Effect = 0x21
         ctype = 0x21
         card = encode_card(
-            code=0, location=0x04, sequence=0, position=0,
-            controller=0, is_public=False, card_type=ctype,
+            code=0,
+            location=0x04,
+            sequence=0,
+            position=0,
+            controller=0,
+            is_public=False,
+            card_type=ctype,
         )
         _, feats = decode_cards(_card_tensor(card))
         n_type_bits = len(_TYPE_BITS)
-        type_feats = feats[0, 0, 14:14 + n_type_bits]
+        type_feats = feats[0, 0, 14 : 14 + n_type_bits]
         expected_set = _bit_index(_TYPE_BITS, ctype)
         for i in range(n_type_bits):
             expected = 1.0 if i in expected_set else 0.0
@@ -180,12 +219,17 @@ class TestCardRoundtrip:
         # Link monster = 0x4000000 | 0x1 | 0x20 = 0x4000021
         ctype = 0x4000021
         card = encode_card(
-            code=0, location=0x04, sequence=0, position=0,
-            controller=0, is_public=False, card_type=ctype,
+            code=0,
+            location=0x04,
+            sequence=0,
+            position=0,
+            controller=0,
+            is_public=False,
+            card_type=ctype,
         )
         _, feats = decode_cards(_card_tensor(card))
         n_type_bits = len(_TYPE_BITS)
-        type_feats = feats[0, 0, 14:14 + n_type_bits]
+        type_feats = feats[0, 0, 14 : 14 + n_type_bits]
         expected_set = _bit_index(_TYPE_BITS, ctype)
         for i in range(n_type_bits):
             expected = 1.0 if i in expected_set else 0.0
@@ -195,22 +239,34 @@ class TestCardRoundtrip:
         """All 26 type flags decode correctly."""
         for i, bit in enumerate(_TYPE_BITS):
             card = encode_card(
-                code=0, location=0x04, sequence=0, position=0,
-                controller=0, is_public=False, card_type=bit,
+                code=0,
+                location=0x04,
+                sequence=0,
+                position=0,
+                controller=0,
+                is_public=False,
+                card_type=bit,
             )
             _, feats = decode_cards(_card_tensor(card))
             n_type_bits = len(_TYPE_BITS)
-            type_feats = feats[0, 0, 14:14 + n_type_bits]
+            type_feats = feats[0, 0, 14 : 14 + n_type_bits]
             assert type_feats[i].item() == 1.0, f"type bit {i} (0x{bit:x}) not set"
             # All other bits should be 0
             for j in range(n_type_bits):
                 if j != i:
-                    assert type_feats[j].item() == 0.0, f"type bit {j} should be 0 when only bit {i} set"
+                    assert type_feats[j].item() == 0.0, (
+                        f"type bit {j} should be 0 when only bit {i} set"
+                    )
 
     def test_level(self):
         card = encode_card(
-            code=0, location=0x04, sequence=0, position=0,
-            controller=0, is_public=False, level=8,
+            code=0,
+            location=0x04,
+            sequence=0,
+            position=0,
+            controller=0,
+            is_public=False,
+            level=8,
         )
         _, feats = decode_cards(_card_tensor(card))
         # level is at offset 14 + 26 = 40
@@ -220,8 +276,13 @@ class TestCardRoundtrip:
         # DARK = 0x20
         attr = 0x20
         card = encode_card(
-            code=0, location=0x04, sequence=0, position=0,
-            controller=0, is_public=False, attribute=attr,
+            code=0,
+            location=0x04,
+            sequence=0,
+            position=0,
+            controller=0,
+            is_public=False,
+            attribute=attr,
         )
         _, feats = decode_cards(_card_tensor(card))
         # attribute at offset 41-47
@@ -235,13 +296,18 @@ class TestCardRoundtrip:
         # Dragon = 0x2000
         race = 0x2000
         card = encode_card(
-            code=0, location=0x04, sequence=0, position=0,
-            controller=0, is_public=False, race=race,
+            code=0,
+            location=0x04,
+            sequence=0,
+            position=0,
+            controller=0,
+            is_public=False,
+            race=race,
         )
         _, feats = decode_cards(_card_tensor(card))
         n_race_bits = len(_RACE_BITS)
         # race at offset 48-79
-        race_feats = feats[0, 0, 48:48 + n_race_bits]
+        race_feats = feats[0, 0, 48 : 48 + n_race_bits]
         expected_set = _bit_index(_RACE_BITS, race)
         for i in range(n_race_bits):
             expected = 1.0 if i in expected_set else 0.0
@@ -251,12 +317,17 @@ class TestCardRoundtrip:
         # Warrior(0x1) | Machine(0x20) — unusual, but tests multi-bit decode
         race = 0x0021
         card = encode_card(
-            code=0, location=0x04, sequence=0, position=0,
-            controller=0, is_public=False, race=race,
+            code=0,
+            location=0x04,
+            sequence=0,
+            position=0,
+            controller=0,
+            is_public=False,
+            race=race,
         )
         _, feats = decode_cards(_card_tensor(card))
         n_race_bits = len(_RACE_BITS)
-        race_feats = feats[0, 0, 48:48 + n_race_bits]
+        race_feats = feats[0, 0, 48 : 48 + n_race_bits]
         expected_set = _bit_index(_RACE_BITS, race)
         assert len(expected_set) == 2
         for i in range(n_race_bits):
@@ -269,21 +340,33 @@ class TestCardRoundtrip:
             if bit <= 0x8000:
                 continue  # skip low bits, tested elsewhere
             card = encode_card(
-                code=0, location=0x04, sequence=0, position=0,
-                controller=0, is_public=False, race=bit,
+                code=0,
+                location=0x04,
+                sequence=0,
+                position=0,
+                controller=0,
+                is_public=False,
+                race=bit,
             )
             _, feats = decode_cards(_card_tensor(card))
             n_race_bits = len(_RACE_BITS)
-            race_feats = feats[0, 0, 48:48 + n_race_bits]
+            race_feats = feats[0, 0, 48 : 48 + n_race_bits]
             assert race_feats[i].item() == 1.0, f"race bit {i} (0x{bit:x}) not set"
             for j in range(n_race_bits):
                 if j != i:
-                    assert race_feats[j].item() == 0.0, f"race bit {j} should be 0 when only bit {i} set"
+                    assert race_feats[j].item() == 0.0, (
+                        f"race bit {j} should be 0 when only bit {i} set"
+                    )
 
     def test_atk(self):
         card = encode_card(
-            code=0, location=0x04, sequence=0, position=0,
-            controller=0, is_public=False, attack=3000,
+            code=0,
+            location=0x04,
+            sequence=0,
+            position=0,
+            controller=0,
+            is_public=False,
+            attack=3000,
         )
         _, feats = decode_cards(_card_tensor(card))
         # ATK at offset 80
@@ -291,8 +374,13 @@ class TestCardRoundtrip:
 
     def test_def(self):
         card = encode_card(
-            code=0, location=0x04, sequence=0, position=0,
-            controller=0, is_public=False, defense=2500,
+            code=0,
+            location=0x04,
+            sequence=0,
+            position=0,
+            controller=0,
+            is_public=False,
+            defense=2500,
         )
         _, feats = decode_cards(_card_tensor(card))
         # DEF at offset 81
@@ -300,8 +388,13 @@ class TestCardRoundtrip:
 
     def test_lscale(self):
         card = encode_card(
-            code=0, location=0x04, sequence=0, position=0,
-            controller=0, is_public=False, lscale=4,
+            code=0,
+            location=0x04,
+            sequence=0,
+            position=0,
+            controller=0,
+            is_public=False,
+            lscale=4,
         )
         _, feats = decode_cards(_card_tensor(card))
         # lscale at offset 82
@@ -309,8 +402,13 @@ class TestCardRoundtrip:
 
     def test_rscale(self):
         card = encode_card(
-            code=0, location=0x04, sequence=0, position=0,
-            controller=0, is_public=False, rscale=8,
+            code=0,
+            location=0x04,
+            sequence=0,
+            position=0,
+            controller=0,
+            is_public=False,
+            rscale=8,
         )
         _, feats = decode_cards(_card_tensor(card))
         # rscale at offset 83
@@ -320,8 +418,13 @@ class TestCardRoundtrip:
         # Bottom-left(0x40) + bottom(0x80) = 0xC0
         lmark = 0xC0
         card = encode_card(
-            code=0, location=0x04, sequence=0, position=0,
-            controller=0, is_public=False, link_marker=lmark,
+            code=0,
+            location=0x04,
+            sequence=0,
+            position=0,
+            controller=0,
+            is_public=False,
+            link_marker=lmark,
         )
         _, feats = decode_cards(_card_tensor(card))
         # link_marker at offset 84-91
@@ -333,8 +436,13 @@ class TestCardRoundtrip:
 
     def test_counter_count(self):
         card = encode_card(
-            code=0, location=0x04, sequence=0, position=0,
-            controller=0, is_public=False, counter_count=3,
+            code=0,
+            location=0x04,
+            sequence=0,
+            position=0,
+            controller=0,
+            is_public=False,
+            counter_count=3,
         )
         _, feats = decode_cards(_card_tensor(card))
         # counter at offset 92
@@ -342,8 +450,13 @@ class TestCardRoundtrip:
 
     def test_negated(self):
         card = encode_card(
-            code=0, location=0x04, sequence=0, position=0,
-            controller=0, is_public=False, negated=True,
+            code=0,
+            location=0x04,
+            sequence=0,
+            position=0,
+            controller=0,
+            is_public=False,
+            negated=True,
         )
         _, feats = decode_cards(_card_tensor(card))
         # negated at offset 93
@@ -351,8 +464,13 @@ class TestCardRoundtrip:
 
     def test_is_overlay(self):
         card = encode_card(
-            code=0, location=0x04, sequence=0, position=0,
-            controller=0, is_public=False, is_overlay=True,
+            code=0,
+            location=0x04,
+            sequence=0,
+            position=0,
+            controller=0,
+            is_public=False,
+            is_overlay=True,
         )
         _, feats = decode_cards(_card_tensor(card))
         # is_overlay at offset 94
@@ -362,20 +480,20 @@ class TestCardRoundtrip:
         """Encode a fully-populated card and verify every field decodes."""
         card = encode_card(
             code=46986414,
-            location=0x04,       # MZONE
+            location=0x04,  # MZONE
             sequence=3,
-            position=0x01,       # FU-Atk
+            position=0x01,  # FU-Atk
             controller=1,
             is_public=True,
-            card_type=0x4000021, # link + monster + effect
+            card_type=0x4000021,  # link + monster + effect
             level=4,
-            attribute=0x20,      # DARK
-            race=0x0020,         # machine
+            attribute=0x20,  # DARK
+            race=0x0020,  # machine
             attack=2500,
             defense=2000,
             lscale=3,
             rscale=7,
-            link_marker=0x41,    # top-left(0x01) + bottom-left(0x40)
+            link_marker=0x41,  # top-left(0x01) + bottom-left(0x40)
             counter_count=2,
             negated=True,
             is_overlay=True,
@@ -396,9 +514,9 @@ class TestCardRoundtrip:
         # is_public
         assert f[13].item() == 1.0
         # card_type: monster(bit0=0x1) + effect(bit4=0x20) + link(bit25=0x4000000)
-        assert f[14].item() == 1.0   # monster (0x1)
-        assert f[18].item() == 1.0   # effect (0x20)
-        assert f[39].item() == 1.0   # link (0x4000000)
+        assert f[14].item() == 1.0  # monster (0x1)
+        assert f[18].item() == 1.0  # effect (0x20)
+        assert f[39].item() == 1.0  # link (0x4000000)
         # level
         assert f[40].item() == pytest.approx(4 / 12.0)
         # attribute: DARK → bit 5
@@ -426,14 +544,18 @@ class TestCardRoundtrip:
     def test_hidden_card_zeros(self):
         """A hidden card should decode to all-zero features (except location/controller)."""
         card = encode_card(
-            code=0, location=0x08, sequence=2, position=0,
-            controller=1, is_public=False,
+            code=0,
+            location=0x08,
+            sequence=2,
+            position=0,
+            controller=1,
+            is_public=False,
         )
         _, feats = decode_cards(_card_tensor(card))
         f = feats[0, 0]
 
         # location (szone = 0x08 → bit 2) and controller should be set
-        assert f[2].item() == 1.0   # szone bit
+        assert f[2].item() == 1.0  # szone bit
         assert f[12].item() == 1.0  # controller=1
         # Everything stat-related should be zero
         for i in [13, 40, 80, 81, 82, 83, 92, 93, 94]:
@@ -443,6 +565,7 @@ class TestCardRoundtrip:
 # ---------------------------------------------------------------------------
 # Global state roundtrips
 # ---------------------------------------------------------------------------
+
 
 class TestGlobalRoundtrip:
     """build_observation(global_state) → decode_global roundtrips."""
@@ -518,6 +641,7 @@ class TestGlobalRoundtrip:
 # Action feature roundtrips
 # ---------------------------------------------------------------------------
 
+
 class TestActionRoundtrip:
     """_encode_action → decode_actions roundtrips."""
 
@@ -527,12 +651,18 @@ class TestActionRoundtrip:
 
     def test_output_shape(self):
         mapper = ActionMapper()
-        mapper.update({
-            "msg_type": MSG_SELECT_CARD, "player": 0, "cancelable": 0,
-            "min": 1, "max": 1,
-            "cards": [{"code": 100, "controller": 0, "location": 2,
-                        "sequence": 0, "subsequence": 0}],
-        })
+        mapper.update(
+            {
+                "msg_type": MSG_SELECT_CARD,
+                "player": 0,
+                "cancelable": 0,
+                "min": 1,
+                "max": 1,
+                "cards": [
+                    {"code": 100, "controller": 0, "location": 2, "sequence": 0, "subsequence": 0}
+                ],
+            }
+        )
         codes, desc_pcs, desc_ns, feats = decode_actions(self._action_tensor(mapper))
         assert codes.shape == (1, MAX_ACTIONS)
         assert desc_pcs.shape == (1, MAX_ACTIONS)
@@ -541,35 +671,61 @@ class TestActionRoundtrip:
 
     def test_action_code(self):
         mapper = ActionMapper()
-        mapper.update({
-            "msg_type": MSG_SELECT_CARD, "player": 0, "cancelable": 0,
-            "min": 1, "max": 1,
-            "cards": [{"code": 89631139, "controller": 0, "location": 2,
-                        "sequence": 0, "subsequence": 0}],
-        })
+        mapper.update(
+            {
+                "msg_type": MSG_SELECT_CARD,
+                "player": 0,
+                "cancelable": 0,
+                "min": 1,
+                "max": 1,
+                "cards": [
+                    {
+                        "code": 89631139,
+                        "controller": 0,
+                        "location": 2,
+                        "sequence": 0,
+                        "subsequence": 0,
+                    }
+                ],
+            }
+        )
         codes, *_ = decode_actions(self._action_tensor(mapper))
         assert codes[0, 0].item() == 89631139
 
     def test_msg_type(self):
         mapper = ActionMapper()
-        mapper.update({
-            "msg_type": MSG_SELECT_CARD, "player": 0, "cancelable": 0,
-            "min": 1, "max": 1,
-            "cards": [{"code": 100, "controller": 0, "location": 2,
-                        "sequence": 0, "subsequence": 0}],
-        })
+        mapper.update(
+            {
+                "msg_type": MSG_SELECT_CARD,
+                "player": 0,
+                "cancelable": 0,
+                "min": 1,
+                "max": 1,
+                "cards": [
+                    {"code": 100, "controller": 0, "location": 2, "sequence": 0, "subsequence": 0}
+                ],
+            }
+        )
         *_, feats = decode_actions(self._action_tensor(mapper))
         assert feats[0, 0, 0].item() == pytest.approx(MSG_SELECT_CARD / 255.0)
 
     def test_category(self):
         mapper = ActionMapper()
-        mapper.update({
-            "msg_type": MSG_SELECT_IDLECMD, "player": 0,
-            "summonable": [{"code": 100, "location": 0x02, "sequence": 0}],
-            "sp_summonable": [{"code": 200, "location": 0x02, "sequence": 1}],
-            "repositionable": [], "mset": [], "sset": [],
-            "activatable": [], "to_bp": False, "to_ep": False, "shuffle": False,
-        })
+        mapper.update(
+            {
+                "msg_type": MSG_SELECT_IDLECMD,
+                "player": 0,
+                "summonable": [{"code": 100, "location": 0x02, "sequence": 0}],
+                "sp_summonable": [{"code": 200, "location": 0x02, "sequence": 1}],
+                "repositionable": [],
+                "mset": [],
+                "sset": [],
+                "activatable": [],
+                "to_bp": False,
+                "to_ep": False,
+                "shuffle": False,
+            }
+        )
         *_, feats = decode_actions(self._action_tensor(mapper))
         # First action = normal summon, category 0
         assert feats[0, 0, 1].item() == pytest.approx(0 / 10.0)
@@ -578,12 +734,24 @@ class TestActionRoundtrip:
 
     def test_location_and_sequence(self):
         mapper = ActionMapper()
-        mapper.update({
-            "msg_type": MSG_SELECT_CARD, "player": 0, "cancelable": 0,
-            "min": 1, "max": 1,
-            "cards": [{"code": 100, "controller": 0, "location": 0x04,
-                        "sequence": 5, "subsequence": 0}],
-        })
+        mapper.update(
+            {
+                "msg_type": MSG_SELECT_CARD,
+                "player": 0,
+                "cancelable": 0,
+                "min": 1,
+                "max": 1,
+                "cards": [
+                    {
+                        "code": 100,
+                        "controller": 0,
+                        "location": 0x04,
+                        "sequence": 5,
+                        "subsequence": 0,
+                    }
+                ],
+            }
+        )
         *_, feats = decode_actions(self._action_tensor(mapper))
         # New layout: feats[..., 3:10] = location bits (after msg_type, category, controller)
         loc_feats = feats[0, 0, 3:10]
@@ -597,12 +765,18 @@ class TestActionRoundtrip:
     def test_unused_slots_zero(self):
         """Unused action slots should decode as all zeros."""
         mapper = ActionMapper()
-        mapper.update({
-            "msg_type": MSG_SELECT_CARD, "player": 0, "cancelable": 0,
-            "min": 1, "max": 1,
-            "cards": [{"code": 100, "controller": 0, "location": 2,
-                        "sequence": 0, "subsequence": 0}],
-        })
+        mapper.update(
+            {
+                "msg_type": MSG_SELECT_CARD,
+                "player": 0,
+                "cancelable": 0,
+                "min": 1,
+                "max": 1,
+                "cards": [
+                    {"code": 100, "controller": 0, "location": 2, "sequence": 0, "subsequence": 0}
+                ],
+            }
+        )
         codes, _, _, feats = decode_actions(self._action_tensor(mapper))
         # Slot 1 (unused) should be all zeros
         assert codes[0, 1].item() == 0
@@ -615,6 +789,7 @@ class TestActionRoundtrip:
 # the action carries a sysstring desc.
 # ---------------------------------------------------------------------------
 
+
 class TestDecodeActionsContract:
     """The shape of decode_actions's return is part of the network's
     forward-pass contract; pin it here."""
@@ -626,11 +801,16 @@ class TestDecodeActionsContract:
     def _yesno_tensor(self, desc: int) -> torch.Tensor:
         """Build an action tensor for SELECT_YESNO with a custom desc."""
         from yugioh_core.constants import MSG_SELECT_YESNO
+
         mapper = ActionMapper()
-        mapper.update({
-            "msg_type": MSG_SELECT_YESNO, "player": 0, "_agent_player": 0,
-            "desc": desc,
-        })
+        mapper.update(
+            {
+                "msg_type": MSG_SELECT_YESNO,
+                "player": 0,
+                "_agent_player": 0,
+                "desc": desc,
+            }
+        )
         return self._action_tensor(mapper)
 
     def test_decode_actions_returns_4tuple(self):
@@ -638,11 +818,16 @@ class TestDecodeActionsContract:
         so accidental return-shape changes get caught here, not deep in the
         network forward pass."""
         from yugioh_core.constants import MSG_SELECT_YESNO
+
         mapper = ActionMapper()
-        mapper.update({
-            "msg_type": MSG_SELECT_YESNO, "player": 0, "_agent_player": 0,
-            "desc": 0x1234567890ABC,
-        })
+        mapper.update(
+            {
+                "msg_type": MSG_SELECT_YESNO,
+                "player": 0,
+                "_agent_player": 0,
+                "desc": 0x1234567890ABC,
+            }
+        )
         result = decode_actions(self._action_tensor(mapper))
         assert isinstance(result, tuple)
         assert len(result) == 4
@@ -655,11 +840,16 @@ class TestDecodeActionsContract:
     def test_decode_actions_action_feat_dim(self):
         """ACTION_FEAT_DIM is part of the network input contract; pin it."""
         from yugioh_core.constants import MSG_SELECT_YESNO
+
         mapper = ActionMapper()
-        mapper.update({
-            "msg_type": MSG_SELECT_YESNO, "player": 0, "_agent_player": 0,
-            "desc": 0,
-        })
+        mapper.update(
+            {
+                "msg_type": MSG_SELECT_YESNO,
+                "player": 0,
+                "_agent_player": 0,
+                "desc": 0,
+            }
+        )
         *_, feats = decode_actions(self._action_tensor(mapper))
         assert feats.shape[-1] == 23
         assert feats.shape[-1] == ACTION_FEAT_DIM  # constant tracks reality
@@ -687,4 +877,5 @@ class TestDecodeActionsContract:
         assert ns_pc[0, 0].item() == 3
         # Per-card desc_n scalar must carry the n value, normalized by vocab-1
         from yugioh_core.encoding import PER_CARD_DESC_N_VOCAB
+
         assert feats_pc[0, 0, -1].item() == pytest.approx(3.0 / (PER_CARD_DESC_N_VOCAB - 1))

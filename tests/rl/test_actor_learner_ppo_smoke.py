@@ -1,4 +1,5 @@
 """End-to-end smoke test: PPOTrainer with vec_env_type=sync_actor_learner."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -7,10 +8,9 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
+from tests.rl.conftest import requires_engine
 from yugioh_rl.config import TrainingConfig
 from yugioh_rl.ppo import PPOTrainer
-
-from tests.rl.conftest import requires_engine
 
 
 @requires_engine
@@ -45,7 +45,8 @@ def test_actor_learner_ppo_runs_to_completion(tmp_path) -> None:
 
     weights_after = trainer.network.state_dict()
     nonfinite = [
-        name for name, p in weights_after.items()
+        name
+        for name, p in weights_after.items()
         if p.dtype.is_floating_point and not torch.isfinite(p).all()
     ]
     assert not nonfinite, f"non-finite params: {nonfinite}"
@@ -54,7 +55,8 @@ def test_actor_learner_ppo_runs_to_completion(tmp_path) -> None:
     # never reached the network (e.g. publish_weights silently no-op'd, or
     # the optimizer step skipped).
     changed = [
-        name for name, before in weights_before.items()
+        name
+        for name, before in weights_before.items()
         if not torch.equal(before, weights_after[name])
     ]
     assert changed, "no parameters changed during training — optimizer step is dead"
@@ -97,13 +99,15 @@ def test_actor_learner_ppo_runs_with_rnn(tmp_path) -> None:
 
     weights_after = trainer.network.state_dict()
     nonfinite = [
-        name for name, p in weights_after.items()
+        name
+        for name, p in weights_after.items()
         if p.dtype.is_floating_point and not torch.isfinite(p).all()
     ]
     assert not nonfinite, f"non-finite params: {nonfinite}"
 
     changed = [
-        name for name, before in weights_before.items()
+        name
+        for name, before in weights_before.items()
         if not torch.equal(before, weights_after[name])
     ]
     assert changed, "no parameters changed during training — optimizer step is dead"

@@ -5,7 +5,7 @@ cause silent runtime bugs. Per-key label correctness is intentionally NOT tested
 the dict literal in `constants.py` is its own spec; a typo-test would be redundant.
 """
 
-from yugioh_core.constants import RACE_NAMES, ATTRIBUTE_NAMES, RPS_NAMES
+from yugioh_core.constants import ATTRIBUTE_NAMES, RACE_NAMES, RPS_NAMES
 
 
 def test_race_names_keys_are_single_bit_masks():

@@ -8,8 +8,8 @@ import pytest
 
 from yugioh_leaderboard.entry import (
     Entry,
-    PanelMatchResult,
     PairwiseMatchResult,
+    PanelMatchResult,
     compute_checkpoint_hash,
     entry_id_for,
     read_entry,

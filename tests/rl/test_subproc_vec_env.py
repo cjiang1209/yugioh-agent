@@ -47,6 +47,7 @@ floating-point ordering are in the loop.  Do not extend bit-equality to:
 Bit-equality where the policy is frozen and reductions are single-threaded;
 distributional everywhere else.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -54,10 +55,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from yugioh_rl.env_wrapper import SubprocVecEnv, parse_deck_pool
-
 from tests.rl.conftest import hash_obs_field, requires_engine
-
+from yugioh_rl.env_wrapper import SubprocVecEnv, parse_deck_pool
 
 BASELINE_PATH = Path(__file__).parent / "baselines" / "subproc_rollout_baseline.npz"
 
@@ -81,11 +80,10 @@ def test_training_rollout_numerics_unchanged() -> None:
     baseline = np.load(BASELINE_PATH)
     num_envs = int(baseline["num_envs"])
     seed = int(baseline["seed"])
-    expected_actions = baseline["actions"]      # (T, N)
+    expected_actions = baseline["actions"]  # (T, N)
     expected_rewards = baseline["rewards"]
     expected_dones = baseline["dones"]
-    obs_keys = [k.replace("obs_hashes_", "") for k in baseline.files
-                if k.startswith("obs_hashes_")]
+    obs_keys = [k.replace("obs_hashes_", "") for k in baseline.files if k.startswith("obs_hashes_")]
     expected_hashes = {k: baseline[f"obs_hashes_{k}"] for k in obs_keys}
 
     T = expected_actions.shape[0]
@@ -117,9 +115,7 @@ def test_training_rollout_numerics_unchanged() -> None:
             next_obs, rewards, dones, _ = vec_env.step(actions)
 
             # (i) rewards
-            assert np.array_equal(rewards, expected_rewards[t]), (
-                f"rewards diverged at step {t}"
-            )
+            assert np.array_equal(rewards, expected_rewards[t]), f"rewards diverged at step {t}"
             # (ii) dones
             assert np.array_equal(dones, expected_dones[t]), (
                 f"dones diverged at step {t}: "
@@ -154,8 +150,12 @@ def test_step_passes_terminal_obs_through() -> None:
         pytest.skip(f"missing deck: {deck_path}")
     deck_pool = parse_deck_pool([str(deck_path)])
     vec_env = SubprocVecEnv(
-        num_envs=2, deck_pool=deck_pool, opponent="random",
-        reward_shaping=False, seed=42, agent_player="first",
+        num_envs=2,
+        deck_pool=deck_pool,
+        opponent="random",
+        reward_shaping=False,
+        seed=42,
+        agent_player="first",
     )
     try:
         obs = vec_env.reset()
@@ -180,8 +180,7 @@ def test_step_passes_terminal_obs_through() -> None:
         # in which case ALL keys would be equal between terminal_obs and
         # post_reset_obs.
         differs = any(
-            hash_obs_field(terminal_obs[k][done_idx])
-            != hash_obs_field(post_reset_obs[k][done_idx])
+            hash_obs_field(terminal_obs[k][done_idx]) != hash_obs_field(post_reset_obs[k][done_idx])
             for k in terminal_obs
         )
         assert differs, (
@@ -206,8 +205,12 @@ def test_reset_done_no_op_when_no_dones() -> None:
         pytest.skip(f"missing deck: {deck_path}")
     deck_pool = parse_deck_pool([str(deck_path)])
     vec_env = SubprocVecEnv(
-        num_envs=2, deck_pool=deck_pool, opponent="random",
-        reward_shaping=False, seed=42, agent_player="first",
+        num_envs=2,
+        deck_pool=deck_pool,
+        opponent="random",
+        reward_shaping=False,
+        seed=42,
+        agent_player="first",
     )
     try:
         obs = vec_env.reset()
@@ -219,11 +222,14 @@ def test_reset_done_no_op_when_no_dones() -> None:
         for i, remote in enumerate(vec_env._remotes):
             original = remote.send
             original_sends.append(original)
+
             def make_counter(idx, orig):
                 def counted(payload):
                     send_counts[idx] += 1
                     return orig(payload)
+
                 return counted
+
             remote.send = make_counter(i, original)
 
         try:
@@ -233,13 +239,9 @@ def test_reset_done_no_op_when_no_dones() -> None:
             for remote, original in zip(vec_env._remotes, original_sends):
                 remote.send = original
 
-        assert send_counts == [0, 0], (
-            f"reset_done with all-False dones sent traffic: {send_counts}"
-        )
+        assert send_counts == [0, 0], f"reset_done with all-False dones sent traffic: {send_counts}"
         for k in obs:
-            assert np.array_equal(obs[k], result[k]), (
-                f"obs[{k}] modified by no-op reset_done"
-            )
+            assert np.array_equal(obs[k], result[k]), f"obs[{k}] modified by no-op reset_done"
     finally:
         vec_env.close()
 

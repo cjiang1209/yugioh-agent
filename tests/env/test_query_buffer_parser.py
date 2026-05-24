@@ -26,16 +26,15 @@ import pytest
 
 from yugioh_core.constants import (
     QUERY_CODE,
-    QUERY_POSITION,
-    QUERY_TYPE,
-    QUERY_RACE,
-    QUERY_OWNER,
+    QUERY_END,
     QUERY_IS_PUBLIC,
     QUERY_OVERLAY_CARD,
-    QUERY_END,
+    QUERY_OWNER,
+    QUERY_POSITION,
+    QUERY_RACE,
+    QUERY_TYPE,
 )
 from yugioh_core.query_buffer import parse_query_location
-
 
 # ─── Wire-format builders ───────────────────────────────────────────────
 
@@ -92,26 +91,25 @@ def test_single_card_multiple_fields():
     body = (
         _u32_field(QUERY_CODE, 12345)
         + _u32_field(QUERY_POSITION, 0x01)  # POS_FACEUP_ATTACK
-        + _u32_field(QUERY_TYPE, 0x21)       # MONSTER | EFFECT
+        + _u32_field(QUERY_TYPE, 0x21)  # MONSTER | EFFECT
         + _terminator()
     )
     data = _wrap(body)
     result = parse_query_location(data)
-    assert result == [{
-        "sequence": 0,
-        "code": 12345,
-        "position": 0x01,
-        "type": 0x21,
-    }]
+    assert result == [
+        {
+            "sequence": 0,
+            "code": 12345,
+            "position": 0x01,
+            "type": 0x21,
+        }
+    ]
 
 
 def test_empty_slot_emits_empty_dict():
     """Three empty slots, then one populated card → sequence on the card is 3."""
     body = (
-        _empty_slot()
-        + _empty_slot()
-        + _empty_slot()
-        + _u32_field(QUERY_CODE, 999) + _terminator()
+        _empty_slot() + _empty_slot() + _empty_slot() + _u32_field(QUERY_CODE, 999) + _terminator()
     )
     data = _wrap(body)
     result = parse_query_location(data)
@@ -126,9 +124,12 @@ def test_empty_slot_emits_empty_dict():
 def test_multiple_cards_no_empty_slots():
     """Three populated cards in a row → sequences 0/1/2."""
     body = (
-        _u32_field(QUERY_CODE, 100) + _terminator()
-        + _u32_field(QUERY_CODE, 200) + _terminator()
-        + _u32_field(QUERY_CODE, 300) + _terminator()
+        _u32_field(QUERY_CODE, 100)
+        + _terminator()
+        + _u32_field(QUERY_CODE, 200)
+        + _terminator()
+        + _u32_field(QUERY_CODE, 300)
+        + _terminator()
     )
     data = _wrap(body)
     result = parse_query_location(data)
@@ -147,9 +148,7 @@ def test_unknown_flag_raises_valueerror():
     field; raising forces the parser to be updated alongside the engine.
     """
     UNKNOWN_FLAG = 0x4000000  # not in any of the _FLAG_TO_KEY_* tables
-    body = (
-        _u32_field(UNKNOWN_FLAG, 42) + _terminator()
-    )
+    body = _u32_field(UNKNOWN_FLAG, 42) + _terminator()
     data = _wrap(body)
     with pytest.raises(ValueError, match=r"unknown query flag 0x4000000"):
         parse_query_location(data)
@@ -160,9 +159,7 @@ def test_truncated_buffer_raises():
     must fail loudly. Either struct.error (mid-field read past EOF) or
     AssertionError (the final pos==end check) is acceptable — both
     indicate the same underlying issue."""
-    full = _wrap(
-        _u32_field(QUERY_CODE, 1) + _terminator()
-    )
+    full = _wrap(_u32_field(QUERY_CODE, 1) + _terminator())
     truncated = full[:-2]  # chop off the last 2 bytes of QUERY_END terminator
     with pytest.raises((struct.error, AssertionError)):
         parse_query_location(truncated)
@@ -182,9 +179,7 @@ def test_query_overlay_card_variable_length():
     """QUERY_OVERLAY_CARD has a count + N×u32 payload. Verify the
     variable-length decoder produces the right list."""
     overlays = [11, 22, 33]
-    payload = struct.pack("<I", len(overlays)) + b"".join(
-        struct.pack("<I", v) for v in overlays
-    )
+    payload = struct.pack("<I", len(overlays)) + b"".join(struct.pack("<I", v) for v in overlays)
     field = struct.pack("<HI", 4 + len(payload), QUERY_OVERLAY_CARD) + payload
     body = field + _terminator()
     data = _wrap(body)
@@ -195,11 +190,7 @@ def test_query_overlay_card_variable_length():
 def test_u8_field_decodes_correctly():
     """QUERY_OWNER, QUERY_IS_PUBLIC, QUERY_IS_HIDDEN are u8 fields
     (field_size=5). Verify the u8 decoder and the dict keys."""
-    body = (
-        _u8_field(QUERY_OWNER, 1)
-        + _u8_field(QUERY_IS_PUBLIC, 1)
-        + _terminator()
-    )
+    body = _u8_field(QUERY_OWNER, 1) + _u8_field(QUERY_IS_PUBLIC, 1) + _terminator()
     data = _wrap(body)
     result = parse_query_location(data)
     assert result == [{"sequence": 0, "owner": 1, "is_public": 1}]

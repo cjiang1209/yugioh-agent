@@ -10,6 +10,7 @@ Currently sync-only. The ``policy_version`` tag on each transition is the
 async-readiness hook (uniform-per-rollout in sync; would vary per-step in
 async). Async-mode worker control flow lands when async support does.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, NamedTuple
@@ -25,8 +26,14 @@ if TYPE_CHECKING:
     from yugioh_rl.opponent_pool import Sampling
 
 
-__all__ = ["Transition", "_pack_rollout", "_actor_learner_worker",
-           "ActorLearnerVecEnv", "WorkerDiedError", "WorkerTimeoutError"]
+__all__ = [
+    "Transition",
+    "_pack_rollout",
+    "_actor_learner_worker",
+    "ActorLearnerVecEnv",
+    "WorkerDiedError",
+    "WorkerTimeoutError",
+]
 
 
 class Transition(NamedTuple):
@@ -34,6 +41,7 @@ class Transition(NamedTuple):
     payload schema; adding a field here (e.g. ``hx`` for RNN) ripples
     cleanly through ``_pack_rollout`` instead of breaking positional reads.
     """
+
     obs: dict[str, np.ndarray]
     action: int
     log_prob: float
@@ -169,7 +177,11 @@ def _actor_learner_worker(
                     acts_t = torch.from_numpy(obs["actions"]).unsqueeze(0)
                     mask_t = torch.from_numpy(obs["action_mask"]).unsqueeze(0)
                     logits, value, hx_new = local_policy(
-                        cards_t, glob_t, acts_t, mask_t, hx=hx,
+                        cards_t,
+                        glob_t,
+                        acts_t,
+                        mask_t,
+                        hx=hx,
                     )
                     dist = Categorical(logits=logits)
                     action = dist.sample()
@@ -177,16 +189,18 @@ def _actor_learner_worker(
 
                 a_int = int(action.item())
                 next_obs, reward, done, info = env.step(a_int)
-                transitions.append(Transition(
-                    obs=obs,
-                    action=a_int,
-                    log_prob=float(log_prob.item()),
-                    value=float(value.item()),
-                    reward=float(reward),
-                    done=bool(done),
-                    version=int(version),
-                    info=info,
-                ))
+                transitions.append(
+                    Transition(
+                        obs=obs,
+                        action=a_int,
+                        log_prob=float(log_prob.item()),
+                        value=float(value.item()),
+                        reward=float(reward),
+                        done=bool(done),
+                        version=int(version),
+                        info=info,
+                    )
+                )
                 done_t = torch.tensor([float(done)], dtype=torch.float32)
                 hx = local_policy.mask_hx(hx_new, done_t)
                 # Explicit reset on done: step() returns the terminal obs
@@ -196,9 +210,16 @@ def _actor_learner_worker(
                     next_obs = env.reset()
                 obs = next_obs
 
-            remote.send(("rollout", _pack_rollout(
-                transitions, final_obs=obs, final_hx=hx,
-            )))
+            remote.send(
+                (
+                    "rollout",
+                    _pack_rollout(
+                        transitions,
+                        final_obs=obs,
+                        final_hx=hx,
+                    ),
+                )
+            )
     finally:
         env.close()
 
@@ -224,7 +245,7 @@ class ActorLearnerVecEnv:
     def __init__(
         self,
         num_envs: int,
-        deck_pool: list["DeckDict"],
+        deck_pool: list[DeckDict],
         opponent: str,
         reward_shaping: bool,
         shaping_lp_weight: float,
@@ -232,13 +253,13 @@ class ActorLearnerVecEnv:
         seed: int,
         agent_player: str,
         opponent_device: str | None,
-        master_model: "nn.Module",
-        config: "TrainingConfig",
+        master_model: nn.Module,
+        config: TrainingConfig,
         rollout_steps: int,
         opponent_pool_handles: dict | None = None,
         opponent_pool_temperature: float = 1.0,
-        opponent_pool_sampling: "Sampling" = "uniform",
-        opponent_pool_config: "TrainingConfig | None" = None,
+        opponent_pool_sampling: Sampling = "uniform",
+        opponent_pool_config: TrainingConfig | None = None,
         worker_timeout_s: float = 300.0,
     ) -> None:
         import multiprocessing as mp
@@ -273,6 +294,7 @@ class ActorLearnerVecEnv:
 
         ctx = mp.get_context("spawn")
         from yugioh_rl.env_wrapper import limit_worker_blas_threads
+
         limit_worker_blas_threads()
         self._remotes = []
         self._workers = []
@@ -286,7 +308,9 @@ class ActorLearnerVecEnv:
                 "rollout_steps": rollout_steps,
             }
             p = ctx.Process(
-                target=_actor_learner_worker, kwargs=spawn_kwargs, daemon=True,
+                target=_actor_learner_worker,
+                kwargs=spawn_kwargs,
+                daemon=True,
             )
             p.start()
             child_conn.close()

@@ -1,4 +1,5 @@
 """Tests for PFSP opponent sampling in OpponentPool."""
+
 from __future__ import annotations
 
 import random as stdlib_random
@@ -124,9 +125,7 @@ def test_pfsp_concentrates_on_closest_to_agent_rating() -> None:
 def test_pfsp_falls_back_to_uniform_when_agent_dominates_all() -> None:
     """When agent rating >> every slot, win_prob ~ 1 everywhere, weights ~ 0.
     Fallback path samples uniformly so we don't divide by zero or stall."""
-    pool = _three_slot_pool(
-        sampling="pfsp", agent=5000.0, ratings=(0.0, 0.0, 0.0), seed=7
-    )
+    pool = _three_slot_pool(sampling="pfsp", agent=5000.0, ratings=(0.0, 0.0, 0.0), seed=7)
     counts = _sample_counts(pool, n=3000)
     for c in counts:
         assert 800 < c < 1200, f"non-uniform fallback: {counts}"
@@ -139,9 +138,7 @@ def test_pfsp_epsilon_mix_engages() -> None:
     eps-mix we expect each of those slots to be sampled at least ~3% of the
     time (eps/3 ~= 6.7%, slack for randomness)."""
     # slot 0 equal => PFSP weight = 0.5^2 = 0.25; slots 1,2 agent dominates => ~0
-    pool = _three_slot_pool(
-        sampling="pfsp", agent=1500.0, ratings=(1500.0, 200.0, 200.0), seed=99
-    )
+    pool = _three_slot_pool(sampling="pfsp", agent=1500.0, ratings=(1500.0, 200.0, 200.0), seed=99)
     n = 5000
     counts = _sample_counts(pool, n=n)
     assert counts[1] > 0.03 * n, f"epsilon mix not engaging for slot 1: {counts}"

@@ -27,13 +27,17 @@ def parser() -> MUDTextParser:
 # Idle phase
 # ---------------------------------------------------------------------------
 
+
 class TestIdleCmd:
     def test_idle_cmd_basic(self, parser: MUDTextParser):
-        assert parser.feed_line(
-            "Select a card on which to perform an action.") is None
-        assert parser.feed_line(
-            "h shows your hand, tab and tab2 shows your or the "
-            "opponent's table, ? shows usable cards.") is None
+        assert parser.feed_line("Select a card on which to perform an action.") is None
+        assert (
+            parser.feed_line(
+                "h shows your hand, tab and tab2 shows your or the "
+                "opponent's table, ? shows usable cards."
+            )
+            is None
+        )
         assert parser.feed_line("b: Enter the battle phase.") is None
         assert parser.feed_line("e: End phase.") is None
         prompt = parser.feed_line("Select a card:")
@@ -45,7 +49,8 @@ class TestIdleCmd:
         parser.feed_line("Select a card on which to perform an action.")
         parser.feed_line(
             "h shows your hand, tab and tab2 shows your or the "
-            "opponent's table, ? shows usable cards.")
+            "opponent's table, ? shows usable cards."
+        )
         parser.feed_line("b: Enter the battle phase.")
         parser.feed_line("e: End phase.")
         prompt = parser.feed_line("Select a card:")
@@ -56,11 +61,14 @@ class TestIdleCmd:
 
     def test_idle_cmd_no_battle_phase(self, parser: MUDTextParser):
         """When to_bp is false, only 'e:' is present."""
-        assert parser.feed_line(
-            "Select a card on which to perform an action.") is None
-        assert parser.feed_line(
-            "h shows your hand, tab and tab2 shows your or the "
-            "opponent's table, ? shows usable cards.") is None
+        assert parser.feed_line("Select a card on which to perform an action.") is None
+        assert (
+            parser.feed_line(
+                "h shows your hand, tab and tab2 shows your or the "
+                "opponent's table, ? shows usable cards."
+            )
+            is None
+        )
         assert parser.feed_line("e: End phase.") is None
         prompt = parser.feed_line("Select a card:")
         assert prompt is not None
@@ -118,6 +126,7 @@ class TestIdleCmd:
 # ---------------------------------------------------------------------------
 # Battle menu
 # ---------------------------------------------------------------------------
+
 
 class TestBattleMenu:
     def test_battle_menu(self, parser: MUDTextParser):
@@ -190,10 +199,10 @@ class TestBattleMenu:
 # Select card / tribute
 # ---------------------------------------------------------------------------
 
+
 class TestSelectCard:
     def test_select_card(self, parser: MUDTextParser):
-        assert parser.feed_line(
-            "Select 1 to 3 cards separated by spaces:") is None
+        assert parser.feed_line("Select 1 to 3 cards separated by spaces:") is None
         assert parser.feed_line("1: Dark Magician (2500/2100)") is None
         assert parser.feed_line("2: Blue-Eyes White Dragon (3000/2500)") is None
         assert parser.feed_line("3: Red-Eyes Black Dragon (2400/2000)") is None
@@ -206,8 +215,7 @@ class TestSelectCard:
         assert "Dark Magician (2500/2100)" in prompt.options[0]
 
     def test_select_tribute(self, parser: MUDTextParser):
-        assert parser.feed_line(
-            "Select 1 to 2 cards to tribute separated by spaces:") is None
+        assert parser.feed_line("Select 1 to 2 cards to tribute separated by spaces:") is None
         assert parser.feed_line("1: Kuriboh") is None
         assert parser.feed_line("2: Sangan") is None
         prompt = parser.feed_line("Enter a line of text.")
@@ -221,6 +229,7 @@ class TestSelectCard:
 # ---------------------------------------------------------------------------
 # Select chain
 # ---------------------------------------------------------------------------
+
 
 class TestSelectChain:
     def test_chain_optional(self, parser: MUDTextParser):
@@ -243,8 +252,7 @@ class TestSelectChain:
 
     def test_chain_with_effect_desc(self, parser: MUDTextParser):
         assert parser.feed_line("Select chain (c to cancel):") is None
-        assert parser.feed_line(
-            "m1a (Dark Magician): Destroy 1 card") is None
+        assert parser.feed_line("m1a (Dark Magician): Destroy 1 card") is None
         prompt = parser.feed_line("Select card to chain (c = cancel):")
         assert prompt is not None
         assert prompt.prompt_type == PromptType.SELECT_CHAIN
@@ -255,10 +263,10 @@ class TestSelectChain:
 # Select effectyn / yesno
 # ---------------------------------------------------------------------------
 
+
 class TestEffectYN:
     def test_effectyn(self, parser: MUDTextParser):
-        prompt = parser.feed_line(
-            "Do you want to use the effect from Mirror Force in s1?")
+        prompt = parser.feed_line("Do you want to use the effect from Mirror Force in s1?")
         assert prompt is not None
         assert prompt.prompt_type == PromptType.SELECT_EFFECTYN
 
@@ -266,7 +274,8 @@ class TestEffectYN:
         # Multi-line frame with embedded newline
         prompt = parser.feed_line(
             "Do you want to use the effect from Mirror Force in s1?\n"
-            "Destroy all attacking monsters.")
+            "Destroy all attacking monsters."
+        )
         assert prompt is not None
         assert prompt.prompt_type == PromptType.SELECT_EFFECTYN
 
@@ -275,10 +284,10 @@ class TestEffectYN:
 # Yes/No (MSG_YESNO — distinct from SELECT_EFFECTYN)
 # ---------------------------------------------------------------------------
 
+
 class TestYesNo:
     def test_replay_battle(self, parser: MUDTextParser):
-        prompt = parser.feed_line(
-            "Replay, do you want to continue the Battle?")
+        prompt = parser.feed_line("Replay, do you want to continue the Battle?")
         assert prompt is not None
         assert prompt.prompt_type == PromptType.SELECT_YESNO
 
@@ -299,8 +308,7 @@ class TestYesNo:
 
     def test_effectyn_takes_priority(self, parser: MUDTextParser):
         """SELECT_EFFECTYN pattern matches before the generic YESNO fallback."""
-        prompt = parser.feed_line(
-            "Do you want to use the effect from Mirror Force in s1?")
+        prompt = parser.feed_line("Do you want to use the effect from Mirror Force in s1?")
         assert prompt is not None
         assert prompt.prompt_type == PromptType.SELECT_EFFECTYN
 
@@ -309,10 +317,10 @@ class TestYesNo:
 # Select position
 # ---------------------------------------------------------------------------
 
+
 class TestSelectPosition:
     def test_position(self, parser: MUDTextParser):
-        assert parser.feed_line(
-            "Select position for Dark Magician:") is None
+        assert parser.feed_line("Select position for Dark Magician:") is None
         assert parser.feed_line("[1] Face-up attack") is None
         assert parser.feed_line("[2] Face-down defense") is None
         prompt = parser.feed_line("Type a number or @abort to abort.")
@@ -327,10 +335,10 @@ class TestSelectPosition:
 # Select place
 # ---------------------------------------------------------------------------
 
+
 class TestSelectPlace:
     def test_place_single(self, parser: MUDTextParser):
-        assert parser.feed_line(
-            "Select place for card, one of m1, m2, m3.") is None
+        assert parser.feed_line("Select place for card, one of m1, m2, m3.") is None
         prompt = parser.feed_line("Enter a line of text.")
         assert prompt is not None
         assert prompt.prompt_type == PromptType.SELECT_PLACE
@@ -338,8 +346,7 @@ class TestSelectPlace:
         assert prompt.min_select == 1
 
     def test_place_multi(self, parser: MUDTextParser):
-        assert parser.feed_line(
-            "Select 2 places for card, from m1, m2, s1, s2.") is None
+        assert parser.feed_line("Select 2 places for card, from m1, m2, s1, s2.") is None
         prompt = parser.feed_line("Enter a line of text.")
         assert prompt is not None
         assert prompt.prompt_type == PromptType.SELECT_PLACE
@@ -351,6 +358,7 @@ class TestSelectPlace:
 # ---------------------------------------------------------------------------
 # Select option
 # ---------------------------------------------------------------------------
+
 
 class TestSelectOption:
     def test_select_option(self, parser: MUDTextParser):
@@ -369,14 +377,13 @@ class TestSelectOption:
 # Select sum
 # ---------------------------------------------------------------------------
 
+
 class TestSelectSum:
     def test_select_sum(self, parser: MUDTextParser):
-        assert parser.feed_line(
-            "Select cards with a total value of 8, "
-            "seperated by spaces.") is None
-        assert parser.feed_line(
-            "Mystical Elf must be selected, "
-            "automatically selected.") is None
+        assert (
+            parser.feed_line("Select cards with a total value of 8, seperated by spaces.") is None
+        )
+        assert parser.feed_line("Mystical Elf must be selected, automatically selected.") is None
         assert parser.feed_line("1: Kuriboh (1 or 2)") is None
         assert parser.feed_line("2: Sangan (3)") is None
         prompt = parser.feed_line("Enter a line of text.")
@@ -389,11 +396,10 @@ class TestSelectSum:
 # Select counter
 # ---------------------------------------------------------------------------
 
+
 class TestSelectCounter:
     def test_select_counter(self, parser: MUDTextParser):
-        assert parser.feed_line(
-            "Type new Spell Counter for 2 cards, "
-            "separated by spaces.") is None
+        assert parser.feed_line("Type new Spell Counter for 2 cards, separated by spaces.") is None
         assert parser.feed_line("Dark Magician (3)") is None
         assert parser.feed_line("Breaker the Magical Warrior (1)") is None
         prompt = parser.feed_line("Enter a line of text.")
@@ -407,12 +413,16 @@ class TestSelectCounter:
 # Select unselect card
 # ---------------------------------------------------------------------------
 
+
 class TestSelectUnselect:
     def test_unselect_finishable(self, parser: MUDTextParser):
         # Multi-line frame with embedded newline
-        assert parser.feed_line(
-            "Check or uncheck 1 to 3 cards by entering their number\n"
-            "Enter f to finish") is None
+        assert (
+            parser.feed_line(
+                "Check or uncheck 1 to 3 cards by entering their number\nEnter f to finish"
+            )
+            is None
+        )
         assert parser.feed_line("1: Dark Magician (unchecked)") is None
         assert parser.feed_line("2: Blue-Eyes (checked)") is None
         prompt = parser.feed_line("Enter a line of text.")
@@ -423,9 +433,12 @@ class TestSelectUnselect:
         assert prompt.finishable is True
 
     def test_unselect_cancelable(self, parser: MUDTextParser):
-        assert parser.feed_line(
-            "Check or uncheck 1 to 2 cards by entering their number\n"
-            "Enter c to cancel") is None
+        assert (
+            parser.feed_line(
+                "Check or uncheck 1 to 2 cards by entering their number\nEnter c to cancel"
+            )
+            is None
+        )
         assert parser.feed_line("1: Kuriboh (unchecked)") is None
         prompt = parser.feed_line("Enter a line of text.")
         assert prompt is not None
@@ -438,10 +451,10 @@ class TestSelectUnselect:
 # Announce race / attrib / number / card
 # ---------------------------------------------------------------------------
 
+
 class TestAnnounce:
     def test_announce_race(self, parser: MUDTextParser):
-        assert parser.feed_line(
-            "Type 1 race separated by spaces.") is None
+        assert parser.feed_line("Type 1 race separated by spaces.") is None
         assert parser.feed_line("1: Warrior") is None
         assert parser.feed_line("2: Spellcaster") is None
         prompt = parser.feed_line("Enter a line of text.")
@@ -451,8 +464,7 @@ class TestAnnounce:
         assert len(prompt.options) == 2
 
     def test_announce_attrib(self, parser: MUDTextParser):
-        assert parser.feed_line(
-            "Type 1 attribute separated by spaces.") is None
+        assert parser.feed_line("Type 1 attribute separated by spaces.") is None
         assert parser.feed_line("1. Dark") is None
         assert parser.feed_line("2. Light") is None
         prompt = parser.feed_line("Enter a line of text.")
@@ -461,8 +473,7 @@ class TestAnnounce:
         assert prompt.min_select == 1
 
     def test_announce_number(self, parser: MUDTextParser):
-        prompt = parser.feed_line(
-            "Select a number, one of: 4, 6, 7, 8, 12")
+        prompt = parser.feed_line("Select a number, one of: 4, 6, 7, 8, 12")
         assert prompt is not None
         assert prompt.prompt_type == PromptType.ANNOUNCE_NUMBER
         assert prompt.options == ["4", "6", "7", "8", "12"]
@@ -478,11 +489,13 @@ class TestAnnounce:
 # Sort card
 # ---------------------------------------------------------------------------
 
+
 class TestSortCard:
     def test_sort_card(self, parser: MUDTextParser):
-        assert parser.feed_line(
-            "Sort 3 cards by entering numbers separated by spaces "
-            "(c = cancel):") is None
+        assert (
+            parser.feed_line("Sort 3 cards by entering numbers separated by spaces (c = cancel):")
+            is None
+        )
         assert parser.feed_line("1: Dark Magician") is None
         assert parser.feed_line("2: Blue-Eyes White Dragon") is None
         assert parser.feed_line("3: Red-Eyes Black Dragon") is None
@@ -497,6 +510,7 @@ class TestSortCard:
 # ---------------------------------------------------------------------------
 # Event parsing (informational lines → ParsedEvent)
 # ---------------------------------------------------------------------------
+
 
 class TestEventTurn:
     def test_your_turn(self, parser: MUDTextParser):
@@ -515,11 +529,18 @@ class TestEventTurn:
 
 
 class TestEventPhase:
-    @pytest.mark.parametrize("phase_str", [
-        "draw phase", "standby phase", "main1 phase",
-        "battle start phase", "battle phase", "main2 phase",
-        "end phase",
-    ])
+    @pytest.mark.parametrize(
+        "phase_str",
+        [
+            "draw phase",
+            "standby phase",
+            "main1 phase",
+            "battle start phase",
+            "battle phase",
+            "main2 phase",
+            "end phase",
+        ],
+    )
     def test_phase(self, parser: MUDTextParser, phase_str: str):
         ev = parser.feed_line(f"entering {phase_str}.")
         assert isinstance(ev, ParsedEvent)
@@ -649,8 +670,8 @@ class TestEventDrawSublines:
 class TestEventSummon:
     def test_normal_summon(self, parser: MUDTextParser):
         ev = parser.feed_line(
-            "Player1 summoning Dark Magician (2500/2100) "
-            "in face-up attack position.")
+            "Player1 summoning Dark Magician (2500/2100) in face-up attack position."
+        )
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.SUMMON
         assert ev.player == "Player1"
@@ -660,15 +681,16 @@ class TestEventSummon:
     def test_special_summon(self, parser: MUDTextParser):
         ev = parser.feed_line(
             "Player1 special summoning Blue-Eyes White Dragon (3000/2500) "
-            "in face-up attack position.")
+            "in face-up attack position."
+        )
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.SP_SUMMON
         assert ev.card_name == "Blue-Eyes White Dragon"
 
     def test_special_summon_link(self, parser: MUDTextParser):
         ev = parser.feed_line(
-            "Player1 special summoning Decode Talker (2300) "
-            "in face-up attack position.")
+            "Player1 special summoning Decode Talker (2300) in face-up attack position."
+        )
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.SP_SUMMON
         assert ev.card_name == "Decode Talker"
@@ -690,22 +712,23 @@ class TestEventSummonIsOpponent:
 
     def test_own_summon_not_opponent(self, p1_parser: MUDTextParser):
         ev = p1_parser.feed_line(
-            "Player1 summoning Dark Magician (2500/2100) "
-            "in face-up attack position.")
+            "Player1 summoning Dark Magician (2500/2100) in face-up attack position."
+        )
         assert isinstance(ev, ParsedEvent)
         assert ev.is_opponent is False
 
     def test_opp_summon_is_opponent(self, p1_parser: MUDTextParser):
         ev = p1_parser.feed_line(
-            "Player2 summoning Blue-Eyes White Dragon (3000/2500) "
-            "in face-up attack position.")
+            "Player2 summoning Blue-Eyes White Dragon (3000/2500) in face-up attack position."
+        )
         assert isinstance(ev, ParsedEvent)
         assert ev.is_opponent is True
 
     def test_opp_special_summon_is_opponent(self, p1_parser: MUDTextParser):
         ev = p1_parser.feed_line(
             "Player2 special summoning Blue-Eyes White Dragon (3000/2500) "
-            "in face-up attack position.")
+            "in face-up attack position."
+        )
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.SP_SUMMON
         assert ev.is_opponent is True
@@ -719,24 +742,23 @@ class TestEventSummonIsOpponent:
     def test_case_insensitive_nickname(self):
         parser = MUDTextParser(own_nickname="player1")
         ev = parser.feed_line(
-            "Player1 summoning Dark Magician (2500/2100) "
-            "in face-up attack position.")
+            "Player1 summoning Dark Magician (2500/2100) in face-up attack position."
+        )
         assert isinstance(ev, ParsedEvent)
         assert ev.is_opponent is False
 
     def test_no_nickname_defaults_not_opponent(self, parser: MUDTextParser):
         """Without own_nickname, is_opponent defaults to False (backward compat)."""
         ev = parser.feed_line(
-            "Player2 summoning Blue-Eyes White Dragon (3000/2500) "
-            "in face-up attack position.")
+            "Player2 summoning Blue-Eyes White Dragon (3000/2500) in face-up attack position."
+        )
         assert isinstance(ev, ParsedEvent)
         assert ev.is_opponent is False
 
 
 class TestEventSet:
     def test_set_self(self, parser: MUDTextParser):
-        ev = parser.feed_line(
-            "You set m1 (Kuriboh) in face-down defense position.")
+        ev = parser.feed_line("You set m1 (Kuriboh) in face-down defense position.")
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.SET
         assert ev.player == "you"
@@ -745,8 +767,7 @@ class TestEventSet:
         assert ev.position == "face-down defense"
 
     def test_set_opp(self, parser: MUDTextParser):
-        ev = parser.feed_line(
-            "Player2 sets m1 in face-down defense position.")
+        ev = parser.feed_line("Player2 sets m1 in face-down defense position.")
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.SET
         assert ev.is_opponent is True
@@ -756,8 +777,8 @@ class TestEventSet:
 class TestEventPosChange:
     def test_pos_change(self, parser: MUDTextParser):
         ev = parser.feed_line(
-            "The position of card m1 (Dark Magician) "
-            "was changed to face-up defense.")
+            "The position of card m1 (Dark Magician) was changed to face-up defense."
+        )
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.POS_CHANGE
         assert ev.card_spec == "m1"
@@ -767,9 +788,7 @@ class TestEventPosChange:
 
 class TestEventAttack:
     def test_attack_targeted(self, parser: MUDTextParser):
-        ev = parser.feed_line(
-            "Player1 prepares to attack om1 (Kuriboh) "
-            "with m1 (Dark Magician)")
+        ev = parser.feed_line("Player1 prepares to attack om1 (Kuriboh) with m1 (Dark Magician)")
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.ATTACK
         assert ev.player == "Player1"
@@ -779,8 +798,7 @@ class TestEventAttack:
         assert ev.target_name == "Kuriboh"
 
     def test_attack_direct(self, parser: MUDTextParser):
-        ev = parser.feed_line(
-            "Player1 prepares to attack with m1 (Dark Magician)")
+        ev = parser.feed_line("Player1 prepares to attack with m1 (Dark Magician)")
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.ATTACK
         assert ev.card_spec == "m1"
@@ -814,64 +832,56 @@ class TestEventMovement:
         assert ev.card_name == "Dark Magician"
 
     def test_your_to_gy(self, parser: MUDTextParser):
-        ev = parser.feed_line(
-            "your card m1 (Dark Magician) was sent to the graveyard.")
+        ev = parser.feed_line("your card m1 (Dark Magician) was sent to the graveyard.")
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.TO_GRAVEYARD
         assert ev.player == "you"
         assert ev.card_name == "Dark Magician"
 
     def test_opp_to_gy(self, parser: MUDTextParser):
-        ev = parser.feed_line(
-            "Player2's card m1 (Kuriboh) was sent to the graveyard.")
+        ev = parser.feed_line("Player2's card m1 (Kuriboh) was sent to the graveyard.")
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.TO_GRAVEYARD
         assert ev.is_opponent is True
 
     def test_your_banished(self, parser: MUDTextParser):
-        ev = parser.feed_line(
-            "your card m1 (Dark Magician) was banished.")
+        ev = parser.feed_line("your card m1 (Dark Magician) was banished.")
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.BANISHED
 
     def test_opp_banished(self, parser: MUDTextParser):
-        ev = parser.feed_line(
-            "Player2's card m1 (Kuriboh) was banished.")
+        ev = parser.feed_line("Player2's card m1 (Kuriboh) was banished.")
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.BANISHED
         assert ev.is_opponent is True
 
     def test_your_to_hand(self, parser: MUDTextParser):
-        ev = parser.feed_line(
-            "Card m1 (Dark Magician) returned to hand.")
+        ev = parser.feed_line("Card m1 (Dark Magician) returned to hand.")
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.TO_HAND
         assert ev.player == "you"
 
     def test_opp_to_hand(self, parser: MUDTextParser):
-        ev = parser.feed_line(
-            "Player2's card m1 (Kuriboh) returned to their hand.")
+        ev = parser.feed_line("Player2's card m1 (Kuriboh) returned to their hand.")
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.TO_HAND
         assert ev.is_opponent is True
 
     def test_your_to_deck(self, parser: MUDTextParser):
-        ev = parser.feed_line(
-            "your card m1 (Dark Magician) returned to your deck.")
+        ev = parser.feed_line("your card m1 (Dark Magician) returned to your deck.")
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.TO_DECK
 
     def test_opp_to_deck(self, parser: MUDTextParser):
-        ev = parser.feed_line(
-            "Player2's card m1 (Kuriboh) returned to their deck.")
+        ev = parser.feed_line("Player2's card m1 (Kuriboh) returned to their deck.")
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.TO_DECK
         assert ev.is_opponent is True
 
     def test_your_from_gy_to_field(self, parser: MUDTextParser):
         ev = parser.feed_line(
-            "your card g1 (Dark Magician) returns from the graveyard "
-            "to the field at m2.")
+            "your card g1 (Dark Magician) returns from the graveyard to the field at m2."
+        )
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.FROM_GY_TO_FIELD
         assert ev.player == "you"
@@ -881,8 +891,8 @@ class TestEventMovement:
 
     def test_opp_from_gy_to_field(self, parser: MUDTextParser):
         ev = parser.feed_line(
-            "Player2s card og1 (Kuriboh) returns from the graveyard "
-            "to the field at om1.")
+            "Player2s card og1 (Kuriboh) returns from the graveyard to the field at om1."
+        )
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.FROM_GY_TO_FIELD
         assert ev.player == "Player2"
@@ -892,9 +902,7 @@ class TestEventMovement:
         assert ev.target_spec == "om1"
 
     def test_your_from_banished_to_field(self, parser: MUDTextParser):
-        ev = parser.feed_line(
-            "your banished card r1 (Dark Magician) returns to the "
-            "field at m3.")
+        ev = parser.feed_line("your banished card r1 (Dark Magician) returns to the field at m3.")
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.FROM_BANISHED_TO_FIELD
         assert ev.player == "you"
@@ -904,8 +912,8 @@ class TestEventMovement:
 
     def test_opp_from_banished_to_field(self, parser: MUDTextParser):
         ev = parser.feed_line(
-            "Player2's banished card or1 (Kuriboh) returned to their "
-            "field at om2.")
+            "Player2's banished card or1 (Kuriboh) returned to their field at om2."
+        )
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.FROM_BANISHED_TO_FIELD
         assert ev.player == "Player2"
@@ -915,15 +923,12 @@ class TestEventMovement:
         assert ev.target_spec == "om2"
 
     def test_your_to_extra_deck(self, parser: MUDTextParser):
-        ev = parser.feed_line(
-            "your card m1 (Decode Talker) returned to your extra deck.")
+        ev = parser.feed_line("your card m1 (Decode Talker) returned to your extra deck.")
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.TO_EXTRA_DECK
 
     def test_opp_to_extra_deck(self, parser: MUDTextParser):
-        ev = parser.feed_line(
-            "Player2's card m1 (Decode Talker) "
-            "returned to their extra deck.")
+        ev = parser.feed_line("Player2's card m1 (Decode Talker) returned to their extra deck.")
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.TO_EXTRA_DECK
         assert ev.is_opponent is True
@@ -990,13 +995,17 @@ class TestEventWinLose:
 # Unrecognised lines — should still return None
 # ---------------------------------------------------------------------------
 
+
 class TestUnrecognised:
-    @pytest.mark.parametrize("line", [
-        "",
-        "Waiting for opponent.",
-        "begin damage",
-        "end damage",
-    ])
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "",
+            "Waiting for opponent.",
+            "begin damage",
+            "end damage",
+        ],
+    )
     def test_unrecognised_returns_none(self, parser: MUDTextParser, line: str):
         assert parser.feed_line(line) is None
 
@@ -1005,18 +1014,22 @@ class TestUnrecognised:
 # Duel end detection
 # ---------------------------------------------------------------------------
 
+
 class TestDuelEnd:
-    @pytest.mark.parametrize("line,expected", [
-        ("You won (LP became 0).", True),
-        ("You lost (LP became 0).", True),
-        ("You won (ran out of cards to draw).", True),
-        ("You lost (ran out of cards to draw).", True),
-        ("You scooped.", True),
-        ("The duel was cancelled.", True),
-        ("Your turn.", False),
-        ("entering main1 phase.", False),
-        ("", False),
-    ])
+    @pytest.mark.parametrize(
+        "line,expected",
+        [
+            ("You won (LP became 0).", True),
+            ("You lost (LP became 0).", True),
+            ("You won (ran out of cards to draw).", True),
+            ("You lost (ran out of cards to draw).", True),
+            ("You scooped.", True),
+            ("The duel was cancelled.", True),
+            ("Your turn.", False),
+            ("entering main1 phase.", False),
+            ("", False),
+        ],
+    )
     def test_is_duel_end(self, line: str, expected: bool):
         assert is_duel_end(line) is expected
 
@@ -1024,6 +1037,7 @@ class TestDuelEnd:
 # ---------------------------------------------------------------------------
 # Parser reset / multi-prompt sequence
 # ---------------------------------------------------------------------------
+
 
 class TestMultiPrompt:
     def test_consecutive_prompts(self, parser: MUDTextParser):
@@ -1036,8 +1050,7 @@ class TestMultiPrompt:
         assert p1.prompt_type == PromptType.IDLE_CMD
 
         # Second prompt: effectyn
-        p2 = parser.feed_line(
-            "Do you want to use the effect from Trap Hole in s1?")
+        p2 = parser.feed_line("Do you want to use the effect from Trap Hole in s1?")
         assert p2 is not None
         assert p2.prompt_type == PromptType.SELECT_EFFECTYN
 
@@ -1053,8 +1066,7 @@ class TestMultiPrompt:
         parser.feed_line("Select a card on which to perform an action.")
         parser.reset()
         # After reset, should be back in scanning mode
-        prompt = parser.feed_line(
-            "Do you want to use the effect from Mirror Force in s1?")
+        prompt = parser.feed_line("Do you want to use the effect from Mirror Force in s1?")
         assert prompt is not None
         assert prompt.prompt_type == PromptType.SELECT_EFFECTYN
 
@@ -1063,11 +1075,12 @@ class TestMultiPrompt:
 # Control change / Zone switch / Swap events
 # ---------------------------------------------------------------------------
 
+
 class TestEventControlChange:
     def test_your_control_change(self, parser: MUDTextParser):
         ev = parser.feed_line(
-            "your card m1 (Dark Magician) changed controller to Player2 "
-            "and is now located at om2.")
+            "your card m1 (Dark Magician) changed controller to Player2 and is now located at om2."
+        )
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.CONTROL_CHANGE
         assert ev.player == "you"
@@ -1078,8 +1091,8 @@ class TestEventControlChange:
 
     def test_opp_control_change(self, parser: MUDTextParser):
         ev = parser.feed_line(
-            "you now control Player2s card om1 (Blue-Eyes White Dragon) "
-            "and its located at m3.")
+            "you now control Player2s card om1 (Blue-Eyes White Dragon) and its located at m3."
+        )
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.CONTROL_CHANGE
         assert ev.is_opponent is True
@@ -1090,8 +1103,7 @@ class TestEventControlChange:
 
 class TestEventZoneSwitch:
     def test_your_zone_switch(self, parser: MUDTextParser):
-        ev = parser.feed_line(
-            "your card m1 (Dark Magician) switched its zone to m3.")
+        ev = parser.feed_line("your card m1 (Dark Magician) switched its zone to m3.")
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.ZONE_SWITCH
         assert ev.player == "you"
@@ -1100,9 +1112,7 @@ class TestEventZoneSwitch:
         assert ev.target_spec == "m3"
 
     def test_opp_zone_switch(self, parser: MUDTextParser):
-        ev = parser.feed_line(
-            "Player2s card om1 (Blue-Eyes White Dragon) "
-            "changed its zone to om3.")
+        ev = parser.feed_line("Player2s card om1 (Blue-Eyes White Dragon) changed its zone to om3.")
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.ZONE_SWITCH
         assert ev.is_opponent is True
@@ -1114,8 +1124,8 @@ class TestEventZoneSwitch:
 class TestEventSwap:
     def test_swap(self, parser: MUDTextParser):
         ev = parser.feed_line(
-            "card Dark Magician swapped control towards Player2 "
-            "and is now located at om1.")
+            "card Dark Magician swapped control towards Player2 and is now located at om1."
+        )
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.SWAP
         assert ev.card_name == "Dark Magician"
@@ -1125,8 +1135,8 @@ class TestEventSwap:
 class TestEventXYZ:
     def test_xyz_attach_own(self, parser: MUDTextParser):
         ev = parser.feed_line(
-            "your card m1 (Kuriboh) was attached to m2 "
-            "(Number 39: Utopia) as XYZ material")
+            "your card m1 (Kuriboh) was attached to m2 (Number 39: Utopia) as XYZ material"
+        )
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.XYZ_ATTACH
         assert ev.card_spec == "m1"
@@ -1137,8 +1147,8 @@ class TestEventXYZ:
 
     def test_xyz_attach_opp(self, parser: MUDTextParser):
         ev = parser.feed_line(
-            "Player2's card om1 (Blue-Eyes) was attached to om2 "
-            "(Galaxy-Eyes) as XYZ material")
+            "Player2's card om1 (Blue-Eyes) was attached to om2 (Galaxy-Eyes) as XYZ material"
+        )
         assert isinstance(ev, ParsedEvent)
         assert ev.event_type == EventType.XYZ_ATTACH
         assert ev.is_opponent is True
@@ -1163,6 +1173,7 @@ class TestEventXYZ:
 # ---------------------------------------------------------------------------
 # feed_line_all — multi-event WebSocket frames
 # ---------------------------------------------------------------------------
+
 
 class TestFeedLineAll:
     """feed_line_all returns ALL results from multi-line frames."""
@@ -1200,8 +1211,10 @@ class TestFeedLineAll:
 
     def test_event_and_prompt_in_frame(self, parser: MUDTextParser):
         """Frame with both event and prompt returns both via feed_line_all."""
-        frame = ("Your lp decreased by 1000, now 7000\n"
-                 "Do you want to use the effect from Trap Card in s1?")
+        frame = (
+            "Your lp decreased by 1000, now 7000\n"
+            "Do you want to use the effect from Trap Card in s1?"
+        )
         results = parser.feed_line_all(frame)
         assert len(results) == 2
         assert isinstance(results[0], ParsedEvent)

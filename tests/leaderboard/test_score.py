@@ -13,9 +13,6 @@ import pytest
 torch = pytest.importorskip("torch")
 
 from tests.rl.test_resume import _make_checkpoint
-
-from yugioh_rl.config import TrainingConfig
-
 from yugioh_leaderboard.entry import compute_checkpoint_hash
 from yugioh_leaderboard.panel import (
     PanelConfig,
@@ -23,6 +20,7 @@ from yugioh_leaderboard.panel import (
     PanelMatchOptions,
 )
 from yugioh_leaderboard.score import score_checkpoint
+from yugioh_rl.config import TrainingConfig
 
 
 def _is_engine_available() -> bool:
@@ -31,6 +29,7 @@ def _is_engine_available() -> bool:
         return False
     try:
         from yugioh_env.lib_loader import load_library
+
         load_library()
     except Exception:
         return False

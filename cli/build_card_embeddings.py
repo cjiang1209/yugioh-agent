@@ -30,14 +30,27 @@ MODEL_NAME = "all-MiniLM-L6-v2"
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build card text embeddings from cards.cdb")
-    parser.add_argument("--db", type=str, default="assets/cards.cdb",
-                        help="Path to cards.cdb SQLite database (default: assets/cards.cdb)")
-    parser.add_argument("--output", type=str, default="assets/card_text_embeddings.pt",
-                        help="Output path for embeddings .pt file (default: assets/card_text_embeddings.pt)")
-    parser.add_argument("--model", type=str, default=MODEL_NAME,
-                        help=f"Sentence-transformer model name (default: {MODEL_NAME})")
-    parser.add_argument("--batch-size", type=int, default=256,
-                        help="Encoding batch size (default: 256)")
+    parser.add_argument(
+        "--db",
+        type=str,
+        default="assets/cards.cdb",
+        help="Path to cards.cdb SQLite database (default: assets/cards.cdb)",
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="assets/card_text_embeddings.pt",
+        help="Output path for embeddings .pt file (default: assets/card_text_embeddings.pt)",
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=MODEL_NAME,
+        help=f"Sentence-transformer model name (default: {MODEL_NAME})",
+    )
+    parser.add_argument(
+        "--batch-size", type=int, default=256, help="Encoding batch size (default: 256)"
+    )
     return parser.parse_args()
 
 
@@ -71,9 +84,7 @@ def main() -> None:
         import torch
         from sentence_transformers import SentenceTransformer
     except ImportError:
-        logger.error(
-            "Required packages not installed. Run: pip install -e '.[embed,train]'"
-        )
+        logger.error("Required packages not installed. Run: pip install -e '.[embed,train]'")
         sys.exit(1)
 
     logger.info("Loading card texts from %s", db_path)
@@ -105,15 +116,20 @@ def main() -> None:
 
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    torch.save({
-        "embeddings": embeddings_tensor,
-        "codes": codes_tensor,
-        "model_name": args.model,
-    }, str(output_path))
+    torch.save(
+        {
+            "embeddings": embeddings_tensor,
+            "codes": codes_tensor,
+            "model_name": args.model,
+        },
+        str(output_path),
+    )
 
     logger.info(
         "Saved %d embeddings (dim=%d) to %s",
-        len(codes), embeddings_tensor.shape[1], output_path,
+        len(codes),
+        embeddings_tensor.shape[1],
+        output_path,
     )
 
 

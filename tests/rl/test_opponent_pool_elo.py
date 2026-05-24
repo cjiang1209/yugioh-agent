@@ -1,4 +1,5 @@
 """Tests for Elo tracking in SharedPoolState and OpponentPool."""
+
 from __future__ import annotations
 
 import multiprocessing as mp
@@ -9,9 +10,8 @@ import pytest
 torch = pytest.importorskip("torch")
 import torch.nn as nn
 
-from yugioh_rl.opponent_pool import OpponentPool, SharedPoolState
-
 from tests.rl.conftest import requires_engine
+from yugioh_rl.opponent_pool import OpponentPool, SharedPoolState
 
 
 class _Tiny(nn.Module):
@@ -69,6 +69,7 @@ def test_shared_pool_state_increment_n_games() -> None:
 
 def _child_read_elo(handles, send_pipe):
     from yugioh_rl.opponent_pool import SharedPoolState
+
     state = SharedPoolState.from_handles(handles)
     send_pipe.send((state.agent_rating, state.get_rating(1), state.get_n_games(1)))
     send_pipe.close()
@@ -243,6 +244,7 @@ def test_self_play_pool_elo_updates_during_real_episode() -> None:
     """End-to-end: drive a real TrainingEnv attached to an OpponentPool through
     at least one episode, and assert agent_rating moved and n_games incremented."""
     from pathlib import Path
+
     import numpy as np
 
     deck_path = Path("assets/decks/blue_eyes.ydk")

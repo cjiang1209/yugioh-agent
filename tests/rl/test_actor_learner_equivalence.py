@@ -7,6 +7,7 @@ trainer's batched single-forward-pass-vs-N-single-batch-forward-passes split
 all introduce divergence. We instead pin distributional equivalence:
 parameter L2 norms agree within 20% after a short run with the same seed.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -15,10 +16,9 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
+from tests.rl.conftest import requires_engine
 from yugioh_rl.config import TrainingConfig
 from yugioh_rl.ppo import PPOTrainer
-
-from tests.rl.conftest import requires_engine
 
 
 def _param_l2(net: torch.nn.Module) -> float:
@@ -40,7 +40,7 @@ def test_actor_learner_matches_subproc_within_tolerance(tmp_path, rnn_type: str)
         rollout_steps=16,
         num_epochs=2,
         minibatch_size=16,
-        total_timesteps=512,         # 2 envs × 16 rollout × 16 updates
+        total_timesteps=512,  # 2 envs × 16 rollout × 16 updates
         eval_interval=9999,
         save_interval=9999,
         log_interval=999,
@@ -52,11 +52,13 @@ def test_actor_learner_matches_subproc_within_tolerance(tmp_path, rnn_type: str)
     )
 
     cfg_sub = TrainingConfig(
-        **base, vec_env_type="subproc",
+        **base,
+        vec_env_type="subproc",
         save_dir=str(tmp_path / f"subproc_{rnn_type}"),
     )
     cfg_al = TrainingConfig(
-        **base, vec_env_type="sync_actor_learner",
+        **base,
+        vec_env_type="sync_actor_learner",
         save_dir=str(tmp_path / f"actor_learner_{rnn_type}"),
     )
 

@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Literal, Optional
-
-from pydantic import BaseModel, Field
+from typing import Literal
 
 from openenv.core.env_server.types import Action, Observation, State
+from pydantic import BaseModel, Field
 
 from yugioh_core.encoding import (
     ACTION_FEATURES,
@@ -47,8 +46,13 @@ class ActionMeta(BaseModel):
     """
 
     kind: Literal[
-        "number", "race", "attribute",
-        "rps", "counter", "option", "chain_link",
+        "number",
+        "race",
+        "attribute",
+        "rps",
+        "counter",
+        "option",
+        "chain_link",
         "effect",
     ]
     label: str
@@ -78,12 +82,12 @@ class YuGiOhObservation(Observation):
     action_meta: list[ActionMeta | None] = Field(
         default_factory=list,
         description="Per-action prompt metadata, parallel to actions[]; "
-                    "None for slots without structured meta.",
+        "None for slots without structured meta.",
     )
     prompt_meta: dict | None = Field(
         default=None,
         description="Prompt-level metadata (min/max/cancelable/forced/etc.); "
-                    "None when no active prompt.",
+        "None when no active prompt.",
     )
     event_log: list[str] = Field(
         default_factory=list,

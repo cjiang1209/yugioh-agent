@@ -5,49 +5,38 @@ from __future__ import annotations
 import ctypes
 import logging
 import random
-import struct
 from pathlib import Path
 from typing import Any
 
+from yugioh_core.card_database import CardDatabase
 from yugioh_core.constants import (
     DUEL_MODE_MR5,
     LOCATION_DECK,
     LOCATION_EXTRA,
-    LOCATION_HAND,
-    LOCATION_MZONE,
-    LOCATION_SZONE,
-    LOCATION_GRAVE,
-    LOCATION_BANISHED,
+    MSG_RETRY,
+    MSG_WIN,
     OCG_DUEL_CREATION_SUCCESS,
     OCG_DUEL_STATUS_AWAITING,
-    OCG_DUEL_STATUS_CONTINUE,
     OCG_DUEL_STATUS_END,
     POS_FACEDOWN_DEFENSE,
-    POS_FACEUP_ATTACK,
-    SELECT_MSGS,
-    MSG_WIN,
-    MSG_RETRY,
     QUERY_BASIC,
+    SELECT_MSGS,
 )
+from yugioh_core.query_buffer import parse_query_location
+from yugioh_env.callbacks import DuelCallbacks
 from yugioh_env.core_types import (
     OCG_DuelOptions,
     OCG_NewCardInfo,
     OCG_Player,
     OCG_QueryInfo,
-    c_uint8,
     c_uint32,
-    c_uint64,
     c_void_p,
 )
-from yugioh_env.callbacks import DuelCallbacks
-from yugioh_core.card_database import CardDatabase
 from yugioh_env.deck_parser import parse_ydk
 from yugioh_env.game_state import GameState
 from yugioh_env.message_parser import parse_messages
-from yugioh_core.query_buffer import parse_query_location
 
 logger = logging.getLogger(__name__)
-
 
 
 class Duel:
@@ -98,9 +87,9 @@ class Duel:
     ) -> None:
         """Create and start a new duel."""
         # Parse decks if given as paths
-        if isinstance(deck0, (str, Path)):
+        if isinstance(deck0, str | Path):
             deck0 = parse_ydk(deck0)
-        if isinstance(deck1, (str, Path)):
+        if isinstance(deck1, str | Path):
             deck1 = parse_ydk(deck1)
 
         # Reset state
@@ -227,9 +216,7 @@ class Duel:
             else:
                 logger.debug("Startup script not found: %s", name)
 
-    def _add_deck_cards(
-        self, team: int, deck: dict[str, list[int]], rng: random.Random
-    ) -> None:
+    def _add_deck_cards(self, team: int, deck: dict[str, list[int]], rng: random.Random) -> None:
         """Add all cards from a deck to the duel.
 
         The main deck is shuffled using *rng* before insertion because the

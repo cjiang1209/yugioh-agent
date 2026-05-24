@@ -22,11 +22,11 @@ import sys
 import time
 from pathlib import Path
 
-from yugioh_env.client import YuGiOhEnv
-from yugioh_core.constants import PHASE_NAMES
 from yugioh_core.card_database import CardDatabase
+from yugioh_core.constants import PHASE_NAMES
 from yugioh_core.string_resolver import parse_sys_strings
 from yugioh_env.action_describer import ActionDescriber
+from yugioh_env.client import YuGiOhEnv
 from yugioh_env.deck_parser import parse_ydk
 from yugioh_env.models import YuGiOhAction, YuGiOhObservation
 
@@ -124,7 +124,8 @@ def _format_prompt_summary(prompt: dict | None) -> str:
         picked = prompt["cards_selected"]
         progress = (
             f", release={rel_total}/{min_rel} ({picked} card{'s' if picked != 1 else ''})"
-            if picked else ""
+            if picked
+            else ""
         )
         return f"{label} — release total ≥ {min_rel} (max {max_cards} cards){progress}"
 
@@ -145,10 +146,14 @@ def display_state(obs: YuGiOhObservation, step_num: int, describer: ActionDescri
     print(f"  Step {step_num}  |  Turn {gs['turn']}  |  Phase: {phase_name}{turn_marker}")
     print(f"{'=' * 60}")
     print(f"  YOUR LP: {gs['my_lp']:>5}    |  OPP LP: {gs['opp_lp']:>5}")
-    print(f"  Hand: {gs['my_hand']:>2}  Deck: {gs['my_deck']:>2}  GY: {gs['my_grave']:>2}  "
-          f"Ban: {gs['my_banished']:>2}  Extra: {gs['my_extra']:>2}")
-    print(f"  Opp Hand: {gs['opp_hand']:>2}  Deck: {gs['opp_deck']:>2}  GY: {gs['opp_grave']:>2}  "
-          f"Ban: {gs['opp_banished']:>2}  Extra: {gs['opp_extra']:>2}")
+    print(
+        f"  Hand: {gs['my_hand']:>2}  Deck: {gs['my_deck']:>2}  GY: {gs['my_grave']:>2}  "
+        f"Ban: {gs['my_banished']:>2}  Extra: {gs['my_extra']:>2}"
+    )
+    print(
+        f"  Opp Hand: {gs['opp_hand']:>2}  Deck: {gs['opp_deck']:>2}  GY: {gs['opp_grave']:>2}  "
+        f"Ban: {gs['opp_banished']:>2}  Extra: {gs['opp_extra']:>2}"
+    )
 
     if gs["chain_count"] > 0:
         print(f"  Chain count: {gs['chain_count']}")
@@ -280,48 +285,67 @@ def main():
         epilog=__doc__,
     )
     parser.add_argument(
-        "--url", default="ws://localhost:8000",
+        "--url",
+        default="ws://localhost:8000",
         help="Server URL (default: ws://localhost:8000)",
     )
     parser.add_argument(
-        "--mode", choices=["interactive", "random", "greedy"], default="interactive",
+        "--mode",
+        choices=["interactive", "random", "greedy"],
+        default="interactive",
         help="Play mode (default: interactive)",
     )
     parser.add_argument(
-        "--episodes", type=int, default=1,
+        "--episodes",
+        type=int,
+        default=1,
         help="Number of episodes to play (default: 1)",
     )
     parser.add_argument(
-        "--seed", type=int, default=None,
+        "--seed",
+        type=int,
+        default=None,
         help="Random seed for the first episode (incremented per episode)",
     )
     parser.add_argument(
-        "--deck", type=str, default=None,
+        "--deck",
+        type=str,
+        default=None,
         help="Path to .ydk deck file (used for both players)",
     )
     parser.add_argument(
-        "--deck0", type=str, default=None,
+        "--deck0",
+        type=str,
+        default=None,
         help="Path to .ydk deck file for player 0 (overrides --deck)",
     )
     parser.add_argument(
-        "--deck1", type=str, default=None,
+        "--deck1",
+        type=str,
+        default=None,
         help="Path to .ydk deck file for player 1 (overrides --deck)",
     )
     player_order = parser.add_mutually_exclusive_group()
     player_order.add_argument(
-        "--go-first", action="store_true", default=True,
+        "--go-first",
+        action="store_true",
+        default=True,
         help="Agent goes first (player 0, default)",
     )
     player_order.add_argument(
-        "--go-second", action="store_true",
+        "--go-second",
+        action="store_true",
         help="Agent goes second (player 1)",
     )
     parser.add_argument(
-        "--quiet", action="store_true",
+        "--quiet",
+        action="store_true",
         help="Suppress per-step output (show only episode summaries)",
     )
     parser.add_argument(
-        "--timeout", type=float, default=60.0,
+        "--timeout",
+        type=float,
+        default=60.0,
         help="Message timeout in seconds (default: 60)",
     )
     args = parser.parse_args()
@@ -378,16 +402,27 @@ def main():
                     print(f"--- Episode {ep + 1}/{args.episodes} (seed={seed}) ---")
 
                 t0 = time.time()
-                stats = run_episode(env, pick_action, describer, seed=seed, verbose=verbose,
-                                    deck0=deck0, deck1=deck1,
-                                    agent_player=agent_player)
+                stats = run_episode(
+                    env,
+                    pick_action,
+                    describer,
+                    seed=seed,
+                    verbose=verbose,
+                    deck0=deck0,
+                    deck1=deck1,
+                    agent_player=agent_player,
+                )
                 elapsed = time.time() - t0
                 stats["time"] = elapsed
                 all_stats.append(stats)
 
                 if args.episodes > 1:
                     r = stats["reward"]
-                    tag = "WIN" if r is not None and r > 0 else ("LOSS" if r is not None and r < 0 else "DRAW")
+                    tag = (
+                        "WIN"
+                        if r is not None and r > 0
+                        else ("LOSS" if r is not None and r < 0 else "DRAW")
+                    )
                     print(f"  => {tag} in {stats['steps']} steps, {elapsed:.1f}s\n")
 
             # Print aggregate stats for multi-episode runs
@@ -400,8 +435,10 @@ def main():
 
                 print(f"{'=' * 60}")
                 print(f"  {args.episodes} episodes complete")
-                print(f"  Wins: {wins}  Losses: {losses}  Draws: {draws}  "
-                      f"Win rate: {wins / args.episodes:.1%}")
+                print(
+                    f"  Wins: {wins}  Losses: {losses}  Draws: {draws}  "
+                    f"Win rate: {wins / args.episodes:.1%}"
+                )
                 print(f"  Avg steps: {avg_steps:.1f}  Total time: {total_time:.1f}s")
                 print(f"{'=' * 60}")
 

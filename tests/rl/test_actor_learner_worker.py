@@ -1,4 +1,5 @@
 """Tests for the actor-learner worker process function."""
+
 from __future__ import annotations
 
 import multiprocessing as mp
@@ -10,13 +11,12 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
+from tests.rl.conftest import requires_engine
 from yugioh_env.deck_parser import parse_ydk
 from yugioh_rl.actor_learner import _actor_learner_worker
 from yugioh_rl.config import TrainingConfig
 from yugioh_rl.network import YuGiOhNet
 from yugioh_rl.shared_weights import SharedPolicyWeights
-
-from tests.rl.conftest import requires_engine
 
 
 def _spawn_worker(deck_paths, config: TrainingConfig, rollout_steps: int):
@@ -67,22 +67,22 @@ def test_worker_produces_valid_rollout() -> None:
 
         T = rollout_steps
         expected_shapes = {
-            "obs_cards":   (T, 200, 42),
-            "obs_global":  (T, 20),
+            "obs_cards": (T, 200, 42),
+            "obs_global": (T, 20),
             "obs_actions": (T, 32, 28),
             "action_mask": (T, 32),
-            "actions":     (T,),
-            "log_probs":   (T,),
-            "values":      (T,),
-            "rewards":     (T,),
-            "dones":       (T,),
+            "actions": (T,),
+            "log_probs": (T,),
+            "values": (T,),
+            "rewards": (T,),
+            "dones": (T,),
         }
         expected_dtypes = {
-            "actions":   np.int64,
+            "actions": np.int64,
             "log_probs": np.float32,
-            "values":    np.float32,
-            "rewards":   np.float32,
-            "dones":     np.bool_,
+            "values": np.float32,
+            "rewards": np.float32,
+            "dones": np.bool_,
         }
         for key, shape in expected_shapes.items():
             assert key in payload, f"missing field {key!r}"
@@ -174,16 +174,14 @@ def test_worker_resets_on_done() -> None:
         cmd, payload = parent.recv()
         assert cmd == "rollout"
 
-        dones = payload["dones"]   # (T,)
-        assert dones.any(), (
-            "rollout did not cross any done transition; widen rollout_steps"
-        )
-        obs_cards = payload["obs_cards"]   # (T, 200, 42)
+        dones = payload["dones"]  # (T,)
+        assert dones.any(), "rollout did not cross any done transition; widen rollout_steps"
+        obs_cards = payload["obs_cards"]  # (T, 200, 42)
 
         done_idxs = np.where(dones)[0]
         for t in done_idxs:
             if t + 1 >= rollout_steps:
-                continue   # done was the last step, no next obs in window
+                continue  # done was the last step, no next obs in window
             terminal_cards = obs_cards[t]
             next_cards = obs_cards[t + 1]
             assert not np.array_equal(terminal_cards, next_cards), (
@@ -222,11 +220,23 @@ def test_worker_produces_valid_rollout_with_rnn(rnn_type: str) -> None:
         cmd, payload = parent.recv()
         assert cmd == "rollout"
 
-        for key in ("obs_cards", "obs_global", "obs_actions", "action_mask",
-                    "actions", "log_probs", "values", "rewards", "dones",
-                    "policy_version", "infos",
-                    "final_obs_cards", "final_obs_global",
-                    "final_obs_actions", "final_action_mask"):
+        for key in (
+            "obs_cards",
+            "obs_global",
+            "obs_actions",
+            "action_mask",
+            "actions",
+            "log_probs",
+            "values",
+            "rewards",
+            "dones",
+            "policy_version",
+            "infos",
+            "final_obs_cards",
+            "final_obs_global",
+            "final_obs_actions",
+            "final_action_mask",
+        ):
             assert key in payload, f"missing field {key!r}"
 
         assert "final_hx" in payload

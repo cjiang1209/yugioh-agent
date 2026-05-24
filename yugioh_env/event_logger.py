@@ -7,42 +7,42 @@ between choice points and delivered as part of observations.
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from yugioh_core.constants import (
+    LOCATION_BANISHED,
     LOCATION_DECK,
+    LOCATION_EXTRA,
+    LOCATION_GRAVE,
     LOCATION_HAND,
     LOCATION_MZONE,
-    LOCATION_SZONE,
-    LOCATION_GRAVE,
-    LOCATION_BANISHED,
-    LOCATION_EXTRA,
     LOCATION_OVERLAY,
-    PHASE_NAMES,
-    POS_FACEUP_ATTACK,
-    POS_FACEDOWN_ATTACK,
-    POS_FACEUP_DEFENSE,
-    POS_FACEDOWN_DEFENSE,
-    POS_FACEUP,
-    POS_FACEDOWN,
-    MSG_NEW_TURN,
-    MSG_NEW_PHASE,
-    MSG_DRAW,
-    MSG_SUMMONING,
-    MSG_SPSUMMONING,
-    MSG_FLIPSUMMONING,
-    MSG_CHAINING,
-    MSG_CHAIN_NEGATED,
+    LOCATION_SZONE,
     MSG_ATTACK,
+    MSG_CHAIN_NEGATED,
+    MSG_CHAINING,
     MSG_DAMAGE,
-    MSG_RECOVER,
-    MSG_PAY_LPCOST,
-    MSG_MOVE,
-    MSG_POS_CHANGE,
-    MSG_SET,
+    MSG_DRAW,
     MSG_EQUIP,
+    MSG_FLIPSUMMONING,
+    MSG_MOVE,
+    MSG_NEW_PHASE,
+    MSG_NEW_TURN,
+    MSG_PAY_LPCOST,
+    MSG_POS_CHANGE,
+    MSG_RECOVER,
+    MSG_SET,
+    MSG_SPSUMMONING,
+    MSG_SUMMONING,
     MSG_TOSS_COIN,
     MSG_TOSS_DICE,
+    PHASE_NAMES,
+    POS_FACEDOWN,
+    POS_FACEDOWN_ATTACK,
+    POS_FACEDOWN_DEFENSE,
+    POS_FACEUP,
+    POS_FACEUP_ATTACK,
+    POS_FACEUP_DEFENSE,
 )
 
 _POS_NAMES = {
@@ -161,7 +161,11 @@ class FieldTracker:
                 cur_seq = msg.get("cur_sequence", 0)
                 cur_pos = msg.get("cur_position", 0)
                 self._field[(cur_con, cur_loc, cur_seq)] = CardInfo(
-                    code, cur_con, cur_loc, cur_seq, cur_pos,
+                    code,
+                    cur_con,
+                    cur_loc,
+                    cur_seq,
+                    cur_pos,
                 )
                 # Remove from previous location
                 prev_con = msg.get("prev_controller", 0)
@@ -250,22 +254,42 @@ def format_events(
 
         elif msg_type == MSG_SUMMONING:
             p = msg.get("controller", 0)
-            c = card_str(msg.get("code", 0), msg.get("location", 0), msg.get("sequence", 0), msg.get("position", 0))
+            c = card_str(
+                msg.get("code", 0),
+                msg.get("location", 0),
+                msg.get("sequence", 0),
+                msg.get("position", 0),
+            )
             events.append(f"{tag(p)} Normal Summon {c}")
 
         elif msg_type == MSG_SPSUMMONING:
             p = msg.get("controller", 0)
-            c = card_str(msg.get("code", 0), msg.get("location", 0), msg.get("sequence", 0), msg.get("position", 0))
+            c = card_str(
+                msg.get("code", 0),
+                msg.get("location", 0),
+                msg.get("sequence", 0),
+                msg.get("position", 0),
+            )
             events.append(f"{tag(p)} Special Summon {c}")
 
         elif msg_type == MSG_FLIPSUMMONING:
             p = msg.get("controller", 0)
-            c = card_str(msg.get("code", 0), msg.get("location", 0), msg.get("sequence", 0), msg.get("position", 0))
+            c = card_str(
+                msg.get("code", 0),
+                msg.get("location", 0),
+                msg.get("sequence", 0),
+                msg.get("position", 0),
+            )
             events.append(f"{tag(p)} Flip Summon {c}")
 
         elif msg_type == MSG_CHAINING:
             p = msg.get("controller", 0)
-            c = card_str(msg.get("code", 0), msg.get("location", 0), msg.get("sequence", 0), msg.get("position", 0))
+            c = card_str(
+                msg.get("code", 0),
+                msg.get("location", 0),
+                msg.get("sequence", 0),
+                msg.get("position", 0),
+            )
             events.append(f"{tag(p)} Activate {c}")
 
         elif msg_type == MSG_CHAIN_NEGATED:
@@ -323,18 +347,33 @@ def format_events(
             p = msg.get("controller", 0)
             prev_pos = msg.get("prev_position", 0)
             cur_pos = msg.get("cur_position", 0)
-            c = card_str(msg.get("code", 0), msg.get("location", 0), msg.get("sequence", 0), prev_pos)
+            c = card_str(
+                msg.get("code", 0), msg.get("location", 0), msg.get("sequence", 0), prev_pos
+            )
             pos_name = _POS_NAMES.get(cur_pos, f"0x{cur_pos:x}")
             events.append(f"{tag(p)} {c} changes position to {pos_name}")
 
         elif msg_type == MSG_SET:
             p = msg.get("controller", 0)
-            c = card_str(msg.get("code", 0), msg.get("location", 0), msg.get("sequence", 0), msg.get("position", 0))
+            c = card_str(
+                msg.get("code", 0),
+                msg.get("location", 0),
+                msg.get("sequence", 0),
+                msg.get("position", 0),
+            )
             events.append(f"{tag(p)} Set {c}")
 
         elif msg_type == MSG_EQUIP:
-            equip_str = card_str_from_loc(msg.get("equip_controller", 0), msg.get("equip_location", 0), msg.get("equip_sequence", 0))
-            target_str = card_str_from_loc(msg.get("target_controller", 0), msg.get("target_location", 0), msg.get("target_sequence", 0))
+            equip_str = card_str_from_loc(
+                msg.get("equip_controller", 0),
+                msg.get("equip_location", 0),
+                msg.get("equip_sequence", 0),
+            )
+            target_str = card_str_from_loc(
+                msg.get("target_controller", 0),
+                msg.get("target_location", 0),
+                msg.get("target_sequence", 0),
+            )
             events.append(f"{equip_str} is equipped to {target_str}")
 
         elif msg_type == MSG_TOSS_COIN:

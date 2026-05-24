@@ -14,13 +14,16 @@ import sys
 def _run_eval(deck: str, *extra_args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, "-m", "cli.eval", "--deck-paths", deck, *extra_args],
-        capture_output=True, text=True, timeout=30,
+        capture_output=True,
+        text=True,
+        timeout=30,
     )
 
 
 # ---------------------------------------------------------------------------
 # --agent validation
 # ---------------------------------------------------------------------------
+
 
 def test_agent_model_requires_path(deck_path_str):
     result = _run_eval(deck_path_str, "--agent", "model:", "--opponents", "greedy")
@@ -37,8 +40,10 @@ def test_agent_unknown_rejected(deck_path_str):
 def test_agent_model_checkpoint_not_found(deck_path_str):
     result = _run_eval(
         deck_path_str,
-        "--agent", "model:/nonexistent/checkpoint.pt",
-        "--opponents", "greedy",
+        "--agent",
+        "model:/nonexistent/checkpoint.pt",
+        "--opponents",
+        "greedy",
     )
     assert result.returncode != 0
     assert "checkpoint not found" in result.stderr
@@ -47,6 +52,7 @@ def test_agent_model_checkpoint_not_found(deck_path_str):
 # ---------------------------------------------------------------------------
 # --opponents validation
 # ---------------------------------------------------------------------------
+
 
 def test_opponents_model_requires_path(deck_path_str):
     result = _run_eval(deck_path_str, "--agent", "greedy", "--opponents", "model:")
@@ -63,8 +69,10 @@ def test_opponents_unknown_rejected(deck_path_str):
 def test_opponents_model_checkpoint_not_found(deck_path_str):
     result = _run_eval(
         deck_path_str,
-        "--agent", "greedy",
-        "--opponents", "model:/nonexistent/checkpoint.pt",
+        "--agent",
+        "greedy",
+        "--opponents",
+        "model:/nonexistent/checkpoint.pt",
     )
     assert result.returncode != 0
     assert "checkpoint not found" in result.stderr
@@ -74,8 +82,12 @@ def test_opponents_one_bad_in_list_rejected(deck_path_str):
     """Mixed valid+invalid --opponents list should fail on the bad entry."""
     result = _run_eval(
         deck_path_str,
-        "--agent", "greedy",
-        "--opponents", "greedy", "model:", "random",
+        "--agent",
+        "greedy",
+        "--opponents",
+        "greedy",
+        "model:",
+        "random",
     )
     assert result.returncode != 0
     assert "must include a checkpoint path" in result.stderr
@@ -85,11 +97,13 @@ def test_opponents_one_bad_in_list_rejected(deck_path_str):
 # Required-arg checks (argparse layer, not our validators)
 # ---------------------------------------------------------------------------
 
+
 def test_missing_agent_rejected(deck_path_str):
     result = subprocess.run(
-        [sys.executable, "-m", "cli.eval",
-         "--deck-paths", deck_path_str, "--opponents", "greedy"],
-        capture_output=True, text=True, timeout=30,
+        [sys.executable, "-m", "cli.eval", "--deck-paths", deck_path_str, "--opponents", "greedy"],
+        capture_output=True,
+        text=True,
+        timeout=30,
     )
     assert result.returncode != 0
     assert "--agent" in result.stderr
@@ -97,9 +111,10 @@ def test_missing_agent_rejected(deck_path_str):
 
 def test_missing_opponents_rejected(deck_path_str):
     result = subprocess.run(
-        [sys.executable, "-m", "cli.eval",
-         "--deck-paths", deck_path_str, "--agent", "greedy"],
-        capture_output=True, text=True, timeout=30,
+        [sys.executable, "-m", "cli.eval", "--deck-paths", deck_path_str, "--agent", "greedy"],
+        capture_output=True,
+        text=True,
+        timeout=30,
     )
     assert result.returncode != 0
     assert "--opponents" in result.stderr
@@ -107,9 +122,10 @@ def test_missing_opponents_rejected(deck_path_str):
 
 def test_missing_deck_paths_rejected():
     result = subprocess.run(
-        [sys.executable, "-m", "cli.eval",
-         "--agent", "greedy", "--opponents", "greedy"],
-        capture_output=True, text=True, timeout=30,
+        [sys.executable, "-m", "cli.eval", "--agent", "greedy", "--opponents", "greedy"],
+        capture_output=True,
+        text=True,
+        timeout=30,
     )
     assert result.returncode != 0
     assert "--deck-paths" in result.stderr
@@ -117,10 +133,20 @@ def test_missing_deck_paths_rejected():
 
 def test_deck_path_not_found():
     result = subprocess.run(
-        [sys.executable, "-m", "cli.eval",
-         "--deck-paths", "/nope.ydk",
-         "--agent", "greedy", "--opponents", "greedy"],
-        capture_output=True, text=True, timeout=30,
+        [
+            sys.executable,
+            "-m",
+            "cli.eval",
+            "--deck-paths",
+            "/nope.ydk",
+            "--agent",
+            "greedy",
+            "--opponents",
+            "greedy",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
     )
     assert result.returncode != 0
     assert "deck file not found" in result.stderr
@@ -129,7 +155,12 @@ def test_deck_path_not_found():
 def test_negative_episodes_rejected(deck_path_str):
     result = _run_eval(
         deck_path_str,
-        "--agent", "greedy", "--opponents", "greedy", "--episodes", "-1",
+        "--agent",
+        "greedy",
+        "--opponents",
+        "greedy",
+        "--episodes",
+        "-1",
     )
     assert result.returncode != 0
     assert "must be >= 0" in result.stderr

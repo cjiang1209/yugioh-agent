@@ -7,6 +7,7 @@ unsqueeze). If the bug were in our usage of the API, it would also fail on
 CPU and/or with a different slicing approach. If only the MPS variants fail,
 the bug is in Apple's MPS LSTM backward kernel.
 """
+
 from __future__ import annotations
 
 import torch
@@ -18,7 +19,12 @@ def log(msg: str) -> None:
 
 
 def per_step_lstm_backward(
-    label: str, *, device: torch.device, T: int, N: int, H: int,
+    label: str,
+    *,
+    device: torch.device,
+    T: int,
+    N: int,
+    H: int,
     slice_method: str = "slice",
 ) -> bool:
     """Run T per-step LSTM calls + backward.  Return True if it survived."""
@@ -55,7 +61,12 @@ def per_step_lstm_backward(
 
 
 def per_step_lstmcell_backward(
-    label: str, *, device: torch.device, T: int, N: int, H: int,
+    label: str,
+    *,
+    device: torch.device,
+    T: int,
+    N: int,
+    H: int,
 ) -> bool:
     """LSTMCell variant — different API surface (single-step is its native
     mode; no internal seq dim). If THIS also crashes on MPS, the bug spans
@@ -94,20 +105,32 @@ def main() -> None:
     # graph is well-formed; failure on MPS is a kernel issue.
     per_step_lstm_backward(
         "CPU per-step LSTM (slice) — control",
-        device=cpu, T=8, N=1, H=64, slice_method="slice",
+        device=cpu,
+        T=8,
+        N=1,
+        H=64,
+        slice_method="slice",
     )
 
     # Evidence 2: Different slicing approach on MPS.  If both crash, the
     # crash isn't tied to a particular indexing op.
     per_step_lstm_backward(
         "MPS per-step LSTM (slice)",
-        device=mps, T=8, N=1, H=64, slice_method="slice",
+        device=mps,
+        T=8,
+        N=1,
+        H=64,
+        slice_method="slice",
     )
 
     # If we reach this, evidence 2 didn't crash — try unsqueeze.
     per_step_lstm_backward(
         "MPS per-step LSTM (unsqueeze)",
-        device=mps, T=8, N=1, H=64, slice_method="unsqueeze",
+        device=mps,
+        T=8,
+        N=1,
+        H=64,
+        slice_method="unsqueeze",
     )
 
     # Evidence 3: LSTMCell on MPS — different API surface, single-step is
@@ -115,7 +138,10 @@ def main() -> None:
     # backward path specifically, or the entire MPS LSTM family.
     per_step_lstmcell_backward(
         "MPS per-step LSTMCell",
-        device=mps, T=8, N=1, H=64,
+        device=mps,
+        T=8,
+        N=1,
+        H=64,
     )
 
 

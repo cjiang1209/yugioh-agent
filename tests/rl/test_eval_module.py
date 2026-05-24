@@ -28,10 +28,10 @@ from yugioh_rl.eval import (
     run_match,
 )
 
-
 # ---------------------------------------------------------------------------
 # opponent_label_from_spec — pinned to the pre-refactor TensorBoard label format
 # ---------------------------------------------------------------------------
+
 
 class TestOpponentLabelFromSpec:
     def test_greedy(self):
@@ -48,14 +48,13 @@ class TestOpponentLabelFromSpec:
         assert opponent_label_from_spec("model:/a/b/c/latest.pt") == "model_c_latest"
 
     def test_model_relative_with_parent(self):
-        assert opponent_label_from_spec("model:checkpoints/run1/latest.pt") == (
-            "model_run1_latest"
-        )
+        assert opponent_label_from_spec("model:checkpoints/run1/latest.pt") == ("model_run1_latest")
 
 
 # ---------------------------------------------------------------------------
 # make_eval_agent
 # ---------------------------------------------------------------------------
+
 
 class TestMakeEvalAgent:
     def test_random(self):
@@ -109,6 +108,7 @@ class TestMakeEvalAgent:
 # run_match — fake env + fake agent, no monkeypatching
 # ---------------------------------------------------------------------------
 
+
 class _RecordingAgent(Opponent):
     """Records every call so tests can assert the driver contract."""
 
@@ -156,7 +156,7 @@ class _ScriptedEnv:
     def reset(self, *, episode_idx: int | None = None):
         self.reset_calls += 1
         if episode_idx is not None:
-            self._ep = episode_idx - 1   # 1-indexed: matches TrainingEnv
+            self._ep = episode_idx - 1  # 1-indexed: matches TrainingEnv
         else:
             self._ep += 1
         self._step = 0
@@ -187,12 +187,14 @@ class TestRunMatch:
     def test_counts_wins_and_per_deck(self):
         agent = _RecordingAgent()
         # 4 episodes: win/loss/win/win, decks 0/0/1/1.
-        env = _ScriptedEnv([
-            [{"done": True, "reward": 1.0, "agent_deck_idx": 0}],
-            [{"done": True, "reward": -1.0, "agent_deck_idx": 0}],
-            [{"done": True, "reward": 1.0, "agent_deck_idx": 1}],
-            [{"done": True, "reward": 1.0, "agent_deck_idx": 1}],
-        ])
+        env = _ScriptedEnv(
+            [
+                [{"done": True, "reward": 1.0, "agent_deck_idx": 0}],
+                [{"done": True, "reward": -1.0, "agent_deck_idx": 0}],
+                [{"done": True, "reward": 1.0, "agent_deck_idx": 1}],
+                [{"done": True, "reward": 1.0, "agent_deck_idx": 1}],
+            ]
+        )
         wins, per_deck = run_match(agent, env, num_episodes=4, base_seed=42)
         assert wins == 3
         assert per_deck == {0: [1.0, 0.0], 1: [1.0, 1.0]}
@@ -200,11 +202,13 @@ class TestRunMatch:
     def test_reseeds_agent_per_episode(self):
         """run_match(base_seed=S) calls agent.reseed(S+i+1) before episode i."""
         agent = _RecordingAgent()
-        env = _ScriptedEnv([
-            [{"done": True, "reward": 1.0, "agent_deck_idx": 0}],
-            [{"done": True, "reward": 0.0, "agent_deck_idx": 0}],
-            [{"done": True, "reward": 1.0, "agent_deck_idx": 0}],
-        ])
+        env = _ScriptedEnv(
+            [
+                [{"done": True, "reward": 1.0, "agent_deck_idx": 0}],
+                [{"done": True, "reward": 0.0, "agent_deck_idx": 0}],
+                [{"done": True, "reward": 1.0, "agent_deck_idx": 0}],
+            ]
+        )
         run_match(agent, env, num_episodes=3, base_seed=100)
         assert agent.reseed_calls == [101, 102, 103]
 
@@ -249,11 +253,13 @@ class TestRunMatch:
         of episode N+1 — bug.
         """
         agent = _RecordingAgent()
-        env = _ScriptedEnv([
-            [{"done": True, "reward": 1.0, "agent_deck_idx": 0}],
-            [{"done": True, "reward": 0.0, "agent_deck_idx": 0}],
-            [{"done": True, "reward": 1.0, "agent_deck_idx": 0}],
-        ])
+        env = _ScriptedEnv(
+            [
+                [{"done": True, "reward": 1.0, "agent_deck_idx": 0}],
+                [{"done": True, "reward": 0.0, "agent_deck_idx": 0}],
+                [{"done": True, "reward": 1.0, "agent_deck_idx": 0}],
+            ]
+        )
         run_match(agent, env, num_episodes=3, base_seed=0)
         assert env.reset_calls == 3
         assert agent.reseed_calls == [1, 2, 3]
@@ -262,6 +268,7 @@ class TestRunMatch:
 # ---------------------------------------------------------------------------
 # evaluate — orchestration over multiple opponents
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def fake_training_env_factory():
@@ -318,9 +325,7 @@ class TestEvaluate:
         assert len(instances) == 3
         assert all(env.closed for env in instances)
 
-        for env, expected_spec in zip(
-            instances, ["greedy", "random", "model:/p/v1.pt"]
-        ):
+        for env, expected_spec in zip(instances, ["greedy", "random", "model:/p/v1.pt"]):
             assert env.kwargs["opponent"] == expected_spec
             assert env.kwargs["reward_shaping"] is False
             assert env.kwargs["seed"] == 42
@@ -393,7 +398,12 @@ class TestBuildTasks:
         tasks = _build_tasks(["a", "b"], 3)
         # Opponent A's 3 tasks come first, then opponent B's 3.
         assert [(t.opp_idx, t.episode_idx) for t in tasks] == [
-            (0, 1), (0, 2), (0, 3), (1, 1), (1, 2), (1, 3),
+            (0, 1),
+            (0, 2),
+            (0, 3),
+            (1, 1),
+            (1, 2),
+            (1, 3),
         ]
 
     def test_episodes_are_one_indexed(self):
@@ -410,12 +420,12 @@ class TestBuildTasks:
 
 class TestAggregatePartials:
     def test_groups_by_opp_idx_in_spec_order(self):
-        from yugioh_rl.eval import _PartialResult, _aggregate_partials
+        from yugioh_rl.eval import _aggregate_partials, _PartialResult
 
         partials = [
-            _PartialResult(opp_idx=1, episode_idx=1, win=True,  agent_deck_idx=0),
+            _PartialResult(opp_idx=1, episode_idx=1, win=True, agent_deck_idx=0),
             _PartialResult(opp_idx=0, episode_idx=1, win=False, agent_deck_idx=0),
-            _PartialResult(opp_idx=0, episode_idx=2, win=True,  agent_deck_idx=0),
+            _PartialResult(opp_idx=0, episode_idx=2, win=True, agent_deck_idx=0),
         ]
         results = _aggregate_partials(partials, ["random", "greedy"])
         assert len(results) == 2
@@ -435,34 +445,38 @@ class TestAggregatePartials:
         lists, breaking byte-equal parity assertions in the integration
         test.
         """
-        from yugioh_rl.eval import _PartialResult, _aggregate_partials
+        from yugioh_rl.eval import _aggregate_partials, _PartialResult
 
         # Build 4 partials for one opponent, in episode_idx order: 1,2,3,4.
         # Episodes 1, 3 used deck 0 (win, lose); episodes 2, 4 used deck 1 (lose, win).
         in_order = [
-            _PartialResult(0, 1, True,  0),
+            _PartialResult(0, 1, True, 0),
             _PartialResult(0, 2, False, 1),
             _PartialResult(0, 3, False, 0),
-            _PartialResult(0, 4, True,  1),
+            _PartialResult(0, 4, True, 1),
         ]
-        shuffled = [in_order[i] for i in (3, 0, 2, 1)]   # arbitrary worker reply order
+        shuffled = [in_order[i] for i in (3, 0, 2, 1)]  # arbitrary worker reply order
 
         a = _aggregate_partials(in_order, ["x"])
         b = _aggregate_partials(shuffled, ["x"])
 
-        assert a[0].per_deck_wins == b[0].per_deck_wins == {
-            0: [1.0, 0.0],   # deck 0: episode 1 win, episode 3 loss
-            1: [0.0, 1.0],   # deck 1: episode 2 loss, episode 4 win
-        }
+        assert (
+            a[0].per_deck_wins
+            == b[0].per_deck_wins
+            == {
+                0: [1.0, 0.0],  # deck 0: episode 1 win, episode 3 loss
+                1: [0.0, 1.0],  # deck 1: episode 2 loss, episode 4 win
+            }
+        )
 
     def test_computes_win_rate(self):
-        from yugioh_rl.eval import _PartialResult, _aggregate_partials
+        from yugioh_rl.eval import _aggregate_partials, _PartialResult
 
         partials = [
-            _PartialResult(0, 1, True,  0),
-            _PartialResult(0, 2, True,  0),
+            _PartialResult(0, 1, True, 0),
+            _PartialResult(0, 2, True, 0),
             _PartialResult(0, 3, False, 0),
-            _PartialResult(0, 4, True,  0),
+            _PartialResult(0, 4, True, 0),
         ]
         results = _aggregate_partials(partials, ["x"])
         assert results[0].wins == 3
@@ -483,6 +497,7 @@ class TestAggregatePartials:
 # ---------------------------------------------------------------------------
 # log_results_to_tensorboard — exact key strings
 # ---------------------------------------------------------------------------
+
 
 class TestLogResultsToTensorboard:
     def test_emits_top_level_and_per_deck_keys(self):
@@ -532,10 +547,14 @@ class TestLogResultsToTensorboard:
             ),
         ]
         log_results_to_tensorboard(
-            writer, results, deck_paths=["a/b/blue_eyes.ydk"], global_step=1,
+            writer,
+            results,
+            deck_paths=["a/b/blue_eyes.ydk"],
+            global_step=1,
         )
         per_deck_calls = [
-            c for c in writer.add_scalar.call_args_list
+            c
+            for c in writer.add_scalar.call_args_list
             if c[0][0] == "eval/win_rate_vs_model_run1_latest_deck_blue_eyes"
         ]
         assert len(per_deck_calls) == 1

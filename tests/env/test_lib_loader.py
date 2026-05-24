@@ -2,8 +2,6 @@
 
 import ctypes
 
-import pytest
-
 
 def test_library_loads(lib):
     """Library should load without errors."""

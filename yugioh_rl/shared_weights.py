@@ -16,6 +16,7 @@ all tensors. This avoids POSIX semaphores (``mp.Lock`` / ``mp.Value``), which
 are blocked under hardened-runtime macOS deployments. Retries are bounded
 and operationally rare given the publish rate.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -109,7 +110,7 @@ class SharedPolicyWeights:
         return {"tensors": self._tensors, "version": self._version}
 
     @classmethod
-    def from_handles(cls, handles: dict[str, Any]) -> "SharedPolicyWeights":
+    def from_handles(cls, handles: dict[str, Any]) -> SharedPolicyWeights:
         instance = cls.__new__(cls)
         instance._tensors = handles["tensors"]
         instance._version = handles["version"]

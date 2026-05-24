@@ -7,20 +7,19 @@ import pytest
 
 from tests.env.conftest import obs_from_msg as _obs_from_msg
 from yugioh_core.constants import (
-    MSG_SELECT_EFFECTYN,
-    MSG_SELECT_YESNO,
     MSG_SELECT_CARD,
+    MSG_SELECT_CHAIN,
+    MSG_SELECT_DISFIELD,
+    MSG_SELECT_EFFECTYN,
+    MSG_SELECT_IDLECMD,
+    MSG_SELECT_OPTION,
+    MSG_SELECT_PLACE,
+    MSG_SELECT_POSITION,
     MSG_SELECT_TRIBUTE,
     MSG_SELECT_UNSELECT_CARD,
-    MSG_SELECT_CHAIN,
-    MSG_SELECT_POSITION,
-    MSG_SELECT_IDLECMD,
-    MSG_SELECT_BATTLECMD,
-    MSG_SELECT_PLACE,
-    MSG_SELECT_DISFIELD,
-    MSG_SELECT_OPTION,
-    POS_FACEUP_ATTACK,
+    MSG_SELECT_YESNO,
     POS_FACEDOWN_DEFENSE,
+    POS_FACEUP_ATTACK,
 )
 from yugioh_env.action_describer import ActionDescriber
 
@@ -49,16 +48,18 @@ def card_db():
 
 
 def test_effectyn(card_db):
-    obs = _obs_from_msg({
-        "msg_type": MSG_SELECT_EFFECTYN,
-        "player": 0,
-        "code": 89631139,
-        "controller": 0,
-        "location": 2,
-        "sequence": 0,
-        "position": 0,
-        "desc": 0,
-    })
+    obs = _obs_from_msg(
+        {
+            "msg_type": MSG_SELECT_EFFECTYN,
+            "player": 0,
+            "code": 89631139,
+            "controller": 0,
+            "location": 2,
+            "sequence": 0,
+            "position": 0,
+            "desc": 0,
+        }
+    )
     describer = ActionDescriber(card_db, sys_strings=None)
     prompt = describer.describe_prompt(obs)
     assert prompt["type"] == "effect_yn"
@@ -68,27 +69,31 @@ def test_effectyn(card_db):
 
 
 def test_effectyn_preserves_nonzero_desc(card_db):
-    obs = _obs_from_msg({
-        "msg_type": MSG_SELECT_EFFECTYN,
-        "player": 0,
-        "code": 89631139,
-        "controller": 0,
-        "location": 2,
-        "sequence": 0,
-        "position": 0,
-        "desc": 0x55,
-    })
+    obs = _obs_from_msg(
+        {
+            "msg_type": MSG_SELECT_EFFECTYN,
+            "player": 0,
+            "code": 89631139,
+            "controller": 0,
+            "location": 2,
+            "sequence": 0,
+            "position": 0,
+            "desc": 0x55,
+        }
+    )
     describer = ActionDescriber(card_db, sys_strings=None)
     prompt = describer.describe_prompt(obs)
     assert prompt["desc"] == 0x55
 
 
 def test_yesno(card_db):
-    obs = _obs_from_msg({
-        "msg_type": MSG_SELECT_YESNO,
-        "player": 0,
-        "desc": 0,
-    })
+    obs = _obs_from_msg(
+        {
+            "msg_type": MSG_SELECT_YESNO,
+            "player": 0,
+            "desc": 0,
+        }
+    )
     describer = ActionDescriber(card_db, sys_strings=None)
     prompt = describer.describe_prompt(obs)
     assert prompt["type"] == "yes_no"
@@ -97,28 +102,32 @@ def test_yesno(card_db):
 
 
 def test_yesno_preserves_nonzero_desc(card_db):
-    obs = _obs_from_msg({
-        "msg_type": MSG_SELECT_YESNO,
-        "player": 0,
-        "desc": 0x1234,
-    })
+    obs = _obs_from_msg(
+        {
+            "msg_type": MSG_SELECT_YESNO,
+            "player": 0,
+            "desc": 0x1234,
+        }
+    )
     describer = ActionDescriber(card_db, sys_strings=None)
     prompt = describer.describe_prompt(obs)
     assert prompt["desc"] == 0x1234
 
 
 def test_select_card(card_db):
-    obs = _obs_from_msg({
-        "msg_type": MSG_SELECT_CARD,
-        "player": 0,
-        "cancelable": 0,
-        "min": 1,
-        "max": 2,
-        "cards": [
-            {"code": 89631139, "controller": 0, "location": 2, "sequence": 0, "subsequence": 0},
-            {"code": 46986414, "controller": 0, "location": 2, "sequence": 1, "subsequence": 0},
-        ],
-    })
+    obs = _obs_from_msg(
+        {
+            "msg_type": MSG_SELECT_CARD,
+            "player": 0,
+            "cancelable": 0,
+            "min": 1,
+            "max": 2,
+            "cards": [
+                {"code": 89631139, "controller": 0, "location": 2, "sequence": 0, "subsequence": 0},
+                {"code": 46986414, "controller": 0, "location": 2, "sequence": 1, "subsequence": 0},
+            ],
+        }
+    )
     describer = ActionDescriber(card_db, sys_strings=None)
     prompt = describer.describe_prompt(obs)
     assert prompt["type"] == "select_card"
@@ -129,18 +138,20 @@ def test_select_card(card_db):
 
 
 def test_select_card_with_selected(card_db):
-    obs = _obs_from_msg({
-        "msg_type": MSG_SELECT_CARD,
-        "player": 0,
-        "cancelable": 0,
-        "min": 2,
-        "max": 2,
-        "_selected": [0],
-        "cards": [
-            {"code": 89631139, "controller": 0, "location": 2, "sequence": 0, "subsequence": 0},
-            {"code": 46986414, "controller": 0, "location": 2, "sequence": 1, "subsequence": 0},
-        ],
-    })
+    obs = _obs_from_msg(
+        {
+            "msg_type": MSG_SELECT_CARD,
+            "player": 0,
+            "cancelable": 0,
+            "min": 2,
+            "max": 2,
+            "_selected": [0],
+            "cards": [
+                {"code": 89631139, "controller": 0, "location": 2, "sequence": 0, "subsequence": 0},
+                {"code": 46986414, "controller": 0, "location": 2, "sequence": 1, "subsequence": 0},
+            ],
+        }
+    )
     describer = ActionDescriber(card_db, sys_strings=None)
     prompt = describer.describe_prompt(obs)
     assert prompt["type"] == "select_card"
@@ -148,17 +159,31 @@ def test_select_card_with_selected(card_db):
 
 
 def test_tribute(card_db):
-    obs = _obs_from_msg({
-        "msg_type": MSG_SELECT_TRIBUTE,
-        "player": 0,
-        "cancelable": 1,
-        "min": 2,
-        "max": 2,
-        "cards": [
-            {"code": 89631139, "controller": 0, "location": 4, "sequence": 0, "release_param": 2},
-            {"code": 46986414, "controller": 0, "location": 4, "sequence": 1, "release_param": 1},
-        ],
-    })
+    obs = _obs_from_msg(
+        {
+            "msg_type": MSG_SELECT_TRIBUTE,
+            "player": 0,
+            "cancelable": 1,
+            "min": 2,
+            "max": 2,
+            "cards": [
+                {
+                    "code": 89631139,
+                    "controller": 0,
+                    "location": 4,
+                    "sequence": 0,
+                    "release_param": 2,
+                },
+                {
+                    "code": 46986414,
+                    "controller": 0,
+                    "location": 4,
+                    "sequence": 1,
+                    "release_param": 1,
+                },
+            ],
+        }
+    )
     describer = ActionDescriber(card_db, sys_strings=None)
     prompt = describer.describe_prompt(obs)
     assert prompt["type"] == "tribute"
@@ -175,18 +200,32 @@ def test_tribute(card_db):
 
 def test_tribute_with_selected(card_db):
     """A single monster with release_param=2 satisfies min_release=2."""
-    obs = _obs_from_msg({
-        "msg_type": MSG_SELECT_TRIBUTE,
-        "player": 0,
-        "cancelable": 0,
-        "min": 2,
-        "max": 2,
-        "_selected": [0],
-        "cards": [
-            {"code": 89631139, "controller": 0, "location": 4, "sequence": 0, "release_param": 2},
-            {"code": 46986414, "controller": 0, "location": 4, "sequence": 1, "release_param": 1},
-        ],
-    })
+    obs = _obs_from_msg(
+        {
+            "msg_type": MSG_SELECT_TRIBUTE,
+            "player": 0,
+            "cancelable": 0,
+            "min": 2,
+            "max": 2,
+            "_selected": [0],
+            "cards": [
+                {
+                    "code": 89631139,
+                    "controller": 0,
+                    "location": 4,
+                    "sequence": 0,
+                    "release_param": 2,
+                },
+                {
+                    "code": 46986414,
+                    "controller": 0,
+                    "location": 4,
+                    "sequence": 1,
+                    "release_param": 1,
+                },
+            ],
+        }
+    )
     describer = ActionDescriber(card_db, sys_strings=None)
     prompt = describer.describe_prompt(obs)
     assert prompt["type"] == "tribute"
@@ -195,18 +234,20 @@ def test_tribute_with_selected(card_db):
 
 
 def test_unselect_card(card_db):
-    obs = _obs_from_msg({
-        "msg_type": MSG_SELECT_UNSELECT_CARD,
-        "player": 0,
-        "finishable": 1,
-        "cancelable": 0,
-        "min": 1,
-        "max": 3,
-        "selectable": [
-            {"code": 89631139, "controller": 0, "location": 2, "sequence": 0, "subsequence": 0},
-        ],
-        "unselectable": [],
-    })
+    obs = _obs_from_msg(
+        {
+            "msg_type": MSG_SELECT_UNSELECT_CARD,
+            "player": 0,
+            "finishable": 1,
+            "cancelable": 0,
+            "min": 1,
+            "max": 3,
+            "selectable": [
+                {"code": 89631139, "controller": 0, "location": 2, "sequence": 0, "subsequence": 0},
+            ],
+            "unselectable": [],
+        }
+    )
     describer = ActionDescriber(card_db, sys_strings=None)
     prompt = describer.describe_prompt(obs)
     assert prompt["type"] == "select_card"
@@ -217,18 +258,27 @@ def test_unselect_card(card_db):
 
 
 def test_chain(card_db):
-    obs = _obs_from_msg({
-        "msg_type": MSG_SELECT_CHAIN,
-        "player": 0,
-        "spe_count": 0,
-        "forced": 0,
-        "hint_timing": 0,
-        "other_timing": 0,
-        "chains": [
-            {"code": 46986414, "controller": 0, "location": 8, "sequence": 0,
-             "position": 0, "desc": 0, "client_mode": 0},
-        ],
-    })
+    obs = _obs_from_msg(
+        {
+            "msg_type": MSG_SELECT_CHAIN,
+            "player": 0,
+            "spe_count": 0,
+            "forced": 0,
+            "hint_timing": 0,
+            "other_timing": 0,
+            "chains": [
+                {
+                    "code": 46986414,
+                    "controller": 0,
+                    "location": 8,
+                    "sequence": 0,
+                    "position": 0,
+                    "desc": 0,
+                    "client_mode": 0,
+                },
+            ],
+        }
+    )
     describer = ActionDescriber(card_db, sys_strings=None)
     prompt = describer.describe_prompt(obs)
     assert prompt["type"] == "chain_link"
@@ -236,30 +286,41 @@ def test_chain(card_db):
 
 
 def test_chain_forced(card_db):
-    obs = _obs_from_msg({
-        "msg_type": MSG_SELECT_CHAIN,
-        "player": 0,
-        "spe_count": 0,
-        "forced": 1,
-        "hint_timing": 0,
-        "other_timing": 0,
-        "chains": [
-            {"code": 46986414, "controller": 0, "location": 8, "sequence": 0,
-             "position": 0, "desc": 0, "client_mode": 0},
-        ],
-    })
+    obs = _obs_from_msg(
+        {
+            "msg_type": MSG_SELECT_CHAIN,
+            "player": 0,
+            "spe_count": 0,
+            "forced": 1,
+            "hint_timing": 0,
+            "other_timing": 0,
+            "chains": [
+                {
+                    "code": 46986414,
+                    "controller": 0,
+                    "location": 8,
+                    "sequence": 0,
+                    "position": 0,
+                    "desc": 0,
+                    "client_mode": 0,
+                },
+            ],
+        }
+    )
     describer = ActionDescriber(card_db, sys_strings=None)
     prompt = describer.describe_prompt(obs)
     assert prompt["forced"] is True
 
 
 def test_position(card_db):
-    obs = _obs_from_msg({
-        "msg_type": MSG_SELECT_POSITION,
-        "player": 0,
-        "code": 89631139,
-        "positions": POS_FACEUP_ATTACK | POS_FACEDOWN_DEFENSE,
-    })
+    obs = _obs_from_msg(
+        {
+            "msg_type": MSG_SELECT_POSITION,
+            "player": 0,
+            "code": 89631139,
+            "positions": POS_FACEUP_ATTACK | POS_FACEDOWN_DEFENSE,
+        }
+    )
     describer = ActionDescriber(card_db, sys_strings=None)
     prompt = describer.describe_prompt(obs)
     assert prompt["type"] == "position"
@@ -268,19 +329,21 @@ def test_position(card_db):
 
 
 def test_idle_cmd(card_db):
-    obs = _obs_from_msg({
-        "msg_type": MSG_SELECT_IDLECMD,
-        "player": 0,
-        "summonable": [],
-        "sp_summonable": [],
-        "repositionable": [],
-        "mset": [],
-        "sset": [],
-        "activatable": [],
-        "to_bp": 0,
-        "to_ep": 1,
-        "shuffle_hand": 0,
-    })
+    obs = _obs_from_msg(
+        {
+            "msg_type": MSG_SELECT_IDLECMD,
+            "player": 0,
+            "summonable": [],
+            "sp_summonable": [],
+            "repositionable": [],
+            "mset": [],
+            "sset": [],
+            "activatable": [],
+            "to_bp": 0,
+            "to_ep": 1,
+            "shuffle_hand": 0,
+        }
+    )
     describer = ActionDescriber(card_db, sys_strings=None)
     prompt = describer.describe_prompt(obs)
     assert prompt["type"] == "idle_cmd"
@@ -295,12 +358,14 @@ def test_unknown_msg_type(card_db):
 
 
 def test_place(card_db):
-    obs = _obs_from_msg({
-        "msg_type": MSG_SELECT_PLACE,
-        "player": 0,
-        "count": 1,
-        "field_mask": 0x1F,  # 5 monster zones
-    })
+    obs = _obs_from_msg(
+        {
+            "msg_type": MSG_SELECT_PLACE,
+            "player": 0,
+            "count": 1,
+            "field_mask": 0x1F,  # 5 monster zones
+        }
+    )
     describer = ActionDescriber(card_db, sys_strings=None)
     prompt = describer.describe_prompt(obs)
     assert prompt["type"] == "place"
@@ -308,12 +373,14 @@ def test_place(card_db):
 
 
 def test_disfield_maps_to_place(card_db):
-    obs = _obs_from_msg({
-        "msg_type": MSG_SELECT_DISFIELD,
-        "player": 0,
-        "count": 1,
-        "field_mask": 0x1F,
-    })
+    obs = _obs_from_msg(
+        {
+            "msg_type": MSG_SELECT_DISFIELD,
+            "player": 0,
+            "count": 1,
+            "field_mask": 0x1F,
+        }
+    )
     describer = ActionDescriber(card_db, sys_strings=None)
     prompt = describer.describe_prompt(obs)
     assert prompt["type"] == "place"
@@ -323,20 +390,32 @@ def test_prompt_type_map_includes_announce_kinds():
     """describe_prompt returns the new ActionMeta-aligned `type` strings for the
     five prompts that previously fell through to 'unknown'."""
     from yugioh_core.constants import (
-        MSG_ANNOUNCE_NUMBER, MSG_ANNOUNCE_RACE, MSG_ANNOUNCE_ATTRIB,
-        MSG_ROCK_PAPER_SCISSORS, MSG_SELECT_COUNTER, MSG_SELECT_OPTION,
+        MSG_ANNOUNCE_ATTRIB,
+        MSG_ANNOUNCE_NUMBER,
+        MSG_ANNOUNCE_RACE,
+        MSG_ROCK_PAPER_SCISSORS,
+        MSG_SELECT_COUNTER,
     )
 
     class _StubDB:
-        def get_card_name(self, code): return f"Card{code}"
+        def get_card_name(self, code):
+            return f"Card{code}"
 
     cases = [
         ({"msg_type": MSG_ANNOUNCE_NUMBER, "player": 0, "numbers": [3]}, "number"),
         ({"msg_type": MSG_ANNOUNCE_RACE, "player": 0, "available": 0x1}, "race"),
         ({"msg_type": MSG_ANNOUNCE_ATTRIB, "player": 0, "available": 0x1}, "attribute"),
         ({"msg_type": MSG_ROCK_PAPER_SCISSORS, "player": 0}, "rps"),
-        ({"msg_type": MSG_SELECT_COUNTER, "player": 0, "counter_type": 0x1,
-          "count": 1, "cards": []}, "counter"),
+        (
+            {
+                "msg_type": MSG_SELECT_COUNTER,
+                "player": 0,
+                "counter_type": 0x1,
+                "count": 1,
+                "cards": [],
+            },
+            "counter",
+        ),
         ({"msg_type": MSG_SELECT_OPTION, "player": 0, "options": [0x1]}, "option"),
     ]
     for msg, expected_type in cases:
@@ -350,11 +429,13 @@ def test_prompt_type_map_includes_announce_kinds():
 
 def test_yesno_resolves_sysstring_to_prompt_text(card_db):
     sys_strings = {0x42: "Activate effect?"}
-    obs = _obs_from_msg({
-        "msg_type": MSG_SELECT_YESNO,
-        "player": 0,
-        "desc": 0x42,
-    })
+    obs = _obs_from_msg(
+        {
+            "msg_type": MSG_SELECT_YESNO,
+            "player": 0,
+            "desc": 0x42,
+        }
+    )
     describer = ActionDescriber(card_db, sys_strings=sys_strings)
     prompt = describer.describe_prompt(obs)
     assert prompt["desc"] == 0x42
@@ -362,11 +443,13 @@ def test_yesno_resolves_sysstring_to_prompt_text(card_db):
 
 
 def test_yesno_zero_desc_yields_null_prompt_text(card_db):
-    obs = _obs_from_msg({
-        "msg_type": MSG_SELECT_YESNO,
-        "player": 0,
-        "desc": 0,
-    })
+    obs = _obs_from_msg(
+        {
+            "msg_type": MSG_SELECT_YESNO,
+            "player": 0,
+            "desc": 0,
+        }
+    )
     describer = ActionDescriber(card_db, sys_strings={0x42: "Activate?"})
     prompt = describer.describe_prompt(obs)
     assert prompt["desc"] == 0
@@ -374,22 +457,26 @@ def test_yesno_zero_desc_yields_null_prompt_text(card_db):
 
 
 def test_yesno_unknown_desc_yields_null_prompt_text(card_db):
-    obs = _obs_from_msg({
-        "msg_type": MSG_SELECT_YESNO,
-        "player": 0,
-        "desc": 0x999,
-    })
+    obs = _obs_from_msg(
+        {
+            "msg_type": MSG_SELECT_YESNO,
+            "player": 0,
+            "desc": 0x999,
+        }
+    )
     describer = ActionDescriber(card_db, sys_strings={0x42: "Activate?"})
     prompt = describer.describe_prompt(obs)
     assert prompt["prompt_text"] is None
 
 
 def test_yesno_no_resolver_yields_null_prompt_text(card_db):
-    obs = _obs_from_msg({
-        "msg_type": MSG_SELECT_YESNO,
-        "player": 0,
-        "desc": 0x42,
-    })
+    obs = _obs_from_msg(
+        {
+            "msg_type": MSG_SELECT_YESNO,
+            "player": 0,
+            "desc": 0x42,
+        }
+    )
     describer = ActionDescriber(card_db, sys_strings=None)
     prompt = describer.describe_prompt(obs)
     assert prompt["desc"] == 0x42
@@ -404,16 +491,18 @@ def test_effectyn_resolves_card_string_to_prompt_text():
         strings={(89631139, 5): "Negate the attack?"},
     )
     desc = (89631139 << 20) | 5
-    obs = _obs_from_msg({
-        "msg_type": MSG_SELECT_EFFECTYN,
-        "player": 0,
-        "code": 89631139,
-        "controller": 0,
-        "location": 2,
-        "sequence": 0,
-        "position": 0,
-        "desc": desc,
-    })
+    obs = _obs_from_msg(
+        {
+            "msg_type": MSG_SELECT_EFFECTYN,
+            "player": 0,
+            "code": 89631139,
+            "controller": 0,
+            "location": 2,
+            "sequence": 0,
+            "position": 0,
+            "desc": desc,
+        }
+    )
     describer = ActionDescriber(card_db, sys_strings={})
     prompt = describer.describe_prompt(obs)
     assert prompt["desc"] == desc
@@ -425,16 +514,18 @@ def test_effectyn_substitutes_card_name_and_location_in_template(card_db):
     `location: 2` is LOCATION_HAND."""
     sys_strings = {221: 'Activate the Trigger Effect of "%ls" from [%ls]?'}
     desc = 221
-    obs = _obs_from_msg({
-        "msg_type": MSG_SELECT_EFFECTYN,
-        "player": 0,
-        "code": 89631139,
-        "controller": 0,
-        "location": 2,
-        "sequence": 0,
-        "position": 0,
-        "desc": desc,
-    })
+    obs = _obs_from_msg(
+        {
+            "msg_type": MSG_SELECT_EFFECTYN,
+            "player": 0,
+            "code": 89631139,
+            "controller": 0,
+            "location": 2,
+            "sequence": 0,
+            "position": 0,
+            "desc": desc,
+        }
+    )
     describer = ActionDescriber(card_db, sys_strings=sys_strings)
     prompt = describer.describe_prompt(obs)
     assert prompt["prompt_text"] == (
@@ -446,11 +537,13 @@ def test_yesno_with_single_placeholder_template_drops_to_null(card_db):
     """YESNO has no card_code/location, so a `%ls` template can't be
     filled — prompt_text falls back to None so the client synthesizes."""
     sys_strings = {95: 'Use the effect of "%ls"?'}
-    obs = _obs_from_msg({
-        "msg_type": MSG_SELECT_YESNO,
-        "player": 0,
-        "desc": 95,
-    })
+    obs = _obs_from_msg(
+        {
+            "msg_type": MSG_SELECT_YESNO,
+            "player": 0,
+            "desc": 95,
+        }
+    )
     describer = ActionDescriber(card_db, sys_strings=sys_strings)
     prompt = describer.describe_prompt(obs)
     assert prompt["prompt_text"] is None
@@ -459,16 +552,18 @@ def test_yesno_with_single_placeholder_template_drops_to_null(card_db):
 def test_prompt_text_drops_to_null_when_format_specifier_remains(card_db):
     """A `%d`-bearing template we don't know how to fill yields None."""
     sys_strings = {204: 'Remove %d "%ls"'}
-    obs = _obs_from_msg({
-        "msg_type": MSG_SELECT_EFFECTYN,
-        "player": 0,
-        "code": 89631139,
-        "controller": 0,
-        "location": 2,
-        "sequence": 0,
-        "position": 0,
-        "desc": 204,
-    })
+    obs = _obs_from_msg(
+        {
+            "msg_type": MSG_SELECT_EFFECTYN,
+            "player": 0,
+            "code": 89631139,
+            "controller": 0,
+            "location": 2,
+            "sequence": 0,
+            "position": 0,
+            "desc": 204,
+        }
+    )
     describer = ActionDescriber(card_db, sys_strings=sys_strings)
     prompt = describer.describe_prompt(obs)
     assert prompt["prompt_text"] is None

@@ -1,4 +1,5 @@
 """Integration tests for ActorLearnerVecEnv."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -7,12 +8,11 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
+from tests.rl.conftest import requires_engine
 from yugioh_env.deck_parser import parse_ydk
 from yugioh_rl.actor_learner import ActorLearnerVecEnv
 from yugioh_rl.config import TrainingConfig
 from yugioh_rl.network import YuGiOhNet
-
-from tests.rl.conftest import requires_engine
 
 
 @pytest.fixture
@@ -104,8 +104,12 @@ def test_rollout_includes_final_obs_and_infos(deck_path: str) -> None:
     try:
         rollouts = vec.collect_rollouts()
         for r in rollouts:
-            for k in ("final_obs_cards", "final_obs_global",
-                      "final_obs_actions", "final_action_mask"):
+            for k in (
+                "final_obs_cards",
+                "final_obs_global",
+                "final_obs_actions",
+                "final_action_mask",
+            ):
                 assert k in r
             assert r["final_obs_cards"].shape == r["obs_cards"][0].shape
             assert "infos" in r

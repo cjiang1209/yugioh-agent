@@ -110,9 +110,7 @@ def test_compare_groups_filter_excludes_entries(make_entry):
         make_entry("a1", "none", 42, 0.5, 0.4),
         make_entry("b1", "lstm", 42, 0.6, 0.5),
     ]
-    result = compare_groups(
-        entries, by_field="rnn_type", filter={"rnn_type": "lstm"}
-    )
+    result = compare_groups(entries, by_field="rnn_type", filter={"rnn_type": "lstm"})
     assert result.skip_reason is not None
 
 
@@ -165,8 +163,6 @@ def test_compare_filter_matches_bool_feature(make_entry):
 
 def test_compare_filter_excluded_all_returns_filter_specific_reason(make_entry):
     entries = [make_entry("a", "lstm", 42, 0.6, 0.5)]
-    result = compare_groups(
-        entries, by_field="rnn_type", filter={"rnn_type": "lstm"}
-    )
+    result = compare_groups(entries, by_field="rnn_type", filter={"rnn_type": "lstm"})
     assert result.skip_reason is not None
     assert "filter" in result.skip_reason

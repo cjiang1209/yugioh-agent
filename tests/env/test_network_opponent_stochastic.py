@@ -1,4 +1,5 @@
 """Tests for NetworkOpponent stochastic-sampling mode."""
+
 from __future__ import annotations
 
 import pytest

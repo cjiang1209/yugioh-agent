@@ -8,8 +8,8 @@ Sections:
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 from yugioh_leaderboard.compare import compare_groups, format_comparison_table
 from yugioh_leaderboard.entry import Entry, atomic_write_text, now_iso
@@ -104,7 +104,5 @@ def render_index(entries: Iterable[Entry], panel: PanelConfig) -> str:
     return "\n".join(parts)
 
 
-def write_index_file(
-    path: Path | str, entries: Iterable[Entry], panel: PanelConfig
-) -> None:
+def write_index_file(path: Path | str, entries: Iterable[Entry], panel: PanelConfig) -> None:
     atomic_write_text(path, render_index(entries, panel))

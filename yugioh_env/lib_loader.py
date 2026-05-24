@@ -1,17 +1,16 @@
 """Load libocgcore shared library and set up function signatures."""
 
 import ctypes
+import platform
 from ctypes import (
+    POINTER,
+    c_char_p,
     c_int,
     c_uint8,
     c_uint32,
     c_void_p,
-    c_char_p,
-    POINTER,
 )
 from pathlib import Path
-import platform
-import sys
 
 from yugioh_env.core_types import (
     OCG_Duel,
@@ -35,8 +34,7 @@ def _find_library() -> Path:
         if p.exists():
             return p
     raise FileNotFoundError(
-        f"libocgcore.{ext} not found. Run: make build\n"
-        f"Searched: {[str(c) for c in candidates]}"
+        f"libocgcore.{ext} not found. Run: make build\nSearched: {[str(c) for c in candidates]}"
     )
 
 
@@ -105,7 +103,9 @@ def _configure_signatures(lib: ctypes.CDLL) -> None:
 
     # void* OCG_DuelQueryLocation(OCG_Duel duel, uint32_t* length, const OCG_QueryInfo* info)
     lib.OCG_DuelQueryLocation.argtypes = [
-        OCG_Duel, POINTER(c_uint32), POINTER(OCG_QueryInfo),
+        OCG_Duel,
+        POINTER(c_uint32),
+        POINTER(OCG_QueryInfo),
     ]
     lib.OCG_DuelQueryLocation.restype = c_void_p
 

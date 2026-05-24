@@ -4,24 +4,26 @@ SharedPoolState owns cross-process shared memory (total_adds counter +
 K SharedPolicyWeights slots). OpponentPool is the per-process consumer:
 sampling, scripted->snapshot transitions, resume reconstruction.
 """
+
 from __future__ import annotations
 
 import random as stdlib_random
 import re
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Literal, get_args
+from typing import Any, Literal, get_args
 
 import torch
 import torch.nn as nn
 
-from yugioh_rl.shared_weights import SharedPolicyWeights
-from yugioh_rl.elo import expected_score, update as elo_update
 from yugioh_env.opponent import (
     NetworkOpponent,
     Opponent,
     make_opponent,
 )
-
+from yugioh_rl.elo import expected_score
+from yugioh_rl.elo import update as elo_update
+from yugioh_rl.shared_weights import SharedPolicyWeights
 
 _CHECKPOINT_RE = re.compile(r"^checkpoint_(\d+)\.pt$")
 
@@ -76,7 +78,7 @@ class SharedPoolState:
         self._n_games = n_games_tensor
 
     @classmethod
-    def create(cls, pool_size: int, network: nn.Module) -> "SharedPoolState":
+    def create(cls, pool_size: int, network: nn.Module) -> SharedPoolState:
         """Trainer-side: allocate shared memory for counter + K weight slots + Elo state."""
         if pool_size < 1:
             raise ValueError(f"pool_size must be >= 1, got {pool_size}")
@@ -92,7 +94,7 @@ class SharedPoolState:
         return cls(total_adds, slots, agent_rating, ratings, n_games)
 
     @classmethod
-    def from_handles(cls, handles: dict[str, Any]) -> "SharedPoolState":
+    def from_handles(cls, handles: dict[str, Any]) -> SharedPoolState:
         """Worker-side: attach to existing shared memory."""
         return cls(
             total_adds_tensor=handles["total_adds"],
@@ -166,9 +168,7 @@ class OpponentPool:
         sampling: Sampling = "uniform",
     ) -> None:
         if sampling not in _VALID_SAMPLING:
-            raise ValueError(
-                f"sampling must be one of {_VALID_SAMPLING}, got {sampling!r}"
-            )
+            raise ValueError(f"sampling must be one of {_VALID_SAMPLING}, got {sampling!r}")
         self._shared = shared
         self._network_factory = network_factory
         self._temperature = temperature
@@ -186,7 +186,7 @@ class OpponentPool:
         temperature: float = 1.0,
         sampling: Sampling = "uniform",
         rng: stdlib_random.Random | None = None,
-    ) -> "OpponentPool":
+    ) -> OpponentPool:
         """Trainer-side: allocate shared memory, seed slot 0 with initial opponent."""
         # Build a template network to size the SharedPolicyWeights slots.
         template = network_factory()
@@ -211,7 +211,7 @@ class OpponentPool:
         temperature: float = 1.0,
         sampling: Sampling = "uniform",
         rng: stdlib_random.Random | None = None,
-    ) -> "OpponentPool":
+    ) -> OpponentPool:
         """Worker-side: attach to existing SharedPoolState via handles dict.
 
         If slot 0 still holds the initial scripted opponent (no snapshot
@@ -243,7 +243,7 @@ class OpponentPool:
         temperature: float = 1.0,
         sampling: Sampling = "uniform",
         rng: stdlib_random.Random | None = None,
-    ) -> "OpponentPool":
+    ) -> OpponentPool:
         """Trainer-side construction from disk checkpoints.
 
         Replays add_snapshot in chronological order to reconstruct the pool
@@ -259,10 +259,7 @@ class OpponentPool:
             rng=rng,
         )
 
-        aligned = [
-            n for n in _find_numbered_checkpoints(checkpoint_dir)
-            if n % save_interval == 0
-        ]
+        aligned = [n for n in _find_numbered_checkpoints(checkpoint_dir) if n % save_interval == 0]
         recent = aligned[-pool_size:]
 
         if len(recent) >= pool_size:

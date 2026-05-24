@@ -5,7 +5,6 @@ from __future__ import annotations
 import multiprocessing as mp
 import os
 import random as stdlib_random
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -33,6 +32,7 @@ def parse_deck_pool(deck_paths: list[str]) -> list[DeckDict]:
     can be sent to TrainingEnv workers without further file I/O.
     """
     from yugioh_env.deck_parser import parse_ydk
+
     return [parse_ydk(p) for p in deck_paths]
 
 
@@ -41,19 +41,23 @@ def _obs_to_numpy(obs) -> dict[str, np.ndarray]:
     return {
         "cards": (
             np.array(obs.cards, dtype=np.uint8).reshape(MAX_CARDS, CARD_FEATURES)
-            if obs.cards else np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8)
+            if obs.cards
+            else np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8)
         ),
         "global_state": (
             np.array(obs.global_state, dtype=np.uint8).reshape(GLOBAL_FEATURES)
-            if obs.global_state else np.zeros(GLOBAL_FEATURES, dtype=np.uint8)
+            if obs.global_state
+            else np.zeros(GLOBAL_FEATURES, dtype=np.uint8)
         ),
         "actions": (
             np.array(obs.actions, dtype=np.uint8).reshape(MAX_ACTIONS, ACTION_FEATURES)
-            if obs.actions else np.zeros((MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8)
+            if obs.actions
+            else np.zeros((MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8)
         ),
         "action_mask": (
             np.array(obs.action_mask, dtype=np.int8).reshape(MAX_ACTIONS)
-            if obs.action_mask else np.zeros(MAX_ACTIONS, dtype=np.int8)
+            if obs.action_mask
+            else np.zeros(MAX_ACTIONS, dtype=np.int8)
         ),
     }
 
@@ -84,8 +88,8 @@ class TrainingEnv:
         opponent_device: str | None = None,
         opponent_pool_handles: dict | None = None,
         opponent_pool_temperature: float = 1.0,
-        opponent_pool_sampling: "Sampling" = "uniform",
-        opponent_pool_config: "TrainingConfig | None" = None,
+        opponent_pool_sampling: Sampling = "uniform",
+        opponent_pool_config: TrainingConfig | None = None,
     ) -> None:
         if not deck_pool:
             raise ValueError("deck_pool must not be empty")
@@ -337,8 +341,8 @@ class SubprocVecEnv:
         opponent_device: str | None = None,
         opponent_pool_handles: dict | None = None,
         opponent_pool_temperature: float = 1.0,
-        opponent_pool_sampling: "Sampling" = "uniform",
-        opponent_pool_config: "TrainingConfig | None" = None,
+        opponent_pool_sampling: Sampling = "uniform",
+        opponent_pool_config: TrainingConfig | None = None,
     ) -> None:
         self.num_envs = num_envs
         self._closed = False
@@ -377,7 +381,9 @@ class SubprocVecEnv:
         results = [remote.recv() for remote in self._remotes]
         return self._stack_obs(results)
 
-    def step(self, actions: np.ndarray) -> tuple[dict[str, np.ndarray], np.ndarray, np.ndarray, list[dict]]:
+    def step(
+        self, actions: np.ndarray
+    ) -> tuple[dict[str, np.ndarray], np.ndarray, np.ndarray, list[dict]]:
         """Step all environments with the given actions.
 
         Returns the **terminal** observation for envs that finished this
@@ -440,10 +446,7 @@ class SubprocVecEnv:
 
     def _stack_obs(self, obs_list: list[dict[str, np.ndarray]]) -> dict[str, np.ndarray]:
         """Stack a list of observation dicts into batched arrays."""
-        return {
-            key: np.stack([obs[key] for obs in obs_list])
-            for key in obs_list[0]
-        }
+        return {key: np.stack([obs[key] for obs in obs_list]) for key in obs_list[0]}
 
     def close(self) -> None:
         if self._closed:

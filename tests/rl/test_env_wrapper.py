@@ -7,6 +7,7 @@ draws are a pure function of ``(seed, episode_count)``.
 
 These tests are engine-gated (they instantiate a real ``TrainingEnv``).
 """
+
 from __future__ import annotations
 
 import random
@@ -15,9 +16,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from yugioh_rl.env_wrapper import parse_deck_pool
-
 from tests.rl.conftest import requires_engine
+from yugioh_rl.env_wrapper import parse_deck_pool
 
 
 def _make_deck_pool() -> list[dict[str, list[int]]]:
@@ -36,8 +36,11 @@ def test_step_no_auto_reset_on_done() -> None:
 
     deck_pool = _make_deck_pool()
     env = TrainingEnv(
-        deck_pool=deck_pool, opponent="random",
-        reward_shaping=False, seed=42, agent_player="first",
+        deck_pool=deck_pool,
+        opponent="random",
+        reward_shaping=False,
+        seed=42,
+        agent_player="first",
     )
     try:
         obs = env.reset()
@@ -69,8 +72,11 @@ def test_reset_explicit_advances_counter() -> None:
 
     deck_pool = _make_deck_pool()
     env = TrainingEnv(
-        deck_pool=deck_pool, opponent="random",
-        reward_shaping=False, seed=42, agent_player="first",
+        deck_pool=deck_pool,
+        opponent="random",
+        reward_shaping=False,
+        seed=42,
+        agent_player="first",
     )
     try:
         env.reset()
@@ -91,12 +97,18 @@ def test_reset_with_episode_idx_addresses_specific_episode() -> None:
     deck_pool = _make_deck_pool()
 
     env_seq = TrainingEnv(
-        deck_pool=deck_pool, opponent="random",
-        reward_shaping=False, seed=42, agent_player="random",
+        deck_pool=deck_pool,
+        opponent="random",
+        reward_shaping=False,
+        seed=42,
+        agent_player="random",
     )
     env_addr = TrainingEnv(
-        deck_pool=deck_pool, opponent="random",
-        reward_shaping=False, seed=42, agent_player="random",
+        deck_pool=deck_pool,
+        opponent="random",
+        reward_shaping=False,
+        seed=42,
+        agent_player="random",
     )
     try:
         # env_seq: advance to episode 3 by sequential resets (no playing —
@@ -128,8 +140,11 @@ def test_reset_with_episode_idx_resequences() -> None:
 
     deck_pool = _make_deck_pool()
     env = TrainingEnv(
-        deck_pool=deck_pool, opponent="random",
-        reward_shaping=False, seed=42, agent_player="random",
+        deck_pool=deck_pool,
+        opponent="random",
+        reward_shaping=False,
+        seed=42,
+        agent_player="random",
     )
     try:
         env.reset(episode_idx=5)
@@ -156,8 +171,11 @@ def test_deck_rng_reseeded_per_episode() -> None:
     deck_pool = _make_deck_pool()
     seed = 42
     env = TrainingEnv(
-        deck_pool=deck_pool, opponent="random",
-        reward_shaping=False, seed=seed, agent_player="first",
+        deck_pool=deck_pool,
+        opponent="random",
+        reward_shaping=False,
+        seed=seed,
+        agent_player="first",
     )
     try:
         env.reset(episode_idx=7)

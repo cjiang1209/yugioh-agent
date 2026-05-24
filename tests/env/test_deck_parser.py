@@ -1,7 +1,5 @@
 """Test .ydk deck file parser."""
 
-import pytest
-
 from yugioh_env.deck_parser import parse_ydk
 
 

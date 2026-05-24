@@ -6,22 +6,21 @@ import logging
 import os
 import random as stdlib_random
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from openenv.core.env_server.interfaces import Environment
-from openenv.core.env_server.types import Observation
 
-from yugioh_env.action_space import ActionMapper
 from yugioh_core.card_database import CardDatabase
-from yugioh_core.encoding import MAX_ACTIONS
-from yugioh_env.event_logger import FieldTracker, format_events
 from yugioh_core.constants import (
-    LOCATION_HAND,
-    LOCATION_MZONE,
-    LOCATION_SZONE,
-    LOCATION_GRAVE,
-    LOCATION_BANISHED,
-    LOCATION_EXTRA,
+    MSG_SELECT_CARD,
+    MSG_SELECT_CHAIN,
+    MSG_SELECT_DISFIELD,
+    MSG_SELECT_EFFECTYN,
+    MSG_SELECT_PLACE,
+    MSG_SELECT_POSITION,
+    MSG_SELECT_TRIBUTE,
+    MSG_SELECT_UNSELECT_CARD,
+    MSG_SELECT_YESNO,
     PHASE_BATTLE,
     PHASE_BATTLE_START,
     PHASE_BATTLE_STEP,
@@ -33,20 +32,13 @@ from yugioh_core.constants import (
     PHASE_MAIN2,
     PHASE_STANDBY,
     SELECT_MSGS,
-    MSG_WIN,
-    MSG_SELECT_EFFECTYN,
-    MSG_SELECT_YESNO,
-    MSG_SELECT_CARD,
-    MSG_SELECT_TRIBUTE,
-    MSG_SELECT_UNSELECT_CARD,
-    MSG_SELECT_CHAIN,
-    MSG_SELECT_POSITION,
-    MSG_SELECT_PLACE,
-    MSG_SELECT_DISFIELD,
 )
+from yugioh_core.encoding import MAX_ACTIONS
+from yugioh_env.action_space import ActionMapper
 from yugioh_env.duel import Duel
+from yugioh_env.event_logger import FieldTracker, format_events
 from yugioh_env.lib_loader import load_library
-from yugioh_env.models import YuGiOhAction, YuGiOhObservation, YuGiOhState, ActionMeta
+from yugioh_env.models import ActionMeta, YuGiOhAction, YuGiOhObservation, YuGiOhState
 from yugioh_env.observation import build_observation
 from yugioh_env.opponent import Opponent, make_opponent
 from yugioh_env.server.board_state import build_board_state
@@ -74,9 +66,7 @@ def _resolve_opponent_device(config: dict[str, Any]) -> str:
     Config key wins over the ``YUGIOH_OPPONENT_DEVICE`` env var, default ``"cpu"``.
     Extracted so it can be unit-tested without booting the engine.
     """
-    return config.get("opponent_device") or os.environ.get(
-        "YUGIOH_OPPONENT_DEVICE", "cpu"
-    )
+    return config.get("opponent_device") or os.environ.get("YUGIOH_OPPONENT_DEVICE", "cpu")
 
 
 def _build_action_meta_list(actions: list[dict]) -> list[ActionMeta | None]:
@@ -181,7 +171,9 @@ class YuGiOhEnvironment(Environment):
             project_root / "third_party" / "CardScripts" / "pre-release",
             project_root / "third_party" / "CardScripts",
         ]
-        deck_path = config.get("deck_path", str(project_root / "assets" / "decks" / "blue_eyes.ydk"))
+        deck_path = config.get(
+            "deck_path", str(project_root / "assets" / "decks" / "blue_eyes.ydk")
+        )
         self._deck0_path = config.get("deck0_path", deck_path)
         self._deck1_path = config.get("deck1_path", deck_path)
         self._starting_lp = config.get("starting_lp", 8000)
@@ -199,9 +191,7 @@ class YuGiOhEnvironment(Environment):
         self._agent_player = agent_player_cfg if isinstance(agent_player_cfg, int) else 0
 
         # Opponent — spec string: "random", "greedy", or "model:path/to/ckpt.pt"
-        opponent_spec = config.get("opponent") or os.environ.get(
-            "YUGIOH_OPPONENT", "random"
-        )
+        opponent_spec = config.get("opponent") or os.environ.get("YUGIOH_OPPONENT", "random")
         opponent_seed = config.get("opponent_seed")
         opponent_device = _resolve_opponent_device(config)
         self._opponent: Opponent = make_opponent(
@@ -272,11 +262,11 @@ class YuGiOhEnvironment(Environment):
 
     def reset(
         self,
-        seed: Optional[int] = None,
-        episode_id: Optional[str] = None,
-        deck0: Optional[dict[str, list[int]]] = None,
-        deck1: Optional[dict[str, list[int]]] = None,
-        agent_player: Optional[int | str] = None,
+        seed: int | None = None,
+        episode_id: str | None = None,
+        deck0: dict[str, list[int]] | None = None,
+        deck1: dict[str, list[int]] | None = None,
+        agent_player: int | str | None = None,
         open_cards: bool = False,
         **kwargs: Any,
     ) -> YuGiOhObservation:
@@ -343,7 +333,7 @@ class YuGiOhEnvironment(Environment):
     def step(
         self,
         action: YuGiOhAction,
-        timeout_s: Optional[float] = None,
+        timeout_s: float | None = None,
         **kwargs: Any,
     ) -> YuGiOhObservation:
         """Execute an action and return the resulting observation."""
@@ -420,15 +410,19 @@ class YuGiOhEnvironment(Environment):
         if not events:
             return
         chunk_log = format_events(
-            events, self._agent_player,
-            self._card_db.get_card_name, self._field_tracker,
+            events,
+            self._agent_player,
+            self._card_db.get_card_name,
+            self._field_tracker,
         )
         if chunk_log:
-            self._last_frames.append({
-                "events": chunk_log,
-                "board": build_board_state(self, open_cards=self._open_cards),
-                "game_state": self._build_game_state_dict(),
-            })
+            self._last_frames.append(
+                {
+                    "events": chunk_log,
+                    "board": build_board_state(self, open_cards=self._open_cards),
+                    "game_state": self._build_game_state_dict(),
+                }
+            )
 
     def _flatten_frame_events(self) -> list[str]:
         """Collect all formatted event strings from captured frames."""
@@ -485,11 +479,13 @@ class YuGiOhEnvironment(Environment):
                         response = opp_mapper.action_to_response(opp_action)
                         if response is None:
                             opp_sel.append(opp_mapper.get_action_index(opp_action))
-                            opp_mapper.update({
-                                **msg,
-                                "_selected": list(opp_sel),
-                                "_agent_player": opp_agent_player,
-                            })
+                            opp_mapper.update(
+                                {
+                                    **msg,
+                                    "_selected": list(opp_sel),
+                                    "_agent_player": opp_agent_player,
+                                }
+                            )
                     if response is not None:
                         self._duel.send_response(response)
                 else:
@@ -553,14 +549,22 @@ class YuGiOhEnvironment(Environment):
             # winner == 2 or other = draw = 0.0
 
         # Build a minimal observation
-        obs_data = build_observation(
-            self._duel.game_state if self._duel else None,
-            None,
-            self._agent_player,
-        ) if self._duel else {"cards": [], "global_state": []}
+        obs_data = (
+            build_observation(
+                self._duel.game_state if self._duel else None,
+                None,
+                self._agent_player,
+            )
+            if self._duel
+            else {"cards": [], "global_state": []}
+        )
 
         cards = obs_data["cards"].tolist() if hasattr(obs_data.get("cards", None), "tolist") else []
-        global_state = obs_data["global_state"].tolist() if hasattr(obs_data.get("global_state", None), "tolist") else []
+        global_state = (
+            obs_data["global_state"].tolist()
+            if hasattr(obs_data.get("global_state", None), "tolist")
+            else []
+        )
 
         return YuGiOhObservation(
             cards=cards,
