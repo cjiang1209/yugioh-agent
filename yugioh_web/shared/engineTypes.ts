@@ -109,6 +109,7 @@ export interface EngineAction {
     | "position"
     | "place"
     | "tribute"
+    | "sort"
     | "finish"
     | "option"
     | "unknown";
@@ -127,6 +128,7 @@ export type PromptType =
   | "place"
   | "position"
   | "tribute"
+  | "sort_card"
   | "unknown";
 
 /** Prompt metadata describing the current engine decision context. */
@@ -143,6 +145,8 @@ export interface EnginePrompt {
   finishable?: boolean;
   forced?: boolean;
   count?: number;
+  /** Sort-specific: visual data for each picked card, in pick order. */
+  picked_cards?: { code: number; location: number }[];
   selected_count?: number;
   // Tribute-specific fields
   min_release?: number;

@@ -6,6 +6,7 @@ import { EngineActionPanel } from "./EngineActionPanel";
 import { YesNoPanel } from "./prompts/YesNoPanel";
 import { PositionPanel } from "./prompts/PositionPanel";
 import { SelectCardPanel } from "./prompts/SelectCardPanel";
+import { SortCardPanel } from "./prompts/SortCardPanel";
 
 interface EnginePromptRouterProps {
   actions: EngineAction[];
@@ -42,6 +43,11 @@ export function EnginePromptRouter({
           prompt={prompt}
           onAction={onAction}
         />
+      );
+
+    case "sort_card":
+      return (
+        <SortCardPanel actions={actions} prompt={prompt} onAction={onAction} />
       );
 
     default:
