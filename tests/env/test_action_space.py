@@ -24,12 +24,14 @@ from yugioh_core.constants import (
     MSG_SELECT_TRIBUTE,
     MSG_SELECT_UNSELECT_CARD,
     MSG_SELECT_YESNO,
+    MSG_SORT_CARD,
+    MSG_SORT_CHAIN,
     POS_FACEUP_ATTACK,
     POS_FACEUP_DEFENSE,
 )
 from yugioh_core.encoding import decode_u16, decode_u32
 from yugioh_env import response_builder as rb
-from yugioh_env.action_space import ACTION_FEATURES, MAX_ACTIONS, ActionMapper
+from yugioh_env.action_space import _ACTION_EXTRACTORS, ACTION_FEATURES, MAX_ACTIONS, ActionMapper
 
 
 def test_yesno_actions():
@@ -1205,3 +1207,100 @@ def test_extractor_sequence_widens_to_u16():
     mapper.update(msg)
     feat = mapper.get_action_features()[0]
     assert decode_u16(feat, 8) == 300
+
+
+def test_extract_sort_actions_first_step_no_selected():
+    """With no prior picks, emit N actions, all with build_response=None."""
+    msg = {
+        "msg_type": MSG_SORT_CARD,
+        "player": 0,
+        "cards": [
+            {"code": 1, "controller": 0, "location": 0x01, "sequence": 0},
+            {"code": 2, "controller": 0, "location": 0x01, "sequence": 1},
+            {"code": 3, "controller": 0, "location": 0x01, "sequence": 2},
+        ],
+        "_agent_player": 0,
+    }
+    actions = _ACTION_EXTRACTORS[MSG_SORT_CARD](msg)
+
+    assert len(actions) == 3
+    assert all(a["build_response"] is None for a in actions)
+    assert [a["index"] for a in actions] == [0, 1, 2]
+    assert [a["code"] for a in actions] == [1, 2, 3]
+    assert all(a.get("num_selected") == 1 for a in actions)
+
+
+def test_extract_sort_actions_intermediate_step():
+    """After one pick, emit N-1 actions for remaining cards, all None."""
+    msg = {
+        "msg_type": MSG_SORT_CARD,
+        "player": 0,
+        "cards": [
+            {"code": 1, "controller": 0, "location": 0x01, "sequence": 0},
+            {"code": 2, "controller": 0, "location": 0x01, "sequence": 1},
+            {"code": 3, "controller": 0, "location": 0x01, "sequence": 2},
+        ],
+        "_selected": [1],
+        "_agent_player": 0,
+    }
+    actions = _ACTION_EXTRACTORS[MSG_SORT_CARD](msg)
+
+    assert len(actions) == 2
+    assert [a["index"] for a in actions] == [0, 2]
+    assert all(a["build_response"] is None for a in actions)
+    assert all(a.get("num_selected") == 2 for a in actions)
+
+
+def test_extract_sort_actions_final_step_builds_response():
+    """On the final pick, build_response must produce the full permutation."""
+    msg = {
+        "msg_type": MSG_SORT_CARD,
+        "player": 0,
+        "cards": [
+            {"code": 1, "controller": 0, "location": 0x01, "sequence": 0},
+            {"code": 2, "controller": 0, "location": 0x01, "sequence": 1},
+            {"code": 3, "controller": 0, "location": 0x01, "sequence": 2},
+        ],
+        "_selected": [1, 0],
+        "_agent_player": 0,
+    }
+    actions = _ACTION_EXTRACTORS[MSG_SORT_CARD](msg)
+
+    assert len(actions) == 1
+    a = actions[0]
+    assert a["index"] == 2
+    assert a["build_response"] is not None
+    assert a["build_response"]() == bytes([1, 0, 2])
+
+
+def test_extract_sort_chain_uses_same_extractor():
+    """MSG_SORT_CHAIN uses the same extractor as MSG_SORT_CARD."""
+    assert _ACTION_EXTRACTORS[MSG_SORT_CHAIN] is _ACTION_EXTRACTORS[MSG_SORT_CARD]
+
+
+def test_sort_card_multi_step_dispatch():
+    """Drive _extract_sort_actions through a 3-pick sequence and verify
+    the final bytes match the expected permutation."""
+    base_msg = {
+        "msg_type": MSG_SORT_CARD,
+        "player": 0,
+        "cards": [
+            {"code": 10, "controller": 0, "location": 0x01, "sequence": 0},
+            {"code": 20, "controller": 0, "location": 0x01, "sequence": 1},
+            {"code": 30, "controller": 0, "location": 0x01, "sequence": 2},
+        ],
+        "_agent_player": 0,
+    }
+
+    selected: list[int] = []
+    for pick in [2, 0, 1]:
+        msg = {**base_msg, "_selected": list(selected)}
+        actions = _ACTION_EXTRACTORS[MSG_SORT_CARD](msg)
+        action = next(a for a in actions if a["index"] == pick)
+        selected.append(action["index"])
+        if action["build_response"] is not None:
+            wire = action["build_response"]()
+            assert selected == [2, 0, 1]
+            assert wire == bytes([2, 0, 1])
+            return
+    raise AssertionError("build_response was never set; final pick did not finalize")

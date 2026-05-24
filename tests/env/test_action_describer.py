@@ -6,6 +6,7 @@ from tests.env.conftest import obs_from_msg as _obs_from_msg
 from yugioh_core.constants import (
     MSG_SELECT_TRIBUTE,
     MSG_SELECT_YESNO,
+    MSG_SORT_CARD,
 )
 from yugioh_core.encoding import MAX_ACTIONS
 from yugioh_env.action_describer import ActionDescriber
@@ -354,6 +355,27 @@ def test_describe_all_returns_one_per_legal_action():
     details = describer.describe_all(obs)
     assert len(details) == 2
     assert sum(obs.action_mask) == 2  # sanity: matches the mask
+
+
+def test_describe_action_sort_card():
+    """Sort-card actions should describe as 'Place {card} next' with category 'sort'."""
+    obs = _obs_from_msg(
+        {
+            "msg_type": MSG_SORT_CARD,
+            "player": 0,
+            "cards": [
+                {"code": 100, "controller": 0, "location": 0x01, "sequence": 0},
+                {"code": 200, "controller": 0, "location": 0x01, "sequence": 1},
+                {"code": 300, "controller": 0, "location": 0x01, "sequence": 2},
+            ],
+        }
+    )
+    describer = ActionDescriber(_StubCardDB(), sys_strings=None)
+    details = describer.describe_all(obs)
+    assert len(details) == 3
+    for d in details:
+        assert d.category == "sort"
+        assert d.description.startswith("Place ")
 
 
 def test_describe_raises_on_inactive_slot():

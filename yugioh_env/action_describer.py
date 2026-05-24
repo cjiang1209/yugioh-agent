@@ -49,6 +49,8 @@ from yugioh_core.constants import (
     MSG_SELECT_TRIBUTE,
     MSG_SELECT_UNSELECT_CARD,
     MSG_SELECT_YESNO,
+    MSG_SORT_CARD,
+    MSG_SORT_CHAIN,
     POS_FACEDOWN_ATTACK,
     POS_FACEDOWN_DEFENSE,
     POS_FACEUP_ATTACK,
@@ -101,6 +103,8 @@ _PROMPT_TYPE_MAP = {
     MSG_ANNOUNCE_ATTRIB: "attribute",
     MSG_ROCK_PAPER_SCISSORS: "rps",
     MSG_SELECT_COUNTER: "counter",
+    MSG_SORT_CARD: "sort_card",
+    MSG_SORT_CHAIN: "sort_card",
 }
 
 
@@ -399,6 +403,10 @@ class ActionDescriber:
             count = meta.extras["counter_count"] if meta else 0
             target = card_name or f"card #{index_byte}"
             return f"Remove {count} from {target}", "counter"
+
+        if msg_type in (MSG_SORT_CARD, MSG_SORT_CHAIN):
+            label = f"Place {card_name} next" if card_name else f"Place card #{index_byte} next"
+            return label, "sort"
 
         # Fallback for sum, sort, etc.
         if card_name:

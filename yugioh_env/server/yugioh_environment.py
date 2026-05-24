@@ -21,6 +21,8 @@ from yugioh_core.constants import (
     MSG_SELECT_TRIBUTE,
     MSG_SELECT_UNSELECT_CARD,
     MSG_SELECT_YESNO,
+    MSG_SORT_CARD,
+    MSG_SORT_CHAIN,
     PHASE_BATTLE,
     PHASE_BATTLE_START,
     PHASE_BATTLE_STEP,
@@ -130,6 +132,14 @@ def _build_prompt_meta(mapper) -> dict | None:
         result["card_code"] = msg.get("code", 0)
     elif msg_type in (MSG_SELECT_PLACE, MSG_SELECT_DISFIELD):
         result["count"] = msg.get("count", 1)
+    elif msg_type in (MSG_SORT_CARD, MSG_SORT_CHAIN):
+        cards = msg.get("cards", [])
+        selected = msg.get("_selected", [])
+        result["count"] = len(cards)
+        result["picked_cards"] = [
+            {"code": cards[i].get("code", 0), "location": cards[i].get("location", 0)}
+            for i in selected
+        ]
     return result
 
 

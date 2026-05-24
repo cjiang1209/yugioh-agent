@@ -81,6 +81,7 @@ _PROMPT_TYPE_LABELS = {
     "place": "Place",
     "position": "Position",
     "tribute": "Tribute",
+    "sort_card": "Sort Cards",
     "number": "Announce Number",
     "race": "Announce Race",
     "attribute": "Announce Attribute",

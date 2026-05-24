@@ -18,10 +18,12 @@ from yugioh_core.constants import (
     MSG_SELECT_TRIBUTE,
     MSG_SELECT_UNSELECT_CARD,
     MSG_SELECT_YESNO,
+    MSG_SORT_CARD,
     POS_FACEDOWN_DEFENSE,
     POS_FACEUP_ATTACK,
 )
 from yugioh_env.action_describer import ActionDescriber
+from yugioh_env.server.yugioh_environment import _build_prompt_meta
 
 
 class FakeCardDB:
@@ -567,3 +569,41 @@ def test_prompt_text_drops_to_null_when_format_specifier_remains(card_db):
     describer = ActionDescriber(card_db, sys_strings=sys_strings)
     prompt = describer.describe_prompt(obs)
     assert prompt["prompt_text"] is None
+
+
+def test_build_prompt_meta_sort_card_first_step():
+    class FakeMapper:
+        msg_type = MSG_SORT_CARD
+        msg = {
+            "msg_type": MSG_SORT_CARD,
+            "player": 0,
+            "cards": [
+                {"code": 100, "controller": 0, "location": 0x01, "sequence": 0},
+                {"code": 200, "controller": 0, "location": 0x01, "sequence": 1},
+                {"code": 300, "controller": 0, "location": 0x01, "sequence": 2},
+            ],
+        }
+
+    meta = _build_prompt_meta(FakeMapper())
+    assert meta["msg_type"] == MSG_SORT_CARD
+    assert meta["count"] == 3
+    assert meta["picked_cards"] == []
+
+
+def test_build_prompt_meta_sort_card_intermediate_step():
+    class FakeMapper:
+        msg_type = MSG_SORT_CARD
+        msg = {
+            "msg_type": MSG_SORT_CARD,
+            "player": 0,
+            "cards": [
+                {"code": 100, "controller": 0, "location": 0x01, "sequence": 0},
+                {"code": 200, "controller": 0, "location": 0x01, "sequence": 1},
+                {"code": 300, "controller": 0, "location": 0x01, "sequence": 2},
+            ],
+            "_selected": [1],
+        }
+
+    meta = _build_prompt_meta(FakeMapper())
+    assert meta["count"] == 3
+    assert meta["picked_cards"] == [{"code": 200, "location": 0x01}]

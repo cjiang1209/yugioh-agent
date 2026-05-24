@@ -717,25 +717,28 @@ def _extract_unselect_actions(msg: dict) -> list[dict]:
 
 
 def _extract_sort_actions(msg: dict) -> list[dict]:
-    """For sort: each position choice is an action. Simplified: return identity order."""
+    """MSG_SORT_CARD / MSG_SORT_CHAIN: pick cards one at a time until full permutation."""
     cards = msg.get("cards", [])
-    count = len(cards)
     agent_player = msg.get("_agent_player", 0)
-    # Each action = place card i first in the ordering
-    return [
-        {
+
+    def _to_action(i: int, card: dict) -> dict:
+        return {
             "category": 0,
             "index": i,
             "code": card.get("code", 0),
             "controller": _relativize_controller(card.get("controller", 0), agent_player),
             "location": 0,
             "sequence": 0,
-            "build_response": lambda idx=i, n=count: rb.build_sort_card_response(
-                [idx] + [j for j in range(n) if j != idx]
-            ),
         }
-        for i, card in enumerate(cards)
-    ]
+
+    return _extract_multi_step_actions(
+        msg,
+        items=cards,
+        item_to_action=_to_action,
+        build_response=rb.build_sort_card_response,
+        completes=lambda items, sel: len(sel) >= len(items),
+        can_finish=lambda items, sel: False,
+    )
 
 
 def _pack_bit_mask_response(
