@@ -100,7 +100,7 @@ class PassiveAgent:
         if pt == PromptType.ANNOUNCE_CARD:
             return CANCEL
         if pt == PromptType.SORT_CARD:
-            return CANCEL
+            return 0  # translator emits identity permutation
 
         # UNKNOWN or unhandled
         return CANCEL
@@ -160,8 +160,12 @@ class RandomAgent:
                 return self._rng.choice(choices)
             return self._rng.randrange(n)
 
-        # Sort/announce card — always cancel
-        if pt in (PromptType.SORT_CARD, PromptType.ANNOUNCE_CARD, PromptType.UNKNOWN):
+        # Sort: identity permutation (Agent contract returns int, can't express N-perm)
+        if pt == PromptType.SORT_CARD:
+            return 0
+
+        # Announce card — always cancel
+        if pt in (PromptType.ANNOUNCE_CARD, PromptType.UNKNOWN):
             return CANCEL
 
         # Standard selections: random index

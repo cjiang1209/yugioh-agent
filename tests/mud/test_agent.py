@@ -10,7 +10,9 @@ from yugioh_mud.agent import (
     DECLINE,
     END_PHASE,
     FINISH,
+    PassiveAgent,
     RandomAgent,
+    map_model_action,
 )
 from yugioh_mud.cmd_handler import StructuredAction
 from yugioh_mud.text_parser import ParsedPrompt, PromptType
@@ -144,9 +146,10 @@ class TestRandomAgentValidActions:
             assert 0 <= a < 5
 
     def test_sort_card(self):
+        """SORT_CARD returns 0 so the translator emits the identity permutation."""
         agent = RandomAgent(seed=11)
         p = _prompt(PromptType.SORT_CARD, n_options=3)
-        assert agent.choose(p) == CANCEL
+        assert agent.choose(p) == 0
 
     def test_announce_card(self):
         agent = RandomAgent(seed=12)
@@ -239,3 +242,29 @@ class TestRandomAgentEdgeCases:
         assert END_PHASE in actions
         # Should also pick at least one option index
         assert actions & {0, 1, 2}
+
+
+# ---------------------------------------------------------------------------
+# PassiveAgent
+# ---------------------------------------------------------------------------
+
+
+class TestPassiveAgent:
+    def test_sort_card(self):
+        """PassiveAgent returns 0 for SORT_CARD (identity permutation)."""
+        agent = PassiveAgent()
+        p = _prompt(PromptType.SORT_CARD, n_options=3)
+        assert agent.choose(p) == 0
+
+
+# ---------------------------------------------------------------------------
+# map_model_action
+# ---------------------------------------------------------------------------
+
+
+def test_map_model_action_sort_card_within_range():
+    """A model action within [0, n) for SORT_CARD passes through (clamp branch)."""
+    p = _prompt(PromptType.SORT_CARD, n_options=3)
+    assert map_model_action(0, p) == 0
+    assert map_model_action(2, p) == 2
+    assert map_model_action(5, p) == 2  # clamped to n-1

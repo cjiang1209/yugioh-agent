@@ -97,3 +97,9 @@ class TestTranslatorBounds:
         result = tr.translate(3, prompt)
         # Clamped: start = min(3, 3-2) = 1 → "2 3"
         assert result == "2 3"
+
+    def test_sort_card_identity_permutation(self):
+        """Translator emits 1-indexed identity for SORT_CARD with any non-negative action."""
+        tr = ActionTranslator()
+        prompt = ParsedPrompt(PromptType.SORT_CARD, options=[], min_select=3)
+        assert tr.translate(0, prompt) == "1 2 3"

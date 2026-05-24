@@ -98,6 +98,13 @@ Messages that write `loc_info`: `MSG_MOVE`, `MSG_SET`, `MSG_SUMMONING`, `MSG_SPS
 ### MUD Bot Client (`yugioh_mud/`)
 
 - **Known limitation — multi-effect cards**: Cards with multiple activatable effects (va/vb) get a single `StructuredAction` with `sub_action="v"`; the handler always picks the first effect. Future model agents needing per-effect choice will require one `StructuredAction` per effect.
+- **Known limitation — sort prompts (MSG_SORT_CARD)**: The MUD `Agent`
+  protocol returns a single int per prompt, which can't express an N-element
+  permutation. All MUD agents submit the identity permutation `[1, 2, ..., N]`
+  for sort prompts. A model trained against the in-process engine (which uses
+  the multi-step pick harness) cannot meaningfully drive sort decisions
+  through the MUD bot. Restructuring would require a new agent-return shape
+  for sort, deferred until needed.
 
 ## Environment Variables
 
