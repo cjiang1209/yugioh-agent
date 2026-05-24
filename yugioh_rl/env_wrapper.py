@@ -403,11 +403,11 @@ class SubprocVecEnv:
             dones: (num_envs,) bool
             infos: list of info dicts
         """
-        for remote, action in zip(self._remotes, actions):
+        for remote, action in zip(self._remotes, actions, strict=True):
             remote.send(("step", int(action)))
 
         results = [remote.recv() for remote in self._remotes]
-        obs_list, rewards, dones, infos = zip(*results)
+        obs_list, rewards, dones, infos = zip(*results, strict=True)
 
         stacked_obs = self._stack_obs(obs_list)
         return (

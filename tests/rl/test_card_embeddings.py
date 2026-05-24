@@ -34,7 +34,8 @@ def _make_embeddings_file(
     embeddings = torch.randn(n, dim)
     codes_tensor = torch.tensor(codes, dtype=torch.int64)
     if path is None:
-        tmp = tempfile.NamedTemporaryFile(suffix=".pt", delete=False)
+        # delete=False so the file survives close() for torch.save below.
+        tmp = tempfile.NamedTemporaryFile(suffix=".pt", delete=False)  # noqa: SIM115
         path = tmp.name
         tmp.close()
     torch.save(
@@ -348,7 +349,7 @@ class TestBuildEmbeddingsScript:
 
     def test_build_output_structure(self, mock_db, tmp_path):
         """End-to-end test: requires sentence-transformers."""
-        st = pytest.importorskip("sentence_transformers")
+        pytest.importorskip("sentence_transformers")
 
         import sys
 

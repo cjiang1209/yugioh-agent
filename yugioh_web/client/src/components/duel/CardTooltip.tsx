@@ -33,7 +33,10 @@ function getAttributeIcon(attr?: string): string {
   return attr ? (map[attr] ?? "?") : "";
 }
 
-export function CardTooltip({ card, position = "right" }: CardTooltipProps) {
+export function CardTooltip({
+  card,
+  position: _position = "right",
+}: CardTooltipProps) {
   if (!card || !card.id) return null;
 
   const frameColor = getFrameColor(card.frameType ?? "normal");

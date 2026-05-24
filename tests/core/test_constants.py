@@ -11,7 +11,7 @@ from yugioh_core.constants import ATTRIBUTE_NAMES, RACE_NAMES, RPS_NAMES
 def test_race_names_keys_are_single_bit_masks():
     """RACE_NAMES is indexed by `1 << bit` in _extract_announce_race_actions —
     a multi-bit key (e.g. RACE_ALL) would silently never match."""
-    for mask in RACE_NAMES.keys():
+    for mask in RACE_NAMES:
         assert mask > 0
         assert mask & (mask - 1) == 0, f"RACE_NAMES key 0x{mask:x} is not a single-bit mask"
 

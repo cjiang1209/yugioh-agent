@@ -574,7 +574,6 @@ class PPOTrainer:
             start_time = time.time()
 
             for update in range(self._resume_update + 1, num_updates + 1):
-                update_start = time.time()
                 self.buffer.reset()
 
                 # Reset hx at every rollout boundary.  Carrying it across
@@ -599,7 +598,7 @@ class PPOTrainer:
                             self._record_episode(info)
                     global_step += config.num_envs * config.rollout_steps
                 else:
-                    for step in range(config.rollout_steps):
+                    for _step in range(config.rollout_steps):
                         with torch.no_grad():
                             t_cards = torch.from_numpy(obs["cards"]).to(self.device)
                             t_global = torch.from_numpy(obs["global_state"]).to(self.device)

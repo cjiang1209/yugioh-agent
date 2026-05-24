@@ -60,8 +60,12 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["B011"]   # allow `assert False` in tests
-"scripts/**" = ["E402"] # scripts often set sys.path before imports
+"tests/**" = ["B011", "E402"]  # `assert False` ok; tests use pytest.importorskip then import
+"scripts/**" = ["E402"]        # scripts often set sys.path before imports
+# message_parser/action_space import the engine constants table by `import *`;
+# the surface is too large to enumerate and would churn on every engine update.
+"yugioh_env/message_parser.py" = ["F405"]
+"yugioh_env/action_space.py" = ["F405"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["yugioh_core", "yugioh_env", "yugioh_rl", "yugioh_mud", "yugioh_leaderboard"]

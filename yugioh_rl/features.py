@@ -157,7 +157,6 @@ def decode_cards(raw: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         card_ids: (B, 200) long tensor — card passcodes for embedding
         card_feats: (B, 200, CARD_FEAT_DIM) float32 tensor
     """
-    B = raw.shape[0]
     raw = raw.long()
 
     card_ids = _uint32_le(raw, 0)  # (B, 200) — full uint32 card codes

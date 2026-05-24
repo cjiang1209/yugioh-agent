@@ -40,7 +40,7 @@ def _render_entries_section(entries: list[Entry], panel: PanelConfig) -> str:
         return -1.0 if wr is None else -wr
 
     sorted_entries = sorted(entries, key=sort_key)
-    headers = ["entry_id", *feature_cols, *(f"vs {l}" for l in panel_labels)]
+    headers = ["entry_id", *feature_cols, *(f"vs {label}" for label in panel_labels)]
     lines = [
         "| " + " | ".join(headers) + " |",
         "|" + "|".join(["---"] * len(headers)) + "|",

@@ -88,7 +88,7 @@ def score_checkpoint(
 
     deck_stems = [Path(p).stem for p in deck_paths]
     panel_results: list[PanelMatchResult] = []
-    for label, r in zip(panel_labels, raw_results):
+    for label, r in zip(panel_labels, raw_results, strict=True):
         per_deck = {
             deck_stems[deck_idx]: deck_summary(int(sum(wl)), len(wl))
             for deck_idx, wl in r.per_deck_wins.items()

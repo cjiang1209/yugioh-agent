@@ -129,7 +129,7 @@ def reset_duel(body: ResetRequest, request: Request) -> dict:
             agent_player=body.agent_player,
         )
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
     return _build_response(
         env, describer, obs, obs.event_log, obs.done, obs.reward, include_frames=True
     )

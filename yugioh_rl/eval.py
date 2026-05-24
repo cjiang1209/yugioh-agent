@@ -24,6 +24,7 @@ from __future__ import annotations
 import logging
 import multiprocessing as mp
 import traceback
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -311,10 +312,8 @@ def _eval_worker(
         remote.send((_REPLY_ERROR, traceback.format_exc()))
     finally:
         if env is not None:
-            try:
+            with suppress(Exception):
                 env.close()
-            except Exception:
-                pass
 
 
 def _run_eval_pool(
@@ -432,10 +431,8 @@ def _run_eval_pool(
                     outstanding[w_idx] = t
     finally:
         for worker in workers:
-            try:
+            with suppress(BrokenPipeError, EOFError):
                 worker.conn.send((_CMD_SHUTDOWN, None))
-            except (BrokenPipeError, EOFError):
-                pass
         for worker in workers:
             worker.proc.join(timeout=5)
             if worker.proc.is_alive():

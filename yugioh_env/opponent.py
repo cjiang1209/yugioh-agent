@@ -36,13 +36,13 @@ class Opponent(ABC):
         """Whether this opponent requires full observation arrays to select actions."""
         return False
 
-    def set_observation(self, obs: dict[str, np.ndarray]) -> None:
+    def set_observation(self, obs: dict[str, np.ndarray]) -> None:  # noqa: B027
         """Provide the current observation arrays before calling select_action.
 
         Only called when needs_observation returns True.
         """
 
-    def reseed(self, seed: int) -> None:
+    def reseed(self, seed: int) -> None:  # noqa: B027
         """Re-seed the opponent's RNG. Override in stochastic subclasses."""
 
 

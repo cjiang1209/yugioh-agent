@@ -5,12 +5,10 @@ import {
   FieldCard,
   GameAction,
   GameCard,
-  Phase,
   PlayerSide,
   PlayerState,
 } from "../../../../shared/gameTypes";
 import { ActionMenu } from "./ActionMenu";
-import { CardTooltip } from "./CardTooltip";
 import { CardZone, HandCard } from "./CardZone";
 import { DuelLog } from "./DuelLog";
 import { ZoneViewer } from "./ZoneViewer";
@@ -57,12 +55,6 @@ interface ContextMenuState {
 
 /** Stable card locator — matches card.instanceId format from useAIEngine. */
 type BoardZone = "hand" | "mzone" | "szone" | "emz" | "field";
-type CardLocator = {
-  cardCode: number;
-  side: "mine" | "opp";
-  zone: BoardZone;
-  seq: number;
-};
 
 function locatorKey(
   cardCode: number,
@@ -542,8 +534,6 @@ export function DuelBoard({
     if (selection.type === "hand") {
       const card = selection.card;
       const isMonster = card.type?.includes("Monster");
-      const isSpell = card.type?.includes("Spell");
-      const isTrap = card.type?.includes("Trap");
 
       if (isMonster && canSummon) {
         if (slot !== null) return; // occupied

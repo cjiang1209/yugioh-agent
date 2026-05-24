@@ -469,7 +469,7 @@ class YuGiOhEnvironment(Environment):
                                 self._duel.game_state,
                                 msg,
                                 1 - self._agent_player,
-                                query_fn=lambda p, l: self._duel.query_location(p, l),
+                                query_fn=lambda p, loc: self._duel.query_location(p, loc),
                             )
                             opp_obs["actions"] = opp_mapper.get_action_features()
                             opp_obs["action_mask"] = opp_mapper.get_action_mask()

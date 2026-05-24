@@ -151,7 +151,6 @@ def test_reset_with_episode_idx_resequences() -> None:
         deck_5a = env._last_agent_deck_idx
 
         env.reset(episode_idx=2)
-        deck_2 = env._last_agent_deck_idx
 
         env.reset(episode_idx=5)
         deck_5b = env._last_agent_deck_idx

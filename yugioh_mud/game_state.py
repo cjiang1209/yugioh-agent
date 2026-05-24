@@ -910,7 +910,7 @@ class MUDGameState:
         ``opp_{zone}`` (opponent) or ``my_{zone}`` (own).
         """
         new_zone = self._parse_zone_lines(lines, card_re)
-        if not new_zone and not any(l == "No cards." for l in lines):
+        if not new_zone and not any(line == "No cards." for line in lines):
             logger.warning(
                 "Resync %s%s: no parseable cards and no 'No cards.' marker, skipping overwrite",
                 "opp " if opponent else "",

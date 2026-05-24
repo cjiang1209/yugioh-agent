@@ -236,7 +236,7 @@ def test_reset_done_no_op_when_no_dones() -> None:
             dones = np.zeros(2, dtype=bool)
             result = vec_env.reset_done(dones, obs)
         finally:
-            for remote, original in zip(vec_env._remotes, original_sends):
+            for remote, original in zip(vec_env._remotes, original_sends, strict=True):
                 remote.send = original
 
         assert send_counts == [0, 0], f"reset_done with all-False dones sent traffic: {send_counts}"

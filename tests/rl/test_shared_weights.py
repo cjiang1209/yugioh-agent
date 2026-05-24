@@ -26,7 +26,7 @@ def test_publish_refresh_round_trip() -> None:
     shared.refresh_into(dst)
 
     for (n1, p1), (n2, p2) in zip(
-        sorted(src.state_dict().items()), sorted(dst.state_dict().items())
+        sorted(src.state_dict().items()), sorted(dst.state_dict().items()), strict=True
     ):
         assert n1 == n2
         assert torch.equal(p1, p2), f"mismatch on {n1}"

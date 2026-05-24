@@ -10,7 +10,6 @@ import type {
   CardPosition,
   Phase,
   PlayerState,
-  PlayerSide,
 } from "../../../shared/gameTypes";
 import type { DeckPayload } from "../../../shared/deckTypes";
 import type {

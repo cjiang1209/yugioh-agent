@@ -5,6 +5,7 @@ from __future__ import annotations
 import ctypes
 import logging
 import random
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -343,7 +344,5 @@ class Duel:
         self.destroy()
 
     def __del__(self) -> None:
-        try:
+        with suppress(Exception):
             self.destroy()
-        except Exception:
-            pass

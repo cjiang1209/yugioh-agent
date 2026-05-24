@@ -93,5 +93,5 @@ class TestMakeOpponent:
         """
         pytest.importorskip("torch")
         missing = tmp_path / "nope.pt"
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017 — error class varies by torch version
             make_opponent(f"model:{missing}")

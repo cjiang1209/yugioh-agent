@@ -63,10 +63,10 @@ def main() -> None:
     obs_global = torch.zeros((T, envs_per_mb, 20), dtype=torch.uint8, device=device)
     obs_actions = torch.zeros((T, envs_per_mb, 32, 12), dtype=torch.uint8, device=device)
     action_mask = torch.ones((T, envs_per_mb, 32), dtype=torch.int8, device=device)
-    actions = torch.zeros((T, envs_per_mb), dtype=torch.long, device=device)
-    old_log_probs = torch.zeros((T, envs_per_mb), device=device)
-    advantages = torch.zeros((T, envs_per_mb), device=device)
-    returns = torch.zeros((T, envs_per_mb), device=device)
+    actions = torch.zeros((T, envs_per_mb), dtype=torch.long, device=device)  # noqa: F841
+    old_log_probs = torch.zeros((T, envs_per_mb), device=device)  # noqa: F841
+    advantages = torch.zeros((T, envs_per_mb), device=device)  # noqa: F841
+    returns = torch.zeros((T, envs_per_mb), device=device)  # noqa: F841
     dones = torch.zeros((T, envs_per_mb), device=device)
 
     log("building hx_initial via init_hx + slice_hx (replays trainer path)")

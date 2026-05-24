@@ -85,7 +85,7 @@ def test_worker_handles_multiple_same_opponent_tasks() -> None:
         for ep in (1, 2, 3):
             parent.send(("task", _EvalTask(opp_idx=0, opp_spec="random", episode_idx=ep)))
         replies = [parent.recv() for _ in range(3)]
-        for r, ep in zip(replies, (1, 2, 3)):
+        for r, ep in zip(replies, (1, 2, 3), strict=True):
             cmd, payload = r
             assert cmd == "partial"
             assert payload.opp_idx == 0

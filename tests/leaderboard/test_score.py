@@ -92,7 +92,7 @@ def _make_panel_for_parity(episodes: int) -> PanelConfig:
 
 def _assert_panel_results_byte_equal(a, b) -> None:
     assert len(a.panel_results) == len(b.panel_results)
-    for ra, rb in zip(a.panel_results, b.panel_results):
+    for ra, rb in zip(a.panel_results, b.panel_results, strict=True):
         assert ra.opponent_label == rb.opponent_label
         assert ra.episodes == rb.episodes
         assert ra.wins == rb.wins

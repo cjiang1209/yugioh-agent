@@ -13,6 +13,7 @@ async). Async-mode worker control flow lands when async support does.
 
 from __future__ import annotations
 
+from contextlib import suppress
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 import numpy as np
@@ -330,7 +331,7 @@ class ActorLearnerVecEnv:
             remote.send(("go", version))
 
         rollouts: list[dict] = []
-        for remote, proc in zip(self._remotes, self._workers):
+        for remote, proc in zip(self._remotes, self._workers, strict=True):
             if not remote.poll(self._worker_timeout_s):
                 if not proc.is_alive():
                     raise WorkerDiedError(
@@ -359,10 +360,8 @@ class ActorLearnerVecEnv:
             return
         self._closed = True
         for remote in self._remotes:
-            try:
+            with suppress(BrokenPipeError, EOFError):
                 remote.send(("shutdown", None))
-            except (BrokenPipeError, EOFError):
-                pass
         for proc in self._workers:
             proc.join(timeout=5)
             if proc.is_alive():

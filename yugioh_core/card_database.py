@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Iterable
+from contextlib import suppress
 from pathlib import Path
 
 from yugioh_core.constants import TYPE_LINK, split_setcodes
@@ -110,7 +111,5 @@ class CardDatabase:
         self._conn.close()
 
     def __del__(self) -> None:
-        try:
+        with suppress(Exception):
             self._conn.close()
-        except Exception:
-            pass

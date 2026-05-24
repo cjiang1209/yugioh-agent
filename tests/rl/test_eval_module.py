@@ -325,7 +325,9 @@ class TestEvaluate:
         assert len(instances) == 3
         assert all(env.closed for env in instances)
 
-        for env, expected_spec in zip(instances, ["greedy", "random", "model:/p/v1.pt"]):
+        for env, expected_spec in zip(
+            instances, ["greedy", "random", "model:/p/v1.pt"], strict=True
+        ):
             assert env.kwargs["opponent"] == expected_spec
             assert env.kwargs["reward_shaping"] is False
             assert env.kwargs["seed"] == 42

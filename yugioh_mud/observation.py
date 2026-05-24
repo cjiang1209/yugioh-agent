@@ -260,9 +260,7 @@ class MUDObservationBuilder:
     @staticmethod
     def _is_faceup(entry: CardEntry) -> bool:
         pos = entry.position.lower()
-        if "face-down" in pos or "face down" in pos:
-            return False
-        return True
+        return "face-down" not in pos and "face down" not in pos
 
     # ------------------------------------------------------------------
     # Global state encoding
@@ -408,7 +406,7 @@ class MUDObservationBuilder:
         msg_type: int,
         gs: MUDGameState,
     ) -> None:
-        for i, opt in enumerate(prompt.options[:MAX_ACTIONS]):
+        for i, _opt in enumerate(prompt.options[:MAX_ACTIONS]):
             feat = np.zeros(ACTION_FEATURES, dtype=np.uint8)
             feat[0] = msg_type & 0xFF
             feat[8] = i & 0xFF
