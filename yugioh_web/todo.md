@@ -1,12 +1,14 @@
 # Yu-Gi-Oh! Duel Arena - TODO
 
 ## Foundation
+
 - [x] Global cyberpunk styles (dark bg, neon pink/cyan, glow effects, geometric fonts)
 - [x] App routing setup (Home lobby → Duel room)
 - [x] Database schema: duel_rooms, duel_states tables (in-memory via Socket.IO)
 - [x] Shared game types (card, zone, phase, game state)
 
 ## WebSocket Duel Server
+
 - [x] Socket.IO server integration
 - [x] Room creation and joining logic
 - [x] Game state management on server
@@ -14,6 +16,7 @@
 - [x] Broadcast game state to both players
 
 ## Duel Board UI
+
 - [x] Duel board layout (opponent top, player bottom, mirrored)
 - [x] Monster zones (5 slots each side)
 - [x] Spell/Trap zones (5 slots each side)
@@ -28,6 +31,7 @@
 - [x] Player name / turn indicator
 
 ## Card Mechanics
+
 - [x] Draw card from deck
 - [x] Play card from hand to field (click-to-play with context menu)
 - [x] Monster: ATK/DEF display, attack/defense position toggle
@@ -39,6 +43,7 @@
 - [x] Send card to graveyard
 
 ## Battle System
+
 - [x] Declare attack (select attacker → select target)
 - [x] ATK vs ATK / ATK vs DEF damage calculation
 - [x] Destroy monster when ATK is lower
@@ -47,31 +52,37 @@
 - [x] Win condition check (LP ≤ 0 or deck out)
 
 ## Card Data & Decks
+
 - [x] YGOPRODeck API integration (fetch card by name/ID)
 - [x] Pre-built starter decks (Yugi deck, Kaiba deck)
 - [x] Deck selection screen before duel
 - [x] Card detail tooltip/modal on hover
 
 ## Graveyard & Extra
+
 - [x] Graveyard viewer modal (both players)
 - [x] Extra deck viewer
 
 ## Real-time Sync
+
 - [x] All game actions synced via WebSocket
 - [x] Opponent's moves reflected in real-time
 - [x] Connection status indicator
 - [x] Reconnect handling
 
 ## Tests
+
 - [x] Game engine unit tests
 - [x] Battle calculation tests
 - [x] Phase transition tests
 
 ## UX Changes
+
 - [x] Skip deck selection screen — auto-assign predefined decks and go straight to lobby
 - [x] Self-play mode: skip lobby/room, auto-start duel with both sides in same session
 
 ## Bug Fixes
+
 - [x] Fix broken duel board UI (CSS variables not loading, layout collapsed, zones show as plain text)
 - [x] Fix card zone visual styling (no borders, no backgrounds, no neon glow)
 - [x] Fix life points bar not rendering

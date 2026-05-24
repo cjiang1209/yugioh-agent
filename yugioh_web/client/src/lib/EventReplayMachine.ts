@@ -1,4 +1,8 @@
-import type { EngineBoard, EngineGameState, EventFrame } from "../../../shared/engineTypes";
+import type {
+  EngineBoard,
+  EngineGameState,
+  EventFrame,
+} from "../../../shared/engineTypes";
 
 export type { EventFrame };
 
@@ -24,7 +28,11 @@ export class EventReplayMachine {
     return this._active;
   }
 
-  start(priorLog: string[], frames: EventFrame[], callbacks: ReplayCallbacks): void {
+  start(
+    priorLog: string[],
+    frames: EventFrame[],
+    callbacks: ReplayCallbacks
+  ): void {
     this.clearTimer();
     this.frames = frames;
     this.pastLog = [...priorLog];
@@ -52,7 +60,10 @@ export class EventReplayMachine {
 
     const frame = this.frames[this.frameIndex];
     this.revealIndex++;
-    this.callbacks.onEventReveal([...this.pastLog, ...frame.events.slice(0, this.revealIndex)]);
+    this.callbacks.onEventReveal([
+      ...this.pastLog,
+      ...frame.events.slice(0, this.revealIndex),
+    ]);
 
     if (this.revealIndex < frame.events.length) {
       this.timerId = setTimeout(() => this.tick(), EVENT_DELAY_MS);

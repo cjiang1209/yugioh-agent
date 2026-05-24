@@ -9,6 +9,7 @@ This file records design rules and decisions that must be honored in all future 
 **Rule:** Always show the full picture of face-down monster cards, even if they stretch out of the monster zones. Do not scale them down in size.
 
 **Implementation:**
+
 - Face-down DEF position cards are rotated 90° (`transform: rotate(90deg)`) at their natural 100×140px size.
 - After rotation the card appears 140px wide × 100px tall, overflowing the 100px-wide zone boundary on both sides.
 - The zone container must use `overflow: visible` — never `overflow: hidden` — so the card is never clipped.

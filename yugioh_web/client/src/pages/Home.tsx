@@ -32,19 +32,43 @@ export default function Home() {
       {/* Corner decorations */}
       <div
         className="fixed top-4 left-4 pointer-events-none"
-        style={{ width: "60px", height: "60px", borderTop: "1px solid var(--neon-cyan)", borderLeft: "1px solid var(--neon-cyan)", opacity: 0.3 }}
+        style={{
+          width: "60px",
+          height: "60px",
+          borderTop: "1px solid var(--neon-cyan)",
+          borderLeft: "1px solid var(--neon-cyan)",
+          opacity: 0.3,
+        }}
       />
       <div
         className="fixed top-4 right-4 pointer-events-none"
-        style={{ width: "60px", height: "60px", borderTop: "1px solid var(--neon-cyan)", borderRight: "1px solid var(--neon-cyan)", opacity: 0.3 }}
+        style={{
+          width: "60px",
+          height: "60px",
+          borderTop: "1px solid var(--neon-cyan)",
+          borderRight: "1px solid var(--neon-cyan)",
+          opacity: 0.3,
+        }}
       />
       <div
         className="fixed bottom-4 left-4 pointer-events-none"
-        style={{ width: "60px", height: "60px", borderBottom: "1px solid var(--neon-cyan)", borderLeft: "1px solid var(--neon-cyan)", opacity: 0.3 }}
+        style={{
+          width: "60px",
+          height: "60px",
+          borderBottom: "1px solid var(--neon-cyan)",
+          borderLeft: "1px solid var(--neon-cyan)",
+          opacity: 0.3,
+        }}
       />
       <div
         className="fixed bottom-4 right-4 pointer-events-none"
-        style={{ width: "60px", height: "60px", borderBottom: "1px solid var(--neon-cyan)", borderRight: "1px solid var(--neon-cyan)", opacity: 0.3 }}
+        style={{
+          width: "60px",
+          height: "60px",
+          borderBottom: "1px solid var(--neon-cyan)",
+          borderRight: "1px solid var(--neon-cyan)",
+          opacity: 0.3,
+        }}
       />
 
       {/* Main content */}
@@ -53,7 +77,10 @@ export default function Home() {
         <div className="mb-2">
           <div
             className="text-xs tracking-[0.5em] mb-3 opacity-50"
-            style={{ fontFamily: "'Share Tech Mono', monospace", color: "var(--neon-cyan)" }}
+            style={{
+              fontFamily: "'Share Tech Mono', monospace",
+              color: "var(--neon-cyan)",
+            }}
           >
             ── ONLINE DUEL SIMULATOR ──
           </div>
@@ -75,7 +102,8 @@ export default function Home() {
             style={{
               fontFamily: "'Orbitron', sans-serif",
               color: "var(--neon-cyan)",
-              textShadow: "0 0 15px var(--neon-cyan), 0 0 40px var(--neon-cyan)",
+              textShadow:
+                "0 0 15px var(--neon-cyan), 0 0 40px var(--neon-cyan)",
             }}
           >
             DUEL ARENA
@@ -84,14 +112,32 @@ export default function Home() {
 
         {/* Divider */}
         <div className="flex items-center justify-center gap-4 my-6">
-          <div style={{ height: "1px", width: "80px", background: "linear-gradient(90deg, transparent, var(--neon-cyan))" }} />
+          <div
+            style={{
+              height: "1px",
+              width: "80px",
+              background:
+                "linear-gradient(90deg, transparent, var(--neon-cyan))",
+            }}
+          />
           <div
             className="text-xs"
-            style={{ color: "var(--neon-cyan)", fontFamily: "'Share Tech Mono', monospace", opacity: 0.7 }}
+            style={{
+              color: "var(--neon-cyan)",
+              fontFamily: "'Share Tech Mono', monospace",
+              opacity: 0.7,
+            }}
           >
             ★ IT'S TIME TO DUEL ★
           </div>
-          <div style={{ height: "1px", width: "80px", background: "linear-gradient(90deg, var(--neon-cyan), transparent)" }} />
+          <div
+            style={{
+              height: "1px",
+              width: "80px",
+              background:
+                "linear-gradient(90deg, var(--neon-cyan), transparent)",
+            }}
+          />
         </div>
 
         {/* Feature list */}
@@ -103,7 +149,7 @@ export default function Home() {
             "Spell & Trap Cards",
             "Real Card Data",
             "Live Graveyard",
-          ].map((feat) => (
+          ].map(feat => (
             <span
               key={feat}
               className="px-3 py-1 rounded text-xs"
@@ -128,18 +174,21 @@ export default function Home() {
             style={{
               fontFamily: "'Orbitron', sans-serif",
               letterSpacing: "0.2em",
-              background: "linear-gradient(135deg, rgba(255,45,120,0.15), rgba(0,245,255,0.15))",
+              background:
+                "linear-gradient(135deg, rgba(255,45,120,0.15), rgba(0,245,255,0.15))",
               border: "1px solid var(--neon-cyan)",
               color: "var(--neon-cyan)",
-              boxShadow: "0 0 30px rgba(0,245,255,0.3), inset 0 0 30px rgba(0,245,255,0.05)",
+              boxShadow:
+                "0 0 30px rgba(0,245,255,0.3), inset 0 0 30px rgba(0,245,255,0.05)",
               fontSize: "0.9rem",
             }}
-            onMouseEnter={(e) => {
+            onMouseEnter={e => {
               (e.currentTarget as HTMLButtonElement).style.boxShadow =
                 "0 0 50px rgba(0,245,255,0.5), inset 0 0 30px rgba(0,245,255,0.1)";
-              (e.currentTarget as HTMLButtonElement).style.transform = "translateY(-2px)";
+              (e.currentTarget as HTMLButtonElement).style.transform =
+                "translateY(-2px)";
             }}
-            onMouseLeave={(e) => {
+            onMouseLeave={e => {
               (e.currentTarget as HTMLButtonElement).style.boxShadow =
                 "0 0 30px rgba(0,245,255,0.3), inset 0 0 30px rgba(0,245,255,0.05)";
               (e.currentTarget as HTMLButtonElement).style.transform = "none";
@@ -152,7 +201,10 @@ export default function Home() {
         {/* Instructions */}
         <div
           className="mt-8 text-xs opacity-40 max-w-sm mx-auto leading-relaxed"
-          style={{ color: "var(--text-secondary)", fontFamily: "'Rajdhani', sans-serif" }}
+          style={{
+            color: "var(--text-secondary)",
+            fontFamily: "'Rajdhani', sans-serif",
+          }}
         >
           Click START DUEL to choose your deck and challenge the AI opponent.
         </div>

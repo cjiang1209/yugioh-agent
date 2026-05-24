@@ -19,6 +19,8 @@ dependencies = [
 dev = [
     "pytest>=7.0",
     "pytest-timeout>=2.0",
+    "ruff>=0.6",
+    "pre-commit>=3.7",
 ]
 train = [
     "torch>=2.0",
@@ -37,3 +39,29 @@ include = ["yugioh_core*", "yugioh_env*", "yugioh_rl*", "yugioh_mud*", "yugioh_l
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+src = ["yugioh_core", "yugioh_env", "yugioh_rl", "yugioh_mud", "yugioh_leaderboard", "cli"]
+extend-exclude = [
+    "build",
+    "third_party",
+    ".venv",
+    "yugioh_web",
+    "*.egg-info",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = [
+    "E501",   # line length handled by formatter
+    "B008",   # function calls in default args (common with FastAPI/typer)
+    "SIM108", # ternary-vs-if is a readability judgment call
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B011"]   # allow `assert False` in tests
+"scripts/**" = ["E402"] # scripts often set sys.path before imports
+
+[tool.ruff.lint.isort]
+known-first-party = ["yugioh_core", "yugioh_env", "yugioh_rl", "yugioh_mud", "yugioh_leaderboard"]

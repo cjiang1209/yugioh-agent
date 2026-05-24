@@ -1,4 +1,7 @@
-import type { EngineAction, EnginePrompt } from "../../../../../shared/engineTypes";
+import type {
+  EngineAction,
+  EnginePrompt,
+} from "../../../../../shared/engineTypes";
 import { CardThumbnail } from "../CardThumbnail";
 
 const POSITION_ICONS: Record<string, string> = {
@@ -8,14 +11,37 @@ const POSITION_ICONS: Record<string, string> = {
   "Face-down Defense": "\uD83C\uDCCF",
 };
 
-const POSITION_COLORS: Record<string, { bg: string; border: string; text: string }> = {
-  "Face-up Attack":   { bg: "rgba(255,45,120,0.12)",  border: "rgba(255,45,120,0.5)", text: "#ff2d78" },
-  "Face-down Attack": { bg: "rgba(255,45,120,0.12)",  border: "rgba(255,45,120,0.5)", text: "#ff2d78" },
-  "Face-up Defense":  { bg: "rgba(0,180,255,0.12)",   border: "rgba(0,180,255,0.5)",  text: "#00b4ff" },
-  "Face-down Defense":{ bg: "rgba(245,230,66,0.12)",  border: "rgba(245,230,66,0.5)", text: "#f5e642" },
+const POSITION_COLORS: Record<
+  string,
+  { bg: string; border: string; text: string }
+> = {
+  "Face-up Attack": {
+    bg: "rgba(255,45,120,0.12)",
+    border: "rgba(255,45,120,0.5)",
+    text: "#ff2d78",
+  },
+  "Face-down Attack": {
+    bg: "rgba(255,45,120,0.12)",
+    border: "rgba(255,45,120,0.5)",
+    text: "#ff2d78",
+  },
+  "Face-up Defense": {
+    bg: "rgba(0,180,255,0.12)",
+    border: "rgba(0,180,255,0.5)",
+    text: "#00b4ff",
+  },
+  "Face-down Defense": {
+    bg: "rgba(245,230,66,0.12)",
+    border: "rgba(245,230,66,0.5)",
+    text: "#f5e642",
+  },
 };
 
-const DEFAULT_POS_COLOR = { bg: "rgba(128,128,128,0.12)", border: "rgba(128,128,128,0.5)", text: "#aaa" };
+const DEFAULT_POS_COLOR = {
+  bg: "rgba(128,128,128,0.12)",
+  border: "rgba(128,128,128,0.5)",
+  text: "#aaa",
+};
 
 interface PositionPanelProps {
   actions: EngineAction[];
@@ -23,11 +49,15 @@ interface PositionPanelProps {
   onAction: (actionIndex: number) => void;
 }
 
-export function PositionPanel({ actions, prompt, onAction }: PositionPanelProps) {
+export function PositionPanel({
+  actions,
+  prompt,
+  onAction,
+}: PositionPanelProps) {
   const cardCode = prompt.card_code ?? 0;
   const cardName = prompt.card_name ?? "";
 
-  const positionActions = actions.filter((a) => a.category === "position");
+  const positionActions = actions.filter(a => a.category === "position");
 
   return (
     <div
@@ -63,7 +93,7 @@ export function PositionPanel({ actions, prompt, onAction }: PositionPanelProps)
 
       {/* Position buttons */}
       <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-        {positionActions.map((action) => {
+        {positionActions.map(action => {
           const posName = action.description.replace(`${cardName}: `, "");
           const colors = POSITION_COLORS[posName] ?? DEFAULT_POS_COLOR;
           const icon = POSITION_ICONS[posName] ?? "";
@@ -88,10 +118,13 @@ export function PositionPanel({ actions, prompt, onAction }: PositionPanelProps)
                 cursor: "pointer",
                 textAlign: "left",
               }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = colors.bg.replace("0.12", "0.25");
+              onMouseEnter={e => {
+                e.currentTarget.style.background = colors.bg.replace(
+                  "0.12",
+                  "0.25"
+                );
               }}
-              onMouseLeave={(e) => {
+              onMouseLeave={e => {
                 e.currentTarget.style.background = colors.bg;
               }}
             >

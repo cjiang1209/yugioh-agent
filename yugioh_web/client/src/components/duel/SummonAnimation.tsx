@@ -32,13 +32,18 @@ const BURST_PARTICLES = Array.from({ length: 12 }, (_, i) => ({
   delay: Math.random() * 80,
 }));
 
-export function SummonAnimation({ zoneRect, kind, onDone }: SummonAnimationProps) {
+export function SummonAnimation({
+  zoneRect,
+  kind,
+  onDone,
+}: SummonAnimationProps) {
   const doneRef = useRef(false);
   const center = centerOf(zoneRect);
 
   const primaryColor = kind === "normal" ? "#ffcc00" : "#00e5ff";
   const secondaryColor = kind === "normal" ? "#ff9900" : "#0088ff";
-  const glowColor = kind === "normal" ? "rgba(255,200,0,0.6)" : "rgba(0,229,255,0.6)";
+  const glowColor =
+    kind === "normal" ? "rgba(255,200,0,0.6)" : "rgba(0,229,255,0.6)";
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -102,7 +107,8 @@ export function SummonAnimation({ zoneRect, kind, onDone }: SummonAnimationProps
           marginTop: -10,
           borderRadius: "50%",
           border: `2px solid ${secondaryColor}88`,
-          animation: "summon-ring 0.65s cubic-bezier(0.1,0.5,0.3,1) 100ms forwards",
+          animation:
+            "summon-ring 0.65s cubic-bezier(0.1,0.5,0.3,1) 100ms forwards",
         }}
       />
 
@@ -139,53 +145,57 @@ export function SummonAnimation({ zoneRect, kind, onDone }: SummonAnimationProps
       />
 
       {/* Burst particles */}
-      {BURST_PARTICLES.map((p) => {
+      {BURST_PARTICLES.map(p => {
         const rad = (p.angle * Math.PI) / 180;
         const tx = Math.cos(rad) * p.dist;
         const ty = Math.sin(rad) * p.dist;
         return (
           <div
             key={p.id}
-            style={{
+            style={
+              {
+                position: "absolute",
+                left: center.x,
+                top: center.y,
+                width: p.size,
+                height: p.size,
+                marginLeft: -p.size / 2,
+                marginTop: -p.size / 2,
+                borderRadius: "50%",
+                background: p.id % 2 === 0 ? primaryColor : secondaryColor,
+                boxShadow: `0 0 ${p.size * 2}px ${p.size}px ${glowColor}`,
+                animation: "summon-burst-particle 0.65s ease-out forwards",
+                animationDelay: `${p.delay}ms`,
+                ["--tx" as string]: `${tx}px`,
+                ["--ty" as string]: `${ty}px`,
+              } as React.CSSProperties
+            }
+          />
+        );
+      })}
+
+      {/* Rising particles */}
+      {RISE_PARTICLES.map(p => (
+        <div
+          key={p.id}
+          style={
+            {
               position: "absolute",
-              left: center.x,
+              left: center.x + p.x,
               top: center.y,
               width: p.size,
               height: p.size,
               marginLeft: -p.size / 2,
               marginTop: -p.size / 2,
               borderRadius: "50%",
-              background: p.id % 2 === 0 ? primaryColor : secondaryColor,
-              boxShadow: `0 0 ${p.size * 2}px ${p.size}px ${glowColor}`,
-              animation: "summon-burst-particle 0.65s ease-out forwards",
+              background: primaryColor,
+              boxShadow: `0 0 ${p.size}px ${p.size / 2}px ${glowColor}`,
+              animation: "summon-rise-particle 0.65s ease-out forwards",
               animationDelay: `${p.delay}ms`,
-              ["--tx" as string]: `${tx}px`,
-              ["--ty" as string]: `${ty}px`,
-            } as React.CSSProperties}
-          />
-        );
-      })}
-
-      {/* Rising particles */}
-      {RISE_PARTICLES.map((p) => (
-        <div
-          key={p.id}
-          style={{
-            position: "absolute",
-            left: center.x + p.x,
-            top: center.y,
-            width: p.size,
-            height: p.size,
-            marginLeft: -p.size / 2,
-            marginTop: -p.size / 2,
-            borderRadius: "50%",
-            background: primaryColor,
-            boxShadow: `0 0 ${p.size}px ${p.size / 2}px ${glowColor}`,
-            animation: "summon-rise-particle 0.65s ease-out forwards",
-            animationDelay: `${p.delay}ms`,
-            ["--rise" as string]: `-${p.rise}px`,
-            ["--drift" as string]: `${p.drift}px`,
-          } as React.CSSProperties}
+              ["--rise" as string]: `-${p.rise}px`,
+              ["--drift" as string]: `${p.drift}px`,
+            } as React.CSSProperties
+          }
         />
       ))}
 

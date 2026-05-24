@@ -19,7 +19,10 @@ import { AttackAnimation } from "./AttackAnimation";
 import { SummonAnimation } from "./SummonAnimation";
 import { PhaseIndicator } from "./PhaseIndicator";
 import { EnginePromptRouter } from "./EnginePromptRouter";
-import type { EngineAction, EnginePrompt } from "../../../../shared/engineTypes";
+import type {
+  EngineAction,
+  EnginePrompt,
+} from "../../../../shared/engineTypes";
 
 interface DuelBoardProps {
   state: DuelState;
@@ -44,14 +47,29 @@ type SelectionMode =
 interface ContextMenuState {
   x: number;
   y: number;
-  items: { label: string; action: () => void; color?: string; disabled?: boolean }[];
+  items: {
+    label: string;
+    action: () => void;
+    color?: string;
+    disabled?: boolean;
+  }[];
 }
 
 /** Stable card locator — matches card.instanceId format from useAIEngine. */
 type BoardZone = "hand" | "mzone" | "szone" | "emz" | "field";
-type CardLocator = { cardCode: number; side: "mine" | "opp"; zone: BoardZone; seq: number };
+type CardLocator = {
+  cardCode: number;
+  side: "mine" | "opp";
+  zone: BoardZone;
+  seq: number;
+};
 
-function locatorKey(cardCode: number, side: string, zone: string, seq: number): string {
+function locatorKey(
+  cardCode: number,
+  side: string,
+  zone: string,
+  seq: number
+): string {
   return `${cardCode}-${side}-${zone}-${seq}`;
 }
 
@@ -73,11 +91,12 @@ const LOCATION_TO_ZONE: Record<number, string> = {
 const descCache = new Map<number, string>();
 
 function isExtraDeckType(cardType: string | undefined): boolean {
-  return !!cardType && (
-    cardType.includes("Fusion") ||
-    cardType.includes("Synchro") ||
-    cardType.includes("XYZ") ||
-    cardType.includes("Link")
+  return (
+    !!cardType &&
+    (cardType.includes("Fusion") ||
+      cardType.includes("Synchro") ||
+      cardType.includes("XYZ") ||
+      cardType.includes("Link"))
   );
 }
 
@@ -89,10 +108,29 @@ function requiredTributes(level: number) {
 
 // ─── Empty zone placeholders ─────────────────────────────────────────────────
 
-function ZoneLabel({ icon, children, color }: { icon: React.ReactNode; children: React.ReactNode; color?: string }) {
+function ZoneLabel({
+  icon,
+  children,
+  color,
+}: {
+  icon: React.ReactNode;
+  children: React.ReactNode;
+  color?: string;
+}) {
   return (
     <div className="w-full h-full flex flex-col items-center justify-center gap-0.5">
-      <span style={{ fontSize: "clamp(0.7rem, 1.4vw, 1.2rem)", opacity: 0.5, color: color ?? "var(--neon-cyan)", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{icon}</span>
+      <span
+        style={{
+          fontSize: "clamp(0.7rem, 1.4vw, 1.2rem)",
+          opacity: 0.5,
+          color: color ?? "var(--neon-cyan)",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        {icon}
+      </span>
       <span
         style={{
           fontFamily: "'Orbitron', sans-serif",
@@ -110,10 +148,29 @@ function ZoneLabel({ icon, children, color }: { icon: React.ReactNode; children:
   );
 }
 
-const MONSTER_EMPTY = <ZoneLabel icon={<Swords size={18} strokeWidth={2} />}>MONSTER</ZoneLabel>;
-const SPELL_TRAP_EMPTY = <ZoneLabel icon={<ScrollText size={18} strokeWidth={2} />}>SPELL<br />TRAP</ZoneLabel>;
-const FIELD_EMPTY = <ZoneLabel icon={<Mountain size={18} strokeWidth={2} />}>FIELD</ZoneLabel>;
-const EMZ_EMPTY = <ZoneLabel icon={<Swords size={18} strokeWidth={2} />} color="rgba(255,215,0,0.7)">EXTRA<br />MONSTER</ZoneLabel>;
+const MONSTER_EMPTY = (
+  <ZoneLabel icon={<Swords size={18} strokeWidth={2} />}>MONSTER</ZoneLabel>
+);
+const SPELL_TRAP_EMPTY = (
+  <ZoneLabel icon={<ScrollText size={18} strokeWidth={2} />}>
+    SPELL
+    <br />
+    TRAP
+  </ZoneLabel>
+);
+const FIELD_EMPTY = (
+  <ZoneLabel icon={<Mountain size={18} strokeWidth={2} />}>FIELD</ZoneLabel>
+);
+const EMZ_EMPTY = (
+  <ZoneLabel
+    icon={<Swords size={18} strokeWidth={2} />}
+    color="rgba(255,215,0,0.7)"
+  >
+    EXTRA
+    <br />
+    MONSTER
+  </ZoneLabel>
+);
 
 const EMZ_BADGE = (
   <div
@@ -135,24 +192,50 @@ const EMZ_BADGE = (
   </div>
 );
 
-export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, enginePrompt, onEngineAction, onRestart, visibleLog, isReplaying, openCards }: DuelBoardProps) {
+export function DuelBoard({
+  state,
+  mySide,
+  onAction,
+  engineMode,
+  engineActions,
+  enginePrompt,
+  onEngineAction,
+  onRestart,
+  visibleLog,
+  isReplaying,
+  openCards,
+}: DuelBoardProps) {
   const [selection, setSelection] = useState<SelectionMode>({ type: "none" });
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  const [bottomTab, setBottomTab] = useState<"actions" | "log">(engineMode ? "actions" : "log");
-  const [selectedCardDetail, setSelectedCardDetail] = useState<GameCard | null>(null);
+  const [bottomTab, setBottomTab] = useState<"actions" | "log">(
+    engineMode ? "actions" : "log"
+  );
+  const [selectedCardDetail, setSelectedCardDetail] = useState<GameCard | null>(
+    null
+  );
   const [selectedLocator, setSelectedLocator] = useState<string | null>(null);
 
   /** True when an opponent's card has visible data (face-up, or face-down in open-cards mode). */
   const canShowOppDetail = (slot: FieldCard) =>
     !slot.faceDown || (openCards && slot.card.id > 0);
 
-  function selectCardForDetail(card: GameCard, side: "mine" | "opp", zone: BoardZone, seq: number) {
+  function selectCardForDetail(
+    card: GameCard,
+    side: "mine" | "opp",
+    zone: BoardZone,
+    seq: number
+  ) {
     setSelectedCardDetail(card);
     setSelectedLocator(locatorKey(card.id, side, zone, seq));
   }
 
   /** Check if a board position still holds the expected card. */
-  function isLocatorMatch(cardId: number | undefined, side: string, zone: string, seq: number): boolean {
+  function isLocatorMatch(
+    cardId: number | undefined,
+    side: string,
+    zone: string,
+    seq: number
+  ): boolean {
     if (!selectedLocator || cardId === undefined) return false;
     return selectedLocator === locatorKey(cardId, side, zone, seq);
   }
@@ -162,13 +245,20 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
   const actionableZones = new Set<string>();
   if (engineActions) {
     for (const a of engineActions) {
-      if (a.card_code && a.controller !== undefined && a.location !== undefined && a.sequence !== undefined) {
+      if (
+        a.card_code &&
+        a.controller !== undefined &&
+        a.location !== undefined &&
+        a.sequence !== undefined
+      ) {
         const side = a.controller === 0 ? "mine" : "opp";
         if (a.location === LOCATION_SZONE && a.sequence === 5) {
           actionableKeys.add(locatorKey(a.card_code, side, "field", 0));
           actionableZones.add(`${side}-field`);
         } else if (a.location === LOCATION_MZONE && a.sequence >= 5) {
-          actionableKeys.add(locatorKey(a.card_code, side, "emz", a.sequence - 5));
+          actionableKeys.add(
+            locatorKey(a.card_code, side, "emz", a.sequence - 5)
+          );
           actionableZones.add(`${side}-emz`);
         } else {
           const zone = LOCATION_TO_ZONE[a.location];
@@ -181,20 +271,35 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
     }
   }
 
-  function isActionable(cardId: number | undefined, side: string, zone: string, seq: number): boolean {
+  function isActionable(
+    cardId: number | undefined,
+    side: string,
+    zone: string,
+    seq: number
+  ): boolean {
     if (!cardId || actionableKeys.size === 0) return false;
     return actionableKeys.has(locatorKey(cardId, side, zone, seq));
   }
 
-  const [zoneViewer, setZoneViewer] = useState<{ side: PlayerSide; tab: "graveyard" | "banished" | "extra" } | null>(null);
+  const [zoneViewer, setZoneViewer] = useState<{
+    side: PlayerSide;
+    tab: "graveyard" | "banished" | "extra";
+  } | null>(null);
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
 
   // Fetch card description from YGOProDeck API when a card is selected
   useEffect(() => {
-    if (!selectedCardDetail || !selectedCardDetail.id || selectedCardDetail.desc) return;
+    if (
+      !selectedCardDetail ||
+      !selectedCardDetail.id ||
+      selectedCardDetail.desc
+    )
+      return;
     const id = selectedCardDetail.id;
     if (descCache.has(id)) {
-      setSelectedCardDetail(prev => prev?.id === id ? { ...prev, desc: descCache.get(id)! } : prev);
+      setSelectedCardDetail(prev =>
+        prev?.id === id ? { ...prev, desc: descCache.get(id)! } : prev
+      );
       return;
     }
     fetch(`https://db.ygoprodeck.com/api/v7/cardinfo.php?id=${id}`)
@@ -202,7 +307,9 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
       .then(data => {
         const desc = data.data?.[0]?.desc ?? "";
         descCache.set(id, desc);
-        setSelectedCardDetail(prev => prev?.id === id ? { ...prev, desc } : prev);
+        setSelectedCardDetail(prev =>
+          prev?.id === id ? { ...prev, desc } : prev
+        );
       })
       .catch(() => {});
   }, [selectedCardDetail?.id, selectedCardDetail?.desc]);
@@ -217,7 +324,10 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
     pendingAction: GameAction;
   } | null>(null);
   // Damage flash: which LP counters are flashing
-  const [lpFlash, setLpFlash] = useState<{ my: boolean; opp: boolean }>({ my: false, opp: false });
+  const [lpFlash, setLpFlash] = useState<{ my: boolean; opp: boolean }>({
+    my: false,
+    opp: false,
+  });
   // Track previous LP values to detect damage
   const prevMyLp = useRef<number | null>(null);
   const prevOppLp = useRef<number | null>(null);
@@ -234,7 +344,10 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
 
   // In engine mode, disable all click-zone interactions — actions come from the panel
   const canAct = !engineMode && isMyTurn && !state.winner;
-  const canSummon = canAct && (phase === "MAIN1" || phase === "MAIN2") && !myPlayer.hasNormalSummoned;
+  const canSummon =
+    canAct &&
+    (phase === "MAIN1" || phase === "MAIN2") &&
+    !myPlayer.hasNormalSummoned;
   const canAttack = canAct && phase === "BATTLE";
   const canSetSpell = canAct && (phase === "MAIN1" || phase === "MAIN2");
 
@@ -252,12 +365,21 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
   // Zone center y = rowTop + rowHeight / 2.
 
   const ZONE_COL_WIDTH = 144; // 100px card + 44px gap
-  const ZONE_CARD_HALF = 50;  // half of 100px card width
-  const ZONE_CARD_H = 140;    // card height
+  const ZONE_CARD_HALF = 50; // half of 100px card width
+  const ZONE_CARD_H = 140; // card height
 
-  function zoneRect(rowRef: React.RefObject<HTMLDivElement | null>, zoneIndex: number): DOMRect {
+  function zoneRect(
+    rowRef: React.RefObject<HTMLDivElement | null>,
+    zoneIndex: number
+  ): DOMRect {
     const row = rowRef.current;
-    if (!row) return new DOMRect(window.innerWidth / 2, window.innerHeight / 2, 100, 140);
+    if (!row)
+      return new DOMRect(
+        window.innerWidth / 2,
+        window.innerHeight / 2,
+        100,
+        140
+      );
     const rowRect = row.getBoundingClientRect();
     const x = rowRect.left + zoneIndex * ZONE_COL_WIDTH;
     const y = rowRect.top;
@@ -270,7 +392,8 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
     action: GameAction
   ) {
     const fromRect = zoneRect(myMonsterRowRef, attackerZone);
-    const toRect = targetZone !== null ? zoneRect(oppMonsterRowRef, targetZone) : null;
+    const toRect =
+      targetZone !== null ? zoneRect(oppMonsterRowRef, targetZone) : null;
     setAttackAnim({ fromRect, toRect, pendingAction: action });
     clearSelection();
   }
@@ -282,12 +405,12 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
     const prevMy = prevMyLp.current;
     const prevOpp = prevOppLp.current;
     if (prevMy !== null && myLp < prevMy) {
-      setLpFlash((f) => ({ ...f, my: true }));
-      setTimeout(() => setLpFlash((f) => ({ ...f, my: false })), 600);
+      setLpFlash(f => ({ ...f, my: true }));
+      setTimeout(() => setLpFlash(f => ({ ...f, my: false })), 600);
     }
     if (prevOpp !== null && oppLp < prevOpp) {
-      setLpFlash((f) => ({ ...f, opp: true }));
-      setTimeout(() => setLpFlash((f) => ({ ...f, opp: false })), 600);
+      setLpFlash(f => ({ ...f, opp: true }));
+      setTimeout(() => setLpFlash(f => ({ ...f, opp: false })), 600);
     }
     prevMyLp.current = myLp;
     prevOppLp.current = oppLp;
@@ -317,7 +440,11 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
     setSelection({ type: "hand", index, card });
   }
 
-  function handleHandCardContext(e: React.MouseEvent, index: number, card: GameCard) {
+  function handleHandCardContext(
+    e: React.MouseEvent,
+    index: number,
+    card: GameCard
+  ) {
     e.preventDefault();
     if (!canAct) return;
 
@@ -345,12 +472,17 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
           action: () => {
             const myMonsters = myPlayer.monsterZones
               .map((z, i) => ({ z, i }))
-              .filter((x) => x.z !== null);
+              .filter(x => x.z !== null);
             if (myMonsters.length < needed) {
               alert(`You need ${needed} monster(s) to tribute.`);
               return;
             }
-            setSelection({ type: "tribute", zones: [], handIndex: index, needed });
+            setSelection({
+              type: "tribute",
+              zones: [],
+              handIndex: index,
+              needed,
+            });
           },
         });
       }
@@ -398,7 +530,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
       if (!slot) return;
       const already = selection.zones.includes(zoneIndex);
       const newZones = already
-        ? selection.zones.filter((z) => z !== zoneIndex)
+        ? selection.zones.filter(z => z !== zoneIndex)
         : [...selection.zones, zoneIndex];
       setSelection({ ...selection, zones: newZones });
       return;
@@ -423,13 +555,21 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
             {
               label: "⚔ Normal Summon (ATK)",
               action: () => {
-                fireSummon(zoneIndex, myMonsterRowRef, "normal", { type: "SUMMON_MONSTER", handIndex: selection.index, zoneIndex });
+                fireSummon(zoneIndex, myMonsterRowRef, "normal", {
+                  type: "SUMMON_MONSTER",
+                  handIndex: selection.index,
+                  zoneIndex,
+                });
               },
             },
             {
               label: "🛡 Set (DEF face-down)",
               action: () => {
-                onAction({ type: "SET_MONSTER", handIndex: selection.index, zoneIndex });
+                onAction({
+                  type: "SET_MONSTER",
+                  handIndex: selection.index,
+                  zoneIndex,
+                });
                 clearSelection();
               },
             },
@@ -461,17 +601,26 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
           label: "⚔ Declare Attack",
           action: () => setSelection({ type: "attacker", zone: zoneIndex }),
         });
-        const hasOpponentMonsters = opponentPlayer.monsterZones.some((z) => z !== null);
+        const hasOpponentMonsters = opponentPlayer.monsterZones.some(
+          z => z !== null
+        );
         if (!hasOpponentMonsters) {
           items.push({
             label: "⚡ Direct Attack",
             action: () => {
-              fireAttack(zoneIndex, null, { type: "DIRECT_ATTACK", attackerZone: zoneIndex });
+              fireAttack(zoneIndex, null, {
+                type: "DIRECT_ATTACK",
+                attackerZone: zoneIndex,
+              });
             },
           });
         }
       }
-      if (canAct && (phase === "MAIN1" || phase === "MAIN2") && !slot.faceDown) {
+      if (
+        canAct &&
+        (phase === "MAIN1" || phase === "MAIN2") &&
+        !slot.faceDown
+      ) {
         items.push({
           label: "🔄 Change Position",
           action: () => onAction({ type: "CHANGE_POSITION", zoneIndex }),
@@ -481,24 +630,39 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
       if (canAct && !slot.faceDown && slot.card.type !== "Normal Monster") {
         items.push({
           label: "✨ Activate Effect",
-          action: () => onAction({ type: "ACTIVATE_MONSTER_EFFECT", zoneIndex, zoneType: "monster" }),
+          action: () =>
+            onAction({
+              type: "ACTIVATE_MONSTER_EFFECT",
+              zoneIndex,
+              zoneType: "monster",
+            }),
           color: "var(--neon-cyan)",
         });
       }
       if (canAct) {
         items.push({
           label: "⚰ Send to Graveyard",
-          action: () => onAction({ type: "SEND_TO_GRAVEYARD", zoneIndex, zoneType: "monster" }),
+          action: () =>
+            onAction({
+              type: "SEND_TO_GRAVEYARD",
+              zoneIndex,
+              zoneType: "monster",
+            }),
           color: "var(--neon-pink)",
         });
         items.push({
           label: "✦ Banish",
-          action: () => onAction({ type: "BANISH_CARD", zoneIndex, zoneType: "monster" }),
+          action: () =>
+            onAction({ type: "BANISH_CARD", zoneIndex, zoneType: "monster" }),
           color: "#b44fff",
         });
       }
       if (items.length > 0) {
-        setContextMenu({ x: window.innerWidth / 2 - 80, y: window.innerHeight / 2, items });
+        setContextMenu({
+          x: window.innerWidth / 2 - 80,
+          y: window.innerHeight / 2,
+          items,
+        });
       }
     }
   }
@@ -506,7 +670,8 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
   function handleOpponentMonsterZoneClick(zoneIndex: number) {
     const oppSlot = opponentPlayer.monsterZones[zoneIndex];
     // Allow detail view for face-up cards, or face-down cards in open-cards mode
-    if (oppSlot && canShowOppDetail(oppSlot)) selectCardForDetail(oppSlot.card, "opp", "mzone", zoneIndex);
+    if (oppSlot && canShowOppDetail(oppSlot))
+      selectCardForDetail(oppSlot.card, "opp", "mzone", zoneIndex);
     if (selection.type === "attacker") {
       fireAttack(selection.zone, zoneIndex, {
         type: "DECLARE_ATTACK",
@@ -540,21 +705,33 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
               {
                 label: "✨ Activate Spell",
                 action: () => {
-                  onAction({ type: "ACTIVATE_SPELL", handIndex: selection.index, zoneIndex });
+                  onAction({
+                    type: "ACTIVATE_SPELL",
+                    handIndex: selection.index,
+                    zoneIndex,
+                  });
                   clearSelection();
                 },
               },
               {
                 label: "🃏 Set Face-Down",
                 action: () => {
-                  onAction({ type: "SET_SPELL_TRAP", handIndex: selection.index, zoneIndex });
+                  onAction({
+                    type: "SET_SPELL_TRAP",
+                    handIndex: selection.index,
+                    zoneIndex,
+                  });
                   clearSelection();
                 },
               },
             ],
           });
         } else {
-          onAction({ type: "SET_SPELL_TRAP", handIndex: selection.index, zoneIndex });
+          onAction({
+            type: "SET_SPELL_TRAP",
+            handIndex: selection.index,
+            zoneIndex,
+          });
           clearSelection();
         }
       }
@@ -575,18 +752,32 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
       if (canAct) {
         items.push({
           label: "⚰ Send to Graveyard",
-          action: () => onAction({ type: "SEND_TO_GRAVEYARD", zoneIndex, zoneType: "spell_trap" }),
+          action: () =>
+            onAction({
+              type: "SEND_TO_GRAVEYARD",
+              zoneIndex,
+              zoneType: "spell_trap",
+            }),
           color: "var(--neon-pink)",
         });
         items.push({
           label: "✦ Banish",
-          action: () => onAction({ type: "BANISH_CARD", zoneIndex, zoneType: "spell_trap" }),
+          action: () =>
+            onAction({
+              type: "BANISH_CARD",
+              zoneIndex,
+              zoneType: "spell_trap",
+            }),
           color: "#b44fff",
         });
       }
 
       if (items.length > 0) {
-        setContextMenu({ x: window.innerWidth / 2 - 80, y: window.innerHeight / 2, items });
+        setContextMenu({
+          x: window.innerWidth / 2 - 80,
+          y: window.innerHeight / 2,
+          items,
+        });
       }
     }
   }
@@ -598,11 +789,18 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
     const slot = myPlayer.extraMonsterZones[slotIndex] ?? null;
     if (slot) selectCardForDetail(slot.card, "mine", "emz", slotIndex);
 
-    const anyOccupied = myPlayer.extraMonsterZones.some((s) => s !== null);
+    const anyOccupied = myPlayer.extraMonsterZones.some(s => s !== null);
     if (selection.type === "hand" && !anyOccupied) {
-      if (isExtraDeckType(selection.card.type) && canAct && (phase === "MAIN1" || phase === "MAIN2")) {
+      if (
+        isExtraDeckType(selection.card.type) &&
+        canAct &&
+        (phase === "MAIN1" || phase === "MAIN2")
+      ) {
         const animCol = slotIndex === 0 ? 1 : 3;
-        fireSummon(animCol, myMonsterRowRef, "special", { type: "SUMMON_TO_EMZ", handIndex: selection.index });
+        fireSummon(animCol, myMonsterRowRef, "special", {
+          type: "SUMMON_TO_EMZ",
+          handIndex: selection.index,
+        });
       }
       return;
     }
@@ -623,12 +821,13 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
           action: () => setSelection({ type: "attacker", zone: -1 }),
         });
         const hasOpponentMonsters =
-          opponentPlayer.monsterZones.some((z) => z !== null) ||
-          opponentPlayer.extraMonsterZones.some((s) => s !== null);
+          opponentPlayer.monsterZones.some(z => z !== null) ||
+          opponentPlayer.extraMonsterZones.some(s => s !== null);
         if (!hasOpponentMonsters) {
           items.push({
             label: "⚡ Direct Attack",
-            action: () => fireAttack(-1, null, { type: "DIRECT_ATTACK", attackerZone: -1 }),
+            action: () =>
+              fireAttack(-1, null, { type: "DIRECT_ATTACK", attackerZone: -1 }),
           });
         }
       }
@@ -671,7 +870,10 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
 
   /** Resolve a physical EMZ slot: who owns it and what locator seq to use.
    *  mySeq/oppSeq are indices into extraMonsterZones (0=seq5, 1=seq6). */
-  function resolveEMZ(mySeq: number, oppSeq: number): { slot: FieldCard | null; side: "mine" | "opp"; seq: number } {
+  function resolveEMZ(
+    mySeq: number,
+    oppSeq: number
+  ): { slot: FieldCard | null; side: "mine" | "opp"; seq: number } {
     const mine = myPlayer.extraMonsterZones[mySeq] ?? null;
     if (mine) return { slot: mine, side: "mine", seq: mySeq };
     const opp = opponentPlayer.extraMonsterZones[oppSeq] ?? null;
@@ -686,7 +888,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
     const left = resolveEMZ(0, 1);
     const right = resolveEMZ(1, 0);
 
-    const anyMineOccupied = myPlayer.extraMonsterZones.some((s) => s !== null);
+    const anyMineOccupied = myPlayer.extraMonsterZones.some(s => s !== null);
     const canPlaceMine =
       selection.type === "hand" &&
       !anyMineOccupied &&
@@ -703,7 +905,8 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
         if (resolved.side === "mine") {
           handleMyEMZClick(resolved.seq, e);
         } else {
-          if (resolved.slot && canShowOppDetail(resolved.slot)) selectCardForDetail(resolved.slot.card, "opp", "emz", resolved.seq);
+          if (resolved.slot && canShowOppDetail(resolved.slot))
+            selectCardForDetail(resolved.slot.card, "opp", "emz", resolved.seq);
           if (selection.type === "attacker") {
             fireAttack(selection.zone, null, {
               type: "DECLARE_ATTACK",
@@ -724,11 +927,23 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
           <div className="flex" style={{ gap: `${GAP}px` }}>
             <div style={{ width: `${CARD_W}px`, flexShrink: 0 }} />
 
-            {renderEMZSlot(left.slot, canPlaceMine, isLocatorMatch(left.slot?.card.id, left.side, "emz", left.seq), isActionable(left.slot?.card.id, left.side, "emz", left.seq), handleEMZClick(left))}
+            {renderEMZSlot(
+              left.slot,
+              canPlaceMine,
+              isLocatorMatch(left.slot?.card.id, left.side, "emz", left.seq),
+              isActionable(left.slot?.card.id, left.side, "emz", left.seq),
+              handleEMZClick(left)
+            )}
 
             <div style={{ width: `${CARD_W}px`, flexShrink: 0 }} />
 
-            {renderEMZSlot(right.slot, false, isLocatorMatch(right.slot?.card.id, right.side, "emz", right.seq), isActionable(right.slot?.card.id, right.side, "emz", right.seq), handleEMZClick(right))}
+            {renderEMZSlot(
+              right.slot,
+              false,
+              isLocatorMatch(right.slot?.card.id, right.side, "emz", right.seq),
+              isActionable(right.slot?.card.id, right.side, "emz", right.seq),
+              handleEMZClick(right)
+            )}
 
             <div style={{ width: `${CARD_W}px`, flexShrink: 0 }} />
           </div>
@@ -747,7 +962,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
 
     if (isSummon) {
       // Find first empty monster zone
-      const emptyZone = myPlayer.monsterZones.findIndex((z) => z === null);
+      const emptyZone = myPlayer.monsterZones.findIndex(z => z === null);
       if (emptyZone === -1) return;
       fireSummon(emptyZone, myMonsterRowRef, "normal", {
         type: "SUMMON_MONSTER",
@@ -756,7 +971,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
         tributeZones: selection.zones,
       });
     } else {
-      const emptyZone = myPlayer.monsterZones.findIndex((z) => z === null);
+      const emptyZone = myPlayer.monsterZones.findIndex(z => z === null);
       if (emptyZone === -1) return;
       onAction({
         type: "SET_MONSTER",
@@ -786,12 +1001,20 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
         style={{ gap: "44px" }}
       >
         {player.monsterZones.map((slot, i) => {
-          const isAttacker = selection.type === "attacker" && isMine && selection.zone === i;
-          const isTributeSelected = selection.type === "tribute" && isMine && selection.zones.includes(i);
-          const isValidTarget = selection.type === "attacker" && !isMine && slot !== null;
-          const canTribute = selection.type === "tribute" && isMine && slot !== null;
+          const isAttacker =
+            selection.type === "attacker" && isMine && selection.zone === i;
+          const isTributeSelected =
+            selection.type === "tribute" &&
+            isMine &&
+            selection.zones.includes(i);
+          const isValidTarget =
+            selection.type === "attacker" && !isMine && slot !== null;
+          const canTribute =
+            selection.type === "tribute" && isMine && slot !== null;
           const canPlaceMonster =
-            selection.type === "hand" && isMine && slot === null &&
+            selection.type === "hand" &&
+            isMine &&
+            slot === null &&
             selection.card.type?.includes("Monster") &&
             canSummon;
           return (
@@ -802,13 +1025,30 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
               size="md"
               emptyContent={MONSTER_EMPTY}
               isSelected={isAttacker || isTributeSelected}
-              isDetailSelected={isLocatorMatch(slot?.card.id, isMine ? "mine" : "opp", "mzone", i)}
-              isActionable={isActionable(slot?.card.id, isMine ? "mine" : "opp", "mzone", i)}
+              isDetailSelected={isLocatorMatch(
+                slot?.card.id,
+                isMine ? "mine" : "opp",
+                "mzone",
+                i
+              )}
+              isActionable={isActionable(
+                slot?.card.id,
+                isMine ? "mine" : "opp",
+                "mzone",
+                i
+              )}
               isValidTarget={isValidTarget}
               canPlace={canTribute || canPlaceMonster}
               isOpponent={!isMine}
-              onClick={() => isMine ? handleMyMonsterZoneClick(i) : handleOpponentMonsterZoneClick(i)}
-              onContextMenu={(e) => { e.preventDefault(); if (isMine && slot) handleMyMonsterZoneClick(i); }}
+              onClick={() =>
+                isMine
+                  ? handleMyMonsterZoneClick(i)
+                  : handleOpponentMonsterZoneClick(i)
+              }
+              onContextMenu={e => {
+                e.preventDefault();
+                if (isMine && slot) handleMyMonsterZoneClick(i);
+              }}
             />
           );
         })}
@@ -820,9 +1060,15 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
       <div className="flex" style={{ gap: "44px" }}>
         {player.spellTrapZones.map((slot, i) => {
           const canPlace =
-            selection.type === "hand" && isMine && slot === null &&
-            (selection.card.type?.includes("Spell") || selection.card.type?.includes("Trap")) &&
-            !(selection.card.type?.includes("Spell") && selection.card.race === "Field");
+            selection.type === "hand" &&
+            isMine &&
+            slot === null &&
+            (selection.card.type?.includes("Spell") ||
+              selection.card.type?.includes("Trap")) &&
+            !(
+              selection.card.type?.includes("Spell") &&
+              selection.card.race === "Field"
+            );
           return (
             <CardZone
               key={i}
@@ -830,8 +1076,18 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
               variant="spell-trap"
               size="md"
               emptyContent={SPELL_TRAP_EMPTY}
-              isDetailSelected={isLocatorMatch(slot?.card.id, isMine ? "mine" : "opp", "szone", i)}
-              isActionable={isActionable(slot?.card.id, isMine ? "mine" : "opp", "szone", i)}
+              isDetailSelected={isLocatorMatch(
+                slot?.card.id,
+                isMine ? "mine" : "opp",
+                "szone",
+                i
+              )}
+              isActionable={isActionable(
+                slot?.card.id,
+                isMine ? "mine" : "opp",
+                "szone",
+                i
+              )}
               canPlace={canPlace}
               isOpponent={!isMine}
               onClick={() => {
@@ -861,7 +1117,11 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
     // Place a Field Spell from hand
     if (selection.type === "hand") {
       const card = selection.card;
-      if (card.type?.includes("Spell") && card.race === "Field" && canSetSpell) {
+      if (
+        card.type?.includes("Spell") &&
+        card.race === "Field" &&
+        canSetSpell
+      ) {
         onAction({ type: "PLAY_FIELD_SPELL", handIndex: selection.index });
         clearSelection();
       }
@@ -894,12 +1154,25 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
       selection.card.race === "Field" &&
       canSetSpell;
     const fieldSide = isMine ? "mine" : "opp";
-    const isDetailSel = isLocatorMatch(fieldCard?.card.id, fieldSide, "field", 0);
-    const isFieldActionable = isActionable(fieldCard?.card.id, fieldSide, "field", 0);
+    const isDetailSel = isLocatorMatch(
+      fieldCard?.card.id,
+      fieldSide,
+      "field",
+      0
+    );
+    const isFieldActionable = isActionable(
+      fieldCard?.card.id,
+      fieldSide,
+      "field",
+      0
+    );
 
-    const handleFieldClick = isMine ? handleMyFieldZoneClick : () => {
-      if (fieldCard && canShowOppDetail(fieldCard)) selectCardForDetail(fieldCard.card, "opp", "field", 0);
-    };
+    const handleFieldClick = isMine
+      ? handleMyFieldZoneClick
+      : () => {
+          if (fieldCard && canShowOppDetail(fieldCard))
+            selectCardForDetail(fieldCard.card, "opp", "field", 0);
+        };
 
     return (
       <CardZone
@@ -915,20 +1188,35 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
   }
 
   function renderDeckZone(player: PlayerState, isMine = false) {
-    const showDrawPrompt = isMine && isMyTurn && phase === "DRAW" && player.deck.length > 0 && !player.hasDrawn;
+    const showDrawPrompt =
+      isMine &&
+      isMyTurn &&
+      phase === "DRAW" &&
+      player.deck.length > 0 &&
+      !player.hasDrawn;
     return (
       <div
         className="relative rounded overflow-hidden cursor-pointer"
-        title={showDrawPrompt ? "Click to draw a card" : `Deck: ${player.deck.length} cards`}
+        title={
+          showDrawPrompt
+            ? "Click to draw a card"
+            : `Deck: ${player.deck.length} cards`
+        }
         style={{
           width: "100px",
           height: "140px",
           flexShrink: 0,
-          border: showDrawPrompt ? "1px solid rgba(0,245,255,0.8)" : "1px solid rgba(0,245,255,0.35)",
-          boxShadow: showDrawPrompt ? "0 0 14px rgba(0,245,255,0.7), 0 0 28px rgba(0,245,255,0.3)" : "0 0 6px rgba(0,245,255,0.15)",
+          border: showDrawPrompt
+            ? "1px solid rgba(0,245,255,0.8)"
+            : "1px solid rgba(0,245,255,0.35)",
+          boxShadow: showDrawPrompt
+            ? "0 0 14px rgba(0,245,255,0.7), 0 0 28px rgba(0,245,255,0.3)"
+            : "0 0 6px rgba(0,245,255,0.15)",
           transition: "box-shadow 0.2s ease",
         }}
-        onClick={showDrawPrompt ? () => onAction({ type: "DRAW_CARD" }) : undefined}
+        onClick={
+          showDrawPrompt ? () => onAction({ type: "DRAW_CARD" }) : undefined
+        }
       >
         <div
           className="card-back w-full h-full"
@@ -975,33 +1263,51 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
         className={`relative rounded overflow-hidden cursor-pointer${gyActionable ? " actionable" : ""}`}
         title={`Graveyard: ${player.graveyard.length} cards`}
         onClick={() => setZoneViewer({ side, tab: "graveyard" })}
-        style={{
-          width: "100px",
-          height: "140px",
-          flexShrink: 0,
-          "--hl-rgb": "255 45 120",
-          border: gyActionable ? undefined : "1px solid rgba(255,45,120,0.6)",
-          background: "rgba(255,45,120,0.08)",
-          boxShadow: gyActionable ? undefined : "0 0 6px rgba(255,45,120,0.2)",
-        } as React.CSSProperties}
+        style={
+          {
+            width: "100px",
+            height: "140px",
+            flexShrink: 0,
+            "--hl-rgb": "255 45 120",
+            border: gyActionable ? undefined : "1px solid rgba(255,45,120,0.6)",
+            background: "rgba(255,45,120,0.08)",
+            boxShadow: gyActionable
+              ? undefined
+              : "0 0 6px rgba(255,45,120,0.2)",
+          } as React.CSSProperties
+        }
       >
         {topCard ? (
           <img
             src={`https://images.ygoprodeck.com/images/cards_small/${topCard.id}.jpg`}
             alt={topCard.name}
             className="w-full h-full object-cover opacity-70"
-            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+            onError={e => {
+              (e.target as HTMLImageElement).style.display = "none";
+            }}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <span style={{ color: "var(--neon-pink)", opacity: 0.6, filter: "drop-shadow(0 0 6px rgba(255,45,120,0.5))", display: "inline-flex" }}>
+            <span
+              style={{
+                color: "var(--neon-pink)",
+                opacity: 0.6,
+                filter: "drop-shadow(0 0 6px rgba(255,45,120,0.5))",
+                display: "inline-flex",
+              }}
+            >
               <Skull size={22} strokeWidth={2} />
             </span>
           </div>
         )}
         <div
           className="absolute bottom-0 left-0 right-0 text-center font-bold"
-          style={{ fontSize: "0.65rem", paddingBlock: "2px", background: "rgba(0,0,0,0.8)", color: "var(--neon-pink)" }}
+          style={{
+            fontSize: "0.65rem",
+            paddingBlock: "2px",
+            background: "rgba(0,0,0,0.8)",
+            color: "var(--neon-pink)",
+          }}
         >
           {player.graveyard.length}
         </div>
@@ -1018,15 +1324,21 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
         className={`relative rounded overflow-hidden cursor-pointer${banActionable ? " actionable" : ""}`}
         title={`Banished: ${player.banished.length} cards`}
         onClick={() => setZoneViewer({ side, tab: "banished" })}
-        style={{
-          width: "100px",
-          height: "140px",
-          flexShrink: 0,
-          "--hl-rgb": "180 79 255",
-          border: banActionable ? undefined : "1px solid rgba(180,79,255,0.6)",
-          background: "rgba(180,79,255,0.08)",
-          boxShadow: banActionable ? undefined : "0 0 6px rgba(180,79,255,0.2)",
-        } as React.CSSProperties}
+        style={
+          {
+            width: "100px",
+            height: "140px",
+            flexShrink: 0,
+            "--hl-rgb": "180 79 255",
+            border: banActionable
+              ? undefined
+              : "1px solid rgba(180,79,255,0.6)",
+            background: "rgba(180,79,255,0.08)",
+            boxShadow: banActionable
+              ? undefined
+              : "0 0 6px rgba(180,79,255,0.2)",
+          } as React.CSSProperties
+        }
       >
         {topBanished ? (
           <img
@@ -1034,18 +1346,32 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
             alt={topBanished.name}
             className="w-full h-full object-cover opacity-70"
             style={{ filter: "hue-rotate(60deg) brightness(0.8)" }}
-            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+            onError={e => {
+              (e.target as HTMLImageElement).style.display = "none";
+            }}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <span style={{ color: "#b44fff", opacity: 0.6, filter: "drop-shadow(0 0 6px rgba(180,79,255,0.5))", display: "inline-flex" }}>
+            <span
+              style={{
+                color: "#b44fff",
+                opacity: 0.6,
+                filter: "drop-shadow(0 0 6px rgba(180,79,255,0.5))",
+                display: "inline-flex",
+              }}
+            >
               <Ghost size={22} strokeWidth={2} />
             </span>
           </div>
         )}
         <div
           className="absolute bottom-0 left-0 right-0 text-center font-bold"
-          style={{ fontSize: "0.65rem", paddingBlock: "2px", background: "rgba(0,0,0,0.8)", color: "#b44fff" }}
+          style={{
+            fontSize: "0.65rem",
+            paddingBlock: "2px",
+            background: "rgba(0,0,0,0.8)",
+            color: "#b44fff",
+          }}
         >
           {player.banished.length}
         </div>
@@ -1062,25 +1388,43 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
         className={`relative rounded overflow-hidden cursor-pointer${extraActionable ? " actionable" : ""}`}
         title={`Extra Deck: ${count} cards`}
         onClick={() => setZoneViewer({ side, tab: "extra" })}
-        style={{
-          width: "100px",
-          height: "140px",
-          flexShrink: 0,
-          "--hl-rgb": "255 215 0",
-          border: extraActionable ? undefined : "1px solid rgba(255,215,0,0.6)",
-          background: "rgba(255,215,0,0.08)",
-          boxShadow: extraActionable ? undefined : "0 0 6px rgba(255,215,0,0.2)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        } as React.CSSProperties}
+        style={
+          {
+            width: "100px",
+            height: "140px",
+            flexShrink: 0,
+            "--hl-rgb": "255 215 0",
+            border: extraActionable
+              ? undefined
+              : "1px solid rgba(255,215,0,0.6)",
+            background: "rgba(255,215,0,0.08)",
+            boxShadow: extraActionable
+              ? undefined
+              : "0 0 6px rgba(255,215,0,0.2)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          } as React.CSSProperties
+        }
       >
-        <span style={{ color: "#ffd700", opacity: count > 0 ? 0.85 : 0.3, filter: "drop-shadow(0 0 6px rgba(255,215,0,0.5))", display: "inline-flex" }}>
+        <span
+          style={{
+            color: "#ffd700",
+            opacity: count > 0 ? 0.85 : 0.3,
+            filter: "drop-shadow(0 0 6px rgba(255,215,0,0.5))",
+            display: "inline-flex",
+          }}
+        >
           <Star size={22} strokeWidth={2} />
         </span>
         <div
           className="absolute bottom-0 left-0 right-0 text-center font-bold"
-          style={{ fontSize: "0.65rem", paddingBlock: "2px", background: "rgba(0,0,0,0.8)", color: "#ffd700" }}
+          style={{
+            fontSize: "0.65rem",
+            paddingBlock: "2px",
+            background: "rgba(0,0,0,0.8)",
+            color: "#ffd700",
+          }}
         >
           {count}
         </div>
@@ -1093,7 +1437,10 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
   if (state.winner) {
     const iWon = state.winner === mySide;
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.9)" }}>
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center"
+        style={{ background: "rgba(0,0,0,0.9)" }}
+      >
         <div className="text-center animate-slide-up">
           <div
             className="text-6xl font-black mb-4"
@@ -1107,8 +1454,14 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
           >
             {iWon ? "VICTORY" : "DEFEAT"}
           </div>
-          <div className="text-lg opacity-60" style={{ color: "var(--text-secondary)" }}>
-            {(() => { const log = visibleLog ?? state.log; return log[log.length - 1]; })()}
+          <div
+            className="text-lg opacity-60"
+            style={{ color: "var(--text-secondary)" }}
+          >
+            {(() => {
+              const log = visibleLog ?? state.log;
+              return log[log.length - 1];
+            })()}
           </div>
         </div>
       </div>
@@ -1128,10 +1481,11 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
         if (selection.type !== "none") clearSelection();
       }}
     >
-
       {/* ── Field ── */}
-      <div className="flex-1 flex flex-col" style={{ minWidth: 0, overflowY: "auto" }}>
-
+      <div
+        className="flex-1 flex flex-col"
+        style={{ minWidth: 0, overflowY: "auto" }}
+      >
         {/* Spacer top */}
         <div className="flex-1" />
 
@@ -1157,15 +1511,23 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
             const oppPile = oppHand.length >= 10;
             const PILE_W = 932;
             const CARD_W = 100;
-            const oppStep = oppPile && oppHand.length > 1
-              ? Math.floor((PILE_W - CARD_W) / (oppHand.length - 1))
-              : CARD_W;
+            const oppStep =
+              oppPile && oppHand.length > 1
+                ? Math.floor((PILE_W - CARD_W) / (oppHand.length - 1))
+                : CARD_W;
             return (
               <div
                 className="flex items-center justify-center px-2 py-1.5 flex-shrink-0"
-                style={oppPile
-                  ? { position: "relative", height: "152px", width: PILE_W, margin: "0 auto", overflow: "visible" }
-                  : { gap: "4px" }
+                style={
+                  oppPile
+                    ? {
+                        position: "relative",
+                        height: "152px",
+                        width: PILE_W,
+                        margin: "0 auto",
+                        overflow: "visible",
+                      }
+                    : { gap: "4px" }
                 }
               >
                 {oppHand.map((c, i) => (
@@ -1176,10 +1538,14 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
                     isOpponentCard
                     pileMode={oppPile}
                     pileOffset={oppPile ? i * oppStep : undefined}
-                    onClick={openCards && (c.id || 0) > 0 ? () => {
-                      setSelectedCardDetail(c as GameCard);
-                      setSelectedLocator(null);
-                    } : undefined}
+                    onClick={
+                      openCards && (c.id || 0) > 0
+                        ? () => {
+                            setSelectedCardDetail(c as GameCard);
+                            setSelectedLocator(null);
+                          }
+                        : undefined
+                    }
                   />
                 ))}
               </div>
@@ -1187,7 +1553,10 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
           })()}
 
           {/* Opponent zones — official mat layout (mirrored) */}
-          <div className="py-1.5 flex-shrink-0 flex flex-col items-center" style={{ gap: "8px" }}>
+          <div
+            className="py-1.5 flex-shrink-0 flex flex-col items-center"
+            style={{ gap: "8px" }}
+          >
             {/* S/T row (top for opponent) */}
             <div className="board-center-row">
               <div className="board-flank-left">
@@ -1220,7 +1589,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
             borderTop: "1px solid rgba(0,245,255,0.3)",
             borderBottom: "1px solid rgba(0,245,255,0.3)",
           }}
-          onClick={(e) => e.stopPropagation()}
+          onClick={e => e.stopPropagation()}
         >
           {/*
            * The EMZ slots (100×140px) define the row height.
@@ -1231,9 +1600,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
            */}
 
           {/* EMZ slots — centered, defines row height */}
-          <div className="flex justify-center py-1">
-            {renderEMZRow()}
-          </div>
+          <div className="flex justify-center py-1">{renderEMZRow()}</div>
 
           {/* Phase indicator — absolute left, vertically centered */}
           <div
@@ -1247,7 +1614,9 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
                 onAdvance={() => onAction({ type: "ADVANCE_PHASE" })}
                 turnNumber={state.turnNumber}
                 activePlayerName={
-                  state.activePlayer === mySide ? "Your" : opponentPlayer.name + "'s"
+                  state.activePlayer === mySide
+                    ? "Your"
+                    : opponentPlayer.name + "'s"
                 }
               />
 
@@ -1256,30 +1625,57 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
                 <div className="flex items-center gap-1 flex-wrap">
                   <span
                     className="text-[0.5rem]"
-                    style={{ fontFamily: "'Orbitron', sans-serif", color: "var(--neon-yellow)" }}
+                    style={{
+                      fontFamily: "'Orbitron', sans-serif",
+                      color: "var(--neon-yellow)",
+                    }}
                   >
                     SELECT {selection.needed - selection.zones.length} MORE
                   </span>
                   {selection.zones.length >= selection.needed && (
                     <>
                       <button
-                        onClick={(e) => { e.stopPropagation(); confirmTribute(true); }}
+                        onClick={e => {
+                          e.stopPropagation();
+                          confirmTribute(true);
+                        }}
                         className="px-2 py-0.5 text-[0.5rem] rounded"
-                        style={{ background: "rgba(0,245,255,0.15)", border: "1px solid var(--neon-cyan)", color: "var(--neon-cyan)", fontFamily: "'Orbitron', sans-serif" }}
+                        style={{
+                          background: "rgba(0,245,255,0.15)",
+                          border: "1px solid var(--neon-cyan)",
+                          color: "var(--neon-cyan)",
+                          fontFamily: "'Orbitron', sans-serif",
+                        }}
                       >
                         SUMMON
                       </button>
                       <button
-                        onClick={(e) => { e.stopPropagation(); confirmTribute(false); }}
+                        onClick={e => {
+                          e.stopPropagation();
+                          confirmTribute(false);
+                        }}
                         className="px-2 py-0.5 text-[0.5rem] rounded"
-                        style={{ background: "rgba(245,230,66,0.1)", border: "1px solid var(--neon-yellow)", color: "var(--neon-yellow)", fontFamily: "'Orbitron', sans-serif" }}
+                        style={{
+                          background: "rgba(245,230,66,0.1)",
+                          border: "1px solid var(--neon-yellow)",
+                          color: "var(--neon-yellow)",
+                          fontFamily: "'Orbitron', sans-serif",
+                        }}
                       >
                         SET
                       </button>
                       <button
-                        onClick={(e) => { e.stopPropagation(); clearSelection(); }}
+                        onClick={e => {
+                          e.stopPropagation();
+                          clearSelection();
+                        }}
                         className="px-2 py-0.5 text-[0.5rem] rounded"
-                        style={{ background: "rgba(255,45,120,0.1)", border: "1px solid var(--neon-pink)", color: "var(--neon-pink)", fontFamily: "'Orbitron', sans-serif" }}
+                        style={{
+                          background: "rgba(255,45,120,0.1)",
+                          border: "1px solid var(--neon-pink)",
+                          color: "var(--neon-pink)",
+                          fontFamily: "'Orbitron', sans-serif",
+                        }}
                       >
                         CANCEL
                       </button>
@@ -1294,12 +1690,16 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
           {onRestart && (
             <div className="absolute right-3 top-0 bottom-0 flex items-center">
               <button
-                onClick={(e) => {
+                onClick={e => {
                   e.stopPropagation();
                   setShowRestartConfirm(true);
                 }}
                 className="px-2 py-0.5 text-[0.5rem] rounded opacity-70 hover:opacity-100 transition-opacity"
-                style={{ border: "1px solid var(--neon-pink)", color: "var(--neon-pink)", fontFamily: "'Orbitron', sans-serif" }}
+                style={{
+                  border: "1px solid var(--neon-pink)",
+                  color: "var(--neon-pink)",
+                  fontFamily: "'Orbitron', sans-serif",
+                }}
               >
                 RESTART
               </button>
@@ -1310,7 +1710,10 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
         {/* My area — compact, no stretching */}
         <div className="flex flex-col flex-shrink-0">
           {/* My zones — official mat layout */}
-          <div className="py-1.5 flex-shrink-0 flex flex-col items-center" style={{ gap: "8px" }}>
+          <div
+            className="py-1.5 flex-shrink-0 flex flex-col items-center"
+            style={{ gap: "8px" }}
+          >
             {/* Monster row */}
             <div className="board-center-row">
               <div className="board-flank-left">
@@ -1340,9 +1743,10 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
             const myPile = myHand.length >= 10;
             const PILE_W = 932;
             const CARD_W = 100;
-            const myStep = myPile && myHand.length > 1
-              ? Math.floor((PILE_W - CARD_W) / (myHand.length - 1))
-              : CARD_W;
+            const myStep =
+              myPile && myHand.length > 1
+                ? Math.floor((PILE_W - CARD_W) / (myHand.length - 1))
+                : CARD_W;
             return (
               <div
                 className="flex items-center justify-center px-2 py-2 flex-shrink-0"
@@ -1350,28 +1754,48 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
                   borderTop: "1px solid rgba(0,245,255,0.2)",
                   minHeight: "4.5rem",
                   ...(myPile
-                    ? { position: "relative", height: "156px", width: PILE_W, margin: "0 auto", overflow: "visible" }
-                    : { gap: "4px" }
-                  ),
+                    ? {
+                        position: "relative",
+                        height: "156px",
+                        width: PILE_W,
+                        margin: "0 auto",
+                        overflow: "visible",
+                      }
+                    : { gap: "4px" }),
                 }}
-                onClick={(e) => e.stopPropagation()}
+                onClick={e => e.stopPropagation()}
               >
                 {myHand.map((card, i) => (
                   <HandCard
                     key={card.instanceId}
                     card={card}
                     index={i}
-                    isSelected={selection.type === "hand" && selection.index === i}
-                    isDetailSelected={isLocatorMatch(card.id, "mine", "hand", i)}
+                    isSelected={
+                      selection.type === "hand" && selection.index === i
+                    }
+                    isDetailSelected={isLocatorMatch(
+                      card.id,
+                      "mine",
+                      "hand",
+                      i
+                    )}
                     isActionable={isActionable(card.id, "mine", "hand", i)}
                     pileMode={myPile}
                     pileOffset={myPile ? i * myStep : undefined}
                     onClick={() => handleHandCardClick(i, card)}
-                    onContextMenu={(e) => handleHandCardContext(e, i, card)}
+                    onContextMenu={e => handleHandCardContext(e, i, card)}
                   />
                 ))}
                 {myHand.length === 0 && (
-                  <span className="text-[0.55rem]" style={{ fontFamily: "'Orbitron', sans-serif", color: "var(--neon-cyan)", opacity: 0.5, letterSpacing: "0.1em" }}>
+                  <span
+                    className="text-[0.55rem]"
+                    style={{
+                      fontFamily: "'Orbitron', sans-serif",
+                      color: "var(--neon-cyan)",
+                      opacity: 0.5,
+                      letterSpacing: "0.1em",
+                    }}
+                  >
                     NO CARDS IN HAND
                   </span>
                 )}
@@ -1403,10 +1827,17 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
           background: "rgba(0,0,0,0.4)",
           zIndex: 60,
         }}
-        onClick={(e) => e.stopPropagation()}
+        onClick={e => e.stopPropagation()}
       >
         {/* Card detail — top half */}
-        <div className="flex flex-col" style={{ flex: "0 0 45%", minHeight: 0, borderBottom: "1px solid rgba(0,245,255,0.25)" }}>
+        <div
+          className="flex flex-col"
+          style={{
+            flex: "0 0 45%",
+            minHeight: 0,
+            borderBottom: "1px solid rgba(0,245,255,0.25)",
+          }}
+        >
           {/* Header */}
           <div
             className="px-3 py-2 flex-shrink-0"
@@ -1427,14 +1858,18 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
                 {/* Card image */}
                 <div
                   className="w-full rounded overflow-hidden"
-                  style={{ aspectRatio: "0.717", background: "rgba(255,255,255,0.04)" }}
+                  style={{
+                    aspectRatio: "0.717",
+                    background: "rgba(255,255,255,0.04)",
+                  }}
                 >
                   <img
                     src={`https://images.ygoprodeck.com/images/cards/${selectedCardDetail.id}.jpg`}
                     alt={selectedCardDetail.name}
                     className="w-full h-full object-contain"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = "https://images.ygoprodeck.com/images/cards/back_high.jpg";
+                    onError={e => {
+                      (e.target as HTMLImageElement).src =
+                        "https://images.ygoprodeck.com/images/cards/back_high.jpg";
                     }}
                   />
                 </div>
@@ -1452,31 +1887,71 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
                   {selectedCardDetail.name}
                 </div>
                 {/* Type + attribute */}
-                <div style={{ fontFamily: "'Rajdhani', sans-serif", fontSize: "0.82rem", color: "#8aaec8", lineHeight: 1.5, fontWeight: 500 }}>
+                <div
+                  style={{
+                    fontFamily: "'Rajdhani', sans-serif",
+                    fontSize: "0.82rem",
+                    color: "#8aaec8",
+                    lineHeight: 1.5,
+                    fontWeight: 500,
+                  }}
+                >
                   {selectedCardDetail.type}
-                  {selectedCardDetail.level ? ` · ★${selectedCardDetail.level}` : ""}
-                  {selectedCardDetail.attribute ? ` · ${selectedCardDetail.attribute}` : ""}
+                  {selectedCardDetail.level
+                    ? ` · ★${selectedCardDetail.level}`
+                    : ""}
+                  {selectedCardDetail.attribute
+                    ? ` · ${selectedCardDetail.attribute}`
+                    : ""}
                 </div>
                 {/* ATK / DEF */}
                 {selectedCardDetail.type?.includes("Monster") && (
                   <div className="flex gap-3">
-                    <span style={{ fontFamily: "'Rajdhani', sans-serif", fontSize: "0.82rem", color: "var(--neon-cyan)", fontWeight: 700 }}>
+                    <span
+                      style={{
+                        fontFamily: "'Rajdhani', sans-serif",
+                        fontSize: "0.82rem",
+                        color: "var(--neon-cyan)",
+                        fontWeight: 700,
+                      }}
+                    >
                       ATK/{selectedCardDetail.atk ?? "?"}
                     </span>
-                    <span style={{ fontFamily: "'Rajdhani', sans-serif", fontSize: "0.82rem", color: "var(--neon-yellow, #ffe066)", fontWeight: 700 }}>
+                    <span
+                      style={{
+                        fontFamily: "'Rajdhani', sans-serif",
+                        fontSize: "0.82rem",
+                        color: "var(--neon-yellow, #ffe066)",
+                        fontWeight: 700,
+                      }}
+                    >
                       DEF/{selectedCardDetail.def ?? "?"}
                     </span>
                   </div>
                 )}
                 {/* Description */}
-                <p style={{ fontFamily: "'Rajdhani', sans-serif", fontSize: "0.82rem", color: "#8aaec8", lineHeight: 1.6, fontWeight: 400 }}>
+                <p
+                  style={{
+                    fontFamily: "'Rajdhani', sans-serif",
+                    fontSize: "0.82rem",
+                    color: "#8aaec8",
+                    lineHeight: 1.6,
+                    fontWeight: 400,
+                  }}
+                >
                   {selectedCardDetail.desc}
                 </p>
               </div>
             ) : (
               <div
                 className="h-full flex flex-col items-center justify-center gap-2 opacity-30"
-                style={{ fontFamily: "'Orbitron', sans-serif", fontSize: "0.65rem", color: "var(--neon-cyan)", letterSpacing: "0.1em", textAlign: "center" }}
+                style={{
+                  fontFamily: "'Orbitron', sans-serif",
+                  fontSize: "0.65rem",
+                  color: "var(--neon-cyan)",
+                  letterSpacing: "0.1em",
+                  textAlign: "center",
+                }}
               >
                 <div style={{ fontSize: "1.5rem" }}>🃏</div>
                 <div>SELECT A CARD</div>
@@ -1493,7 +1968,7 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
                 className="flex flex-shrink-0"
                 style={{ borderBottom: "1px solid rgba(0,245,255,0.15)" }}
               >
-                {(["actions", "log"] as const).map((tab) => (
+                {(["actions", "log"] as const).map(tab => (
                   <button
                     key={tab}
                     onClick={() => setBottomTab(tab)}
@@ -1502,9 +1977,18 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
                       fontFamily: "'Orbitron', sans-serif",
                       fontSize: "0.75rem",
                       letterSpacing: "0.1em",
-                      color: bottomTab === tab ? "var(--neon-cyan)" : "var(--text-secondary)",
-                      background: bottomTab === tab ? "rgba(0,245,255,0.06)" : "transparent",
-                      borderBottom: bottomTab === tab ? "2px solid var(--neon-cyan)" : "2px solid transparent",
+                      color:
+                        bottomTab === tab
+                          ? "var(--neon-cyan)"
+                          : "var(--text-secondary)",
+                      background:
+                        bottomTab === tab
+                          ? "rgba(0,245,255,0.06)"
+                          : "transparent",
+                      borderBottom:
+                        bottomTab === tab
+                          ? "2px solid var(--neon-cyan)"
+                          : "2px solid transparent",
                       opacity: bottomTab === tab ? 1 : 0.5,
                       cursor: "pointer",
                       border: "none",
@@ -1513,17 +1997,28 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
                       borderRight: "none",
                     }}
                   >
-                    {tab === "actions" ? `ACTIONS (${engineActions?.length ?? 0})` : "LOG"}
+                    {tab === "actions"
+                      ? `ACTIONS (${engineActions?.length ?? 0})`
+                      : "LOG"}
                   </button>
                 ))}
-
               </div>
               {/* Tab content */}
               <div className="flex-1" style={{ minHeight: 0 }}>
-                {bottomTab === "actions" && engineActions && engineActions.length > 0 && onEngineAction ? (
-                  <EnginePromptRouter actions={engineActions} prompt={enginePrompt ?? null} onAction={onEngineAction} />
+                {bottomTab === "actions" &&
+                engineActions &&
+                engineActions.length > 0 &&
+                onEngineAction ? (
+                  <EnginePromptRouter
+                    actions={engineActions}
+                    prompt={enginePrompt ?? null}
+                    onAction={onEngineAction}
+                  />
                 ) : (
-                  <DuelLog logs={visibleLog ?? state.log} isReplaying={isReplaying} />
+                  <DuelLog
+                    logs={visibleLog ?? state.log}
+                    isReplaying={isReplaying}
+                  />
                 )}
               </div>
             </>
@@ -1565,7 +2060,10 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
             zoneViewer.side === mySide ? myPlayer.name : opponentPlayer.name
           }
           onClose={() => setZoneViewer(null)}
-          onCardSelect={(card) => { setSelectedCardDetail(card); setSelectedLocator(null); }}
+          onCardSelect={card => {
+            setSelectedCardDetail(card);
+            setSelectedLocator(null);
+          }}
           isCardActionable={(cardId, zone, seq) => {
             const side = zoneViewer.side === mySide ? "mine" : "opp";
             return isActionable(cardId, side, zone, seq);
@@ -1585,11 +2083,12 @@ export function DuelBoard({ state, mySide, onAction, engineMode, engineActions, 
             style={{
               background: "var(--bg-panel)",
               border: "1px solid rgba(255,45,120,0.45)",
-              boxShadow: "0 0 40px rgba(0,0,0,0.8), 0 0 24px rgba(255,45,120,0.15)",
+              boxShadow:
+                "0 0 40px rgba(0,0,0,0.8), 0 0 24px rgba(255,45,120,0.15)",
               minWidth: "280px",
               maxWidth: "360px",
             }}
-            onClick={(e) => e.stopPropagation()}
+            onClick={e => e.stopPropagation()}
           >
             {/* Icon */}
             <div style={{ fontSize: "2rem", lineHeight: 1 }}>↺</div>

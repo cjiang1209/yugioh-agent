@@ -1,0 +1,28 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.10
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # Prettier and ESLint run via local hooks against yugioh_web/'s pinned
+  # devDependencies — keeps hook and project versions impossible to drift.
+  # `pnpm -C` avoids a subshell + `cd`; `pass_filenames: false` because the
+  # tools' own --cache flags already skip unchanged files, and pre-commit's
+  # filename pass would be repo-rooted (wrong cwd after -C).
+  - repo: local
+    hooks:
+      - id: prettier
+        name: prettier (yugioh_web)
+        language: system
+        entry: pnpm -C yugioh_web exec prettier --write --cache .
+        files: ^yugioh_web/.*\.(ts|tsx|js|jsx|json|css|md|html|ya?ml)$
+        pass_filenames: false
+
+      - id: eslint
+        name: eslint (yugioh_web)
+        language: system
+        entry: pnpm -C yugioh_web exec eslint --fix --cache .
+        files: ^yugioh_web/.*\.(ts|tsx|js|jsx)$
+        pass_filenames: false

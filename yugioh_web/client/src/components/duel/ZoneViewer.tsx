@@ -22,14 +22,21 @@ export function ZoneViewer({
   onCardSelect,
   isCardActionable,
 }: ZoneViewerProps) {
-  const [tab, setTab] = useState<"graveyard" | "banished" | "extra">(initialTab);
+  const [tab, setTab] = useState<"graveyard" | "banished" | "extra">(
+    initialTab
+  );
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const cards = tab === "graveyard" ? graveyard : tab === "banished" ? banished : extra;
+  const cards =
+    tab === "graveyard" ? graveyard : tab === "banished" ? banished : extra;
   const isGY = tab === "graveyard";
   const isExtra = tab === "extra";
   const zoneName = isGY ? "grave" : isExtra ? "extra" : "banished";
-  const accentColor = isGY ? "var(--neon-pink)" : isExtra ? "#ffd700" : "#b44fff";
+  const accentColor = isGY
+    ? "var(--neon-pink)"
+    : isExtra
+      ? "#ffd700"
+      : "#b44fff";
   const accentRgb = isGY ? "255,45,120" : isExtra ? "255,215,0" : "180,79,255";
   const hlRgb = accentRgb.replaceAll(",", " ");
 
@@ -41,7 +48,14 @@ export function ZoneViewer({
   return (
     <div
       className="fixed flex items-center justify-center"
-      style={{ top: 0, bottom: 0, left: 0, right: "clamp(180px, 20vw, 280px)", background: "rgba(0,0,0,0.85)", zIndex: 2000 }}
+      style={{
+        top: 0,
+        bottom: 0,
+        left: 0,
+        right: "clamp(180px, 20vw, 280px)",
+        background: "rgba(0,0,0,0.85)",
+        zIndex: 2000,
+      }}
       onClick={onClose}
     >
       <div
@@ -54,17 +68,25 @@ export function ZoneViewer({
           width: "92vw",
           height: "min(85vh, 600px)",
         }}
-        onClick={(e) => e.stopPropagation()}
+        onClick={e => e.stopPropagation()}
       >
         {/* Header */}
         <div
           className="flex items-center gap-3 px-4 py-2"
-          style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(0,0,0,0.45)" }}
+          style={{
+            borderBottom: "1px solid rgba(255,255,255,0.06)",
+            background: "rgba(0,0,0,0.45)",
+          }}
         >
           {/* Player name */}
           <span
             className="font-bold shrink-0"
-            style={{ fontFamily: "'Orbitron', sans-serif", color: accentColor, fontSize: "0.6rem", letterSpacing: "0.1em" }}
+            style={{
+              fontFamily: "'Orbitron', sans-serif",
+              color: accentColor,
+              fontSize: "0.6rem",
+              letterSpacing: "0.1em",
+            }}
           >
             {playerName.toUpperCase()}
           </span>
@@ -72,40 +94,59 @@ export function ZoneViewer({
           {/* Tab switcher — order: Extra → Graveyard → Banished (matches board zone order) */}
           <div className="flex gap-1 flex-1 justify-center">
             <button
-              onClick={() => { setTab("extra"); setSelectedId(null); }}
+              onClick={() => {
+                setTab("extra");
+                setSelectedId(null);
+              }}
               className="px-3 py-0.5 text-[0.55rem] rounded transition-all"
               style={{
                 fontFamily: "'Orbitron', sans-serif",
-                background: tab === "extra" ? "rgba(255,215,0,0.15)" : "transparent",
+                background:
+                  tab === "extra" ? "rgba(255,215,0,0.15)" : "transparent",
                 border: `1px solid ${tab === "extra" ? "#ffd700" : "rgba(255,255,255,0.1)"}`,
                 color: tab === "extra" ? "#ffd700" : "rgba(255,255,255,0.35)",
-                boxShadow: tab === "extra" ? "0 0 8px rgba(255,215,0,0.3)" : "none",
+                boxShadow:
+                  tab === "extra" ? "0 0 8px rgba(255,215,0,0.3)" : "none",
               }}
             >
               ★ EXTRA ({extra.length})
             </button>
             <button
-              onClick={() => { setTab("graveyard"); setSelectedId(null); }}
+              onClick={() => {
+                setTab("graveyard");
+                setSelectedId(null);
+              }}
               className="px-3 py-0.5 text-[0.55rem] rounded transition-all"
               style={{
                 fontFamily: "'Orbitron', sans-serif",
-                background: tab === "graveyard" ? "rgba(255,45,120,0.15)" : "transparent",
+                background:
+                  tab === "graveyard" ? "rgba(255,45,120,0.15)" : "transparent",
                 border: `1px solid ${tab === "graveyard" ? "var(--neon-pink)" : "rgba(255,255,255,0.1)"}`,
-                color: tab === "graveyard" ? "var(--neon-pink)" : "rgba(255,255,255,0.35)",
-                boxShadow: tab === "graveyard" ? "0 0 8px rgba(255,45,120,0.3)" : "none",
+                color:
+                  tab === "graveyard"
+                    ? "var(--neon-pink)"
+                    : "rgba(255,255,255,0.35)",
+                boxShadow:
+                  tab === "graveyard" ? "0 0 8px rgba(255,45,120,0.3)" : "none",
               }}
             >
               ⚰ GRAVEYARD ({graveyard.length})
             </button>
             <button
-              onClick={() => { setTab("banished"); setSelectedId(null); }}
+              onClick={() => {
+                setTab("banished");
+                setSelectedId(null);
+              }}
               className="px-3 py-0.5 text-[0.55rem] rounded transition-all"
               style={{
                 fontFamily: "'Orbitron', sans-serif",
-                background: tab === "banished" ? "rgba(180,79,255,0.15)" : "transparent",
+                background:
+                  tab === "banished" ? "rgba(180,79,255,0.15)" : "transparent",
                 border: `1px solid ${tab === "banished" ? "#b44fff" : "rgba(255,255,255,0.1)"}`,
-                color: tab === "banished" ? "#b44fff" : "rgba(255,255,255,0.35)",
-                boxShadow: tab === "banished" ? "0 0 8px rgba(180,79,255,0.3)" : "none",
+                color:
+                  tab === "banished" ? "#b44fff" : "rgba(255,255,255,0.35)",
+                boxShadow:
+                  tab === "banished" ? "0 0 8px rgba(180,79,255,0.3)" : "none",
               }}
             >
               ✦ BANISHED ({banished.length})
@@ -116,7 +157,10 @@ export function ZoneViewer({
           <button
             onClick={onClose}
             className="text-sm opacity-40 hover:opacity-100 transition-opacity shrink-0"
-            style={{ color: "var(--neon-pink)", fontFamily: "'Orbitron', sans-serif" }}
+            style={{
+              color: "var(--neon-pink)",
+              fontFamily: "'Orbitron', sans-serif",
+            }}
           >
             ✕
           </button>
@@ -127,34 +171,56 @@ export function ZoneViewer({
           {cards.length === 0 ? (
             <div
               className="w-full text-center py-8 opacity-25"
-              style={{ fontFamily: "'Orbitron', sans-serif", color: accentColor, fontSize: "0.6rem" }}
+              style={{
+                fontFamily: "'Orbitron', sans-serif",
+                color: accentColor,
+                fontSize: "0.6rem",
+              }}
             >
-              {isGY ? "GRAVEYARD IS EMPTY" : isExtra ? "EXTRA DECK IS EMPTY" : "NO BANISHED CARDS"}
+              {isGY
+                ? "GRAVEYARD IS EMPTY"
+                : isExtra
+                  ? "EXTRA DECK IS EMPTY"
+                  : "NO BANISHED CARDS"}
             </div>
           ) : (
-            <div className="flex flex-wrap gap-2" style={{ alignContent: "flex-start" }}>
+            <div
+              className="flex flex-wrap gap-2"
+              style={{ alignContent: "flex-start" }}
+            >
               {cards.map((card, i) => {
                 const isSelected = selectedId === card.instanceId;
-                const actionable = isCardActionable?.(card.id, zoneName, i) ?? false;
+                const actionable =
+                  isCardActionable?.(card.id, zoneName, i) ?? false;
                 return (
                   <div
                     key={card.instanceId}
                     className={`relative flex-shrink-0 cursor-pointer rounded overflow-hidden transition-all${isSelected ? " card-highlight" : ""}${actionable ? " actionable" : ""}`}
-                    style={{
-                      width: "100px",
-                      height: "140px",
-                      "--hl-rgb": hlRgb,
-                      border: (isSelected || actionable) ? undefined : "1px solid var(--border-dim)",
-                      boxShadow: (isSelected || actionable) ? undefined : "none",
-                      filter: isGY ? "none" : isExtra ? "none" : "hue-rotate(60deg) brightness(0.8) saturate(1.2)",
-                    } as React.CSSProperties}
+                    style={
+                      {
+                        width: "100px",
+                        height: "140px",
+                        "--hl-rgb": hlRgb,
+                        border:
+                          isSelected || actionable
+                            ? undefined
+                            : "1px solid var(--border-dim)",
+                        boxShadow:
+                          isSelected || actionable ? undefined : "none",
+                        filter: isGY
+                          ? "none"
+                          : isExtra
+                            ? "none"
+                            : "hue-rotate(60deg) brightness(0.8) saturate(1.2)",
+                      } as React.CSSProperties
+                    }
                     onClick={() => handleCardClick(card)}
                   >
                     <img
                       src={`https://images.ygoprodeck.com/images/cards_small/${card.id}.jpg`}
                       alt={card.name}
                       className="w-full h-full object-cover"
-                      onError={(e) => {
+                      onError={e => {
                         (e.target as HTMLImageElement).src =
                           "https://images.ygoprodeck.com/images/cards/back_high.jpg";
                       }}

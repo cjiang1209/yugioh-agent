@@ -1,4 +1,12 @@
-import { Hand, Layers, Swords, ScrollText, Skull, Ghost, Star } from "lucide-react";
+import {
+  Hand,
+  Layers,
+  Swords,
+  ScrollText,
+  Skull,
+  Ghost,
+  Star,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
   LOCATION_BANISHED,
@@ -21,14 +29,22 @@ function badgeSpec(location: number | undefined): BadgeSpec | null {
   if (!location) return null;
   const base = location & LOCATION_BASE_MASK;
   switch (base) {
-    case LOCATION_HAND:     return { Icon: Hand,       label: "Hand",        color: "#00f5ff" };
-    case LOCATION_DECK:     return { Icon: Layers,     label: "Deck",        color: "#00f5ff" };
-    case LOCATION_MZONE:    return { Icon: Swords,     label: "Monster Zone",color: "#00f5ff" };
-    case LOCATION_SZONE:    return { Icon: ScrollText, label: "Spell/Trap",  color: "#00f5ff" };
-    case LOCATION_GRAVE:    return { Icon: Skull,      label: "Graveyard",   color: "#ff2d78" };
-    case LOCATION_BANISHED: return { Icon: Ghost,      label: "Banished",    color: "#b44fff" };
-    case LOCATION_EXTRA:    return { Icon: Star,       label: "Extra Deck",  color: "#ffd700" };
-    default:                return null;
+    case LOCATION_HAND:
+      return { Icon: Hand, label: "Hand", color: "#00f5ff" };
+    case LOCATION_DECK:
+      return { Icon: Layers, label: "Deck", color: "#00f5ff" };
+    case LOCATION_MZONE:
+      return { Icon: Swords, label: "Monster Zone", color: "#00f5ff" };
+    case LOCATION_SZONE:
+      return { Icon: ScrollText, label: "Spell/Trap", color: "#00f5ff" };
+    case LOCATION_GRAVE:
+      return { Icon: Skull, label: "Graveyard", color: "#ff2d78" };
+    case LOCATION_BANISHED:
+      return { Icon: Ghost, label: "Banished", color: "#b44fff" };
+    case LOCATION_EXTRA:
+      return { Icon: Star, label: "Extra Deck", color: "#ffd700" };
+    default:
+      return null;
   }
 }
 

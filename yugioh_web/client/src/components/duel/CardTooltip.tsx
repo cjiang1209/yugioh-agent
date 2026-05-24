@@ -22,7 +22,13 @@ function getFrameColor(frameType: string): string {
 
 function getAttributeIcon(attr?: string): string {
   const map: Record<string, string> = {
-    DARK: "🌑", LIGHT: "☀️", EARTH: "🌍", WATER: "💧", FIRE: "🔥", WIND: "🌪️", DIVINE: "✨",
+    DARK: "🌑",
+    LIGHT: "☀️",
+    EARTH: "🌍",
+    WATER: "💧",
+    FIRE: "🔥",
+    WIND: "🌪️",
+    DIVINE: "✨",
   };
   return attr ? (map[attr] ?? "?") : "";
 }
@@ -50,7 +56,7 @@ export function CardTooltip({ card, position = "right" }: CardTooltipProps) {
           src={`https://images.ygoprodeck.com/images/cards/${card.id}.jpg`}
           alt={card.name}
           className="w-full h-full object-contain"
-          onError={(e) => {
+          onError={e => {
             (e.target as HTMLImageElement).style.display = "none";
           }}
         />
@@ -61,12 +67,25 @@ export function CardTooltip({ card, position = "right" }: CardTooltipProps) {
         {/* Name + type bar */}
         <div
           className="px-1.5 py-0.5 mb-1.5 rounded-sm"
-          style={{ background: frameColor + "33", borderLeft: `2px solid ${frameColor}` }}
+          style={{
+            background: frameColor + "33",
+            borderLeft: `2px solid ${frameColor}`,
+          }}
         >
-          <div className="text-xs font-bold leading-tight" style={{ color: "var(--text-primary)", fontFamily: "'Orbitron', sans-serif", fontSize: "0.6rem" }}>
+          <div
+            className="text-xs font-bold leading-tight"
+            style={{
+              color: "var(--text-primary)",
+              fontFamily: "'Orbitron', sans-serif",
+              fontSize: "0.6rem",
+            }}
+          >
             {card.name}
           </div>
-          <div className="text-[0.5rem] opacity-60 mt-0.5" style={{ color: "var(--text-secondary)" }}>
+          <div
+            className="text-[0.5rem] opacity-60 mt-0.5"
+            style={{ color: "var(--text-secondary)" }}
+          >
             {getAttributeIcon(card.attribute)} {card.type}
             {isMonster && card.level ? ` ★${card.level}` : ""}
           </div>
@@ -75,10 +94,22 @@ export function CardTooltip({ card, position = "right" }: CardTooltipProps) {
         {/* ATK/DEF */}
         {isMonster && (
           <div className="flex gap-2 mb-1.5">
-            <span className="text-[0.6rem] font-bold" style={{ color: "var(--neon-cyan)", fontFamily: "'Share Tech Mono', monospace" }}>
+            <span
+              className="text-[0.6rem] font-bold"
+              style={{
+                color: "var(--neon-cyan)",
+                fontFamily: "'Share Tech Mono', monospace",
+              }}
+            >
               ATK/{card.atk ?? "?"}
             </span>
-            <span className="text-[0.6rem] font-bold" style={{ color: "var(--neon-yellow)", fontFamily: "'Share Tech Mono', monospace" }}>
+            <span
+              className="text-[0.6rem] font-bold"
+              style={{
+                color: "var(--neon-yellow)",
+                fontFamily: "'Share Tech Mono', monospace",
+              }}
+            >
               DEF/{card.def ?? "?"}
             </span>
           </div>
@@ -87,7 +118,11 @@ export function CardTooltip({ card, position = "right" }: CardTooltipProps) {
         {/* Description */}
         <p
           className="text-[0.5rem] leading-relaxed opacity-70"
-          style={{ color: "var(--text-secondary)", maxHeight: "60px", overflow: "hidden" }}
+          style={{
+            color: "var(--text-secondary)",
+            maxHeight: "60px",
+            overflow: "hidden",
+          }}
         >
           {card.desc}
         </p>

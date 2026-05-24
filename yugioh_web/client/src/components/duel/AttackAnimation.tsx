@@ -156,22 +156,24 @@ export function AttackAnimation({ from, to, onDone }: AttackAnimationProps) {
           ))}
           {/* Leading energy ball */}
           <div
-            style={{
-              position: "absolute",
-              left: src.x,
-              top: src.y,
-              width: 18,
-              height: 18,
-              marginLeft: -9,
-              marginTop: -9,
-              borderRadius: "50%",
-              background:
-                "radial-gradient(circle, #fff 0%, #ffcc00 40%, #ff2d78 80%, transparent 100%)",
-              boxShadow: "0 0 20px 8px rgba(255,45,120,0.8)",
-              animation: `atk-ball 0.35s ease-in forwards`,
-              ["--tx" as string]: `${dx}px`,
-              ["--ty" as string]: `${dy}px`,
-            } as React.CSSProperties}
+            style={
+              {
+                position: "absolute",
+                left: src.x,
+                top: src.y,
+                width: 18,
+                height: 18,
+                marginLeft: -9,
+                marginTop: -9,
+                borderRadius: "50%",
+                background:
+                  "radial-gradient(circle, #fff 0%, #ffcc00 40%, #ff2d78 80%, transparent 100%)",
+                boxShadow: "0 0 20px 8px rgba(255,45,120,0.8)",
+                animation: `atk-ball 0.35s ease-in forwards`,
+                ["--tx" as string]: `${dx}px`,
+                ["--ty" as string]: `${dy}px`,
+              } as React.CSSProperties
+            }
           />
         </>
       )}
@@ -282,7 +284,7 @@ export function AttackAnimation({ from, to, onDone }: AttackAnimationProps) {
           ))}
 
           {/* Particle burst */}
-          {PARTICLES.map((p) => {
+          {PARTICLES.map(p => {
             const rad = (p.angle * Math.PI) / 180;
             const tx = Math.cos(rad) * p.dist;
             const ty = Math.sin(rad) * p.dist;

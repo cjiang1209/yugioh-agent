@@ -47,18 +47,23 @@ export function ActionMenu({ items, x, y, onClose }: ActionMenuProps) {
               fontWeight: 600,
               color: item.disabled
                 ? "rgba(150,200,230,0.2)"
-                : item.color ?? "var(--text-primary)",
+                : (item.color ?? "var(--text-primary)"),
               background: "transparent",
-              borderBottom: i < items.length - 1 ? "1px solid rgba(0,245,255,0.05)" : "none",
+              borderBottom:
+                i < items.length - 1
+                  ? "1px solid rgba(0,245,255,0.05)"
+                  : "none",
               cursor: item.disabled ? "not-allowed" : "pointer",
             }}
-            onMouseEnter={(e) => {
+            onMouseEnter={e => {
               if (!item.disabled) {
-                (e.currentTarget as HTMLButtonElement).style.background = "rgba(0,245,255,0.08)";
+                (e.currentTarget as HTMLButtonElement).style.background =
+                  "rgba(0,245,255,0.08)";
               }
             }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+            onMouseLeave={e => {
+              (e.currentTarget as HTMLButtonElement).style.background =
+                "transparent";
             }}
           >
             {item.label}

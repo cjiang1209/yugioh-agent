@@ -1,29 +1,112 @@
 import type { EngineAction } from "../../../../shared/engineTypes";
 import { CardThumbnail } from "./CardThumbnail";
 
-const CATEGORY_COLORS: Record<string, { bg: string; border: string; text: string }> = {
-  summon:         { bg: "rgba(0,200,80,0.15)",   border: "rgba(0,200,80,0.5)",   text: "#00d850" },
-  special_summon: { bg: "rgba(0,200,80,0.15)",   border: "rgba(0,200,80,0.5)",   text: "#00d850" },
-  attack:         { bg: "rgba(255,45,120,0.15)",  border: "rgba(255,45,120,0.5)", text: "#ff2d78" },
-  activate:       { bg: "rgba(0,180,255,0.15)",   border: "rgba(0,180,255,0.5)",  text: "#00b4ff" },
-  chain:          { bg: "rgba(0,180,255,0.15)",   border: "rgba(0,180,255,0.5)",  text: "#00b4ff" },
-  to_battle:      { bg: "rgba(128,128,128,0.15)", border: "rgba(128,128,128,0.5)", text: "#aaa" },
-  to_end:         { bg: "rgba(128,128,128,0.15)", border: "rgba(128,128,128,0.5)", text: "#aaa" },
-  to_main2:       { bg: "rgba(128,128,128,0.15)", border: "rgba(128,128,128,0.5)", text: "#aaa" },
-  pass:           { bg: "rgba(128,128,128,0.15)", border: "rgba(128,128,128,0.5)", text: "#aaa" },
-  finish:         { bg: "rgba(128,128,128,0.15)", border: "rgba(128,128,128,0.5)", text: "#aaa" },
-  yes:            { bg: "rgba(0,200,80,0.15)",    border: "rgba(0,200,80,0.5)",   text: "#00d850" },
-  no:             { bg: "rgba(255,45,120,0.15)",   border: "rgba(255,45,120,0.5)", text: "#ff2d78" },
-  monster_set:    { bg: "rgba(245,230,66,0.15)",  border: "rgba(245,230,66,0.5)", text: "#f5e642" },
-  spell_set:      { bg: "rgba(245,230,66,0.15)",  border: "rgba(245,230,66,0.5)", text: "#f5e642" },
-  reposition:     { bg: "rgba(245,230,66,0.15)",  border: "rgba(245,230,66,0.5)", text: "#f5e642" },
-  select_card:    { bg: "rgba(180,79,255,0.15)",  border: "rgba(180,79,255,0.5)", text: "#b44fff" },
-  position:       { bg: "rgba(245,230,66,0.15)",  border: "rgba(245,230,66,0.5)", text: "#f5e642" },
-  place:          { bg: "rgba(245,230,66,0.15)",  border: "rgba(245,230,66,0.5)", text: "#f5e642" },
-  option:         { bg: "rgba(180,79,255,0.15)",  border: "rgba(180,79,255,0.5)", text: "#b44fff" },
+const CATEGORY_COLORS: Record<
+  string,
+  { bg: string; border: string; text: string }
+> = {
+  summon: {
+    bg: "rgba(0,200,80,0.15)",
+    border: "rgba(0,200,80,0.5)",
+    text: "#00d850",
+  },
+  special_summon: {
+    bg: "rgba(0,200,80,0.15)",
+    border: "rgba(0,200,80,0.5)",
+    text: "#00d850",
+  },
+  attack: {
+    bg: "rgba(255,45,120,0.15)",
+    border: "rgba(255,45,120,0.5)",
+    text: "#ff2d78",
+  },
+  activate: {
+    bg: "rgba(0,180,255,0.15)",
+    border: "rgba(0,180,255,0.5)",
+    text: "#00b4ff",
+  },
+  chain: {
+    bg: "rgba(0,180,255,0.15)",
+    border: "rgba(0,180,255,0.5)",
+    text: "#00b4ff",
+  },
+  to_battle: {
+    bg: "rgba(128,128,128,0.15)",
+    border: "rgba(128,128,128,0.5)",
+    text: "#aaa",
+  },
+  to_end: {
+    bg: "rgba(128,128,128,0.15)",
+    border: "rgba(128,128,128,0.5)",
+    text: "#aaa",
+  },
+  to_main2: {
+    bg: "rgba(128,128,128,0.15)",
+    border: "rgba(128,128,128,0.5)",
+    text: "#aaa",
+  },
+  pass: {
+    bg: "rgba(128,128,128,0.15)",
+    border: "rgba(128,128,128,0.5)",
+    text: "#aaa",
+  },
+  finish: {
+    bg: "rgba(128,128,128,0.15)",
+    border: "rgba(128,128,128,0.5)",
+    text: "#aaa",
+  },
+  yes: {
+    bg: "rgba(0,200,80,0.15)",
+    border: "rgba(0,200,80,0.5)",
+    text: "#00d850",
+  },
+  no: {
+    bg: "rgba(255,45,120,0.15)",
+    border: "rgba(255,45,120,0.5)",
+    text: "#ff2d78",
+  },
+  monster_set: {
+    bg: "rgba(245,230,66,0.15)",
+    border: "rgba(245,230,66,0.5)",
+    text: "#f5e642",
+  },
+  spell_set: {
+    bg: "rgba(245,230,66,0.15)",
+    border: "rgba(245,230,66,0.5)",
+    text: "#f5e642",
+  },
+  reposition: {
+    bg: "rgba(245,230,66,0.15)",
+    border: "rgba(245,230,66,0.5)",
+    text: "#f5e642",
+  },
+  select_card: {
+    bg: "rgba(180,79,255,0.15)",
+    border: "rgba(180,79,255,0.5)",
+    text: "#b44fff",
+  },
+  position: {
+    bg: "rgba(245,230,66,0.15)",
+    border: "rgba(245,230,66,0.5)",
+    text: "#f5e642",
+  },
+  place: {
+    bg: "rgba(245,230,66,0.15)",
+    border: "rgba(245,230,66,0.5)",
+    text: "#f5e642",
+  },
+  option: {
+    bg: "rgba(180,79,255,0.15)",
+    border: "rgba(180,79,255,0.5)",
+    text: "#b44fff",
+  },
 };
 
-const DEFAULT_COLOR = { bg: "rgba(128,128,128,0.1)", border: "rgba(128,128,128,0.3)", text: "#888" };
+const DEFAULT_COLOR = {
+  bg: "rgba(128,128,128,0.1)",
+  border: "rgba(128,128,128,0.3)",
+  text: "#888",
+};
 
 function categoryLabel(cat: string): string {
   return cat.replace(/_/g, " ").toUpperCase();
@@ -34,13 +117,19 @@ interface EngineActionPanelProps {
   onAction: (actionIndex: number) => void;
 }
 
-export function EngineActionPanel({ actions, onAction }: EngineActionPanelProps) {
+export function EngineActionPanel({
+  actions,
+  onAction,
+}: EngineActionPanelProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Action list */}
       <div
         className="flex-1 overflow-y-auto"
-        style={{ scrollbarWidth: "thin", scrollbarColor: "rgba(0,245,255,0.3) transparent" }}
+        style={{
+          scrollbarWidth: "thin",
+          scrollbarColor: "rgba(0,245,255,0.3) transparent",
+        }}
       >
         {actions.length === 0 ? (
           <div
@@ -55,7 +144,7 @@ export function EngineActionPanel({ actions, onAction }: EngineActionPanelProps)
             No actions available
           </div>
         ) : (
-          actions.map((action) => {
+          actions.map(action => {
             const colors = CATEGORY_COLORS[action.category] ?? DEFAULT_COLOR;
             return (
               <button
@@ -75,11 +164,12 @@ export function EngineActionPanel({ actions, onAction }: EngineActionPanelProps)
                   borderRight: "none",
                   borderTop: "none",
                 }}
-                onMouseEnter={(e) => {
+                onMouseEnter={e => {
                   (e.currentTarget as HTMLElement).style.background = colors.bg;
                 }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.background = "transparent";
+                onMouseLeave={e => {
+                  (e.currentTarget as HTMLElement).style.background =
+                    "transparent";
                 }}
               >
                 <CardThumbnail
@@ -89,7 +179,15 @@ export function EngineActionPanel({ actions, onAction }: EngineActionPanelProps)
                   borderColor={colors.border}
                   location={action.location}
                   fallback={
-                    <span style={{ fontSize: "0.6rem", color: colors.text, opacity: 0.5 }}>?</span>
+                    <span
+                      style={{
+                        fontSize: "0.6rem",
+                        color: colors.text,
+                        opacity: 0.5,
+                      }}
+                    >
+                      ?
+                    </span>
                   }
                 />
 

@@ -44,7 +44,7 @@ export interface EnginePlayerBoard {
  *  the server sends unhidden zones plus ``hand`` and ``extra_deck`` arrays. */
 export interface EngineOpponentBoard {
   hand_count: number;
-  hand?: EngineHandCard[];           // present in open-cards mode
+  hand?: EngineHandCard[]; // present in open-cards mode
   monsters: (EngineFieldCard | null)[]; // 5 slots
   spells_traps: (EngineFieldCard | null)[]; // 5 slots
   field_zone: EngineFieldCard | null;
@@ -52,7 +52,7 @@ export interface EngineOpponentBoard {
   graveyard: EngineFieldCard[];
   banished: EngineFieldCard[];
   extra_deck_count: number;
-  extra_deck?: EngineHandCard[];     // present in open-cards mode
+  extra_deck?: EngineHandCard[]; // present in open-cards mode
   deck_count: number;
   lp: number;
 }
@@ -88,8 +88,8 @@ export interface EngineAction {
   card_code: number;
   card_name: string;
   controller?: 0 | 1;
-  location?: number;  // engine location constant (0x02=HAND, 0x04=MZONE, etc.)
-  sequence?: number;  // slot index
+  location?: number; // engine location constant (0x02=HAND, 0x04=MZONE, etc.)
+  sequence?: number; // slot index
   category:
     | "summon"
     | "special_summon"

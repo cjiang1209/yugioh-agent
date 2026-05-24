@@ -29,7 +29,10 @@ export function PhaseIndicator({
       }}
     >
       {/* Turn info */}
-      <div className="flex items-center" style={{ gap: "clamp(4px, 0.8vw, 10px)" }}>
+      <div
+        className="flex items-center"
+        style={{ gap: "clamp(4px, 0.8vw, 10px)" }}
+      >
         <span
           style={{
             fontFamily: "'Orbitron', sans-serif",
@@ -57,17 +60,26 @@ export function PhaseIndicator({
       </div>
 
       {/* Phase steps */}
-      <div className="flex items-center" style={{ gap: "clamp(2px, 0.4vw, 6px)" }}>
+      <div
+        className="flex items-center"
+        style={{ gap: "clamp(2px, 0.4vw, 6px)" }}
+      >
         {PHASE_ORDER.map((p, i) => {
           const cls =
-            i < currentIndex ? "past" : i === currentIndex ? "active" : "future";
+            i < currentIndex
+              ? "past"
+              : i === currentIndex
+                ? "active"
+                : "future";
           return (
             <span
               key={p}
               className={`phase-step ${cls}`}
               style={{ fontSize: "clamp(0.36rem, 0.6vw, 0.52rem)" }}
             >
-              {PHASE_LABELS[p].replace(" Phase", "").replace("Main Phase ", "MP")}
+              {PHASE_LABELS[p]
+                .replace(" Phase", "")
+                .replace("Main Phase ", "MP")}
             </span>
           );
         })}
@@ -97,16 +109,21 @@ export function PhaseIndicator({
               letterSpacing: "0.08em",
               height: "100%",
             }}
-            onMouseEnter={(e) => {
-              (e.target as HTMLButtonElement).style.background = "rgba(0,245,255,0.2)";
-              (e.target as HTMLButtonElement).style.boxShadow = "0 0 12px rgba(0,245,255,0.4)";
+            onMouseEnter={e => {
+              (e.target as HTMLButtonElement).style.background =
+                "rgba(0,245,255,0.2)";
+              (e.target as HTMLButtonElement).style.boxShadow =
+                "0 0 12px rgba(0,245,255,0.4)";
             }}
-            onMouseLeave={(e) => {
-              (e.target as HTMLButtonElement).style.background = "rgba(0,245,255,0.08)";
+            onMouseLeave={e => {
+              (e.target as HTMLButtonElement).style.background =
+                "rgba(0,245,255,0.08)";
               (e.target as HTMLButtonElement).style.boxShadow = "none";
             }}
           >
-            {phase === "END" ? "END TURN ▶" : `NEXT: ${PHASE_LABELS[PHASE_ORDER[PHASE_ORDER.indexOf(phase) + 1]]?.replace(" Phase", "") ?? "END"} ▶`}
+            {phase === "END"
+              ? "END TURN ▶"
+              : `NEXT: ${PHASE_LABELS[PHASE_ORDER[PHASE_ORDER.indexOf(phase) + 1]]?.replace(" Phase", "") ?? "END"} ▶`}
           </button>
         ) : (
           <div
@@ -114,7 +131,7 @@ export function PhaseIndicator({
             style={{ gap: "clamp(3px, 0.4vw, 6px)" }}
           >
             {/* Three pulsing dots */}
-            {[0, 1, 2].map((i) => (
+            {[0, 1, 2].map(i => (
               <span
                 key={i}
                 className="waiting-dot"
@@ -128,7 +145,8 @@ export function PhaseIndicator({
                 fontWeight: "bold",
                 color: "var(--neon-pink)",
                 letterSpacing: "0.16em",
-                textShadow: "0 0 10px var(--neon-pink), 0 0 20px rgba(255,45,120,0.5)",
+                textShadow:
+                  "0 0 10px var(--neon-pink), 0 0 20px rgba(255,45,120,0.5)",
               }}
             >
               WAITING

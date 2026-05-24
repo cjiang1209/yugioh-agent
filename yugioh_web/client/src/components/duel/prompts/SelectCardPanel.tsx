@@ -1,4 +1,7 @@
-import type { EngineAction, EnginePrompt } from "../../../../../shared/engineTypes";
+import type {
+  EngineAction,
+  EnginePrompt,
+} from "../../../../../shared/engineTypes";
 import { CardThumbnail } from "../CardThumbnail";
 
 interface SelectCardPanelProps {
@@ -7,12 +10,16 @@ interface SelectCardPanelProps {
   onAction: (actionIndex: number) => void;
 }
 
-export function SelectCardPanel({ actions, prompt, onAction }: SelectCardPanelProps) {
+export function SelectCardPanel({
+  actions,
+  prompt,
+  onAction,
+}: SelectCardPanelProps) {
   const isTribute = prompt.type === "tribute";
   const cardActions = actions.filter(
-    (a) => a.category === "select_card" || a.category === "tribute",
+    a => a.category === "select_card" || a.category === "tribute"
   );
-  const finishAction = actions.find((a) => a.category === "finish");
+  const finishAction = actions.find(a => a.category === "finish");
 
   // Progress info
   let progressText = "";
@@ -80,7 +87,7 @@ export function SelectCardPanel({ actions, prompt, onAction }: SelectCardPanelPr
           scrollbarColor: "rgba(0,245,255,0.3) transparent",
         }}
       >
-        {cardActions.map((action) => {
+        {cardActions.map(action => {
           return (
             <button
               key={action.index}
@@ -97,11 +104,11 @@ export function SelectCardPanel({ actions, prompt, onAction }: SelectCardPanelPr
                 background: "rgba(180,79,255,0.06)",
                 cursor: "pointer",
               }}
-              onMouseEnter={(e) => {
+              onMouseEnter={e => {
                 e.currentTarget.style.background = "rgba(180,79,255,0.18)";
                 e.currentTarget.style.borderColor = "rgba(180,79,255,0.6)";
               }}
-              onMouseLeave={(e) => {
+              onMouseLeave={e => {
                 e.currentTarget.style.background = "rgba(180,79,255,0.06)";
                 e.currentTarget.style.borderColor = "rgba(180,79,255,0.3)";
               }}
@@ -111,12 +118,24 @@ export function SelectCardPanel({ actions, prompt, onAction }: SelectCardPanelPr
                 width={80}
                 height={112}
                 borderRadius={3}
-                borderColor={action.card_code > 0 ? "rgba(180,79,255,0.4)" : "rgba(180,79,255,0.3)"}
+                borderColor={
+                  action.card_code > 0
+                    ? "rgba(180,79,255,0.4)"
+                    : "rgba(180,79,255,0.3)"
+                }
                 location={action.location}
                 badgeSize={18}
                 alt={action.card_name}
                 fallback={
-                  <span style={{ fontSize: "0.7rem", color: "#b44fff", opacity: 0.5 }}>?</span>
+                  <span
+                    style={{
+                      fontSize: "0.7rem",
+                      color: "#b44fff",
+                      opacity: 0.5,
+                    }}
+                  >
+                    ?
+                  </span>
                 }
               />
               <span
@@ -142,7 +161,12 @@ export function SelectCardPanel({ actions, prompt, onAction }: SelectCardPanelPr
 
       {/* Finish button */}
       {finishAction && (
-        <div style={{ padding: "6px 8px", borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+        <div
+          style={{
+            padding: "6px 8px",
+            borderTop: "1px solid rgba(255,255,255,0.06)",
+          }}
+        >
           <button
             onClick={() => onAction(finishAction.index)}
             className="transition-all"
@@ -158,10 +182,10 @@ export function SelectCardPanel({ actions, prompt, onAction }: SelectCardPanelPr
               letterSpacing: "0.1em",
               cursor: "pointer",
             }}
-            onMouseEnter={(e) => {
+            onMouseEnter={e => {
               e.currentTarget.style.background = "rgba(0,245,255,0.25)";
             }}
-            onMouseLeave={(e) => {
+            onMouseLeave={e => {
               e.currentTarget.style.background = "rgba(0,245,255,0.12)";
             }}
           >

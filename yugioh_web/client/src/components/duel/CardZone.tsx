@@ -4,16 +4,16 @@ import { FieldCard, GameCard } from "../../../../shared/gameTypes";
 type ZoneVariant = "monster" | "spell-trap" | "field" | "extra-monster";
 
 const VARIANT_CSS: Record<ZoneVariant, string> = {
-  "monster": "card-zone",
+  monster: "card-zone",
   "spell-trap": "card-zone",
-  "field": "card-zone-field",
+  field: "card-zone-field",
   "extra-monster": "card-zone-extra-monster",
 };
 
 const VARIANT_TITLE: Record<ZoneVariant, string> = {
-  "monster": "Monster Zone",
+  monster: "Monster Zone",
   "spell-trap": "Spell/Trap Zone",
-  "field": "Field Zone",
+  field: "Field Zone",
   "extra-monster": "Extra Monster Zone",
 };
 
@@ -34,10 +34,17 @@ interface CardZoneProps {
   className?: string;
 }
 
-export const CARD_BACK_URL = "https://images.ygoprodeck.com/images/cards/back_high.jpg";
+export const CARD_BACK_URL =
+  "https://images.ygoprodeck.com/images/cards/back_high.jpg";
 
 /** Renders a card image with the open-facedown overlay (striped + gold border). */
-function OpenCardImage({ cardId, cardName }: { cardId: number; cardName: string }) {
+function OpenCardImage({
+  cardId,
+  cardName,
+}: {
+  cardId: number;
+  cardName: string;
+}) {
   return (
     <div className="card-open-facedown w-full h-full">
       <img
@@ -45,7 +52,9 @@ function OpenCardImage({ cardId, cardName }: { cardId: number; cardName: string 
         alt={cardName}
         className="w-full h-full object-cover rounded-sm"
         style={{ opacity: 0.75 }}
-        onError={(e) => { (e.target as HTMLImageElement).src = CARD_BACK_URL; }}
+        onError={e => {
+          (e.target as HTMLImageElement).src = CARD_BACK_URL;
+        }}
       />
     </div>
   );
@@ -54,15 +63,15 @@ function OpenCardImage({ cardId, cardName }: { cardId: number; cardName: string 
 // Natural card dimensions — always displayed at true size
 const CARD_SIZES = {
   sm: {
-    width:  "80px",
+    width: "80px",
     height: "112px",
   },
   md: {
-    width:  "100px",
+    width: "100px",
     height: "140px",
   },
   lg: {
-    width:  "120px",
+    width: "120px",
     height: "168px",
   },
 };
@@ -97,13 +106,19 @@ export function CardZone({
     .filter(Boolean)
     .join(" ");
 
-  const isDefPos = slot?.position === "DEF" || slot?.position === "FACE_DOWN_DEF";
+  const isDefPos =
+    slot?.position === "DEF" || slot?.position === "FACE_DOWN_DEF";
   const isFaceDown = slot?.faceDown;
 
   return (
     <div
       className={zoneClass}
-      style={{ width: dims.width, height: dims.height, flexShrink: 0, overflow: "visible" }}
+      style={{
+        width: dims.width,
+        height: dims.height,
+        flexShrink: 0,
+        overflow: "visible",
+      }}
       onClick={onClick}
       onContextMenu={onContextMenu}
       title={slot?.card.name ?? VARIANT_TITLE[variant]}
@@ -119,7 +134,10 @@ export function CardZone({
           >
             {isFaceDown ? (
               isOpponent && slot.card.id ? (
-                <OpenCardImage cardId={slot.card.id} cardName={slot.card.name} />
+                <OpenCardImage
+                  cardId={slot.card.id}
+                  cardName={slot.card.name}
+                />
               ) : (
                 <div className="card-back w-full h-full" />
               )
@@ -132,31 +150,36 @@ export function CardZone({
                 }
                 alt={slot.card.name}
                 className="w-full h-full object-cover rounded-sm"
-                onError={(e) => {
+                onError={e => {
                   (e.target as HTMLImageElement).src = CARD_BACK_URL;
                 }}
               />
             )}
           </div>
           {/* ATK/DEF badge — outside rotated container so it stays at the bottom */}
-          {(variant === "monster" || variant === "extra-monster") && slot.card.atk !== undefined && (!isFaceDown || (isOpponent && slot.card.id > 0)) && (
-            <div
-              className="absolute bottom-0 left-0 right-0 text-center font-bold"
-              style={{
-                fontSize: "0.65rem",
-                paddingBlock: "2px",
-                background: "rgba(0,0,0,0.8)",
-                color: slot.position === "ATK" ? "var(--neon-cyan)" : "var(--neon-yellow)",
-                zIndex: 1,
-              }}
-            >
-              {slot.position === "ATK" ? slot.card.atk : slot.card.def}
-            </div>
-          )}
+          {(variant === "monster" || variant === "extra-monster") &&
+            slot.card.atk !== undefined &&
+            (!isFaceDown || (isOpponent && slot.card.id > 0)) && (
+              <div
+                className="absolute bottom-0 left-0 right-0 text-center font-bold"
+                style={{
+                  fontSize: "0.65rem",
+                  paddingBlock: "2px",
+                  background: "rgba(0,0,0,0.8)",
+                  color:
+                    slot.position === "ATK"
+                      ? "var(--neon-cyan)"
+                      : "var(--neon-yellow)",
+                  zIndex: 1,
+                }}
+              >
+                {slot.position === "ATK" ? slot.card.atk : slot.card.def}
+              </div>
+            )}
           {badge}
         </>
       ) : (
-        emptyContent ?? null
+        (emptyContent ?? null)
       )}
     </div>
   );
@@ -177,7 +200,18 @@ interface HandCardProps {
   onContextMenu?: (e: React.MouseEvent) => void;
 }
 
-export function HandCard({ card, index, isSelected, isDetailSelected, isActionable, isOpponentCard, pileMode, pileOffset, onClick, onContextMenu }: HandCardProps) {
+export function HandCard({
+  card,
+  index,
+  isSelected,
+  isDetailSelected,
+  isActionable,
+  isOpponentCard,
+  pileMode,
+  pileOffset,
+  onClick,
+  onContextMenu,
+}: HandCardProps) {
   const w = "100px";
   const h = "140px";
   const [hovered, setHovered] = useState(false);
@@ -186,9 +220,11 @@ export function HandCard({ card, index, isSelected, isDetailSelected, isActionab
 
   if (isOpponentCard) {
     const hasOpenData = card.id > 0;
-    const cardContent = hasOpenData
-      ? <OpenCardImage cardId={card.id} cardName={card.name} />
-      : <div className="card-back w-full h-full" />;
+    const cardContent = hasOpenData ? (
+      <OpenCardImage cardId={card.id} cardName={card.name} />
+    ) : (
+      <div className="card-back w-full h-full" />
+    );
     const cursor = onClick ? "cursor-pointer" : "cursor-default";
 
     if (pileMode) {
@@ -233,13 +269,29 @@ export function HandCard({ card, index, isSelected, isDetailSelected, isActionab
           height: h,
           left: pileOffset ?? 0,
           top: 8,
-          zIndex: isLifted ? 1000 : (isDetailHighlighted || isActionHighlighted) ? 100 : index,
-          transform: isSelected ? "translateY(-10px)" : isLifted ? "translateY(-10px)" : "translateY(0)",
-          border: (isDetailHighlighted || isActionHighlighted) ? undefined : isSelected ? "1px solid var(--neon-pink)" : "1px solid var(--border-dim)",
+          zIndex: isLifted
+            ? 1000
+            : isDetailHighlighted || isActionHighlighted
+              ? 100
+              : index,
+          transform: isSelected
+            ? "translateY(-10px)"
+            : isLifted
+              ? "translateY(-10px)"
+              : "translateY(0)",
+          border:
+            isDetailHighlighted || isActionHighlighted
+              ? undefined
+              : isSelected
+                ? "1px solid var(--neon-pink)"
+                : "1px solid var(--border-dim)",
           borderRadius: "4px",
-          boxShadow: (isDetailHighlighted || isActionHighlighted) ? undefined : isSelected
-            ? "0 0 14px rgba(255,45,120,0.7), 0 -4px 14px rgba(255,45,120,0.4)"
-            : "0 2px 8px rgba(0,0,0,0.5)",
+          boxShadow:
+            isDetailHighlighted || isActionHighlighted
+              ? undefined
+              : isSelected
+                ? "0 0 14px rgba(255,45,120,0.7), 0 -4px 14px rgba(255,45,120,0.4)"
+                : "0 2px 8px rgba(0,0,0,0.5)",
         }}
         onClick={onClick}
         onContextMenu={onContextMenu}
@@ -251,7 +303,7 @@ export function HandCard({ card, index, isSelected, isDetailSelected, isActionab
           src={`https://images.ygoprodeck.com/images/cards_small/${card.id}.jpg`}
           alt={card.name}
           className="w-full h-full object-cover rounded-sm"
-          onError={(e) => {
+          onError={e => {
             (e.target as HTMLImageElement).src =
               "https://images.ygoprodeck.com/images/cards/back_high.jpg";
           }}
@@ -267,11 +319,19 @@ export function HandCard({ card, index, isSelected, isDetailSelected, isActionab
         width: w,
         height: h,
         transform: isSelected ? "translateY(-10px)" : "translateY(0)",
-        border: (isDetailHighlighted || isActionHighlighted) ? undefined : isSelected ? "1px solid var(--neon-pink)" : "1px solid var(--border-dim)",
+        border:
+          isDetailHighlighted || isActionHighlighted
+            ? undefined
+            : isSelected
+              ? "1px solid var(--neon-pink)"
+              : "1px solid var(--border-dim)",
         borderRadius: "4px",
-        boxShadow: (isDetailHighlighted || isActionHighlighted) ? undefined : isSelected
-          ? "0 0 14px rgba(255,45,120,0.7), 0 -4px 14px rgba(255,45,120,0.4)"
-          : "0 2px 8px rgba(0,0,0,0.5)",
+        boxShadow:
+          isDetailHighlighted || isActionHighlighted
+            ? undefined
+            : isSelected
+              ? "0 0 14px rgba(255,45,120,0.7), 0 -4px 14px rgba(255,45,120,0.4)"
+              : "0 2px 8px rgba(0,0,0,0.5)",
       }}
       onClick={onClick}
       onContextMenu={onContextMenu}
@@ -281,7 +341,7 @@ export function HandCard({ card, index, isSelected, isDetailSelected, isActionab
         src={`https://images.ygoprodeck.com/images/cards_small/${card.id}.jpg`}
         alt={card.name}
         className="w-full h-full object-cover rounded-sm"
-        onError={(e) => {
+        onError={e => {
           (e.target as HTMLImageElement).src =
             "https://images.ygoprodeck.com/images/cards/back_high.jpg";
         }}

@@ -2,7 +2,11 @@ import { useEffect, useState } from "react";
 import type { DeckDefinition, DeckPayload } from "../../../shared/deckTypes";
 import { resolveTurnOrder, type TurnOrder } from "./turnOrder";
 
-const DECK_COLORS = ["var(--neon-cyan)", "var(--neon-pink)", "var(--neon-yellow)"];
+const DECK_COLORS = [
+  "var(--neon-cyan)",
+  "var(--neon-pink)",
+  "var(--neon-yellow)",
+];
 const CARD_IMAGE_BASE = "https://images.ygoprodeck.com/images/cards_small";
 const CARD_BACK = "https://images.ygoprodeck.com/images/cards/back_high.jpg";
 
@@ -20,18 +24,21 @@ interface DeckSelectorProps {
     openCards: boolean,
     turnOrder: TurnOrder,
     agentPlayer: 0 | 1,
-    animateCoinFlip: boolean,
+    animateCoinFlip: boolean
   ) => void;
 }
 
 function toPayload(deck: DeckDefinition): DeckPayload {
   return {
-    main: deck.main.map((c) => c.code),
-    extra: deck.extra.map((c) => c.code),
+    main: deck.main.map(c => c.code),
+    extra: deck.extra.map(c => c.code),
   };
 }
 
-export function DeckSelector({ apiUrl = "http://localhost:8000", onDeckSelected }: DeckSelectorProps) {
+export function DeckSelector({
+  apiUrl = "http://localhost:8000",
+  onDeckSelected,
+}: DeckSelectorProps) {
   const [decks, setDecks] = useState<DeckDefinition[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +49,7 @@ export function DeckSelector({ apiUrl = "http://localhost:8000", onDeckSelected 
 
   useEffect(() => {
     fetch(`${apiUrl}/api/web/decks`)
-      .then((res) => {
+      .then(res => {
         if (!res.ok) throw new Error(`Failed to load decks: ${res.status}`);
         return res.json();
       })
@@ -50,7 +57,7 @@ export function DeckSelector({ apiUrl = "http://localhost:8000", onDeckSelected 
         setDecks(data);
         setLoading(false);
       })
-      .catch((e) => {
+      .catch(e => {
         setError(e instanceof Error ? e.message : "Failed to load decks");
         setLoading(false);
       });
@@ -72,7 +79,11 @@ export function DeckSelector({ apiUrl = "http://localhost:8000", onDeckSelected 
         />
         <div
           className="text-xs"
-          style={{ fontFamily: "'Orbitron', sans-serif", color: "var(--neon-cyan)", letterSpacing: "0.15em" }}
+          style={{
+            fontFamily: "'Orbitron', sans-serif",
+            color: "var(--neon-cyan)",
+            letterSpacing: "0.15em",
+          }}
         >
           LOADING DECKS...
         </div>
@@ -86,7 +97,13 @@ export function DeckSelector({ apiUrl = "http://localhost:8000", onDeckSelected 
         className="min-h-screen flex flex-col items-center justify-center"
         style={{ background: "var(--bg-void)" }}
       >
-        <div style={{ color: "var(--neon-pink)", fontFamily: "'Orbitron', sans-serif", fontSize: "0.8rem" }}>
+        <div
+          style={{
+            color: "var(--neon-pink)",
+            fontFamily: "'Orbitron', sans-serif",
+            fontSize: "0.8rem",
+          }}
+        >
           {error}
         </div>
       </div>
@@ -115,7 +132,10 @@ export function DeckSelector({ apiUrl = "http://localhost:8000", onDeckSelected 
         </h1>
         <p
           className="text-sm opacity-50"
-          style={{ color: "var(--text-secondary)", fontFamily: "'Rajdhani', sans-serif" }}
+          style={{
+            color: "var(--text-secondary)",
+            fontFamily: "'Rajdhani', sans-serif",
+          }}
         >
           Choose a deck for each player
         </p>
@@ -139,7 +159,8 @@ export function DeckSelector({ apiUrl = "http://localhost:8000", onDeckSelected 
             style={{
               width: "1px",
               height: "200px",
-              background: "linear-gradient(180deg, transparent, var(--border-dim), transparent)",
+              background:
+                "linear-gradient(180deg, transparent, var(--border-dim), transparent)",
             }}
           />
         </div>
@@ -209,24 +230,32 @@ export function DeckSelector({ apiUrl = "http://localhost:8000", onDeckSelected 
       {/* Open cards toggle */}
       <div className="flex flex-col items-center mb-6">
         <button
-          onClick={() => setOpenCards((v) => !v)}
+          onClick={() => setOpenCards(v => !v)}
           className="flex items-center gap-2 px-4 py-2 rounded transition-all"
           style={{
             fontFamily: "'Orbitron', sans-serif",
             fontSize: "0.6rem",
             letterSpacing: "0.1em",
-            background: openCards ? "rgba(255,215,0,0.1)" : "rgba(255,255,255,0.03)",
+            background: openCards
+              ? "rgba(255,215,0,0.1)"
+              : "rgba(255,255,255,0.03)",
             border: `1px solid ${openCards ? "rgba(255,215,0,0.8)" : "var(--border-dim)"}`,
             color: openCards ? "rgba(255,215,0,1)" : "var(--text-muted)",
             boxShadow: openCards ? "0 0 12px rgba(255,215,0,0.25)" : "none",
           }}
         >
-          <span style={{ fontSize: "0.85rem" }}>{openCards ? "\u{1F441}" : "\u{1F441}\u200D\u{1F5E8}"}</span>
+          <span style={{ fontSize: "0.85rem" }}>
+            {openCards ? "\u{1F441}" : "\u{1F441}\u200D\u{1F5E8}"}
+          </span>
           {openCards ? "OPEN CARDS: ON" : "OPEN CARDS: OFF"}
         </button>
         <span
           className="mt-1 opacity-40"
-          style={{ color: "var(--text-secondary)", fontFamily: "'Share Tech Mono', monospace", fontSize: "0.5rem" }}
+          style={{
+            color: "var(--text-secondary)",
+            fontFamily: "'Share Tech Mono', monospace",
+            fontSize: "0.5rem",
+          }}
         >
           Show opponent hidden cards
         </span>
@@ -237,14 +266,15 @@ export function DeckSelector({ apiUrl = "http://localhost:8000", onDeckSelected 
         disabled={!canStart}
         onClick={() => {
           if (myDeck && oppDeck) {
-            const { agentPlayer, animateCoinFlip } = resolveTurnOrder(turnOrder);
+            const { agentPlayer, animateCoinFlip } =
+              resolveTurnOrder(turnOrder);
             onDeckSelected(
               toPayload(myDeck),
               toPayload(oppDeck),
               openCards,
               turnOrder,
               agentPlayer,
-              animateCoinFlip,
+              animateCoinFlip
             );
           }
         }}
@@ -252,7 +282,9 @@ export function DeckSelector({ apiUrl = "http://localhost:8000", onDeckSelected 
         style={{
           fontFamily: "'Orbitron', sans-serif",
           letterSpacing: "0.15em",
-          background: canStart ? "rgba(0,245,255,0.1)" : "rgba(255,255,255,0.03)",
+          background: canStart
+            ? "rgba(0,245,255,0.1)"
+            : "rgba(255,255,255,0.03)",
           border: `1px solid ${canStart ? "var(--neon-cyan)" : "var(--border-dim)"}`,
           color: canStart ? "var(--neon-cyan)" : "var(--text-muted)",
           boxShadow: canStart ? "0 0 20px rgba(0,245,255,0.3)" : "none",
@@ -322,7 +354,11 @@ function SlotSection({
     <div style={{ minWidth: "240px" }}>
       <div
         className="text-xs font-bold mb-4 tracking-widest text-center"
-        style={{ fontFamily: "'Orbitron', sans-serif", color: labelColor, fontSize: "0.65rem" }}
+        style={{
+          fontFamily: "'Orbitron', sans-serif",
+          color: labelColor,
+          fontSize: "0.65rem",
+        }}
       >
         {label}
       </div>
@@ -357,9 +393,15 @@ function SlotSection({
               </div>
               <div
                 className="text-xs"
-                style={{ fontFamily: "'Share Tech Mono', monospace", color, opacity: 0.7 }}
+                style={{
+                  fontFamily: "'Share Tech Mono', monospace",
+                  color,
+                  opacity: 0.7,
+                }}
               >
-                {extraCount > 0 ? `${mainCount} MAIN + ${extraCount} EXTRA` : `${mainCount} CARDS`}
+                {extraCount > 0
+                  ? `${mainCount} MAIN + ${extraCount} EXTRA`
+                  : `${mainCount} CARDS`}
               </div>
             </div>
           );
@@ -391,7 +433,11 @@ function DeckPreview({
       >
         <div
           className="text-xs opacity-30"
-          style={{ fontFamily: "'Orbitron', sans-serif", color: labelColor, letterSpacing: "0.1em" }}
+          style={{
+            fontFamily: "'Orbitron', sans-serif",
+            color: labelColor,
+            letterSpacing: "0.1em",
+          }}
         >
           SELECT A DECK
         </div>
@@ -409,7 +455,11 @@ function DeckPreview({
       }}
     >
       {/* Main deck section */}
-      <CardSection title={`MAIN DECK (${deck.main.length})`} color={labelColor} cards={deck.main} />
+      <CardSection
+        title={`MAIN DECK (${deck.main.length})`}
+        color={labelColor}
+        cards={deck.main}
+      />
 
       {/* Extra deck section */}
       {deck.extra.length > 0 && (
@@ -421,7 +471,11 @@ function DeckPreview({
               margin: "12px 0",
             }}
           />
-          <CardSection title={`EXTRA DECK (${deck.extra.length})`} color={labelColor} cards={deck.extra} />
+          <CardSection
+            title={`EXTRA DECK (${deck.extra.length})`}
+            color={labelColor}
+            cards={deck.extra}
+          />
         </>
       )}
     </div>
@@ -443,13 +497,22 @@ function CardSection({
     <div>
       <div
         className="text-xs font-bold mb-2 tracking-wider"
-        style={{ fontFamily: "'Orbitron', sans-serif", color, fontSize: "0.55rem", opacity: 0.7 }}
+        style={{
+          fontFamily: "'Orbitron', sans-serif",
+          color,
+          fontSize: "0.55rem",
+          opacity: 0.7,
+        }}
       >
         {title}
       </div>
       <div className="flex flex-wrap gap-1.5">
         {cards.map((card, idx) => (
-          <div key={`${card.code}-${idx}`} className="group relative" style={{ width: "60px" }}>
+          <div
+            key={`${card.code}-${idx}`}
+            className="group relative"
+            style={{ width: "60px" }}
+          >
             <img
               src={`${CARD_IMAGE_BASE}/${card.code}.jpg`}
               alt={card.name}
@@ -461,7 +524,7 @@ function CardSection({
                 objectFit: "cover",
                 border: "1px solid var(--border-dim)",
               }}
-              onError={(e) => {
+              onError={e => {
                 const img = e.target as HTMLImageElement;
                 img.onerror = null;
                 img.src = CARD_BACK;

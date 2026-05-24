@@ -63,7 +63,8 @@ export default function Duel() {
         openCards={openCards}
         agentPlayer={agentPlayer}
         onRestartTurnOrder={() => {
-          const { agentPlayer: ap, animateCoinFlip } = resolveTurnOrder(turnOrder);
+          const { agentPlayer: ap, animateCoinFlip } =
+            resolveTurnOrder(turnOrder);
           setAgentPlayer(ap);
           if (animateCoinFlip) setPendingCoinFlip(ap);
           return { agentPlayer: ap, willAnimate: animateCoinFlip };
@@ -88,7 +89,17 @@ function AIModeDuel({
   agentPlayer: 0 | 1;
   onRestartTurnOrder: () => { agentPlayer: 0 | 1; willAnimate: boolean };
 }) {
-  const { state, engineActions, enginePrompt, visibleLog, isReplaying, status, error, reset, submitAction } = useAIEngine(ENGINE_API_URL, openCards);
+  const {
+    state,
+    engineActions,
+    enginePrompt,
+    visibleLog,
+    isReplaying,
+    status,
+    error,
+    reset,
+    submitAction,
+  } = useAIEngine(ENGINE_API_URL, openCards);
 
   const deck0 = agentPlayer === 0 ? myDeck : oppDeck;
   const deck1 = agentPlayer === 0 ? oppDeck : myDeck;
@@ -103,13 +114,32 @@ function AIModeDuel({
 
   if (status === "error" || !state) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: "var(--bg-void)" }}>
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ background: "var(--bg-void)" }}
+      >
         <div className="text-center">
-          <div style={{ color: "var(--neon-pink)", fontFamily: "'Orbitron', sans-serif", fontSize: "0.8rem", marginBottom: "1rem" }}>
+          <div
+            style={{
+              color: "var(--neon-pink)",
+              fontFamily: "'Orbitron', sans-serif",
+              fontSize: "0.8rem",
+              marginBottom: "1rem",
+            }}
+          >
             CONNECTION ERROR
           </div>
-          <div style={{ color: "var(--text-secondary)", fontFamily: "'Share Tech Mono', monospace", fontSize: "0.6rem", marginBottom: "1.5rem", maxWidth: "30rem" }}>
-            {error || "Failed to connect to Python engine. Is the server running?"}
+          <div
+            style={{
+              color: "var(--text-secondary)",
+              fontFamily: "'Share Tech Mono', monospace",
+              fontSize: "0.6rem",
+              marginBottom: "1.5rem",
+              maxWidth: "30rem",
+            }}
+          >
+            {error ||
+              "Failed to connect to Python engine. Is the server running?"}
           </div>
           <button
             onClick={() => reset(randomSeed(), deck0, deck1, agentPlayer)}
@@ -154,7 +184,10 @@ function AIModeDuel({
 
 function LoadingSpinner({ message }: { message: string }) {
   return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: "var(--bg-void)" }}>
+    <div
+      className="min-h-screen flex items-center justify-center"
+      style={{ background: "var(--bg-void)" }}
+    >
       <div className="text-center">
         <div
           className="w-14 h-14 rounded-full mx-auto mb-5"
@@ -178,7 +211,11 @@ function LoadingSpinner({ message }: { message: string }) {
         </div>
         <div
           className="text-xs opacity-40"
-          style={{ color: "var(--text-secondary)", fontFamily: "'Share Tech Mono', monospace", fontSize: "0.55rem" }}
+          style={{
+            color: "var(--text-secondary)",
+            fontFamily: "'Share Tech Mono', monospace",
+            fontSize: "0.55rem",
+          }}
         >
           {message}
         </div>
@@ -186,4 +223,3 @@ function LoadingSpinner({ message }: { message: string }) {
     </div>
   );
 }
-

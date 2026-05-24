@@ -1,4 +1,7 @@
-import type { EngineAction, EnginePrompt } from "../../../../../shared/engineTypes";
+import type {
+  EngineAction,
+  EnginePrompt,
+} from "../../../../../shared/engineTypes";
 import { CardThumbnail } from "../CardThumbnail";
 
 interface YesNoPanelProps {
@@ -8,8 +11,8 @@ interface YesNoPanelProps {
 }
 
 export function YesNoPanel({ actions, prompt, onAction }: YesNoPanelProps) {
-  const yesAction = actions.find((a) => a.category === "yes");
-  const noAction = actions.find((a) => a.category === "no");
+  const yesAction = actions.find(a => a.category === "yes");
+  const noAction = actions.find(a => a.category === "no");
 
   const isEffect = prompt.type === "effect_yn";
   const cardCode = prompt.card_code ?? 0;
@@ -75,10 +78,10 @@ export function YesNoPanel({ actions, prompt, onAction }: YesNoPanelProps) {
               letterSpacing: "0.1em",
               cursor: "pointer",
             }}
-            onMouseEnter={(e) => {
+            onMouseEnter={e => {
               e.currentTarget.style.background = "rgba(0,200,80,0.25)";
             }}
-            onMouseLeave={(e) => {
+            onMouseLeave={e => {
               e.currentTarget.style.background = "rgba(0,200,80,0.12)";
             }}
           >
@@ -101,10 +104,10 @@ export function YesNoPanel({ actions, prompt, onAction }: YesNoPanelProps) {
               letterSpacing: "0.1em",
               cursor: "pointer",
             }}
-            onMouseEnter={(e) => {
+            onMouseEnter={e => {
               e.currentTarget.style.background = "rgba(255,45,120,0.25)";
             }}
-            onMouseLeave={(e) => {
+            onMouseLeave={e => {
               e.currentTarget.style.background = "rgba(255,45,120,0.12)";
             }}
           >

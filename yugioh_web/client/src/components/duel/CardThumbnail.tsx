@@ -53,7 +53,14 @@ export function CardThumbnail({
   }
 
   return (
-    <div style={{ position: "relative", width: `${width}px`, height: `${height}px`, flexShrink: 0 }}>
+    <div
+      style={{
+        position: "relative",
+        width: `${width}px`,
+        height: `${height}px`,
+        flexShrink: 0,
+      }}
+    >
       <img
         src={`${CARD_IMAGE_BASE}/${cardCode}.jpg`}
         alt={alt}
@@ -65,7 +72,7 @@ export function CardThumbnail({
           border: `1px solid ${borderColor}`,
           boxShadow,
         }}
-        onError={(e) => {
+        onError={e => {
           (e.target as HTMLImageElement).style.display = "none";
         }}
       />

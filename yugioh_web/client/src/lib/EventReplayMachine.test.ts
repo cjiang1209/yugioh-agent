@@ -1,20 +1,34 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { EventReplayMachine, type ReplayCallbacks } from "./EventReplayMachine";
-import type { EngineBoard, EngineGameState, EventFrame } from "../../../shared/engineTypes";
+import type {
+  EngineBoard,
+  EngineGameState,
+  EventFrame,
+} from "../../../shared/engineTypes";
 
 function makeBoard(lp: number): EngineBoard {
   return {
     player: {
-      hand: [], monsters: [null, null, null, null, null],
+      hand: [],
+      monsters: [null, null, null, null, null],
       spells_traps: [null, null, null, null, null],
-      field_zone: null, graveyard: [], banished: [], extra_deck: [],
-      deck_count: 40, lp,
+      field_zone: null,
+      graveyard: [],
+      banished: [],
+      extra_deck: [],
+      deck_count: 40,
+      lp,
     },
     opponent: {
-      hand_count: 5, monsters: [null, null, null, null, null],
+      hand_count: 5,
+      monsters: [null, null, null, null, null],
       spells_traps: [null, null, null, null, null],
-      field_zone: null, graveyard: [], banished: [],
-      extra_deck_count: 15, deck_count: 40, lp: 8000,
+      field_zone: null,
+      graveyard: [],
+      banished: [],
+      extra_deck_count: 15,
+      deck_count: 40,
+      lp: 8000,
     },
   };
 }
@@ -153,7 +167,11 @@ describe("EventReplayMachine", () => {
 
     // After second tick: prior + both events
     vi.advanceTimersByTime(1200);
-    expect(cb.onEventReveal).toHaveBeenLastCalledWith(["old event", "e1", "e2"]);
+    expect(cb.onEventReveal).toHaveBeenLastCalledWith([
+      "old event",
+      "e1",
+      "e2",
+    ]);
   });
 
   it("onFrameChange not called at start, only after events complete", () => {
@@ -167,7 +185,10 @@ describe("EventReplayMachine", () => {
     // After the event is revealed, board updates
     vi.advanceTimersByTime(1200);
     expect(cb.onFrameChange).toHaveBeenCalledTimes(1);
-    expect(cb.onFrameChange).toHaveBeenCalledWith(frame.board, frame.game_state);
+    expect(cb.onFrameChange).toHaveBeenCalledWith(
+      frame.board,
+      frame.game_state
+    );
   });
 
   it("prior log merges with completed frame events across frames", () => {

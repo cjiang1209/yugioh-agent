@@ -6,7 +6,8 @@ export function useEventReplay() {
   const machineRef = useRef(new EventReplayMachine());
   const [visibleLog, setVisibleLog] = useState<string[]>([]);
   const [currentBoard, setCurrentBoard] = useState<EngineBoard | null>(null);
-  const [currentGameState, setCurrentGameState] = useState<EngineGameState | null>(null);
+  const [currentGameState, setCurrentGameState] =
+    useState<EngineGameState | null>(null);
   const [isReplaying, setIsReplaying] = useState(false);
 
   useEffect(() => () => machineRef.current.dispose(), []);
@@ -19,7 +20,7 @@ export function useEventReplay() {
           setCurrentBoard(board);
           setCurrentGameState(gs);
         },
-        onEventReveal: (log) => setVisibleLog(log),
+        onEventReveal: log => setVisibleLog(log),
         onComplete: () => {
           setIsReplaying(false);
           setCurrentBoard(null);
@@ -28,7 +29,7 @@ export function useEventReplay() {
         },
       });
     },
-    [],
+    []
   );
 
   const resetReplay = useCallback(() => {
@@ -39,5 +40,12 @@ export function useEventReplay() {
     setIsReplaying(false);
   }, []);
 
-  return { visibleLog, currentBoard, currentGameState, isReplaying, startReplay, resetReplay };
+  return {
+    visibleLog,
+    currentBoard,
+    currentGameState,
+    isReplaying,
+    startReplay,
+    resetReplay,
+  };
 }
