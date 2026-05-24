@@ -607,3 +607,73 @@ def test_build_prompt_meta_sort_card_intermediate_step():
     meta = _build_prompt_meta(FakeMapper())
     assert meta["count"] == 3
     assert meta["picked_cards"] == [{"code": 200, "location": 0x01}]
+
+
+def test_build_prompt_meta_select_card_picked_cards():
+    class FakeMapper:
+        msg_type = MSG_SELECT_CARD
+        msg = {
+            "msg_type": MSG_SELECT_CARD,
+            "min": 1,
+            "max": 2,
+            "cancelable": 0,
+            "cards": [
+                {"code": 100, "controller": 0, "location": 0x01, "sequence": 0},
+                {"code": 200, "controller": 0, "location": 0x01, "sequence": 1},
+                {"code": 300, "controller": 0, "location": 0x01, "sequence": 2},
+            ],
+            "_selected": [2, 0],
+        }
+
+    meta = _build_prompt_meta(FakeMapper())
+    assert meta["selected_count"] == 2
+    assert meta["picked_cards"] == [
+        {"code": 300, "location": 0x01},
+        {"code": 100, "location": 0x01},
+    ]
+
+
+def test_build_prompt_meta_select_tribute_picked_cards():
+    class FakeMapper:
+        msg_type = MSG_SELECT_TRIBUTE
+        msg = {
+            "msg_type": MSG_SELECT_TRIBUTE,
+            "min": 1,
+            "max": 2,
+            "cancelable": 0,
+            "cards": [
+                {"code": 100, "controller": 0, "location": 0x04, "sequence": 0, "release_param": 1},
+                {"code": 200, "controller": 0, "location": 0x04, "sequence": 1, "release_param": 1},
+            ],
+            "_selected": [1],
+        }
+
+    meta = _build_prompt_meta(FakeMapper())
+    assert meta["cards_selected"] == 1
+    assert meta["picked_cards"] == [{"code": 200, "location": 0x04}]
+
+
+def test_build_prompt_meta_select_unselect_picked_cards():
+    """For MSG_SELECT_UNSELECT_CARD, picked cards come from `unselectable`."""
+
+    class FakeMapper:
+        msg_type = MSG_SELECT_UNSELECT_CARD
+        msg = {
+            "msg_type": MSG_SELECT_UNSELECT_CARD,
+            "finishable": 1,
+            "min": 1,
+            "max": 3,
+            "selectable": [
+                {"code": 300, "controller": 0, "location": 0x01, "sequence": 2},
+            ],
+            "unselectable": [
+                {"code": 100, "controller": 0, "location": 0x01, "sequence": 0},
+                {"code": 200, "controller": 0, "location": 0x01, "sequence": 1},
+            ],
+        }
+
+    meta = _build_prompt_meta(FakeMapper())
+    assert meta["picked_cards"] == [
+        {"code": 100, "location": 0x01},
+        {"code": 200, "location": 0x01},
+    ]

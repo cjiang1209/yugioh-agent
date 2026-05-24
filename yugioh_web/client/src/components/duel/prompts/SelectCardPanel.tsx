@@ -3,6 +3,7 @@ import type {
   EnginePrompt,
 } from "../../../../../shared/engineTypes";
 import { CardThumbnail } from "../CardThumbnail";
+import { PickedCardRow } from "./PickedCardRow";
 
 interface SelectCardPanelProps {
   actions: EngineAction[];
@@ -20,6 +21,16 @@ export function SelectCardPanel({
     a => a.category === "select_card" || a.category === "tribute"
   );
   const finishAction = actions.find(a => a.category === "finish");
+  const pickedCards = prompt.picked_cards ?? [];
+  // Hide the picked row when only one card needs picking (would just echo the user's click).
+  const maxCards = isTribute ? prompt.max_cards : prompt.max;
+  const showPickedRow = (maxCards ?? 1) > 1;
+  // Placeholders shown only for select_card (fixed count). Tribute uses release
+  // totals (different units from card count), so no placeholders there.
+  const totalSlots =
+    !isTribute && prompt.min !== undefined && prompt.min === prompt.max
+      ? prompt.max
+      : undefined;
 
   // Progress info
   let progressText = "";
@@ -73,6 +84,14 @@ export function SelectCardPanel({
           </span>
         )}
       </div>
+
+      {showPickedRow && (
+        <PickedCardRow
+          pickedCards={pickedCards}
+          totalSlots={totalSlots}
+          label="Pick"
+        />
+      )}
 
       {/* Card grid */}
       <div

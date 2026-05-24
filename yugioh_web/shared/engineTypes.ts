@@ -131,6 +131,12 @@ export type PromptType =
   | "sort_card"
   | "unknown";
 
+/** A card already picked in a multi-step prompt; minimal data for thumbnail rendering. */
+export interface PickedCard {
+  code: number;
+  location: number;
+}
+
 /** Prompt metadata describing the current engine decision context. */
 export interface EnginePrompt {
   type: PromptType;
@@ -145,8 +151,8 @@ export interface EnginePrompt {
   finishable?: boolean;
   forced?: boolean;
   count?: number;
-  /** Sort-specific: visual data for each picked card, in pick order. */
-  picked_cards?: { code: number; location: number }[];
+  /** Cards already picked across multi-step prompts (sort, select_card, tribute, unselect). */
+  picked_cards?: PickedCard[];
   selected_count?: number;
   // Tribute-specific fields
   min_release?: number;

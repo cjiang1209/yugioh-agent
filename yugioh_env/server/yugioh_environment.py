@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import random as stdlib_random
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -83,6 +84,11 @@ def _build_action_meta_list(actions: list[dict]) -> list[ActionMeta | None]:
     return out
 
 
+def _picked_cards(cards: Iterable[dict]) -> list[dict]:
+    """Minimal {code, location} dicts for the picked-cards prompt-meta field."""
+    return [{"code": c.get("code", 0), "location": c.get("location", 0)} for c in cards]
+
+
 def _build_prompt_meta(mapper) -> dict | None:
     """Build prompt-level metadata from the mapper's current message.
 
@@ -108,10 +114,13 @@ def _build_prompt_meta(mapper) -> dict | None:
     elif msg_type == MSG_SELECT_YESNO:
         result["desc"] = msg.get("desc", 0)
     elif msg_type == MSG_SELECT_CARD:
+        cards = msg.get("cards", [])
+        selected = msg.get("_selected", [])
         result["min"] = msg.get("min", 1)
         result["max"] = msg.get("max", 1)
         result["cancelable"] = bool(msg.get("cancelable", 0))
-        result["selected_count"] = len(msg.get("_selected", []))
+        result["selected_count"] = len(selected)
+        result["picked_cards"] = _picked_cards(cards[i] for i in selected)
     elif msg_type == MSG_SELECT_TRIBUTE:
         selected = msg.get("_selected", [])
         cards = msg.get("cards", [])
@@ -122,10 +131,12 @@ def _build_prompt_meta(mapper) -> dict | None:
             cards[i].get("release_param", 1) for i in selected if i < len(cards)
         )
         result["cards_selected"] = len(selected)
+        result["picked_cards"] = _picked_cards(cards[i] for i in selected)
     elif msg_type == MSG_SELECT_UNSELECT_CARD:
         result["min"] = msg.get("min", 1)
         result["max"] = msg.get("max", 1)
         result["finishable"] = bool(msg.get("finishable", 0))
+        result["picked_cards"] = _picked_cards(msg.get("unselectable", []))
     elif msg_type == MSG_SELECT_CHAIN:
         result["forced"] = bool(msg.get("forced", 0))
     elif msg_type == MSG_SELECT_POSITION:
@@ -136,10 +147,7 @@ def _build_prompt_meta(mapper) -> dict | None:
         cards = msg.get("cards", [])
         selected = msg.get("_selected", [])
         result["count"] = len(cards)
-        result["picked_cards"] = [
-            {"code": cards[i].get("code", 0), "location": cards[i].get("location", 0)}
-            for i in selected
-        ]
+        result["picked_cards"] = _picked_cards(cards[i] for i in selected)
     return result
 
 

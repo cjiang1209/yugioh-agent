@@ -3,6 +3,7 @@ import type {
   EnginePrompt,
 } from "../../../../../shared/engineTypes";
 import { CardThumbnail } from "../CardThumbnail";
+import { PickedCardRow } from "./PickedCardRow";
 
 interface SortCardPanelProps {
   actions: EngineAction[];
@@ -19,11 +20,6 @@ export function SortCardPanel({
   const pickedCards = prompt.picked_cards ?? [];
   const count = prompt.count ?? 0;
   const nextPosition = pickedCards.length + 1;
-
-  const placedSlots = Array.from(
-    { length: count },
-    (_, i) => pickedCards[i] ?? null
-  );
 
   return (
     <div className="flex flex-col h-full" style={{ gap: "0" }}>
@@ -59,68 +55,11 @@ export function SortCardPanel({
         </span>
       </div>
 
-      {/* Placed-slot row */}
-      <div
-        style={{
-          display: "flex",
-          gap: "6px",
-          padding: "8px",
-          borderBottom: "1px solid rgba(255,255,255,0.06)",
-          overflowX: "auto",
-        }}
-      >
-        {placedSlots.map((card, i) => (
-          <div
-            key={i}
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              gap: "2px",
-              minWidth: 60,
-            }}
-          >
-            {card ? (
-              <CardThumbnail
-                cardCode={card.code}
-                width={50}
-                height={70}
-                borderRadius={3}
-                borderColor="rgba(0,245,255,0.5)"
-                location={card.location}
-                badgeSize={14}
-                alt={`Position ${i + 1}`}
-              />
-            ) : (
-              <div
-                style={{
-                  width: 50,
-                  height: 70,
-                  borderRadius: 3,
-                  border: "1px dashed rgba(180,79,255,0.3)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "rgba(180,79,255,0.5)",
-                  fontFamily: "'Share Tech Mono', monospace",
-                  fontSize: "1.0rem",
-                }}
-              >
-                ?
-              </div>
-            )}
-            <span
-              style={{
-                fontFamily: "'Share Tech Mono', monospace",
-                fontSize: "0.4rem",
-                color: card ? "var(--neon-cyan)" : "#7a8a9a",
-              }}
-            >
-              {`Position ${i + 1}`}
-            </span>
-          </div>
-        ))}
-      </div>
+      <PickedCardRow
+        pickedCards={pickedCards}
+        totalSlots={count}
+        label="Position"
+      />
 
       {/* Remaining cards grid */}
       <div
