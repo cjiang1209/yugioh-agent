@@ -14,7 +14,8 @@ def parse_ydk(path: str | Path) -> dict[str, list[int]]:
         #extra -> extra deck
         !side -> side deck
         Blank lines and comment lines (starting with #created) are ignored.
-        All other lines are card codes (integers).
+        All other lines are card codes (integers); an inline `# ...`
+        suffix after the code is stripped as a comment.
 
     Returns:
         {"main": [int, ...], "extra": [int, ...], "side": [int, ...]}
@@ -40,8 +41,9 @@ def parse_ydk(path: str | Path) -> dict[str, list[int]]:
                 continue
             if line.startswith("#") or line.startswith("!"):
                 continue
+            code_str = line.split("#", 1)[0].strip()
             try:
-                code = int(line)
+                code = int(code_str)
                 if code > 0:
                     deck[current_section].append(code)
             except ValueError:
