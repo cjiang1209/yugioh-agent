@@ -237,6 +237,138 @@ def test_select_sum_response_format():
     assert count == 2
 
 
+# ─── MSG_SELECT_SUM multi-step tests ────────────────────────────────────────
+
+
+def _sum_msg_multi(
+    target_sum, cards, *, min_sel=None, max_sel=None, select_type=0, selected=None, must_cards=None
+):
+    """Build a MSG_SELECT_SUM message with multiple optional cards."""
+    if select_type == 1:
+        # Engine always sends min=0, max=0 for SelectWithSumGreater
+        min_sel = 0
+        max_sel = 0
+    else:
+        if min_sel is None:
+            min_sel = 1
+        if max_sel is None:
+            max_sel = len(cards)
+    msg = {
+        "msg_type": MSG_SELECT_SUM,
+        "player": 0,
+        "_agent_player": 0,
+        "select_type": select_type,
+        "target_sum": target_sum,
+        "min": min_sel,
+        "max": max_sel,
+        "must_cards": must_cards or [],
+        "optional_cards": [
+            {"code": 100 + i, "controller": 0, "location": 0x04, "sequence": i, "param": p}
+            for i, p in enumerate(cards)
+        ],
+    }
+    if selected is not None:
+        msg["_selected"] = selected
+    return msg
+
+
+def test_select_sum_single_card_exact_match():
+    """A card whose param equals target_sum completes in one pick."""
+    mapper = ActionMapper()
+    mapper.update(_sum_msg_multi(5, [5, 3, 2]))
+    assert mapper.num_actions > 0
+    # Card 0 (param=5) should complete immediately
+    resp = mapper.action_to_response(0)
+    assert resp is not None
+    _, count = struct.unpack_from("<iI", resp, 0)
+    assert count == 1
+
+
+def test_select_sum_single_card_no_match_is_intermediate():
+    """A card whose param != target_sum is intermediate (None), not terminal."""
+    mapper = ActionMapper()
+    mapper.update(_sum_msg_multi(5, [3, 2]))
+    # Card 0 (param=3) alone doesn't sum to 5, but 3+2 does
+    resp = mapper.action_to_response(0)
+    assert resp is None
+
+
+def test_select_sum_exact_two_step_completion():
+    """Picking two cards across steps produces a valid response."""
+    mapper = ActionMapper()
+    # target=5, cards: [3, 2, 4]
+    msg = _sum_msg_multi(5, [3, 2, 4])
+    mapper.update(msg)
+
+    # Step 1: pick card 0 (param=3) — intermediate
+    resp = mapper.action_to_response(0)
+    assert resp is None
+
+    # Step 2: re-present with card 0 selected
+    mapper.update(_sum_msg_multi(5, [3, 2, 4], selected=[0]))
+    # Card 1 (param=2) → 3+2=5 → completes
+    resp = mapper.action_to_response(0)  # first available is card 1
+    assert resp is not None
+    _, count = struct.unpack_from("<iI", resp, 0)
+    assert count == 2
+
+
+def test_select_sum_dead_end_filtered():
+    """Cards that cannot participate in any valid completion are not offered."""
+    mapper = ActionMapper()
+    # target=5, max=2, cards: [3, 2, 4]
+    # Valid combos: [3,2]=5. Card 4 can't pair with anything to make 5.
+    mapper.update(_sum_msg_multi(5, [3, 2, 4], max_sel=2))
+    codes = [a["code"] for a in mapper.actions if a.get("category") == 0]
+    # Card 2 (code=102, param=4) should be filtered: 4+3=7≠5, 4+2=6≠5
+    assert 102 not in codes
+    # Cards 0 and 1 should be present
+    assert 100 in codes
+    assert 101 in codes
+
+
+def test_select_sum_no_response_sent_for_impossible_sum():
+    """No action produces a response when the selected cards don't sum correctly."""
+    mapper = ActionMapper()
+    # target=10, cards: [3, 2, 4] — no subset sums to 10
+    mapper.update(_sum_msg_multi(10, [3, 2, 4]))
+    # All cards should be filtered (no valid completion exists)
+    assert mapper.num_actions == 0
+
+
+def test_select_sum_atleast_two_step_completion():
+    """select_type=1 uses range-based validation instead of exact sum."""
+    mapper = ActionMapper()
+    # target=5, cards: [3, 4]. select_type=1 (at-least).
+    # Card 0 (param=3): max=3 < 5 → alone can't reach target → filtered
+    # Card 1 (param=4): max=4 < 5 → alone can't reach target → filtered
+    # But [3,4]: max=7 >= 5, min=7, smallest=3, min-smallest=4 < 5 → valid
+    mapper.update(_sum_msg_multi(5, [3, 4], select_type=1))
+    # Both cards should be offered (they form a valid pair)
+    assert mapper.num_actions == 2
+    # Neither alone completes (both intermediate)
+    assert mapper.action_to_response(0) is None
+    assert mapper.action_to_response(1) is None
+    # After picking card 0, card 1 completes
+    mapper.update(_sum_msg_multi(5, [3, 4], select_type=1, selected=[0]))
+    resp = mapper.action_to_response(0)
+    assert resp is not None
+
+
+def test_select_sum_must_cards_included_in_sum():
+    """must_cards' params are included in the sum check."""
+    mapper = ActionMapper()
+    # target=7, must_cards=[param=4], optional: [3, 2, 5]
+    # must(4) + card 0(3) = 7 ✓, must(4) + card 1(2) = 6 ✗, must(4) + card 2(5) = 9 ✗
+    must = [{"code": 999, "controller": 0, "location": 0x04, "sequence": 99, "param": 4}]
+    mapper.update(_sum_msg_multi(7, [3, 2, 5], min_sel=1, max_sel=1, must_cards=must))
+    # Only card 0 (param=3) should be offered (4+3=7)
+    assert mapper.num_actions == 1
+    resp = mapper.action_to_response(0)
+    assert resp is not None
+    assert mapper.actions[0]["code"] == 100  # card 0
+
+
 def test_select_card_actions_response():
     """Full round-trip: MSG_SELECT_CARD -> ActionMapper -> response bytes."""
     mapper = ActionMapper()
@@ -1081,7 +1213,7 @@ def _sum_msg(**card_overrides) -> dict:
         "player": 0,
         "_agent_player": 0,
         "select_type": 0,
-        "target_sum": 5,
+        "target_sum": card["param"] & 0xFFFF,
         "min": 1,
         "max": 1,
         "must_cards": [],

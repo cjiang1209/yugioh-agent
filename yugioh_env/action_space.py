@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from itertools import combinations
 
 import numpy as np
 
@@ -408,6 +409,7 @@ def _extract_multi_step_actions(
     build_response: Callable[[list[int]], bytes],
     can_finish: Callable[[list[dict], list[int]], bool],
     completes: Callable[[list[dict], list[int]], bool],
+    reachable: Callable[[list[dict], list[int]], bool] | None = None,
 ) -> list[dict]:
     """Multi-step pick from a uniform item list.
 
@@ -420,6 +422,12 @@ def _extract_multi_step_actions(
       - ``build_response(selected_ids) -> bytes``: turn the cumulative
         selection into wire bytes.
       - ``can_finish`` / ``completes``: same semantics as before.
+      - ``reachable(items, new_selected) -> bool``: optional guard that
+        prunes picks which cannot lead to any valid completion.  When
+        provided, items where ``reachable`` returns ``False`` are skipped.
+        Needed for constrained selections (e.g. MSG_SELECT_SUM) where
+        arbitrary subsets are not all valid and a dead-end pick would
+        leave the engine waiting for a response that never arrives.
 
     The ``_selected`` accumulation contract:
         ``msg["_selected"]`` is a list of ``action["index"]`` values from
@@ -452,6 +460,8 @@ def _extract_multi_step_actions(
         if action["index"] in selected_set:
             continue
         new_selected = selected + [action["index"]]
+        if reachable is not None and not reachable(items, new_selected):
+            continue
         action["num_selected"] = len(new_selected)
         if completes(items, new_selected):
             action["build_response"] = lambda ids=new_selected: build_response(ids)
@@ -668,11 +678,84 @@ def _extract_tribute_actions(msg: dict) -> list[dict]:
     )
 
 
+def _select_sum_exact(params: list[int], target: int) -> bool:
+    """True if an o1/o2 assignment exists such that chosen values sum to *target* exactly.
+
+    Each param packs two options: o1 = low 16 bits, o2 = high 16 bits (0 if absent).
+    """
+
+    def _check(index: int, acc: int) -> bool:
+        if acc == 0 or index >= len(params):
+            return False
+        o1 = params[index] & 0xFFFF
+        o2 = params[index] >> 16
+        if index == len(params) - 1:
+            return acc == o1 or (o2 > 0 and acc == o2)
+        return (acc > o1 and _check(index + 1, acc - o1)) or (
+            o2 > 0 and acc > o2 and _check(index + 1, acc - o2)
+        )
+
+    return len(params) > 0 and _check(0, target)
+
+
+def _select_sum_atleast(params: list[int], target: int) -> bool:
+    """True if *target* falls within the achievable sum range of *params*.
+
+    Requires max possible sum >= *target* and min possible sum - smallest
+    contribution < *target*.  Same o1/o2 packing as ``_select_sum_exact``.
+    """
+    if not params:
+        return False
+    total_min = 0
+    total_max = 0
+    min_single = 0x7FFFFFFF
+    for p in params:
+        o1 = p & 0xFFFF
+        o2 = p >> 16
+        ms = o2 if (o2 and o2 < o1) else o1
+        mx = o2 if o2 > o1 else o1
+        total_min += ms
+        total_max += mx
+        if ms < min_single:
+            min_single = ms
+    return total_max >= target and total_min - min_single < target
+
+
 def _extract_sum_actions(msg: dict) -> list[dict]:
+    """MSG_SELECT_SUM: multi-step selection with sum constraint.
+
+    ``select_type=0`` (exact): the selected cards' ``param`` values
+    (with per-card o1/o2 choice) must sum to exactly ``target_sum``.
+    ``select_type=1`` (at-least): the achievable sum range must include
+    ``target_sum`` — the max possible sum must reach it, and the min
+    possible sum minus the smallest contribution must stay below it.
+
+    A ``reachable`` filter prunes dead-end picks that cannot participate
+    in any valid completion.
+    """
     optional = msg.get("optional_cards", [])
+    must = msg.get("must_cards", [])
+    target = msg.get("target_sum", 0)
+    min_sel = msg.get("min", 1)
+    max_sel = msg.get("max", 0)
+    select_type = msg.get("select_type", 0)
+    # select_type=1: engine does not validate count, only the sum range
+    if select_type == 1:
+        assert max_sel == 0, f"select_type=1 expects max=0, got {max_sel}"
+        max_sel = len(optional)
+    elif max_sel == 0:
+        max_sel = max(min_sel, 1)
     agent_player = msg.get("_agent_player", 0)
-    return [
-        {
+
+    must_params = [c.get("param", 0) for c in must]
+    sum_check = _select_sum_exact if select_type == 0 else _select_sum_atleast
+
+    def _sum_valid(indices: list[int]) -> bool:
+        params = must_params + [optional[i].get("param", 0) for i in indices]
+        return sum_check(params, target)
+
+    def _to_action(i: int, card: dict) -> dict:
+        return {
             "category": 0,
             "index": i,
             "code": card.get("code", 0),
@@ -680,10 +763,41 @@ def _extract_sum_actions(msg: dict) -> list[dict]:
             "location": card.get("location", 0),
             "sequence": card.get("sequence", 0),
             "weight": int(card.get("param", 0)) & 0xFF,
-            "build_response": lambda idx=i: rb.build_select_sum_response([idx]),
         }
-        for i, card in enumerate(optional)
-    ]
+
+    def _completes(items: list[dict], selected: list[int]) -> bool:
+        return min_sel <= len(selected) <= max_sel and _sum_valid(selected)
+
+    def _can_finish(items: list[dict], selected: list[int]) -> bool:
+        return min_sel <= len(selected) < max_sel and _sum_valid(selected)
+
+    def _reachable(items: list[dict], new_selected: list[int]) -> bool:
+        n = len(new_selected)
+        if n > max_sel:
+            return False
+        if min_sel <= n <= max_sel and _sum_valid(new_selected):
+            return True
+        need_max = max_sel - n
+        if need_max <= 0:
+            return False
+        need_min = max(1, min_sel - n)
+        ns_set = set(new_selected)
+        avail = [j for j in range(len(items)) if j not in ns_set]
+        for add in range(need_min, min(need_max, len(avail)) + 1):
+            for combo in combinations(avail, add):
+                if _sum_valid(new_selected + list(combo)):
+                    return True
+        return False
+
+    return _extract_multi_step_actions(
+        msg,
+        items=optional,
+        item_to_action=_to_action,
+        build_response=rb.build_select_sum_response,
+        can_finish=_can_finish,
+        completes=_completes,
+        reachable=_reachable,
+    )
 
 
 def _extract_unselect_actions(msg: dict) -> list[dict]:
