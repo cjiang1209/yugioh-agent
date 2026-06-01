@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import type { DeckDefinition, DeckPayload } from "../../../shared/deckTypes";
 import { resolveTurnOrder, type TurnOrder } from "./turnOrder";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
-const DECK_COLORS = [
-  "var(--neon-cyan)",
-  "var(--neon-pink)",
-  "var(--neon-yellow)",
-];
 const CARD_IMAGE_BASE = "https://images.ygoprodeck.com/images/cards_small";
 const CARD_BACK = "https://images.ygoprodeck.com/images/cards/back_high.jpg";
 
@@ -142,13 +144,12 @@ export function DeckSelector({
       </div>
 
       {/* Two-slot layout */}
-      <div className="flex gap-10 mb-6 flex-wrap justify-center">
+      <div className="flex gap-10 mb-4 flex-wrap justify-center">
         {/* My Deck slot */}
         <SlotSection
           label="MY DECK"
           labelColor="var(--neon-cyan)"
           decks={decks}
-          deckColors={DECK_COLORS}
           selected={myDeck}
           onSelect={setMyDeck}
         />
@@ -158,7 +159,7 @@ export function DeckSelector({
           <div
             style={{
               width: "1px",
-              height: "200px",
+              height: "48px",
               background:
                 "linear-gradient(180deg, transparent, var(--border-dim), transparent)",
             }}
@@ -170,7 +171,6 @@ export function DeckSelector({
           label="OPPONENT DECK"
           labelColor="var(--neon-pink)"
           decks={decks}
-          deckColors={DECK_COLORS}
           selected={oppDeck}
           onSelect={setOppDeck}
         />
@@ -335,18 +335,22 @@ function TurnOrderButton({
 
 // ─── Slot section ───────────────────────────────────────────────────────────
 
+function deckSuffix(deck: DeckDefinition): string {
+  return deck.extra.length > 0
+    ? ` (${deck.main.length}+${deck.extra.length})`
+    : ` (${deck.main.length})`;
+}
+
 function SlotSection({
   label,
   labelColor,
   decks,
-  deckColors,
   selected,
   onSelect,
 }: {
   label: string;
   labelColor: string;
   decks: DeckDefinition[];
-  deckColors: string[];
   selected: DeckDefinition | null;
   onSelect: (deck: DeckDefinition) => void;
 }) {
@@ -362,51 +366,69 @@ function SlotSection({
       >
         {label}
       </div>
-      <div className="flex flex-col gap-3">
-        {decks.map((deck, idx) => {
-          const color = deckColors[idx % deckColors.length];
-          const isSelected = selected?.filename === deck.filename;
-          const mainCount = deck.main.length;
-          const extraCount = deck.extra.length;
-          return (
-            <div
+      <Select
+        value={selected?.filename ?? ""}
+        onValueChange={filename => {
+          const deck = decks.find(d => d.filename === filename);
+          if (deck) onSelect(deck);
+        }}
+      >
+        <SelectTrigger
+          className="w-full"
+          style={{
+            padding: "12px 36px 12px 16px",
+            fontFamily: "'Orbitron', sans-serif",
+            fontSize: "0.8rem",
+            letterSpacing: "0.08em",
+            color: selected ? labelColor : "var(--text-muted)",
+            background: "var(--bg-panel)",
+            border: `1px solid ${selected ? labelColor : "var(--border-dim)"}`,
+            borderRadius: "6px",
+            boxShadow: selected ? `0 0 12px ${labelColor}33` : "none",
+          }}
+        >
+          <SelectValue placeholder="Select a deck">
+            {selected ? selected.name + deckSuffix(selected) : undefined}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent
+          style={{
+            background: "var(--bg-panel)",
+            border: `1px solid ${labelColor}55`,
+            boxShadow: `0 4px 24px rgba(0,0,0,0.6), 0 0 12px ${labelColor}22`,
+          }}
+        >
+          {decks.map(deck => (
+            <SelectItem
               key={deck.filename}
-              className="cursor-pointer rounded p-4 transition-all"
+              value={deck.filename}
+              className="hover:bg-white/5"
               style={{
-                background: isSelected ? `${color}11` : "var(--bg-panel)",
-                border: `1px solid ${isSelected ? color : "var(--border-dim)"}`,
-                boxShadow: isSelected ? `0 0 20px ${color}44` : "none",
-                transform: isSelected ? "translateY(-2px)" : "none",
+                fontFamily: "'Orbitron', sans-serif",
+                fontSize: "0.75rem",
+                letterSpacing: "0.06em",
+                color:
+                  selected?.filename === deck.filename
+                    ? labelColor
+                    : "var(--text-primary)",
+                cursor: "pointer",
               }}
-              onClick={() => onSelect(deck)}
             >
-              <div
-                className="text-lg font-bold mb-1"
+              {deck.name}
+              <span
                 style={{
-                  fontFamily: "'Orbitron', sans-serif",
-                  color,
-                  fontSize: "0.85rem",
-                  letterSpacing: "0.08em",
-                }}
-              >
-                {deck.name}
-              </div>
-              <div
-                className="text-xs"
-                style={{
+                  marginLeft: "6px",
+                  fontSize: "0.6rem",
+                  opacity: 0.5,
                   fontFamily: "'Share Tech Mono', monospace",
-                  color,
-                  opacity: 0.7,
                 }}
               >
-                {extraCount > 0
-                  ? `${mainCount} MAIN + ${extraCount} EXTRA`
-                  : `${mainCount} CARDS`}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+                {deckSuffix(deck)}
+              </span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   );
 }
