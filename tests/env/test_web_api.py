@@ -115,7 +115,6 @@ def test_step_returns_valid_response(web_client):
     assert "board" in data
     assert "game_state" in data
     assert "actions" in data
-    assert "event_log" in data
     assert "done" in data
     assert "reward" in data
 
@@ -391,13 +390,9 @@ def test_reset_returns_frames(web_client):
     for frame in frames:
         _assert_frame_structure(frame)
 
-    # Frame events should equal the flat event_log
-    flat = [e for f in frames for e in f["events"]]
-    assert flat == data["event_log"]
-
 
 def test_step_returns_frames_with_board_snapshots(web_client):
-    """Step should include frames with board snapshots matching event_log."""
+    """Step should include frames with board snapshots."""
     _reset(web_client)
     data = _step(web_client, action_index=0)
 
@@ -407,10 +402,6 @@ def test_step_returns_frames_with_board_snapshots(web_client):
 
     for frame in frames:
         _assert_frame_structure(frame)
-
-    # Frame events should equal the flat event_log
-    flat = [e for f in frames for e in f["events"]]
-    assert flat == data["event_log"]
 
 
 def test_frames_game_state_structure(web_client):
@@ -448,7 +439,6 @@ def test_multi_select_step_returns_no_frames(web_client):
                 # Take one intermediate pick
                 data = _step(web_client, action_index=0)
                 assert data["frames"] == [], "Intermediate multi-select should not return frames"
-                assert data["event_log"] == []
                 return  # Test passed
 
             data = _step(web_client, action_index=0)

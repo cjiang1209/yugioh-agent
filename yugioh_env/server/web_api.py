@@ -44,7 +44,6 @@ def _build_response(
     env: YuGiOhEnvironment,
     describer: ActionDescriber,
     obs,  # YuGiOhObservation
-    event_log: list[str],
     done: bool,
     reward: float,
     *,
@@ -55,8 +54,8 @@ def _build_response(
     Args:
         include_frames: When True, attach env.last_frames (only set this after
             reset/step calls that ran _process_to_agent_choice, so the frames
-            match event_log).  GET /state and multi-select steps must leave
-            this False to avoid returning stale frames from a prior action.
+            are fresh).  GET /state and multi-select steps must leave this
+            False to avoid returning stale frames from a prior action.
     """
     frames = env.last_frames if include_frames else []
 
@@ -75,7 +74,6 @@ def _build_response(
         "game_state": env._build_game_state_dict(),
         "actions": actions,
         "prompt": prompt,
-        "event_log": event_log,
         "done": done,
         "reward": reward,
         "frames": frames,
@@ -130,9 +128,7 @@ def reset_duel(body: ResetRequest, request: Request) -> dict:
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
-    return _build_response(
-        env, describer, obs, obs.event_log, obs.done, obs.reward, include_frames=True
-    )
+    return _build_response(env, describer, obs, obs.done, obs.reward, include_frames=True)
 
 
 @web_router.get("/decks")
@@ -175,13 +171,9 @@ def step_duel(body: StepRequest, request: Request) -> dict:
     env: YuGiOhEnvironment = request.app.state.web_env
     describer: ActionDescriber = request.app.state.describer
     if env._duel is None:
-        return _build_response(
-            env, describer, None, ["No active duel. Call /reset first."], True, 0.0
-        )
+        return _build_response(env, describer, None, True, 0.0)
     obs = env.step(YuGiOhAction(action_index=body.action_index))
-    return _build_response(
-        env, describer, obs, obs.event_log, obs.done, obs.reward, include_frames=True
-    )
+    return _build_response(env, describer, obs, obs.done, obs.reward, include_frames=True)
 
 
 @web_router.get("/state")
@@ -196,7 +188,7 @@ def get_state(request: Request) -> dict:
     env: YuGiOhEnvironment = request.app.state.web_env
     describer: ActionDescriber = request.app.state.describer
     if env._duel is None:
-        return _build_response(env, describer, None, [], True, 0.0)
+        return _build_response(env, describer, None, True, 0.0)
 
     done = env._duel.game_state.is_finished if env._duel else True
     reward = 0.0
@@ -206,4 +198,4 @@ def get_state(request: Request) -> dict:
             reward = 1.0
         elif winner == 1 - env._agent_player:
             reward = -1.0
-    return _build_response(env, describer, None, [], done, reward)
+    return _build_response(env, describer, None, done, reward)

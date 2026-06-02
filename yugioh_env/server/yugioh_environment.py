@@ -464,10 +464,6 @@ class YuGiOhEnvironment(Environment):
                 }
             )
 
-    def _flatten_frame_events(self) -> list[str]:
-        """Collect all formatted event strings from captured frames."""
-        return [e for f in self._last_frames for e in f["events"]]
-
     def _process_to_agent_choice(self) -> YuGiOhObservation:
         """Process the duel, auto-play opponent turns, until agent must decide."""
         self._last_frames = []
@@ -479,9 +475,7 @@ class YuGiOhEnvironment(Environment):
 
             if msg is None:
                 # Game ended or error
-                return self._make_terminal_observation(
-                    event_log=self._flatten_frame_events(),
-                )
+                return self._make_terminal_observation()
 
             msg_type = msg.get("msg_type")
             player = msg.get("player", -1)
@@ -507,9 +501,7 @@ class YuGiOhEnvironment(Environment):
                         self._duel.send_response(response)
                         continue
                     # Multi-step with >1 option at some sub-step: surface it
-                return self._make_observation(
-                    event_log=self._flatten_frame_events(),
-                )
+                return self._make_observation()
 
             elif player != self._agent_player and msg_type in SELECT_MSGS:
                 # Opponent's turn - auto-play (loop for multi-step selections)
@@ -558,16 +550,12 @@ class YuGiOhEnvironment(Environment):
                         self._duel.send_response(response)
                 else:
                     logger.warning("Opponent has no actions for msg_type=%d", msg_type)
-                    return self._make_terminal_observation(
-                        event_log=self._flatten_frame_events(),
-                    )
+                    return self._make_terminal_observation()
             else:
                 # Unknown message, try continuing
-                return self._make_terminal_observation(
-                    event_log=self._flatten_frame_events(),
-                )
+                return self._make_terminal_observation()
 
-    def _make_observation(self, event_log: list[str] | None = None) -> YuGiOhObservation:
+    def _make_observation(self) -> YuGiOhObservation:
         """Build observation from current state."""
 
         def query_fn(player: int, location: int) -> list[dict]:
@@ -596,12 +584,12 @@ class YuGiOhEnvironment(Environment):
             action_mask=action_mask.tolist(),
             action_meta=action_meta,
             prompt_meta=_build_prompt_meta(self._mapper),
-            event_log=event_log or [],
+            event_log=[e for f in self._last_frames for e in f["events"]],
             done=False,
             reward=0.0,
         )
 
-    def _make_terminal_observation(self, event_log: list[str] | None = None) -> YuGiOhObservation:
+    def _make_terminal_observation(self) -> YuGiOhObservation:
         """Build terminal observation with reward."""
         # No active prompt past this point; keeps current_msg/num_actions in sync with action_mask=0.
         self._current_msg = None
@@ -641,7 +629,7 @@ class YuGiOhEnvironment(Environment):
             action_mask=[],
             action_meta=[],
             prompt_meta=None,
-            event_log=event_log or [],
+            event_log=[e for f in self._last_frames for e in f["events"]],
             done=True,
             reward=reward,
         )

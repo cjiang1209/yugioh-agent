@@ -345,7 +345,8 @@ export function useAIEngine(
 
       const finalize = () => {
         // Update the cumulative log
-        const newLog = [...logRef.current, ...resp.event_log];
+        const stepEvents = resp.frames.flatMap(f => f.events);
+        const newLog = [...logRef.current, ...stepEvents];
         logRef.current = newLog;
         setState(
           buildDuelState(

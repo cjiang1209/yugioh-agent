@@ -180,7 +180,6 @@ export interface EngineResponse {
   game_state: EngineGameState;
   actions: EngineAction[];
   prompt: EnginePrompt | null;
-  event_log: string[];
   done: boolean;
   reward: number;
   frames: EventFrame[];
