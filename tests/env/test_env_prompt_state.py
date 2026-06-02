@@ -61,6 +61,7 @@ def _bare_env() -> YuGiOhEnvironment:
     env._last_frames = []
     env._agent_player = 0
     env._card_db = None
+    env._collapse_forced = False
     return env
 
 

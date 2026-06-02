@@ -230,6 +230,8 @@ class YuGiOhEnvironment(Environment):
         self._last_frames: list[dict] = []
         # When True, board snapshots include unhidden opponent card data
         self._open_cards: bool = False
+        # When True, auto-play agent prompts with only one legal action
+        self._collapse_forced: bool = config.get("collapse_forced", False)
 
     def set_opponent(self, opponent: Opponent) -> None:
         """Replace the opponent for subsequent episodes."""
@@ -384,6 +386,26 @@ class YuGiOhEnvironment(Environment):
             }
             self._mapper.update(updated_msg)
             self._current_msg = updated_msg
+
+            if self._collapse_forced:
+                response = None
+                while self._mapper.num_actions == 1:
+                    response = self._mapper.action_to_response(0)
+                    if response is not None:
+                        break
+                    self._card_sel.append(self._mapper.get_action_index(0))
+                    updated_msg = {
+                        **self._current_msg,
+                        "_selected": list(self._card_sel),
+                        "_agent_player": self._agent_player,
+                    }
+                    self._mapper.update(updated_msg)
+                    self._current_msg = updated_msg
+                if response is not None:
+                    self._card_sel.clear()
+                    self._duel.send_response(response)
+                    return self._process_to_agent_choice()
+
             return self._make_observation()
 
         self._card_sel.clear()
@@ -469,6 +491,22 @@ class YuGiOhEnvironment(Environment):
                 self._current_msg = msg
                 self._card_sel.clear()
                 self._mapper.update({**msg, "_agent_player": self._agent_player})
+                if self._collapse_forced and self._mapper.num_actions == 1:
+                    response = self._mapper.action_to_response(0)
+                    while response is None and self._mapper.num_actions == 1:
+                        self._card_sel.append(self._mapper.get_action_index(0))
+                        updated = {
+                            **msg,
+                            "_selected": list(self._card_sel),
+                            "_agent_player": self._agent_player,
+                        }
+                        self._mapper.update(updated)
+                        response = self._mapper.action_to_response(0)
+                    if response is not None:
+                        self._card_sel.clear()
+                        self._duel.send_response(response)
+                        continue
+                    # Multi-step with >1 option at some sub-step: surface it
                 return self._make_observation(
                     event_log=self._flatten_frame_events(),
                 )
@@ -482,6 +520,18 @@ class YuGiOhEnvironment(Environment):
                 if opp_mapper.num_actions > 0:
                     response = None
                     while response is None and opp_mapper.num_actions > 0:
+                        if opp_mapper.num_actions == 1:
+                            response = opp_mapper.action_to_response(0)
+                            if response is None:
+                                opp_sel.append(opp_mapper.get_action_index(0))
+                                opp_mapper.update(
+                                    {
+                                        **msg,
+                                        "_selected": list(opp_sel),
+                                        "_agent_player": opp_agent_player,
+                                    }
+                                )
+                            continue
                         if self._opponent.needs_observation:
                             opp_obs = build_observation(
                                 self._duel.game_state,

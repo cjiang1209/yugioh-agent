@@ -102,6 +102,7 @@ class TrainingEnv:
         env_config: dict[str, Any] = {
             "opponent": opponent,
             "agent_player": self._agent_player_setting,
+            "collapse_forced": True,
         }
         # Absent key lets YUGIOH_OPPONENT_DEVICE win; see _resolve_opponent_device.
         if opponent_device is not None:
@@ -183,6 +184,7 @@ class TrainingEnv:
             deck0, deck1 = opp_deck, agent_deck
 
         self._last_agent_deck_idx = agent_deck_idx
+        self._last_opp_deck_idx = opp_deck_idx
 
         if self._opponent_pool is not None:
             self._current_opp_slot, new_opp = self._opponent_pool.sample()
