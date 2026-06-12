@@ -31,6 +31,7 @@ class ResetRequest(BaseModel):
     deck1: dict | None = None
     open_cards: bool = False
     agent_player: int | str | None = None  # 0, 1, or "random"; None uses env config default
+    puzzle: dict | None = None
 
 
 class StepRequest(BaseModel):
@@ -125,6 +126,7 @@ def reset_duel(body: ResetRequest, request: Request) -> dict:
             deck1=body.deck1,
             open_cards=body.open_cards,
             agent_player=body.agent_player,
+            puzzle=body.puzzle,
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e

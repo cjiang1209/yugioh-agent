@@ -31,8 +31,11 @@ def web_client(lib, db_path, script_dirs, deck_path):
     return TestClient(app)
 
 
-def _reset(client, seed=42):
-    resp = client.post("/api/web/reset", json={"seed": seed})
+def _reset(client, seed=42, *, puzzle=None, open_cards=False):
+    body = {"seed": seed, "open_cards": open_cards}
+    if puzzle is not None:
+        body["puzzle"] = puzzle
+    resp = client.post("/api/web/reset", json=body)
     assert resp.status_code == 200
     return resp.json()
 
@@ -185,23 +188,25 @@ def test_game_state_fields(web_client):
     assert isinstance(gs["chain_count"], int)
 
 
+_FACE_DOWN_PUZZLE = {
+    "player0": {"hand": [89631139], "deck": [89631139]},  # Blue-Eyes
+    "player1": {
+        "monster_zone": [
+            {"code": 46986414, "pos": "face_down_defense", "seq": 0},  # Dark Magician
+        ],
+        "deck": [89631139],
+    },
+}
+
+
 def test_opponent_face_down_hidden(web_client):
     """Face-down opponent monsters should have code=0."""
-    # Play several seeds and steps to find a face-down opponent monster
-    for seed in range(42, 62):
-        data = _reset(web_client, seed=seed)
-        for _ in range(50):
-            if data["done"]:
-                break
-            data = _step(web_client, action_index=0)
-            opp_monsters = data["board"]["opponent"]["monsters"]
-            for m in opp_monsters:
-                if m is not None and m.get("position") in ("FACE_DOWN_DEF", "FACE_DOWN_ATK"):
-                    assert m["code"] == 0
-                    assert m["name"] == "Face-down card"
-                    return  # Test passed
+    data = _reset(web_client, puzzle=_FACE_DOWN_PUZZLE)
 
-    pytest.skip("No face-down opponent monster encountered in test seeds")
+    opp_monsters = data["board"]["opponent"]["monsters"]
+    fd = next(m for m in opp_monsters if m is not None and m.get("position") == "FACE_DOWN_DEF")
+    assert fd["code"] == 0
+    assert fd["name"] == "Face-down card"
 
 
 def test_step_without_reset(web_client):
@@ -246,20 +251,45 @@ def test_multiple_resets(web_client):
 
 def test_monster_on_field_has_stats(web_client):
     """After summoning, monster zone should show a card with attack/defense."""
-    for seed in range(42, 72):
-        data = _reset(web_client, seed=seed)
-        for _ in range(100):
-            if data["done"]:
-                break
-            data = _step(web_client, action_index=0)
-            # Check if any of our monsters are on the field
-            for m in data["board"]["player"]["monsters"]:
-                if m is not None and m.get("code", 0) > 0:
-                    assert m["name"] not in ("", "Unknown")
-                    assert m["attack"] is not None
-                    return  # Test passed
+    puzzle = {
+        "player0": {
+            "monster_zone": [
+                {"code": 89631139, "pos": "face_up_attack", "seq": 0},  # Blue-Eyes
+            ],
+            "deck": [89631139],
+        },
+        "player1": {"deck": [89631139]},
+    }
+    data = _reset(web_client, puzzle=puzzle)
 
-    pytest.skip("No player monster summoned in test seeds")
+    monsters = data["board"]["player"]["monsters"]
+    bewd = next(m for m in monsters if m is not None and m.get("code", 0) > 0)
+    assert bewd["name"] == "Blue-Eyes White Dragon"
+    assert bewd["attack"] == 3000
+    assert bewd["defense"] == 2500
+
+
+def test_puzzle_reset(web_client):
+    """Reset with a puzzle state should place cards correctly."""
+    puzzle = {
+        "player0": {
+            "lp": 4000,
+            "hand": [89631139],
+            "monster_zone": [
+                {"code": 46986414, "pos": "face_up_attack", "seq": 0},
+            ],
+            "deck": [89631139],
+        },
+        "player1": {
+            "lp": 2000,
+            "deck": [89631139],
+        },
+    }
+    data = _reset(web_client, puzzle=puzzle)
+
+    assert data["board"]["player"]["lp"] == 4000
+    assert data["board"]["opponent"]["lp"] == 2000
+    assert not data["done"]
 
 
 # ─── Deck selection tests ─────────────────────────────────────────────────
@@ -420,66 +450,11 @@ def test_frames_game_state_structure(web_client):
             assert isinstance(gs["chain_count"], int)
 
 
-def test_multi_select_step_returns_no_frames(web_client):
-    """Intermediate multi-select steps should return empty frames."""
-    for seed in range(42, 92):
-        data = _reset(web_client, seed=seed)
-        for _ in range(100):
-            if data["done"]:
-                break
-            prompt = data.get("prompt")
-            if prompt is None:
-                data = _step(web_client, action_index=0)
-                continue
-
-            is_multi = (prompt.get("type") == "select_card" and prompt.get("max", 1) > 1) or (
-                prompt.get("type") == "tribute" and prompt.get("max_cards", 1) > 1
-            )
-            if is_multi:
-                # Take one intermediate pick
-                data = _step(web_client, action_index=0)
-                assert data["frames"] == [], "Intermediate multi-select should not return frames"
-                return  # Test passed
-
-            data = _step(web_client, action_index=0)
-
-    pytest.skip("No multi-select prompt encountered in test seeds")
-
-
-def test_frames_board_changes_across_steps(web_client):
-    """At least one step should produce frames with differing board states."""
-    data = _reset(web_client)
-    found_different = False
-
-    for _ in range(50):
-        if data["done"]:
-            break
-        data = _step(web_client, action_index=0)
-        frames = data.get("frames", [])
-        if len(frames) >= 2:
-            # Compare LP or monster zones between first and last frame
-            first_board = frames[0]["board"]
-            last_board = frames[-1]["board"]
-            if (
-                first_board["player"]["lp"] != last_board["player"]["lp"]
-                or first_board["opponent"]["lp"] != last_board["opponent"]["lp"]
-                or first_board["player"]["monsters"] != last_board["player"]["monsters"]
-                or first_board["opponent"]["monsters"] != last_board["opponent"]["monsters"]
-            ):
-                found_different = True
-                break
-
-    if not found_different:
-        pytest.skip("No multi-frame step with differing board states in test seeds")
-
-
 # ─── Open cards tests ─────────────────────────────────────────────────────
 
 
 def _reset_open(client, seed=42):
-    resp = client.post("/api/web/reset", json={"seed": seed, "open_cards": True})
-    assert resp.status_code == 200
-    return resp.json()
+    return _reset(client, seed=seed, open_cards=True)
 
 
 def test_reset_open_cards_false_no_hand(web_client):
@@ -515,19 +490,11 @@ def test_open_cards_hand_has_real_codes(web_client):
 
 def test_open_cards_face_down_has_real_code(web_client):
     """Face-down opponent monsters should have real codes when open_cards=True."""
-    for seed in range(42, 62):
-        data = _reset_open(web_client, seed=seed)
-        for _ in range(50):
-            if data["done"]:
-                break
-            data = _step(web_client, action_index=0)
-            opp_monsters = data["board"]["opponent"]["monsters"]
-            for m in opp_monsters:
-                if m is not None and m.get("position") in ("FACE_DOWN_DEF", "FACE_DOWN_ATK"):
-                    assert m["code"] > 0, "Open face-down should have real code"
-                    return  # Test passed
+    data = _reset(web_client, puzzle=_FACE_DOWN_PUZZLE, open_cards=True)
 
-    pytest.skip("No face-down opponent monster encountered in test seeds")
+    opp_monsters = data["board"]["opponent"]["monsters"]
+    fd = next(m for m in opp_monsters if m is not None and m.get("position") == "FACE_DOWN_DEF")
+    assert fd["code"] > 0, "Open face-down should have real code"
 
 
 def test_open_cards_frames_include_hand(web_client):
@@ -543,8 +510,7 @@ def test_open_cards_frames_include_hand(web_client):
 def test_step_preserves_open_cards(web_client):
     """After open_cards reset, subsequent steps should also include hand in opponent."""
     data = _reset_open(web_client)
-    if data["done"]:
-        pytest.skip("Duel ended at reset")
+    assert not data["done"]
     data = _step(web_client, action_index=0)
     assert "hand" in data["board"]["opponent"], "Step opponent should include hand"
 

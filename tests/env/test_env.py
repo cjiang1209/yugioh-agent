@@ -227,3 +227,71 @@ def test_full_episode_go_second(env):
 
     if obs.done:
         assert obs.reward in (1.0, -1.0, 0.0)
+
+
+def test_frames_board_changes_across_steps(env):
+    """Opponent actions between agent prompts produce frames with differing boards."""
+    from yugioh_env.replay import GameRecording, ScriptedOpponent
+
+    # Opponent is player 0 (goes first), agent is player 1 (goes second).
+    # Opponent has Gemini Elf in hand and summons it during reset,
+    # producing 2 frames with differing board snapshots.
+    recording = GameRecording(
+        setup={
+            "puzzle": {
+                "player0": {
+                    "hand": [69140098],  # Gemini Elf (Level 4, can summon)
+                    "deck": [89631139, 89631139],
+                },
+                "player1": {"hand": [89631139], "deck": [89631139]},
+            },
+            "agent_player": 1,
+        }
+    )
+    # Opponent summons and picks zone (during reset), agent declines chain
+    recording.append(msg_type=11, player=0, action=0, num_actions=3)
+    recording.append(msg_type=18, player=0, action=0, num_actions=5)
+    recording.append(msg_type=16, player=1, action=0, num_actions=1)
+
+    cursor = recording.cursor()
+    env.set_opponent(ScriptedOpponent(cursor))
+    env.reset(puzzle=recording.setup["puzzle"], agent_player=1)
+
+    # Frames are produced during reset (opponent's turn is auto-played)
+    frames = env.last_frames
+    assert len(frames) == 2
+    first_monsters = frames[0]["board"]["opponent"]["monsters"]
+    last_monsters = frames[-1]["board"]["opponent"]["monsters"]
+    first_count = sum(1 for m in first_monsters if m is not None)
+    last_count = sum(1 for m in last_monsters if m is not None)
+    assert last_count > first_count
+
+
+def test_multi_select_step_returns_no_frames(env):
+    """Intermediate multi-select steps should return empty frames."""
+    from yugioh_core.constants import MSG_SELECT_IDLECMD, MSG_SELECT_TRIBUTE
+
+    # Two tributes on field + Level 7 Dark Magician in hand.
+    # Player 1 has no cards. Tribute summon is a 2-pick multi-select.
+    puzzle = {
+        "player0": {
+            "monster_zone": [
+                {"code": 89631139, "pos": "face_up_attack", "seq": 0},
+                {"code": 89631139, "pos": "face_up_attack", "seq": 1},
+            ],
+            "hand": [46986414],  # Dark Magician (Level 7)
+            "deck": [89631139],
+        },
+    }
+    env.reset(puzzle=puzzle)
+
+    # Action 0 = summon Dark Magician (IDLE_SUMMON category)
+    assert env._mapper.msg_type == MSG_SELECT_IDLECMD
+    env.step(YuGiOhAction(action_index=0))
+
+    # Now at MSG_SELECT_TRIBUTE — pick first tribute (intermediate)
+    assert env._mapper.msg_type == MSG_SELECT_TRIBUTE
+    env.step(YuGiOhAction(action_index=0))
+
+    # Intermediate multi-select should produce no frames
+    assert env.last_frames == []

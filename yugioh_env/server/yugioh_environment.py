@@ -288,6 +288,7 @@ class YuGiOhEnvironment(Environment):
         deck1: dict[str, list[int]] | None = None,
         agent_player: int | str | None = None,
         open_cards: bool = False,
+        puzzle: dict | None = None,
         **kwargs: Any,
     ) -> YuGiOhObservation:
         """Start a new duel and return the initial observation.
@@ -306,6 +307,9 @@ class YuGiOhEnvironment(Environment):
             open_cards: When True, board snapshots include full opponent card
                         data (unhidden) in the ``opponent`` dict (UI-only,
                         does not affect game logic).  Defaults to False.
+            puzzle: When provided, create the duel from a puzzle state
+                    specification instead of from decks. The puzzle dict
+                    defines all card placements; deck0/deck1 are ignored.
         """
         # Apply open_cards before processing so frames include the data
         self._open_cards = open_cards
@@ -340,12 +344,15 @@ class YuGiOhEnvironment(Environment):
 
         # Create duel
         self._duel = Duel(self._lib, self._card_db, self._script_dirs)
-        self._duel.create(
-            deck0=effective_deck0,
-            deck1=effective_deck1,
-            seed=duel_seed,
-            starting_lp=self._starting_lp,
-        )
+        if puzzle is not None:
+            self._duel.create_puzzle(puzzle, seed=duel_seed)
+        else:
+            self._duel.create(
+                deck0=effective_deck0,
+                deck1=effective_deck1,
+                seed=duel_seed,
+                starting_lp=self._starting_lp,
+            )
 
         # Process until agent's first choice
         return self._process_to_agent_choice()
