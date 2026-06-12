@@ -433,6 +433,10 @@ DUEL_TCG_FAST_EFFECT_IGNITION = 0x400000000
 DUEL_EXTRA_DECK_RITUAL = 0x800000000
 DUEL_NORMAL_SUMMON_FACEUP_DEF = 0x1000000000
 
+# ─── Card Status ─────────────────────────────────────────────────────────────
+STATUS_DISABLED = 0x0001
+STATUS_EFFECT_ENABLED = 0x0400
+
 # ─── Predefined Duel Modes ──────────────────────────────────────────────────
 DUEL_MODE_MR5 = (
     DUEL_PZONE

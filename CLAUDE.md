@@ -106,6 +106,14 @@ Messages that write `loc_info`: `MSG_MOVE`, `MSG_SET`, `MSG_SUMMONING`, `MSG_SPS
   through the MUD bot. Restructuring would require a new agent-return shape
   for sort, deferred until needed.
 
+### Puzzle State Initialization (`yugioh_env/puzzle.py`)
+
+- **Engine-native disable**: Cards marked `disabled: True` are disabled via a Lua `EFFECT_DISABLE` effect loaded through `OCG_LoadScript`, not by bit manipulation. The engine's `refresh_disable_status()` handles all propagation.
+- **`starting_draw=0`**: `create_puzzle()` sets both players' `startingDrawCount` to 0 so the Startup processor doesn't draw cards — all hand contents come from the puzzle spec.
+- **Player 0 always goes first**: The engine starts with player 0's turn. Use `agent_player=1` in `env.reset()` to have the agent go second — `_process_to_agent_choice` auto-plays player 0 (opponent) naturally.
+- **Deck order**: Deck cards are inserted in specification order (no shuffle). The engine stores decks bottom-to-top internally, so the first card in the spec's `deck` list is drawn first.
+- **`disabled` on field only**: The `disabled` flag is only valid on `monster_zone` and `spell_zone` entries. The schema validator rejects it on non-field zones.
+
 ## Environment Variables
 
 - `YUGIOH_LIB_PATH` — path to `libocgcore.dylib/.so` (auto-detected from `build/` if unset)

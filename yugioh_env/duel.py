@@ -12,14 +12,20 @@ from typing import Any
 from yugioh_core.card_database import CardDatabase
 from yugioh_core.constants import (
     DUEL_MODE_MR5,
+    LOCATION_BANISHED,
     LOCATION_DECK,
     LOCATION_EXTRA,
+    LOCATION_GRAVE,
+    LOCATION_HAND,
+    LOCATION_MZONE,
+    LOCATION_SZONE,
     MSG_RETRY,
     MSG_WIN,
     OCG_DUEL_CREATION_SUCCESS,
     OCG_DUEL_STATUS_AWAITING,
     OCG_DUEL_STATUS_END,
     POS_FACEDOWN_DEFENSE,
+    POS_FACEUP_ATTACK,
     QUERY_BASIC,
     SELECT_MSGS,
 )
@@ -36,6 +42,7 @@ from yugioh_env.core_types import (
 from yugioh_env.deck_parser import parse_ydk
 from yugioh_env.game_state import GameState
 from yugioh_env.message_parser import parse_messages
+from yugioh_env.puzzle import generate_disable_lua, load_puzzle, validate_puzzle
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +100,105 @@ class Duel:
         if isinstance(deck1, str | Path):
             deck1 = parse_ydk(deck1)
 
+        self._init_duel(
+            seed=seed,
+            lp0=starting_lp,
+            lp1=starting_lp,
+            starting_draw0=starting_draw,
+            starting_draw1=starting_draw,
+            draw_per_turn=draw_per_turn,
+            flags=flags,
+        )
+
+        # Add cards (shuffle main decks using the seed for determinism)
+        rng = random.Random(seed)
+        self._add_deck_cards(0, deck0, rng)
+        self._add_deck_cards(1, deck1, rng)
+
+        # Start duel
+        self._lib.OCG_StartDuel(self._duel_handle)
+
+        # Initialize game state counts from the engine (MSG_START may not be
+        # emitted by the edo9300 fork, so query the engine directly).
+        self._sync_zone_counts([starting_lp, starting_lp])
+
+    def create_puzzle(
+        self,
+        state: dict | str | Path,
+        seed: int = 0,
+        flags: int = DUEL_MODE_MR5,
+    ) -> None:
+        """Create a duel from a puzzle state specification.
+
+        *state* may be a validated dict, a raw dict (passed through
+        ``validate_puzzle``), or a path to a JSON/YAML file (loaded via
+        ``load_puzzle``).
+        """
+        # Parse / validate
+        if isinstance(state, str | Path):
+            state = load_puzzle(state)
+        else:
+            state = validate_puzzle(state)
+
+        lp0 = state["player0"]["lp"]
+        lp1 = state["player1"]["lp"]
+
+        self._init_duel(
+            seed=seed,
+            lp0=lp0,
+            lp1=lp1,
+            starting_draw0=0,
+            starting_draw1=0,
+            draw_per_turn=1,
+            flags=flags,
+        )
+
+        # Place cards for each player
+        self._place_puzzle_cards(0, state["player0"])
+        self._place_puzzle_cards(1, state["player1"])
+
+        # Disable marked cards via Lua
+        disable_lua = generate_disable_lua(state)
+        if disable_lua is not None:
+            content = disable_lua.encode("utf-8")
+            ok = self._lib.OCG_LoadScript(
+                self._duel_handle,
+                content,
+                len(content),
+                b"puzzle_disable.lua",
+            )
+            if not ok:
+                raise RuntimeError("Failed to load puzzle disable script")
+
+        # Start duel (draws 0 cards)
+        self._lib.OCG_StartDuel(self._duel_handle)
+
+        # Initialize game state counts from the engine
+        self._sync_zone_counts([lp0, lp1])
+
+    def _sync_zone_counts(self, lp: list[int]) -> None:
+        """Query the engine for all zone counts and set game state."""
+        for p in range(2):
+            self._game_state.deck_count[p] = self.query_count(p, LOCATION_DECK)
+            self._game_state.extra_count[p] = self.query_count(p, LOCATION_EXTRA)
+            self._game_state.hand_count[p] = self.query_count(p, LOCATION_HAND)
+            self._game_state.mzone_count[p] = self.query_count(p, LOCATION_MZONE)
+            self._game_state.szone_count[p] = self.query_count(p, LOCATION_SZONE)
+            self._game_state.grave_count[p] = self.query_count(p, LOCATION_GRAVE)
+            self._game_state.banished_count[p] = self.query_count(p, LOCATION_BANISHED)
+        self._game_state.lp = lp
+
+    def _init_duel(
+        self,
+        seed: int,
+        lp0: int,
+        lp1: int,
+        starting_draw0: int,
+        starting_draw1: int,
+        draw_per_turn: int,
+        flags: int,
+    ) -> None:
+        """Shared duel-creation setup: callbacks, engine init, startup scripts."""
         # Reset state
         self._game_state.reset()
         self._is_finished = False
@@ -116,13 +222,13 @@ class Duel:
         options.seed[3] = ((s ^ 0xDEADBEEFCAFEBABE) & 0xFFFFFFFFFFFFFFFF) or 1
         options.flags = flags
         options.team1 = OCG_Player(
-            startingLP=starting_lp,
-            startingDrawCount=starting_draw,
+            startingLP=lp0,
+            startingDrawCount=starting_draw0,
             drawCountPerTurn=draw_per_turn,
         )
         options.team2 = OCG_Player(
-            startingLP=starting_lp,
-            startingDrawCount=starting_draw,
+            startingLP=lp1,
+            startingDrawCount=starting_draw1,
             drawCountPerTurn=draw_per_turn,
         )
         options.cardReader = self._callbacks.card_reader_cb
@@ -150,20 +256,39 @@ class Duel:
         # the shared runtime scripts itself.
         self._load_startup_scripts()
 
-        # Add cards (shuffle main decks using the seed for determinism)
-        rng = random.Random(seed)
-        self._add_deck_cards(0, deck0, rng)
-        self._add_deck_cards(1, deck1, rng)
+    # Zone key → (location constant, default position) for simple card-list zones.
+    _LIST_ZONE_MAP: list[tuple[str, int, int]] = [
+        ("hand", LOCATION_HAND, POS_FACEDOWN_DEFENSE),
+        ("grave", LOCATION_GRAVE, POS_FACEUP_ATTACK),
+        ("banished", LOCATION_BANISHED, POS_FACEUP_ATTACK),
+        ("deck", LOCATION_DECK, POS_FACEDOWN_DEFENSE),
+        ("extra", LOCATION_EXTRA, POS_FACEDOWN_DEFENSE),
+    ]
 
-        # Start duel
-        self._lib.OCG_StartDuel(self._duel_handle)
+    def _place_puzzle_cards(self, player: int, config: dict) -> None:
+        """Place cards for a single player from a puzzle configuration."""
+        # Simple list zones (card codes only, implicit position)
+        for key, location, default_pos in self._LIST_ZONE_MAP:
+            for seq, code in enumerate(config.get(key, [])):
+                self._add_card(player, code, location, seq, pos=default_pos)
 
-        # Initialize game state counts from the engine (MSG_START may not be
-        # emitted by the edo9300 fork, so query the engine directly).
-        for p in range(2):
-            self._game_state.deck_count[p] = self.query_count(p, LOCATION_DECK)
-            self._game_state.extra_count[p] = self.query_count(p, LOCATION_EXTRA)
-        self._game_state.lp = [starting_lp, starting_lp]
+        # Field zones (dict entries with explicit position and sequence)
+        for entry in config.get("monster_zone", []):
+            self._add_card(
+                player,
+                entry["code"],
+                LOCATION_MZONE,
+                entry["seq"],
+                pos=entry["pos"],
+            )
+        for entry in config.get("spell_zone", []):
+            self._add_card(
+                player,
+                entry["code"],
+                LOCATION_SZONE,
+                entry["seq"],
+                pos=entry["pos"],
+            )
 
     # Scripts that must be loaded (in order) before any card scripts run.
     # constant.lua defines numeric constants; utility.lua defines GetID()
@@ -233,7 +358,9 @@ class Duel:
         for seq, code in enumerate(deck.get("extra", [])):
             self._add_card(team, code, LOCATION_EXTRA, seq)
 
-    def _add_card(self, team: int, code: int, location: int, seq: int) -> None:
+    def _add_card(
+        self, team: int, code: int, location: int, seq: int, *, pos: int = POS_FACEDOWN_DEFENSE
+    ) -> None:
         """Add a single card to the duel."""
         info = OCG_NewCardInfo()
         info.team = team
@@ -242,7 +369,7 @@ class Duel:
         info.con = team
         info.loc = location
         info.seq = seq
-        info.pos = POS_FACEDOWN_DEFENSE
+        info.pos = pos
         self._lib.OCG_DuelNewCard(self._duel_handle, ctypes.byref(info))
 
     def process_until_choice(self) -> tuple[dict | None, GameState, list[dict]]:
