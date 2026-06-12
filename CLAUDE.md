@@ -114,6 +114,14 @@ Messages that write `loc_info`: `MSG_MOVE`, `MSG_SET`, `MSG_SUMMONING`, `MSG_SPS
 - **Deck order**: Deck cards are inserted in specification order (no shuffle). The engine stores decks bottom-to-top internally, so the first card in the spec's `deck` list is drawn first.
 - **`disabled` on field only**: The `disabled` flag is only valid on `monster_zone` and `spell_zone` entries. The schema validator rejects it on non-field zones.
 
+### Deterministic Replay (`yugioh_env/replay.py`)
+
+- **Non-intrusive**: Recording and replay wrap `YuGiOhEnvironment` and the opponent without modifying either class.
+- **Interleaved action log**: Both players' actions are stored in game order as `(msg_type, player, action, num_actions)` entries. The interleaved order is the source of truth for drift detection.
+- **Recording**: `RecordingEnvironment` wraps the env and records agent actions. `RecordingOpponent` wraps the opponent and records opponent actions. Both write to the same `GameRecording`.
+- **Replay**: `ScriptedOpponent` reads opponent actions from a `ReplayCursor`. The caller drives agent actions via `env.step()` using the same cursor. Drift detection raises `RuntimeError` if msg_type or player doesn't match.
+- **Serialization**: `GameRecording.save()` / `GameRecording.load()` use JSON. The `setup` dict contains either deck paths + seed (for normal games) or a `puzzle` key (for puzzle states).
+
 ## Environment Variables
 
 - `YUGIOH_LIB_PATH` — path to `libocgcore.dylib/.so` (auto-detected from `build/` if unset)

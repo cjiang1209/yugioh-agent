@@ -15,6 +15,86 @@ from yugioh_env.models import YuGiOhAction
 from yugioh_env.opponent import Opponent
 
 
+class ReplayCursor:
+    """Shared cursor over an interleaved action list for replay.
+
+    All drift detection is consolidated in ``_verify``, called by both
+    ``next_agent_entry`` and ``next_opponent_entry``.
+    """
+
+    def __init__(self, actions: list[dict[str, int]], agent_player: int) -> None:
+        self._actions = actions
+        self._agent_player = agent_player
+        self._pos = 0
+
+    @property
+    def exhausted(self) -> bool:
+        return self._pos >= len(self._actions)
+
+    def next_agent_entry(
+        self,
+        expected_msg_type: int | None = None,
+        expected_num_actions: int | None = None,
+    ) -> dict[str, int]:
+        """Return next entry, verify it belongs to the agent.
+
+        Optionally verify msg_type and num_actions match.
+        Raises ``RuntimeError`` on drift.
+        """
+        entry = self._next()
+        self._verify(entry, self._agent_player, expected_msg_type, expected_num_actions)
+        return entry
+
+    def next_opponent_entry(
+        self,
+        expected_msg_type: int | None = None,
+        expected_num_actions: int | None = None,
+    ) -> dict[str, int]:
+        """Return next entry, verify it belongs to the opponent.
+
+        Optionally verify msg_type and num_actions match.
+        Raises ``RuntimeError`` on drift.
+        """
+        entry = self._next()
+        opponent_player = 1 - self._agent_player
+        self._verify(entry, opponent_player, expected_msg_type, expected_num_actions)
+        return entry
+
+    def _verify(
+        self,
+        entry: dict[str, int],
+        expected_player: int,
+        expected_msg_type: int | None,
+        expected_num_actions: int | None,
+    ) -> None:
+        """Check player, msg_type, and num_actions."""
+        step = self._pos - 1
+        if entry["player"] != expected_player:
+            raise RuntimeError(
+                f"Replay drift at step {step}: "
+                f"expected player {expected_player}, got player {entry['player']}"
+            )
+        if expected_msg_type is not None and entry["msg_type"] != expected_msg_type:
+            raise RuntimeError(
+                f"Replay drift at step {step}: "
+                f"expected msg_type={expected_msg_type}, "
+                f"got msg_type={entry['msg_type']}"
+            )
+        if expected_num_actions is not None and entry["num_actions"] != expected_num_actions:
+            raise RuntimeError(
+                f"Replay drift at step {step}: "
+                f"expected num_actions={expected_num_actions}, "
+                f"got num_actions={entry['num_actions']}"
+            )
+
+    def _next(self) -> dict[str, int]:
+        if self.exhausted:
+            raise RuntimeError(f"Replay action list exhausted at step {self._pos}")
+        entry = self._actions[self._pos]
+        self._pos += 1
+        return entry
+
+
 class GameRecording:
     """Data model for a recorded game.
 
@@ -37,6 +117,12 @@ class GameRecording:
                 "num_actions": num_actions,
             }
         )
+
+    def cursor(self, agent_player: int | None = None) -> ReplayCursor:
+        """Create a replay cursor. Defaults to setup["agent_player"]."""
+        if agent_player is None:
+            agent_player = self.setup["agent_player"]
+        return ReplayCursor(self.actions, agent_player=agent_player)
 
     def save(self, path: str | Path) -> None:
         """Serialize the recording to JSON."""
@@ -81,6 +167,23 @@ class RecordingOpponent(Opponent):
 
     def reseed(self, seed: int) -> None:
         self._inner.reseed(seed)
+
+
+class ScriptedOpponent(Opponent):
+    """Plays actions from a ReplayCursor. Raises RuntimeError on drift."""
+
+    def __init__(self, cursor: ReplayCursor) -> None:
+        self._cursor = cursor
+
+    def select_action(self, msg: dict, num_actions: int) -> int:
+        entry = self._cursor.next_opponent_entry(
+            expected_msg_type=msg.get("msg_type", 0),
+            expected_num_actions=num_actions,
+        )
+        return entry["action"]
+
+    def reseed(self, seed: int) -> None:
+        pass  # No RNG to seed
 
 
 class RecordingEnvironment:
