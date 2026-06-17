@@ -13,10 +13,12 @@ from openenv.core.env_server.interfaces import Environment
 
 from yugioh_core.card_database import CardDatabase
 from yugioh_core.constants import (
+    MSG_SELECT_BATTLECMD,
     MSG_SELECT_CARD,
     MSG_SELECT_CHAIN,
     MSG_SELECT_DISFIELD,
     MSG_SELECT_EFFECTYN,
+    MSG_SELECT_IDLECMD,
     MSG_SELECT_PLACE,
     MSG_SELECT_POSITION,
     MSG_SELECT_TRIBUTE,
@@ -37,6 +39,7 @@ from yugioh_core.constants import (
     SELECT_MSGS,
 )
 from yugioh_core.encoding import MAX_ACTIONS
+from yugioh_env.action_loop_filter import ActionLoopFilter
 from yugioh_env.action_space import ActionMapper
 from yugioh_env.duel import Duel
 from yugioh_env.event_logger import FieldTracker, format_events
@@ -232,6 +235,7 @@ class YuGiOhEnvironment(Environment):
         self._open_cards: bool = False
         # When True, auto-play agent prompts with only one legal action
         self._collapse_forced: bool = config.get("collapse_forced", False)
+        self._loop_filter = ActionLoopFilter(self)
 
     def set_opponent(self, opponent: Opponent) -> None:
         """Replace the opponent for subsequent episodes."""
@@ -321,6 +325,7 @@ class YuGiOhEnvironment(Environment):
         self._episode_count += 1
         self._step_count = 0
         self._field_tracker.reset()
+        self._loop_filter.reset()
         duel_seed = seed if seed is not None else self._episode_count
 
         # Resolve agent player for this episode
@@ -369,6 +374,9 @@ class YuGiOhEnvironment(Environment):
 
         self._last_frames = []
         self._step_count += 1
+
+        if self._mapper.num_actions > 0 and action.action_index < len(self._mapper.actions):
+            self._loop_filter.record_selection(self._mapper.actions[action.action_index])
 
         # Convert action to response
         try:
@@ -492,6 +500,7 @@ class YuGiOhEnvironment(Environment):
                 self._current_msg = msg
                 self._card_sel.clear()
                 self._mapper.update({**msg, "_agent_player": self._agent_player})
+                self._apply_loop_filter(self._mapper)
                 if self._collapse_forced and self._mapper.num_actions == 1:
                     response = self._mapper.action_to_response(0)
                     while response is None and self._mapper.num_actions == 1:
@@ -515,11 +524,15 @@ class YuGiOhEnvironment(Environment):
                 opp_mapper = ActionMapper()
                 opp_agent_player = 1 - self._agent_player
                 opp_mapper.update({**msg, "_agent_player": opp_agent_player})
+                self._apply_loop_filter(opp_mapper)
                 opp_sel: list[int] = []
+                opp_selected_action: dict | None = None
                 if opp_mapper.num_actions > 0:
                     response = None
                     while response is None and opp_mapper.num_actions > 0:
                         if opp_mapper.num_actions == 1:
+                            if opp_selected_action is None:
+                                opp_selected_action = opp_mapper.actions[0]
                             response = opp_mapper.action_to_response(0)
                             if response is None:
                                 opp_sel.append(opp_mapper.get_action_index(0))
@@ -543,6 +556,8 @@ class YuGiOhEnvironment(Environment):
                             self._opponent.set_observation(opp_obs)
                         opp_action = self._opponent.select_action(msg, opp_mapper.num_actions)
                         opp_action = min(opp_action, opp_mapper.num_actions - 1)
+                        if opp_selected_action is None:
+                            opp_selected_action = opp_mapper.actions[opp_action]
                         response = opp_mapper.action_to_response(opp_action)
                         if response is None:
                             opp_sel.append(opp_mapper.get_action_index(opp_action))
@@ -554,6 +569,8 @@ class YuGiOhEnvironment(Environment):
                                 }
                             )
                     if response is not None:
+                        if opp_selected_action is not None:
+                            self._loop_filter.record_selection(opp_selected_action)
                         self._duel.send_response(response)
                 else:
                     logger.warning("Opponent has no actions for msg_type=%d", msg_type)
@@ -640,6 +657,31 @@ class YuGiOhEnvironment(Environment):
             done=True,
             reward=reward,
         )
+
+    def _apply_loop_filter(self, mapper: ActionMapper) -> None:
+        """Remove looping actions from the mapper's action list.
+
+        Only applies to top-level prompts (IDLE_CMD, BATTLE_CMD,
+        SELECT_CHAIN) where the player chooses *what* to do.
+        Sub-selection prompts (SELECT_CARD, SELECT_TRIBUTE, etc.) are
+        never filtered — they present cards to pick *after* the top-level
+        choice has been made.
+        """
+        if not self._loop_filter.has_looping_actions:
+            return
+        if mapper.msg_type not in (MSG_SELECT_IDLECMD, MSG_SELECT_BATTLECMD, MSG_SELECT_CHAIN):
+            return
+        before = mapper._actions
+        mapper._actions = [
+            a for a in before if a.get("code", 0) == 0 or not self._loop_filter.is_looping(a)
+        ]
+        n_removed = len(before) - len(mapper._actions)
+        if n_removed:
+            logger.warning(
+                "Suppressed %d looping action(s) for msg_type=%d",
+                n_removed,
+                mapper.msg_type,
+            )
 
     def close(self) -> None:
         """Clean up resources."""
