@@ -168,7 +168,7 @@ class TestGenerateDisableLua:
         assert lua is not None
         assert "EFFECT_DISABLE" in lua
         assert "GetControler()==0" in lua
-        assert "GetSequence()==0" in lua
+        assert f"IsCode({BLUE_EYES})" in lua
         assert "LOCATION_MZONE" in lua
 
     def test_multiple_disabled_across_players(self):

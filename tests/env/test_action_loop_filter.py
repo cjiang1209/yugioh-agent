@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from yugioh_core.constants import MSG_SELECT_CHAIN, MSG_SELECT_IDLECMD
 from yugioh_env.action_loop_filter import _ZONES, LOOP_DETECTION_THRESHOLD, ActionLoopFilter
 from yugioh_env.models import YuGiOhAction
-from yugioh_env.puzzle import generate_disable_lua
 from yugioh_env.replay import GameRecording, ScriptedOpponent
 from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
 
@@ -292,33 +291,14 @@ def test_loop_filter_suppresses_disabled_quillbolt(lib, db_path, script_dirs, de
     QUILLBOLT_HEDGEHOG = 23571046
     JUNK_SYNCHRON = 63977008
 
-    DISABLE_QUILLBOLT_P0_LUA = b"""\
-do
-  local e=Effect.GlobalEffect()
-  e:SetType(EFFECT_TYPE_FIELD)
-  e:SetCode(EFFECT_DISABLE)
-  e:SetTargetRange(LOCATION_GRAVE,0)
-  e:SetTarget(function(e,c)
-    return c:GetControler()==0
-       and c:IsCode(23571046)
-       and c:IsLocation(LOCATION_GRAVE)
-  end)
-  Duel.RegisterEffect(e,0)
-end
-"""
-
     puzzle = {
         "player0": {
             "monster_zone": [
                 {"code": JUNK_SYNCHRON, "pos": "face_up_attack", "seq": 0},
             ],
-            "grave": [QUILLBOLT_HEDGEHOG],
+            "grave": [{"code": QUILLBOLT_HEDGEHOG, "disabled": True}],
         },
     }
-
-    def _inject_gy_disable(state):
-        base = generate_disable_lua(state) or ""
-        return base + DISABLE_QUILLBOLT_P0_LUA.decode("utf-8")
 
     # Build interleaved recording: agent-only (opponent has no cards).
     # Each cycle: IDLE(activate Quillbolt Hedgehog) → CHAIN(decline) → CHAIN(decline).
@@ -341,8 +321,7 @@ end
     cursor = recording.cursor()
     env.set_opponent(ScriptedOpponent(cursor))
     try:
-        with patch("yugioh_env.duel.generate_disable_lua", _inject_gy_disable):
-            obs = env.reset(puzzle=puzzle, agent_player=0)
+        obs = env.reset(puzzle=puzzle, agent_player=0)
 
         for _ in range(3 * LOOP_DETECTION_THRESHOLD):
             entry = cursor.next_agent_entry(expected_msg_type=env._mapper.msg_type)

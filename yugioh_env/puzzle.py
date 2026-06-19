@@ -41,13 +41,21 @@ _FIELD_ZONES: dict[str, int] = {
 
 _LIST_ZONES = ("hand", "grave", "banished", "deck", "extra")
 
+# Lua template for disabling a card by code + location.  Uses
+# EFFECT_TYPE_FIELD with a card-code predicate (same pattern as Called
+# by the Grave) so the disable persists through the engine's Startup
+# processing.
+#
+# Caveat: matches by card code, so if the same card code appears
+# multiple times in the same zone with only some marked disabled,
+# all copies are disabled.
 _DISABLE_TEMPLATE = """\
 do
   local e=Effect.GlobalEffect()
   e:SetType(EFFECT_TYPE_FIELD)
   e:SetCode(EFFECT_DISABLE)
-  e:SetTargetRange(LOCATION_MZONE+LOCATION_SZONE,LOCATION_MZONE+LOCATION_SZONE)
-  e:SetTarget(function(e,c) return c:GetControler()=={con} and c:GetSequence()=={seq} and c:IsLocation({loc}) end)
+  e:SetTargetRange({target_range})
+  e:SetTarget(function(e,c) return c:GetControler()=={con} and c:IsCode({code}) and c:IsLocation({loc}) end)
   Duel.RegisterEffect(e,0)
 end"""
 
@@ -83,8 +91,23 @@ def _validate_card_code(code: object, context: str) -> int:
     return code
 
 
-def _validate_card_list(cards: list, zone_name: str) -> list[int]:
-    return [_validate_card_code(c, zone_name) for c in cards]
+def _validate_card_list(cards: list, zone_name: str) -> list[int | dict]:
+    """Validate a list-zone card list.
+
+    Entries may be plain int card codes or dicts with ``code`` and
+    optional ``disabled`` flag::
+
+        "grave": [89631139, {"code": 23571046, "disabled": True}]
+    """
+    validated: list[int | dict] = []
+    for c in cards:
+        if isinstance(c, dict):
+            code = _validate_card_code(c["code"], zone_name)
+            disabled = bool(c.get("disabled", False))
+            validated.append({"code": code, "disabled": disabled})
+        else:
+            validated.append(_validate_card_code(c, zone_name))
+    return validated
 
 
 def _validate_field_zone(
@@ -146,26 +169,43 @@ def validate_puzzle(state: dict) -> dict:
 
 
 def generate_disable_lua(state: dict) -> str | None:
-    """Generate Lua source to disable marked cards.
+    """Generate Lua source to disable cards marked ``disabled: True``.
 
-    Returns ``None`` if no cards have ``disabled: True``.
+    Supports all zones.  See ``_DISABLE_TEMPLATE`` for implementation
+    details and caveats.
+
+    Returns ``None`` if no cards are marked disabled.
     """
     blocks: list[str] = []
 
-    _ZONE_TO_LOC = {"monster_zone": "LOCATION_MZONE", "spell_zone": "LOCATION_SZONE"}
+    _ZONE_TO_LOC: dict[str, str] = {
+        "monster_zone": "LOCATION_MZONE",
+        "spell_zone": "LOCATION_SZONE",
+        "hand": "LOCATION_HAND",
+        "grave": "LOCATION_GRAVE",
+        "banished": "LOCATION_BANISHED",
+        "deck": "LOCATION_DECK",
+        "extra": "LOCATION_EXTRA",
+    }
 
     for player_idx in (0, 1):
         player = state[f"player{player_idx}"]
         for zone, loc in _ZONE_TO_LOC.items():
             for card in player.get(zone, []):
-                if card.get("disabled"):
-                    blocks.append(
-                        _DISABLE_TEMPLATE.format(
-                            con=player_idx,
-                            seq=card["seq"],
-                            loc=loc,
-                        )
+                if not isinstance(card, dict) or not card.get("disabled"):
+                    continue
+                if player_idx == 0:
+                    target_range = f"{loc},0"
+                else:
+                    target_range = f"0,{loc}"
+                blocks.append(
+                    _DISABLE_TEMPLATE.format(
+                        target_range=target_range,
+                        con=player_idx,
+                        code=card["code"],
+                        loc=loc,
                     )
+                )
 
     if not blocks:
         return None

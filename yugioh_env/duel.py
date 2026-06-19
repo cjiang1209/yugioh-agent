@@ -267,9 +267,10 @@ class Duel:
 
     def _place_puzzle_cards(self, player: int, config: dict) -> None:
         """Place cards for a single player from a puzzle configuration."""
-        # Simple list zones (card codes only, implicit position)
+        # Simple list zones (card codes or dicts with code+disabled, implicit position)
         for key, location, default_pos in self._LIST_ZONE_MAP:
-            for seq, code in enumerate(config.get(key, [])):
+            for seq, entry in enumerate(config.get(key, [])):
+                code = entry["code"] if isinstance(entry, dict) else entry
                 self._add_card(player, code, location, seq, pos=default_pos)
 
         # Field zones (dict entries with explicit position and sequence)
