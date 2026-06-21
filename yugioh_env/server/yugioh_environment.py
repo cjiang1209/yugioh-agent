@@ -13,6 +13,7 @@ from openenv.core.env_server.interfaces import Environment
 
 from yugioh_core.card_database import CardDatabase
 from yugioh_core.constants import (
+    MSG_NEW_TURN,
     MSG_SELECT_BATTLECMD,
     MSG_SELECT_CARD,
     MSG_SELECT_CHAIN,
@@ -487,6 +488,11 @@ class YuGiOhEnvironment(Environment):
 
             # Capture frame from this chunk's events
             self._capture_frame(events)
+
+            # Reset loop filter on new turn so once-per-turn effects
+            # are not falsely suppressed across turns.
+            if any(e.get("msg_type") == MSG_NEW_TURN for e in events):
+                self._loop_filter.reset()
 
             if msg is None:
                 # Game ended or error

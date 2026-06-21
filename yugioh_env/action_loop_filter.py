@@ -160,7 +160,7 @@ class ActionLoopFilter:
         return self.action_key(action) in self._looping_keys
 
     def reset(self) -> None:
-        """Clear all tracking state (call on env reset)."""
+        """Clear all tracking state (call on env reset and new turn)."""
         self._seen.clear()
         self._pending_fp.clear()
         self._looping_keys.clear()
