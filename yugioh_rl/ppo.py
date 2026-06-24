@@ -527,7 +527,28 @@ class PPOTrainer:
             self._opponent_pool.share_handles() if self._opponent_pool is not None else None
         )
 
-        if config.vec_env_type == "sync_actor_learner":
+        if config.vec_env_type == "async_actor_learner":
+            from yugioh_rl.actor_learner import AsyncActorLearnerVecEnv
+
+            vec_env = AsyncActorLearnerVecEnv(
+                num_envs=config.num_envs,
+                deck_pool=self._deck_pool,
+                opponent=config.opponent,
+                reward_shaping=config.reward_shaping,
+                shaping_lp_weight=config.shaping_lp_weight,
+                shaping_card_weight=config.shaping_card_weight,
+                seed=config.seed,
+                agent_player=config.agent_player,
+                opponent_device=None,
+                master_model=self.network,
+                config=config,
+                rollout_steps=config.rollout_steps,
+                opponent_pool_handles=pool_handles,
+                opponent_pool_temperature=config.self_play_temperature,
+                opponent_pool_sampling=config.self_play_sampling,
+                opponent_pool_config=config,
+            )
+        elif config.vec_env_type == "sync_actor_learner":
             from yugioh_rl.actor_learner import ActorLearnerVecEnv
 
             vec_env = ActorLearnerVecEnv(
@@ -588,7 +609,18 @@ class PPOTrainer:
                 self.buffer.hx_initial = hx
 
                 # --- Collect rollout ---
-                if config.vec_env_type == "sync_actor_learner":
+                async_discarded = 0
+                async_version_lags: list[int] = []
+                if config.vec_env_type == "async_actor_learner":
+                    rollouts, async_discarded, async_version_lags = vec_env.collect_rollouts(
+                        config.max_version_lag
+                    )
+                    obs = self.buffer.ingest_rollouts(rollouts)
+                    for r in rollouts:
+                        for info in r["infos"]:
+                            self._record_episode(info)
+                    global_step += config.num_envs * config.rollout_steps
+                elif config.vec_env_type == "sync_actor_learner":
                     rollouts = vec_env.collect_rollouts()
                     obs = self.buffer.ingest_rollouts(rollouts)
                     # buffer.hx_initial is already the zero hx from above —
@@ -638,7 +670,7 @@ class PPOTrainer:
                         global_step += config.num_envs
 
                 # --- Compute advantages ---
-                if config.vec_env_type == "sync_actor_learner":
+                if config.vec_env_type in ("sync_actor_learner", "async_actor_learner"):
                     bootstrap_hx = self.network.cat_hx(
                         [r["final_hx"] for r in rollouts],
                         self.device,
@@ -659,7 +691,53 @@ class PPOTrainer:
                     )
                     last_values_np = last_values.cpu().numpy()
 
-                self.buffer.compute_advantages(last_values_np, config.gamma, config.gae_lambda)
+                if config.vec_env_type == "async_actor_learner":
+                    from yugioh_rl.vtrace import compute_vtrace
+
+                    T, N = config.rollout_steps, config.num_envs
+                    with torch.no_grad():
+                        all_obs_cards = _to_tensor(self.buffer.obs_cards[:T], self.device)
+                        all_obs_global = _to_tensor(self.buffer.obs_global[:T], self.device)
+                        all_obs_actions = _to_tensor(self.buffer.obs_actions[:T], self.device)
+                        all_obs_mask = _to_tensor(self.buffer.obs_mask[:T], self.device)
+                        all_actions = _to_tensor(self.buffer.actions[:T], self.device, long=True)
+                        all_log_probs_old = _to_tensor(self.buffer.log_probs[:T], self.device)
+
+                        flat_cards = all_obs_cards.reshape(T * N, *all_obs_cards.shape[2:])
+                        flat_global = all_obs_global.reshape(T * N, *all_obs_global.shape[2:])
+                        flat_actions_obs = all_obs_actions.reshape(
+                            T * N, *all_obs_actions.shape[2:]
+                        )
+                        flat_mask = all_obs_mask.reshape(T * N, *all_obs_mask.shape[2:])
+                        flat_acts = all_actions.reshape(T * N)
+
+                        logits_new, values_new, _ = self.network(
+                            flat_cards,
+                            flat_global,
+                            flat_actions_obs,
+                            flat_mask,
+                        )
+                        dist_new = Categorical(logits=logits_new)
+                        log_probs_new = dist_new.log_prob(flat_acts)
+
+                        log_probs_new = log_probs_new.reshape(T, N)
+                        values_new = values_new.reshape(T, N)
+
+                    advantages, returns = compute_vtrace(
+                        log_probs_old=all_log_probs_old,
+                        log_probs_new=log_probs_new,
+                        values=values_new,
+                        rewards=_to_tensor(self.buffer.rewards[:T], self.device),
+                        dones=_to_tensor(self.buffer.dones[:T], self.device),
+                        last_values=_to_tensor(last_values_np, self.device),
+                        gamma=config.gamma,
+                        rho_bar=config.vtrace_rho_bar,
+                        c_bar=config.vtrace_c_bar,
+                    )
+                    self.buffer.advantages[:T] = advantages.cpu().numpy()
+                    self.buffer.returns[:T] = returns.cpu().numpy()
+                else:
+                    self.buffer.compute_advantages(last_values_np, config.gamma, config.gae_lambda)
 
                 # --- PPO update ---
                 total_policy_loss = 0.0
@@ -676,7 +754,7 @@ class PPOTrainer:
                 # Actor-learner: publish fresh weights so workers see them
                 # at the start of the next collect_rollouts cycle. Once per
                 # outer update (after all PPO epochs), not per minibatch.
-                if config.vec_env_type == "sync_actor_learner":
+                if config.vec_env_type in ("sync_actor_learner", "async_actor_learner"):
                     vec_env.publish_weights(self.network)
 
                 # --- Logging ---
@@ -748,6 +826,20 @@ class PPOTrainer:
                             self._writer.add_scalar(
                                 "selfplay/occupied", elo["occupied"], global_step
                             )
+                        if config.vec_env_type == "async_actor_learner":
+                            self._writer.add_scalar(
+                                "async/version_lag_mean",
+                                np.mean(async_version_lags) if async_version_lags else 0,
+                                global_step,
+                            )
+                            self._writer.add_scalar(
+                                "async/rollouts_discarded",
+                                async_discarded,
+                                global_step,
+                            )
+                            depth = vec_env.queue_depth
+                            if depth is not None:
+                                self._writer.add_scalar("async/queue_depth", depth, global_step)
 
                 # --- Evaluation ---
                 if update % config.eval_interval == 0:

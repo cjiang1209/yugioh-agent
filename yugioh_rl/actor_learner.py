@@ -406,12 +406,20 @@ class AsyncActorLearnerVecEnv:
     def trainer_version(self) -> int:
         return self._trainer_version
 
-    def collect_rollouts(self, max_version_lag: int) -> tuple[list[dict], int]:
+    @property
+    def queue_depth(self) -> int | None:
+        """Current queue size, or None if the platform cannot report it."""
+        try:
+            return self._queue.qsize()
+        except NotImplementedError:
+            return None
+
+    def collect_rollouts(self, max_version_lag: int) -> tuple[list[dict], int, list[int]]:
         """Drain K qualifying rollouts from the queue.
 
         Keeps pulling until ``num_envs`` rollouts with version lag
         <= ``max_version_lag`` are collected. Returns
-        ``(rollouts, discarded_count)``.
+        ``(rollouts, discarded_count, version_lags)``.
 
         Raises ``WorkerDiedError`` if all workers have died and the queue
         is empty before K rollouts are collected.
@@ -419,6 +427,7 @@ class AsyncActorLearnerVecEnv:
         import queue as queue_mod
 
         rollouts: list[dict] = []
+        version_lags: list[int] = []
         discarded = 0
 
         while len(rollouts) < self.num_envs:
@@ -442,10 +451,11 @@ class AsyncActorLearnerVecEnv:
                     f"expected ({self.rollout_steps},)"
                 )
                 rollouts.append(payload)
+                version_lags.append(lag)
             else:
                 discarded += 1
 
-        return rollouts, discarded
+        return rollouts, discarded, version_lags
 
     def publish_weights(self, model) -> int:
         """Publish weights and increment trainer version."""

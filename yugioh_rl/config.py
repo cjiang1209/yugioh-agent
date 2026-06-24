@@ -79,6 +79,8 @@ class TrainingConfig:
     # Async actor-learner: workers run continuously without sync barriers.
     # Rollouts with version lag > max_version_lag are discarded.
     max_version_lag: int = 5
+    vtrace_rho_bar: float = 1.0  # V-trace IS truncation (async advantage estimation)
+    vtrace_c_bar: float = 1.0  # V-trace trace-cutting coefficient
 
     @property
     def is_recurrent(self) -> bool:

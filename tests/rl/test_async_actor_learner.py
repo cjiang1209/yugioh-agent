@@ -173,11 +173,12 @@ def test_async_vec_env_collect_rollouts():
     """AsyncActorLearnerVecEnv.collect_rollouts returns num_envs rollouts."""
     vec_env, config = _make_async_vec(_DECK)
     try:
-        rollouts, discarded = vec_env.collect_rollouts(max_version_lag=5)
+        rollouts, discarded, version_lags = vec_env.collect_rollouts(max_version_lag=5)
         assert len(rollouts) == config.num_envs
         for r in rollouts:
             assert r["actions"].shape == (8,)
         assert discarded == 0
+        assert len(version_lags) == config.num_envs
     finally:
         vec_env.close()
 
@@ -191,7 +192,7 @@ def test_async_vec_env_discards_stale_rollouts():
         for _ in range(10):
             vec_env.publish_weights(net)
 
-        rollouts, discarded = vec_env.collect_rollouts(max_version_lag=1)
+        rollouts, discarded, version_lags = vec_env.collect_rollouts(max_version_lag=1)
         assert len(rollouts) == config.num_envs
     finally:
         vec_env.close()
