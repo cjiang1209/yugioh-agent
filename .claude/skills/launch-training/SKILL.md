@@ -101,8 +101,9 @@ Options:
 **Vec-env type** (skip if config provides `vec_env_type`)
 
 Options:
-- `sync_actor_learner` — workers hold a local policy and submit full rollouts; eliminates per-step IPC (Recommended)
-- `subproc` — synchronous IPC per step; simpler but slower and crashes with self-play due to shared tensor issues
+- `async_actor_learner` — like sync_actor_learner but without the sync barrier; fast workers keep going instead of waiting for slow ones (Recommended)
+- `sync_actor_learner` — workers hold a local policy and submit full rollouts; trainer waits for all N before updating
+- `subproc` — trainer runs inference centrally with per-step IPC; simpler but slower and crashes with self-play due to shared tensor issues
 
 **Self-play** (skip if config provides `self_play`)
 
@@ -136,7 +137,10 @@ Display a summary table of the effective config. For resume mode, mark locked pa
 │ Opponent            │ greedy                          │
 │ Eval interval       │ Disabled                        │
 │ Device              │ mps                             │
-│ Vec-env type        │ sync_actor_learner              │
+│ Vec-env type        │ async_actor_learner             │
+│ Max version lag     │ 5 (async only)                  │
+│ V-trace rho_bar     │ 1.0 (async only)                │
+│ V-trace c_bar       │ 1.0 (async only)                │
 │ RNN                 │ none                            │
 │ Seed                │ 42                              │
 └─────────────────────┴─────────────────────────────────┘

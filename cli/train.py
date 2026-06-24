@@ -356,9 +356,29 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="subproc",
         choices=VEC_ENV_TYPES,
-        help="Vec-env transport: 'subproc' (synchronous IPC) or "
-        "'sync_actor_learner' (workers hold a local policy and submit "
-        "full rollouts; eliminates per-step round-trip).",
+        help="Vec-env transport: 'subproc' (synchronous IPC), "
+        "'sync_actor_learner' (workers hold a local policy, sync barriers), "
+        "or 'async_actor_learner' (workers run continuously, V-trace "
+        "corrects for policy staleness).",
+    )
+    infra.add_argument(
+        "--max-version-lag",
+        type=int,
+        default=5,
+        help="Discard rollouts older than this many trainer updates behind "
+        "(async_actor_learner only, default: 5)",
+    )
+    infra.add_argument(
+        "--vtrace-rho-bar",
+        type=float,
+        default=1.0,
+        help="V-trace IS truncation threshold (async_actor_learner only, default: 1.0)",
+    )
+    infra.add_argument(
+        "--vtrace-c-bar",
+        type=float,
+        default=1.0,
+        help="V-trace trace-cutting coefficient (async_actor_learner only, default: 1.0)",
     )
     infra.add_argument(
         "--config",
