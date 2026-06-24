@@ -31,7 +31,9 @@ __all__ = [
     "Transition",
     "_pack_rollout",
     "_actor_learner_worker",
+    "_async_actor_learner_worker",
     "ActorLearnerVecEnv",
+    "AsyncActorLearnerVecEnv",
     "WorkerDiedError",
     "WorkerTimeoutError",
 ]
@@ -223,6 +225,243 @@ def _actor_learner_worker(
             )
     finally:
         env.close()
+
+
+def _async_actor_learner_worker(
+    queue,
+    shutdown_event,
+    env_kwargs: dict,
+    weight_handles: dict,
+    config_dict: dict,
+    rollout_steps: int,
+) -> None:
+    """Async worker: continuously produces rollouts pushed to *queue*.
+
+    Runs until ``shutdown_event`` is set. Refreshes weights from shared
+    memory at each rollout boundary only when the trainer has published a
+    new version; otherwise reuses the current weights and carries hx forward.
+    """
+    import torch
+    from torch.distributions import Categorical
+
+    from yugioh_rl.config import TrainingConfig, normalize_legacy_config
+    from yugioh_rl.env_wrapper import TrainingEnv
+    from yugioh_rl.network import YuGiOhNet
+    from yugioh_rl.shared_weights import SharedPolicyWeights
+
+    torch.set_num_threads(1)
+    torch.set_num_interop_threads(1)
+
+    cfg = TrainingConfig(**config_dict)
+    cfg = normalize_legacy_config(cfg)
+    torch.manual_seed(int(env_kwargs.get("seed", 0)))
+
+    weights = SharedPolicyWeights.from_handles(weight_handles)
+    local_policy = YuGiOhNet.from_state_dict(cfg, weight_handles["tensors"])
+    local_policy.eval()
+
+    env = TrainingEnv(**env_kwargs)
+    obs = env.reset()
+
+    current_version = weights.version
+    hx = local_policy.init_hx(1, "cpu")
+    done_t = torch.zeros(1, dtype=torch.float32)
+
+    try:
+        while not shutdown_event.is_set():
+            # Check for new weights at rollout boundary
+            latest_version = weights.version
+            if latest_version != current_version:
+                current_version = weights.refresh_into(local_policy)
+                hx = local_policy.init_hx(1, "cpu")
+
+            transitions: list[Transition] = []
+            for _ in range(rollout_steps):
+                if shutdown_event.is_set():
+                    return
+
+                with torch.no_grad():
+                    cards_t = torch.from_numpy(obs["cards"]).unsqueeze(0)
+                    glob_t = torch.from_numpy(obs["global_state"]).unsqueeze(0)
+                    acts_t = torch.from_numpy(obs["actions"]).unsqueeze(0)
+                    mask_t = torch.from_numpy(obs["action_mask"]).unsqueeze(0)
+                    logits, value, hx_new = local_policy(
+                        cards_t,
+                        glob_t,
+                        acts_t,
+                        mask_t,
+                        hx=hx,
+                    )
+                    dist = Categorical(logits=logits)
+                    action = dist.sample()
+                    log_prob = dist.log_prob(action)
+
+                a_int = int(action.item())
+                next_obs, reward, done, info = env.step(a_int)
+                transitions.append(
+                    Transition(
+                        obs=obs,
+                        action=a_int,
+                        log_prob=float(log_prob.item()),
+                        value=float(value.item()),
+                        reward=float(reward),
+                        done=bool(done),
+                        version=int(current_version),
+                        info=info,
+                    )
+                )
+                done_t[0] = float(done)
+                hx = local_policy.mask_hx(hx_new, done_t)
+                if done:
+                    next_obs = env.reset()
+                obs = next_obs
+
+            queue.put(_pack_rollout(transitions, final_obs=obs, final_hx=hx))
+    finally:
+        env.close()
+
+
+class AsyncActorLearnerVecEnv:
+    """Async vec env: workers run continuously, push rollouts to a queue.
+
+    ``collect_rollouts(max_version_lag)`` drains the queue until K qualifying
+    rollouts are collected (where K = ``num_envs``), discarding any whose
+    version lag exceeds ``max_version_lag``.
+    """
+
+    def __init__(
+        self,
+        num_envs: int,
+        deck_pool: list[DeckDict],
+        opponent: str,
+        reward_shaping: bool,
+        shaping_lp_weight: float,
+        shaping_card_weight: float,
+        seed: int,
+        agent_player: str,
+        opponent_device: str | None,
+        master_model: nn.Module,
+        config: TrainingConfig,
+        rollout_steps: int,
+        opponent_pool_handles: dict | None = None,
+        opponent_pool_temperature: float = 1.0,
+        opponent_pool_sampling: Sampling = "uniform",
+        opponent_pool_config: TrainingConfig | None = None,
+        worker_timeout_s: float = 300.0,
+    ) -> None:
+        import multiprocessing as mp
+        from dataclasses import asdict
+
+        from yugioh_rl.shared_weights import SharedPolicyWeights
+
+        self.num_envs = num_envs
+        self.rollout_steps = rollout_steps
+        self._worker_timeout_s = worker_timeout_s
+        self._closed = False
+
+        self.shared_weights = SharedPolicyWeights(master_model)
+        self._trainer_version = self.shared_weights.publish(master_model)
+
+        config_dict = asdict(config)
+        weight_handles = self.shared_weights.share_handles()
+        base_env_kwargs = {
+            "deck_pool": deck_pool,
+            "opponent": opponent,
+            "reward_shaping": reward_shaping,
+            "shaping_lp_weight": shaping_lp_weight,
+            "shaping_card_weight": shaping_card_weight,
+            "agent_player": agent_player,
+            "opponent_device": opponent_device,
+            "opponent_pool_handles": opponent_pool_handles,
+            "opponent_pool_temperature": opponent_pool_temperature,
+            "opponent_pool_sampling": opponent_pool_sampling,
+            "opponent_pool_config": opponent_pool_config,
+        }
+
+        ctx = mp.get_context("spawn")
+        from yugioh_rl.env_wrapper import limit_worker_blas_threads
+
+        limit_worker_blas_threads()
+
+        self._queue = ctx.Queue()
+        self._shutdown = ctx.Event()
+        self._workers = []
+        for i in range(num_envs):
+            p = ctx.Process(
+                target=_async_actor_learner_worker,
+                kwargs={
+                    "queue": self._queue,
+                    "shutdown_event": self._shutdown,
+                    "env_kwargs": {**base_env_kwargs, "seed": seed + i * 10000},
+                    "weight_handles": weight_handles,
+                    "config_dict": config_dict,
+                    "rollout_steps": rollout_steps,
+                },
+                daemon=True,
+            )
+            p.start()
+            self._workers.append(p)
+
+    @property
+    def trainer_version(self) -> int:
+        return self._trainer_version
+
+    def collect_rollouts(self, max_version_lag: int) -> tuple[list[dict], int]:
+        """Drain K qualifying rollouts from the queue.
+
+        Keeps pulling until ``num_envs`` rollouts with version lag
+        <= ``max_version_lag`` are collected. Returns
+        ``(rollouts, discarded_count)``.
+
+        Raises ``WorkerDiedError`` if all workers have died and the queue
+        is empty before K rollouts are collected.
+        """
+        import queue as queue_mod
+
+        rollouts: list[dict] = []
+        discarded = 0
+
+        while len(rollouts) < self.num_envs:
+            try:
+                payload = self._queue.get(timeout=self._worker_timeout_s)
+            except queue_mod.Empty:
+                alive = sum(1 for w in self._workers if w.is_alive())
+                if alive == 0:
+                    raise WorkerDiedError("all async actor-learner workers have died") from None
+                raise WorkerTimeoutError(
+                    f"no rollout received for {self._worker_timeout_s}s "
+                    f"({alive}/{self.num_envs} workers alive)"
+                ) from None
+
+            pv = payload["policy_version"]
+            version = int(pv) if isinstance(pv, int) else int(pv[0])
+            lag = self._trainer_version - version
+            if lag <= max_version_lag:
+                assert payload["actions"].shape == (self.rollout_steps,), (
+                    f"rollout shape {payload['actions'].shape} mismatches "
+                    f"expected ({self.rollout_steps},)"
+                )
+                rollouts.append(payload)
+            else:
+                discarded += 1
+
+        return rollouts, discarded
+
+    def publish_weights(self, model) -> int:
+        """Publish weights and increment trainer version."""
+        v = self.shared_weights.publish(model)
+        self._trainer_version = v
+        return v
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        self._shutdown.set()
+        for proc in self._workers:
+            proc.join(timeout=5)
+            if proc.is_alive():
+                proc.terminate()
 
 
 class WorkerDiedError(RuntimeError):
