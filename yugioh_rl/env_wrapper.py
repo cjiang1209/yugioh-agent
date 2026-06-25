@@ -19,7 +19,10 @@ from yugioh_core.encoding import (
 from yugioh_env.models import YuGiOhAction
 
 if TYPE_CHECKING:
+    import torch.nn as nn
+
     from yugioh_rl.config import TrainingConfig
+    from yugioh_rl.network import HxState
     from yugioh_rl.opponent_pool import Sampling
 
 DeckDict = dict[str, list[int]]  # {"main": [int, ...], "extra": [int, ...]}
@@ -327,7 +330,11 @@ def _worker(remote: mp.connection.Connection, env_kwargs: dict) -> None:
 class SubprocVecEnv:
     """Vectorized environment using subprocess workers.
 
-    Each worker runs its own TrainingEnv in a separate process.
+    Each worker runs its own TrainingEnv in a separate process.  The trainer
+    holds the policy network and runs batched inference centrally.
+
+    ``collect_rollouts`` encapsulates the per-step inference loop so the
+    trainer sees the same interface as the actor-learner vec envs.
     """
 
     def __init__(
@@ -341,12 +348,18 @@ class SubprocVecEnv:
         seed: int = 42,
         agent_player: str = "random",
         opponent_device: str | None = None,
+        master_model: nn.Module | None = None,
+        rollout_steps: int = 256,
         opponent_pool_handles: dict | None = None,
         opponent_pool_temperature: float = 1.0,
         opponent_pool_sampling: Sampling = "uniform",
         opponent_pool_config: TrainingConfig | None = None,
     ) -> None:
         self.num_envs = num_envs
+        self.rollout_steps = rollout_steps
+        self._model = master_model
+        self._device = None  # resolved lazily in collect_rollouts
+        self._obs: dict[str, np.ndarray] | None = None
         self._closed = False
 
         ctx = mp.get_context("spawn")
@@ -376,35 +389,17 @@ class SubprocVecEnv:
             self._remotes.append(parent_conn)
             self._workers.append(p)
 
-    def reset(self) -> dict[str, np.ndarray]:
+    def _reset(self) -> dict[str, np.ndarray]:
         """Reset all environments and return stacked observations."""
         for remote in self._remotes:
             remote.send(("reset", None))
         results = [remote.recv() for remote in self._remotes]
         return self._stack_obs(results)
 
-    def step(
+    def _step(
         self, actions: np.ndarray
     ) -> tuple[dict[str, np.ndarray], np.ndarray, np.ndarray, list[dict]]:
-        """Step all environments with the given actions.
-
-        Returns the **terminal** observation for envs that finished this
-        step (``dones[i] == True``).  Callers that want the next-episode
-        first observation at those indices must follow up with
-        :meth:`reset_done`.  The previous auto-reset behavior was moved out
-        of ``TrainingEnv.step`` so eval workers can address specific
-        episodes — production training paths restore the old wire shape via
-        the explicit :meth:`reset_done` call.
-
-        Args:
-            actions: (num_envs,) int array of action indices
-
-        Returns:
-            obs: stacked numpy dict — each value has leading dim num_envs
-            rewards: (num_envs,) float
-            dones: (num_envs,) bool
-            infos: list of info dicts
-        """
+        """Step all environments with the given actions."""
         for remote, action in zip(self._remotes, actions, strict=True):
             remote.send(("step", int(action)))
 
@@ -419,7 +414,7 @@ class SubprocVecEnv:
             list(infos),
         )
 
-    def reset_done(
+    def _reset_done(
         self,
         dones: np.ndarray,
         obs: dict[str, np.ndarray],
@@ -449,6 +444,124 @@ class SubprocVecEnv:
     def _stack_obs(self, obs_list: list[dict[str, np.ndarray]]) -> dict[str, np.ndarray]:
         """Stack a list of observation dicts into batched arrays."""
         return {key: np.stack([obs[key] for obs in obs_list]) for key in obs_list[0]}
+
+    def collect_rollouts(self) -> list[dict]:
+        """Run T steps of batched inference + env.step, return per-env rollouts.
+
+        The trainer's network (``master_model`` from ``__init__``) runs
+        batched forward passes on the current device.  Returns the same
+        per-env rollout dict format as the actor-learner vec envs so the
+        trainer can call ``buffer.ingest_rollouts`` uniformly.
+        """
+        import torch
+        from torch.distributions import Categorical
+
+        from yugioh_rl.network import YuGiOhNet
+
+        model = self._model
+        if self._device is None:
+            self._device = next(model.parameters()).device
+        device = self._device
+
+        if self._obs is None:
+            self._obs = self._reset()
+        obs = self._obs
+
+        T = self.rollout_steps
+        N = self.num_envs
+
+        # Reset hx every rollout: post-update weights make stale hx
+        # inconsistent with the current policy.
+        hx: HxState = model.init_hx(N, device)
+
+        # Per-env accumulators
+        all_obs_cards = np.zeros((T, N, MAX_CARDS, CARD_FEATURES), dtype=np.uint8)
+        all_obs_global = np.zeros((T, N, GLOBAL_FEATURES), dtype=np.uint8)
+        all_obs_actions = np.zeros((T, N, MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8)
+        all_action_mask = np.zeros((T, N, MAX_ACTIONS), dtype=np.int8)
+        all_actions = np.zeros((T, N), dtype=np.int64)
+        all_log_probs = np.zeros((T, N), dtype=np.float32)
+        all_values = np.zeros((T, N), dtype=np.float32)
+        all_rewards = np.zeros((T, N), dtype=np.float32)
+        all_dones = np.zeros((T, N), dtype=np.float32)
+        all_infos: list[list[dict]] = [[] for _ in range(N)]
+
+        for t in range(T):
+            with torch.no_grad():
+                t_cards = torch.from_numpy(obs["cards"]).to(device)
+                t_global = torch.from_numpy(obs["global_state"]).to(device)
+                t_actions = torch.from_numpy(obs["actions"]).to(device)
+                t_mask = torch.from_numpy(obs["action_mask"]).to(device)
+
+                logits, values, hx_new = model(
+                    t_cards,
+                    t_global,
+                    t_actions,
+                    t_mask,
+                    hx=hx,
+                )
+                dist = Categorical(logits=logits)
+                actions = dist.sample()
+                log_probs = dist.log_prob(actions)
+
+            actions_np = actions.cpu().numpy()
+            log_probs_np = log_probs.cpu().numpy()
+            values_np = values.cpu().numpy()
+
+            next_obs, rewards, dones, infos = self._step(actions_np)
+            dones_f = dones.astype(np.float32)
+
+            all_obs_cards[t] = obs["cards"]
+            all_obs_global[t] = obs["global_state"]
+            all_obs_actions[t] = obs["actions"]
+            all_action_mask[t] = obs["action_mask"]
+            all_actions[t] = actions_np
+            all_log_probs[t] = log_probs_np
+            all_values[t] = values_np
+            all_rewards[t] = rewards
+            all_dones[t] = dones_f
+            for i, info in enumerate(infos):
+                all_infos[i].append(info)
+
+            next_obs = self._reset_done(dones, next_obs)
+
+            dones_t = torch.from_numpy(dones_f).to(device)
+            hx = YuGiOhNet.mask_hx(hx_new, dones_t)
+
+            obs = next_obs
+
+        self._obs = obs
+
+        # Build per-env rollout dicts matching _pack_rollout's format
+        env_indices = [torch.tensor([i], device=device) for i in range(N)]
+        rollouts = []
+        for i in range(N):
+            rollouts.append(
+                {
+                    "obs_cards": all_obs_cards[:, i],
+                    "obs_global": all_obs_global[:, i],
+                    "obs_actions": all_obs_actions[:, i],
+                    "action_mask": all_action_mask[:, i],
+                    "actions": all_actions[:, i],
+                    "log_probs": all_log_probs[:, i],
+                    "values": all_values[:, i],
+                    "rewards": all_rewards[:, i],
+                    "dones": all_dones[:, i].astype(bool),
+                    "policy_version": 0,
+                    "final_obs_cards": obs["cards"][i],
+                    "final_obs_global": obs["global_state"][i],
+                    "final_obs_actions": obs["actions"][i],
+                    "final_action_mask": obs["action_mask"][i],
+                    "infos": all_infos[i],
+                    "final_hx": YuGiOhNet.slice_hx(hx, env_indices[i]),
+                }
+            )
+        return rollouts
+
+    def publish_weights(self, model) -> int:
+        """No-op for SubprocVecEnv — the network is already in-process."""
+        self._model = model
+        return 0
 
     def close(self) -> None:
         if self._closed:

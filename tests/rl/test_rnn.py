@@ -337,7 +337,7 @@ def test_rollout_loop_resets_hx_per_rollout():
     src = inspect.getsource(PPOTrainer.train)
     # Locate the per-rollout for loop and the init_hx assignment.
     for_match = re.search(r"for update in range\(", src)
-    init_match = re.search(r"hx = self\.network\.init_hx\(", src)
+    init_match = re.search(r"self\.network\.init_hx\(", src)
     assert for_match is not None, "PPOTrainer.train must contain the rollout for-loop"
     assert init_match is not None, "PPOTrainer.train must call self.network.init_hx"
     assert init_match.start() > for_match.start(), (

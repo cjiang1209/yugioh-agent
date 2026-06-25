@@ -103,7 +103,7 @@ def test_training_rollout_numerics_unchanged() -> None:
     )
 
     try:
-        obs = vec_env.reset()
+        obs = vec_env._reset()
         for t in range(T):
             # Same deterministic policy used by the baseline-capture script.
             actions = np.argmax(obs["action_mask"], axis=1).astype(np.int64)
@@ -112,7 +112,7 @@ def test_training_rollout_numerics_unchanged() -> None:
                 f"got {actions.tolist()}, expected {expected_actions[t].tolist()}"
             )
 
-            next_obs, rewards, dones, _ = vec_env.step(actions)
+            next_obs, rewards, dones, _ = vec_env._step(actions)
 
             # (i) rewards
             assert np.array_equal(rewards, expected_rewards[t]), f"rewards diverged at step {t}"
@@ -124,7 +124,7 @@ def test_training_rollout_numerics_unchanged() -> None:
             # Substitute new-episode obs at done indices — equivalent of the
             # old auto-reset, just explicit.  Without this, (iii) below would
             # be comparing a terminal obs against a new-episode-start obs.
-            next_obs = vec_env.reset_done(dones, next_obs)
+            next_obs = vec_env._reset_done(dones, next_obs)
 
             # (iii) full obs (including post-reset substitution at done indices)
             for k in obs_keys:
@@ -144,7 +144,7 @@ def test_training_rollout_numerics_unchanged() -> None:
 
 @requires_engine
 def test_step_passes_terminal_obs_through() -> None:
-    """``vec_env.step()`` returns the terminal obs on done (no implicit reset)."""
+    """``vec_env._step()`` returns the terminal obs on done (no implicit reset)."""
     deck_path = Path("assets/decks/blue_eyes.ydk")
     if not deck_path.exists():
         pytest.skip(f"missing deck: {deck_path}")
@@ -158,11 +158,11 @@ def test_step_passes_terminal_obs_through() -> None:
         agent_player="first",
     )
     try:
-        obs = vec_env.reset()
+        obs = vec_env._reset()
         # Step until at least one env finishes.
         for _ in range(800):
             actions = np.argmax(obs["action_mask"], axis=1).astype(np.int64)
-            terminal_obs, _, dones, _ = vec_env.step(actions)
+            terminal_obs, _, dones, _ = vec_env._step(actions)
             if dones.any():
                 break
             obs = terminal_obs
@@ -171,7 +171,7 @@ def test_step_passes_terminal_obs_through() -> None:
 
         # Now: terminal_obs at the done index is the terminal observation.
         # Calling reset_done substitutes new-episode obs at that index.
-        post_reset_obs = vec_env.reset_done(dones, terminal_obs)
+        post_reset_obs = vec_env._reset_done(dones, terminal_obs)
         done_idx = int(np.where(dones)[0][0])
         # At least ONE obs key must differ between terminal and post-reset.
         # Any-not-all because, e.g., action_mask might happen to coincide
@@ -213,7 +213,7 @@ def test_reset_done_no_op_when_no_dones() -> None:
         agent_player="first",
     )
     try:
-        obs = vec_env.reset()
+        obs = vec_env._reset()
 
         # Wrap each remote's send() with a counter so we can assert
         # zero pipe traffic across the no-op call.
@@ -234,7 +234,7 @@ def test_reset_done_no_op_when_no_dones() -> None:
 
         try:
             dones = np.zeros(2, dtype=bool)
-            result = vec_env.reset_done(dones, obs)
+            result = vec_env._reset_done(dones, obs)
         finally:
             for remote, original in zip(vec_env._remotes, original_sends, strict=True):
                 remote.send = original
@@ -275,7 +275,7 @@ def test_subproc_vec_env_forwards_pool_handles_to_workers() -> None:
         seed=42,
     )
     try:
-        obs = vec.reset()
+        obs = vec._reset()
         assert obs["action_mask"].shape[0] == 2  # 2 envs
     finally:
         vec.close()

@@ -579,6 +579,8 @@ class PPOTrainer:
                 shaping_card_weight=config.shaping_card_weight,
                 seed=config.seed,
                 agent_player=config.agent_player,
+                master_model=self.network,
+                rollout_steps=config.rollout_steps,
                 opponent_pool_handles=pool_handles,
                 opponent_pool_temperature=config.self_play_temperature,
                 opponent_pool_sampling=config.self_play_sampling,
@@ -586,27 +588,16 @@ class PPOTrainer:
             )
 
         try:
-            # Subproc threads `obs` through the per-step rollout loop. The
-            # actor-learner branch rebinds it from each rollout's final obs
-            # (workers manage their own envs; ActorLearnerVecEnv has no reset).
-            if config.vec_env_type == "subproc":
-                obs = vec_env.reset()
             global_step = self._resume_global_step
             start_time = time.time()
 
             for update in range(self._resume_update + 1, num_updates + 1):
                 self.buffer.reset()
 
-                # Reset hx at every rollout boundary.  Carrying it across
-                # would feed a hx produced by the previous weights into
-                # the just-updated network on step 0, making action
-                # sampling and the value bootstrap inconsistent with the
-                # current policy.  This drops mid-episode memory at the
-                # boundary but keeps the rollout self-consistent.
-                hx = self.network.init_hx(config.num_envs, self.device)
-                # Plain ref is safe: init_hx returns fresh zero tensors and
-                # the loop only rebinds `hx`, never mutates the snapshot.
-                self.buffer.hx_initial = hx
+                # hx_initial for TBPTT replay — zero hx matches rollout
+                # boundaries (actor-learner workers and SubprocVecEnv both
+                # reset hx at the start of each rollout).
+                self.buffer.hx_initial = self.network.init_hx(config.num_envs, self.device)
 
                 # --- Collect rollout ---
                 async_discarded = 0
@@ -615,68 +606,19 @@ class PPOTrainer:
                     rollouts, async_discarded, async_version_lags = vec_env.collect_rollouts(
                         config.max_version_lag
                     )
-                    obs = self.buffer.ingest_rollouts(rollouts)
-                    for r in rollouts:
-                        for info in r["infos"]:
-                            self._record_episode(info)
-                    global_step += config.num_envs * config.rollout_steps
-                elif config.vec_env_type == "sync_actor_learner":
-                    rollouts = vec_env.collect_rollouts()
-                    obs = self.buffer.ingest_rollouts(rollouts)
-                    # buffer.hx_initial is already the zero hx from above —
-                    # TBPTT replay starts from there, matching subproc.
-                    for r in rollouts:
-                        for info in r["infos"]:
-                            self._record_episode(info)
-                    global_step += config.num_envs * config.rollout_steps
                 else:
-                    for _step in range(config.rollout_steps):
-                        with torch.no_grad():
-                            t_cards = torch.from_numpy(obs["cards"]).to(self.device)
-                            t_global = torch.from_numpy(obs["global_state"]).to(self.device)
-                            t_actions = torch.from_numpy(obs["actions"]).to(self.device)
-                            t_mask = torch.from_numpy(obs["action_mask"]).to(self.device)
-
-                            logits, values, hx_new = self.network(
-                                t_cards,
-                                t_global,
-                                t_actions,
-                                t_mask,
-                                hx=hx,
-                            )
-                            dist = Categorical(logits=logits)
-                            actions = dist.sample()
-                            log_probs = dist.log_prob(actions)
-
-                        actions_np = actions.cpu().numpy()
-                        log_probs_np = log_probs.cpu().numpy()
-                        values_np = values.cpu().numpy()
-
-                        next_obs, rewards, dones, infos = vec_env.step(actions_np)
-                        dones_f = dones.astype(np.float32)
-
-                        self.buffer.add(obs, actions_np, log_probs_np, rewards, dones_f, values_np)
-
-                        # Substitute new-episode obs at done indices (replaces former auto-reset).
-                        next_obs = vec_env.reset_done(dones, next_obs)
-
-                        dones_t = torch.from_numpy(dones_f).to(self.device)
-                        hx = self.network.mask_hx(hx_new, dones_t)
-
-                        for info in infos:
-                            self._record_episode(info)
-
-                        obs = next_obs
-                        global_step += config.num_envs
+                    rollouts = vec_env.collect_rollouts()
+                obs = self.buffer.ingest_rollouts(rollouts)
+                for r in rollouts:
+                    for info in r["infos"]:
+                        self._record_episode(info)
+                global_step += config.num_envs * config.rollout_steps
 
                 # --- Compute advantages ---
-                if config.vec_env_type in ("sync_actor_learner", "async_actor_learner"):
-                    bootstrap_hx = self.network.cat_hx(
-                        [r["final_hx"] for r in rollouts],
-                        self.device,
-                    )
-                else:
-                    bootstrap_hx = hx
+                bootstrap_hx = self.network.cat_hx(
+                    [r["final_hx"] for r in rollouts],
+                    self.device,
+                )
                 with torch.no_grad():
                     t_cards = torch.from_numpy(obs["cards"]).to(self.device)
                     t_global = torch.from_numpy(obs["global_state"]).to(self.device)
@@ -751,11 +693,9 @@ class PPOTrainer:
                     update_stats = self._run_update_feedforward()
                 total_policy_loss, total_value_loss, total_entropy, num_batches = update_stats
 
-                # Actor-learner: publish fresh weights so workers see them
-                # at the start of the next collect_rollouts cycle. Once per
-                # outer update (after all PPO epochs), not per minibatch.
-                if config.vec_env_type in ("sync_actor_learner", "async_actor_learner"):
-                    vec_env.publish_weights(self.network)
+                # Publish fresh weights so workers (actor-learner) or the
+                # local model ref (subproc) see them at the next rollout.
+                vec_env.publish_weights(self.network)
 
                 # --- Logging ---
                 if update % config.log_interval == 0 and num_batches > 0:

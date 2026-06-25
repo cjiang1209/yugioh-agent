@@ -3,12 +3,11 @@
 In contrast to ``SubprocVecEnv``, each worker process holds a private copy of
 the agent policy and runs inference locally — eliminating the per-step
 trainer↔worker pipe round-trip. The trainer publishes new weights to shared
-memory at rollout boundaries; workers refresh from shared memory at the
-start of each rollout.
+memory; workers refresh from shared memory at rollout boundaries.
 
-Currently sync-only. The ``policy_version`` tag on each transition is the
-async-readiness hook (uniform-per-rollout in sync; would vary per-step in
-async). Async-mode worker control flow lands when async support does.
+Two modes: ``sync_actor_learner`` (barrier — trainer waits for all N rollouts)
+and ``async_actor_learner`` (no barrier — workers push to a queue, trainer
+drains K qualifying rollouts per update, V-trace corrects for staleness).
 """
 
 from __future__ import annotations
@@ -28,10 +27,6 @@ if TYPE_CHECKING:
 
 
 __all__ = [
-    "Transition",
-    "_pack_rollout",
-    "_actor_learner_worker",
-    "_async_actor_learner_worker",
     "ActorLearnerVecEnv",
     "AsyncActorLearnerVecEnv",
     "WorkerDiedError",
@@ -111,26 +106,14 @@ def _pack_rollout(
     }
 
 
-def _actor_learner_worker(
-    remote,
-    env_kwargs: dict,
-    weight_handles: dict,
-    config_dict: dict,
-    rollout_steps: int,
-) -> None:
-    """Worker process: own a TrainingEnv + a local policy, drive a rollout loop.
+def _init_worker(env_kwargs, weight_handles, config_dict):
+    """Shared worker-process setup: imports, thread limits, policy, env.
 
-    Sync protocol: blocks on ``remote.recv()`` for ``("go", v)``; refreshes
-    from shared memory; runs T inference+env-step iterations; sends one
-    ``("rollout", payload)``. Shutdown via ``("shutdown", None)``.
-
-    The local policy's parameter shapes come from the shared weight tensors
-    (which the trainer ``publish``-es before spawning workers), so no
-    state-dict pickle is needed and ``card_text_embeddings.pt`` is never
-    re-loaded in worker processes.
+    Returns ``(weights, local_policy, env, obs)`` — everything a worker
+    needs before entering its rollout loop.  Deferred imports keep torch
+    out of the parent process.
     """
     import torch
-    from torch.distributions import Categorical
 
     from yugioh_rl.config import TrainingConfig, normalize_legacy_config
     from yugioh_rl.env_wrapper import TrainingEnv
@@ -157,6 +140,91 @@ def _actor_learner_worker(
 
     env = TrainingEnv(**env_kwargs)
     obs = env.reset()
+    return weights, local_policy, env, obs
+
+
+def _collect_one_rollout(
+    local_policy, env, obs, hx, version, rollout_steps, done_t, shutdown_check=None
+):
+    """Run T inference+env-step iterations, return (transitions, obs, hx).
+
+    ``done_t`` is a pre-allocated single-element float tensor for mask_hx.
+    If ``shutdown_check`` is provided (a callable returning bool), the
+    function returns early with ``None`` when it fires.
+
+    Both sync and async workers call this for the inner rollout loop.
+    """
+    import torch
+    from torch.distributions import Categorical
+
+    transitions: list[Transition] = []
+    for _ in range(rollout_steps):
+        if shutdown_check is not None and shutdown_check():
+            return None
+
+        # torch.from_numpy aliases obs's numpy buffers; safe because
+        # TrainingEnv.step() returns fresh numpy arrays each call,
+        # so the obs reference held in `transitions` is never
+        # mutated underneath us.
+        with torch.no_grad():
+            cards_t = torch.from_numpy(obs["cards"]).unsqueeze(0)
+            glob_t = torch.from_numpy(obs["global_state"]).unsqueeze(0)
+            acts_t = torch.from_numpy(obs["actions"]).unsqueeze(0)
+            mask_t = torch.from_numpy(obs["action_mask"]).unsqueeze(0)
+            logits, value, hx_new = local_policy(
+                cards_t,
+                glob_t,
+                acts_t,
+                mask_t,
+                hx=hx,
+            )
+            dist = Categorical(logits=logits)
+            action = dist.sample()
+            log_prob = dist.log_prob(action)
+
+        a_int = int(action.item())
+        next_obs, reward, done, info = env.step(a_int)
+        transitions.append(
+            Transition(
+                obs=obs,
+                action=a_int,
+                log_prob=float(log_prob.item()),
+                value=float(value.item()),
+                reward=float(reward),
+                done=bool(done),
+                version=int(version),
+                info=info,
+            )
+        )
+        done_t[0] = float(done)
+        hx = local_policy.mask_hx(hx_new, done_t)
+        # Explicit reset on done: step() returns the terminal obs
+        # (no auto-reset), and the next iteration would otherwise
+        # feed a finished duel's obs back into the policy.
+        if done:
+            next_obs = env.reset()
+        obs = next_obs
+
+    return transitions, obs, hx
+
+
+def _actor_learner_worker(
+    remote,
+    env_kwargs: dict,
+    weight_handles: dict,
+    config_dict: dict,
+    rollout_steps: int,
+) -> None:
+    """Worker process: own a TrainingEnv + a local policy, drive a rollout loop.
+
+    Sync protocol: blocks on ``remote.recv()`` for ``("go", v)``; refreshes
+    from shared memory; runs T inference+env-step iterations; sends one
+    ``("rollout", payload)``. Shutdown via ``("shutdown", None)``.
+    """
+    import torch
+
+    weights, local_policy, env, obs = _init_worker(env_kwargs, weight_handles, config_dict)
+    done_t = torch.zeros(1, dtype=torch.float32)
 
     try:
         while True:
@@ -168,50 +236,15 @@ def _actor_learner_worker(
             version = weights.refresh_into(local_policy)
             # Reset hx every rollout: post-update weights make stale hx inconsistent.
             hx = local_policy.init_hx(1, "cpu")
-            transitions: list[Transition] = []
-            for _ in range(rollout_steps):
-                # torch.from_numpy aliases obs's numpy buffers; safe because
-                # TrainingEnv.step() returns fresh numpy arrays each call,
-                # so the obs reference held in `transitions` is never
-                # mutated underneath us.
-                with torch.no_grad():
-                    cards_t = torch.from_numpy(obs["cards"]).unsqueeze(0)
-                    glob_t = torch.from_numpy(obs["global_state"]).unsqueeze(0)
-                    acts_t = torch.from_numpy(obs["actions"]).unsqueeze(0)
-                    mask_t = torch.from_numpy(obs["action_mask"]).unsqueeze(0)
-                    logits, value, hx_new = local_policy(
-                        cards_t,
-                        glob_t,
-                        acts_t,
-                        mask_t,
-                        hx=hx,
-                    )
-                    dist = Categorical(logits=logits)
-                    action = dist.sample()
-                    log_prob = dist.log_prob(action)
-
-                a_int = int(action.item())
-                next_obs, reward, done, info = env.step(a_int)
-                transitions.append(
-                    Transition(
-                        obs=obs,
-                        action=a_int,
-                        log_prob=float(log_prob.item()),
-                        value=float(value.item()),
-                        reward=float(reward),
-                        done=bool(done),
-                        version=int(version),
-                        info=info,
-                    )
-                )
-                done_t = torch.tensor([float(done)], dtype=torch.float32)
-                hx = local_policy.mask_hx(hx_new, done_t)
-                # Explicit reset on done: step() returns the terminal obs
-                # (no auto-reset), and the next iteration would otherwise
-                # feed a finished duel's obs back into the policy.
-                if done:
-                    next_obs = env.reset()
-                obs = next_obs
+            transitions, obs, hx = _collect_one_rollout(
+                local_policy,
+                env,
+                obs,
+                hx,
+                version,
+                rollout_steps,
+                done_t,
+            )
 
             remote.send(
                 (
@@ -242,30 +275,12 @@ def _async_actor_learner_worker(
     new version; otherwise reuses the current weights and carries hx forward.
     """
     import torch
-    from torch.distributions import Categorical
 
-    from yugioh_rl.config import TrainingConfig, normalize_legacy_config
-    from yugioh_rl.env_wrapper import TrainingEnv
-    from yugioh_rl.network import YuGiOhNet
-    from yugioh_rl.shared_weights import SharedPolicyWeights
-
-    torch.set_num_threads(1)
-    torch.set_num_interop_threads(1)
-
-    cfg = TrainingConfig(**config_dict)
-    cfg = normalize_legacy_config(cfg)
-    torch.manual_seed(int(env_kwargs.get("seed", 0)))
-
-    weights = SharedPolicyWeights.from_handles(weight_handles)
-    local_policy = YuGiOhNet.from_state_dict(cfg, weight_handles["tensors"])
-    local_policy.eval()
-
-    env = TrainingEnv(**env_kwargs)
-    obs = env.reset()
+    weights, local_policy, env, obs = _init_worker(env_kwargs, weight_handles, config_dict)
+    done_t = torch.zeros(1, dtype=torch.float32)
 
     current_version = weights.version
     hx = local_policy.init_hx(1, "cpu")
-    done_t = torch.zeros(1, dtype=torch.float32)
 
     try:
         while not shutdown_event.is_set():
@@ -275,58 +290,30 @@ def _async_actor_learner_worker(
                 current_version = weights.refresh_into(local_policy)
                 hx = local_policy.init_hx(1, "cpu")
 
-            transitions: list[Transition] = []
-            for _ in range(rollout_steps):
-                if shutdown_event.is_set():
-                    return
-
-                with torch.no_grad():
-                    cards_t = torch.from_numpy(obs["cards"]).unsqueeze(0)
-                    glob_t = torch.from_numpy(obs["global_state"]).unsqueeze(0)
-                    acts_t = torch.from_numpy(obs["actions"]).unsqueeze(0)
-                    mask_t = torch.from_numpy(obs["action_mask"]).unsqueeze(0)
-                    logits, value, hx_new = local_policy(
-                        cards_t,
-                        glob_t,
-                        acts_t,
-                        mask_t,
-                        hx=hx,
-                    )
-                    dist = Categorical(logits=logits)
-                    action = dist.sample()
-                    log_prob = dist.log_prob(action)
-
-                a_int = int(action.item())
-                next_obs, reward, done, info = env.step(a_int)
-                transitions.append(
-                    Transition(
-                        obs=obs,
-                        action=a_int,
-                        log_prob=float(log_prob.item()),
-                        value=float(value.item()),
-                        reward=float(reward),
-                        done=bool(done),
-                        version=int(current_version),
-                        info=info,
-                    )
-                )
-                done_t[0] = float(done)
-                hx = local_policy.mask_hx(hx_new, done_t)
-                if done:
-                    next_obs = env.reset()
-                obs = next_obs
+            result = _collect_one_rollout(
+                local_policy,
+                env,
+                obs,
+                hx,
+                current_version,
+                rollout_steps,
+                done_t,
+                shutdown_check=shutdown_event.is_set,
+            )
+            if result is None:
+                return
+            transitions, obs, hx = result
 
             queue.put(_pack_rollout(transitions, final_obs=obs, final_hx=hx))
     finally:
         env.close()
 
 
-class AsyncActorLearnerVecEnv:
-    """Async vec env: workers run continuously, push rollouts to a queue.
+class _BaseActorLearnerVecEnv:
+    """Shared initialization for sync and async actor-learner vec envs.
 
-    ``collect_rollouts(max_version_lag)`` drains the queue until K qualifying
-    rollouts are collected (where K = ``num_envs``), discarding any whose
-    version lag exceeds ``max_version_lag``.
+    Subclasses override ``_spawn_workers`` to set up the IPC mechanism
+    (pipe for sync, queue+event for async) and ``close`` to tear down.
     """
 
     def __init__(
@@ -359,8 +346,10 @@ class AsyncActorLearnerVecEnv:
         self._worker_timeout_s = worker_timeout_s
         self._closed = False
 
+        # Trainer publishes initial weights BEFORE spawning workers so each
+        # worker's first read of shared memory sees a populated buffer.
         self.shared_weights = SharedPolicyWeights(master_model)
-        self._trainer_version = self.shared_weights.publish(master_model)
+        self.shared_weights.publish(master_model)
 
         config_dict = asdict(config)
         weight_handles = self.shared_weights.share_handles()
@@ -383,10 +372,49 @@ class AsyncActorLearnerVecEnv:
 
         limit_worker_blas_threads()
 
+        self._workers: list[mp.Process] = []
+        self._spawn_workers(ctx, base_env_kwargs, seed, weight_handles, config_dict, rollout_steps)
+
+    def _spawn_workers(
+        self, ctx, base_env_kwargs, seed, weight_handles, config_dict, rollout_steps
+    ):
+        raise NotImplementedError
+
+    def publish_weights(self, model) -> int:
+        """Trainer-side: write fresh weights to shared memory."""
+        return self.shared_weights.publish(model)
+
+    def _reap_workers(self) -> None:
+        for proc in self._workers:
+            proc.join(timeout=5)
+            if proc.is_alive():
+                proc.terminate()
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        self._reap_workers()
+
+
+class AsyncActorLearnerVecEnv(_BaseActorLearnerVecEnv):
+    """Async vec env: workers run continuously, push rollouts to a queue.
+
+    ``collect_rollouts(max_version_lag)`` drains the queue until K qualifying
+    rollouts are collected (where K = ``num_envs``), discarding any whose
+    version lag exceeds ``max_version_lag``.
+    """
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._trainer_version = self.shared_weights.version
+
+    def _spawn_workers(
+        self, ctx, base_env_kwargs, seed, weight_handles, config_dict, rollout_steps
+    ):
         self._queue = ctx.Queue()
         self._shutdown = ctx.Event()
-        self._workers = []
-        for i in range(num_envs):
+        for i in range(self.num_envs):
             p = ctx.Process(
                 target=_async_actor_learner_worker,
                 kwargs={
@@ -458,8 +486,8 @@ class AsyncActorLearnerVecEnv:
         return rollouts, discarded, version_lags
 
     def publish_weights(self, model) -> int:
-        """Publish weights and increment trainer version."""
-        v = self.shared_weights.publish(model)
+        """Publish weights and update trainer version."""
+        v = super().publish_weights(model)
         self._trainer_version = v
         return v
 
@@ -468,10 +496,7 @@ class AsyncActorLearnerVecEnv:
             return
         self._closed = True
         self._shutdown.set()
-        for proc in self._workers:
-            proc.join(timeout=5)
-            if proc.is_alive():
-                proc.terminate()
+        self._reap_workers()
 
 
 class WorkerDiedError(RuntimeError):
@@ -484,7 +509,7 @@ class WorkerTimeoutError(RuntimeError):
     deadlock) from one that crashed (``WorkerDiedError``)."""
 
 
-class ActorLearnerVecEnv:
+class ActorLearnerVecEnv(_BaseActorLearnerVecEnv):
     """Vec env where each worker holds a local agent policy.
 
     Replaces SubprocVecEnv when ``vec_env_type == "sync_actor_learner"``.
@@ -492,74 +517,21 @@ class ActorLearnerVecEnv:
     ``go`` to all workers and blocks on N rollouts).
     """
 
-    def __init__(
-        self,
-        num_envs: int,
-        deck_pool: list[DeckDict],
-        opponent: str,
-        reward_shaping: bool,
-        shaping_lp_weight: float,
-        shaping_card_weight: float,
-        seed: int,
-        agent_player: str,
-        opponent_device: str | None,
-        master_model: nn.Module,
-        config: TrainingConfig,
-        rollout_steps: int,
-        opponent_pool_handles: dict | None = None,
-        opponent_pool_temperature: float = 1.0,
-        opponent_pool_sampling: Sampling = "uniform",
-        opponent_pool_config: TrainingConfig | None = None,
-        worker_timeout_s: float = 300.0,
-    ) -> None:
-        import multiprocessing as mp
-        from dataclasses import asdict
-
-        from yugioh_rl.shared_weights import SharedPolicyWeights
-
-        self.num_envs = num_envs
-        self.rollout_steps = rollout_steps
-        self._worker_timeout_s = worker_timeout_s
-        self._closed = False
-
-        # Trainer publishes initial weights BEFORE spawning workers so each
-        # worker's first read of shared memory sees a populated buffer.
-        self.shared_weights = SharedPolicyWeights(master_model)
-        self.shared_weights.publish(master_model)
-        config_dict = asdict(config)
-        weight_handles = self.shared_weights.share_handles()
-        base_env_kwargs = {
-            "deck_pool": deck_pool,
-            "opponent": opponent,
-            "reward_shaping": reward_shaping,
-            "shaping_lp_weight": shaping_lp_weight,
-            "shaping_card_weight": shaping_card_weight,
-            "agent_player": agent_player,
-            "opponent_device": opponent_device,
-            "opponent_pool_handles": opponent_pool_handles,
-            "opponent_pool_temperature": opponent_pool_temperature,
-            "opponent_pool_sampling": opponent_pool_sampling,
-            "opponent_pool_config": opponent_pool_config,
-        }
-
-        ctx = mp.get_context("spawn")
-        from yugioh_rl.env_wrapper import limit_worker_blas_threads
-
-        limit_worker_blas_threads()
+    def _spawn_workers(
+        self, ctx, base_env_kwargs, seed, weight_handles, config_dict, rollout_steps
+    ):
         self._remotes = []
-        self._workers = []
-        for i in range(num_envs):
+        for i in range(self.num_envs):
             parent_conn, child_conn = ctx.Pipe()
-            spawn_kwargs = {
-                "remote": child_conn,
-                "env_kwargs": {**base_env_kwargs, "seed": seed + i * 10000},
-                "weight_handles": weight_handles,
-                "config_dict": config_dict,
-                "rollout_steps": rollout_steps,
-            }
             p = ctx.Process(
                 target=_actor_learner_worker,
-                kwargs=spawn_kwargs,
+                kwargs={
+                    "remote": child_conn,
+                    "env_kwargs": {**base_env_kwargs, "seed": seed + i * 10000},
+                    "weight_handles": weight_handles,
+                    "config_dict": config_dict,
+                    "rollout_steps": rollout_steps,
+                },
                 daemon=True,
             )
             p.start()
@@ -600,10 +572,6 @@ class ActorLearnerVecEnv:
             rollouts.append(payload)
         return rollouts
 
-    def publish_weights(self, model) -> int:
-        """Trainer-side: write fresh weights to shared memory."""
-        return self.shared_weights.publish(model)
-
     def close(self) -> None:
         if self._closed:
             return
@@ -611,7 +579,4 @@ class ActorLearnerVecEnv:
         for remote in self._remotes:
             with suppress(BrokenPipeError, EOFError):
                 remote.send(("shutdown", None))
-        for proc in self._workers:
-            proc.join(timeout=5)
-            if proc.is_alive():
-                proc.terminate()
+        self._reap_workers()
