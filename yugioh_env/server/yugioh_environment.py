@@ -612,6 +612,7 @@ class YuGiOhEnvironment(Environment):
             global_state=obs_data["global_state"].tolist(),
             actions=action_features.tolist(),
             action_mask=action_mask.tolist(),
+            pending_chain=obs_data["pending_chain"].tolist(),
             action_meta=action_meta,
             prompt_meta=_build_prompt_meta(self._mapper),
             event_log=[e for f in self._last_frames for e in f["events"]],
@@ -652,11 +653,18 @@ class YuGiOhEnvironment(Environment):
             else []
         )
 
+        pending_chain = (
+            obs_data["pending_chain"].tolist()
+            if hasattr(obs_data.get("pending_chain", None), "tolist")
+            else []
+        )
+
         return YuGiOhObservation(
             cards=cards,
             global_state=global_state,
             actions=[],
             action_mask=[],
+            pending_chain=pending_chain,
             action_meta=[],
             prompt_meta=None,
             event_log=[e for f in self._last_frames for e in f["events"]],

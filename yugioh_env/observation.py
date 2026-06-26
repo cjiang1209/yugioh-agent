@@ -17,6 +17,7 @@ from yugioh_core.encoding import (
     CARD_FEATURES,
     GLOBAL_FEATURES,
     MAX_CARDS,
+    MAX_PENDING_CHAIN,
     ZONE_SLOTS,
     encode_card,
     encode_u16,
@@ -149,7 +150,17 @@ def build_observation(
                         )
                     card_idx += 1
 
+    # Pending chain — relativize controller from engine player to agent/opponent
+    if game_state.chain_count > 0:
+        pending_chain = game_state.pending_chain.copy()
+        for i in range(min(game_state.chain_count, MAX_PENDING_CHAIN)):
+            raw_con = pending_chain[i, 12]
+            pending_chain[i, 12] = 0 if raw_con == agent_player else 1
+    else:
+        pending_chain = game_state.pending_chain
+
     return {
         "cards": cards,
         "global_state": global_state,
+        "pending_chain": pending_chain,
     }

@@ -10,6 +10,8 @@ CARD_FEATURES = 42
 GLOBAL_FEATURES = 20
 MAX_ACTIONS = 32
 ACTION_FEATURES = 28
+MAX_PENDING_CHAIN = 8
+CHAIN_ENTRY_FEATURES = 16
 
 # Vocab sizes for desc_n embeddings (used by yugioh_rl/network.py).
 # Per-card desc: rigorous — cards.cdb texts table has str1..str16, so per-card
@@ -164,4 +166,32 @@ def encode_card(
     idx += 1
 
     # Remaining features are padding (zero)
+    return feat
+
+
+def encode_chain_entry(
+    code: int,
+    desc: int,
+    controller: int,
+    location: int,
+    sequence: int,
+    chain_link: int,
+) -> np.ndarray:
+    """Encode one pending chain entry as a uint8 feature vector.
+
+    Byte layout (16 bytes):
+        [0:4]   card_code   (uint32 LE)
+        [4:12]  desc        (uint64 LE)
+        [12]    controller  (uint8, 0=agent, 1=opponent)
+        [13]    location    (uint8 bitmask)
+        [14]    sequence    (uint8, clamped to 255)
+        [15]    chain_link  (uint8, 1-based)
+    """
+    feat = np.zeros(CHAIN_ENTRY_FEATURES, dtype=np.uint8)
+    feat[0:4] = encode_u32(code & 0xFFFFFFFF)
+    feat[4:12] = encode_u64(desc & 0xFFFFFFFFFFFFFFFF)
+    feat[12] = controller & 0xFF
+    feat[13] = location & 0xFF
+    feat[14] = min(sequence, 255)
+    feat[15] = chain_link & 0xFF
     return feat

@@ -79,6 +79,9 @@ class YuGiOhObservation(Observation):
         default_factory=list,
         description=f"Binary action mask ({MAX_ACTIONS},): 1 = legal, 0 = illegal",
     )
+    pending_chain: list[list[int]] = Field(
+        default_factory=list,
+    )
     action_meta: list[ActionMeta | None] = Field(
         default_factory=list,
         description="Per-action prompt metadata, parallel to actions[]; "
