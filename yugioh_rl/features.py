@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import torch
 
-from yugioh_core.encoding import PER_CARD_DESC_N_VOCAB, SYSSTRING_VOCAB
+from yugioh_core.encoding import (
+    PER_CARD_DESC_N_VOCAB,
+    SYSSTRING_VOCAB,
+)
 
 # ---------------------------------------------------------------------------
 # Card features: (B, 200, 42) uint8 → card_ids (B,200) int, card_feats (B,200,F)
@@ -374,3 +377,59 @@ def decode_actions(
     # Clamp desc_ns to sysstring vocab range so embedding lookups are safe.
     desc_ns = desc_ns.clamp(max=SYSSTRING_VOCAB - 1)
     return action_codes, desc_passcodes, desc_ns, action_feats
+
+
+# ── Pending chain decoding ──────────────────────────────────────────────
+
+CHAIN_FEAT_DIM = (
+    11  # controller(1) + location(7) + sequence(1) + chain_link(1) + per_card_desc_n(1)
+)
+
+
+def decode_pending_chain(
+    raw: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Decode raw pending chain bytes into embedable fields + features.
+
+    Args:
+        raw: (B, MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES) uint8 tensor
+
+    Returns:
+        chain_codes:     (B, 8) long  — card passcodes
+        desc_passcodes:  (B, 8) long  — high 44 bits of desc
+        desc_ns:         (B, 8) long  — low 20 bits of desc
+        chain_feats:     (B, 8, CHAIN_FEAT_DIM) float32
+    """
+    raw_long = raw.long()
+
+    chain_codes = _uint32_le(raw_long, 0)  # bytes 0-3
+
+    desc_full = _uint64_le(raw_long, 4)  # bytes 4-11
+    desc_passcodes = desc_full >> 20
+    desc_ns = desc_full & 0xFFFFF
+
+    feats = []
+
+    # controller (byte 12): scalar float
+    feats.append(raw_long[:, :, 12].float().unsqueeze(-1))
+
+    # location (byte 13): 7-bit one-hot using _extract_bits
+    loc_byte = raw_long[:, :, 13]
+    feats.append(_extract_bits(loc_byte, _LOC_BITS))  # (B, 8, 7)
+
+    # sequence (byte 14): scalar float
+    feats.append(raw_long[:, :, 14].float().unsqueeze(-1))
+
+    # chain_link (byte 15): scalar float
+    feats.append(raw_long[:, :, 15].float().unsqueeze(-1))
+
+    # per_card_desc_n: derived from desc_ns, masked to 0 when sysstring
+    # (same pattern as decode_actions)
+    is_sysstring_mask = (desc_passcodes == 0).float()
+    per_card_desc_n_scalar = (desc_ns.float() / float(PER_CARD_DESC_N_VOCAB - 1)) * (
+        1.0 - is_sysstring_mask
+    )
+    feats.append(per_card_desc_n_scalar.unsqueeze(-1))
+
+    chain_feats = torch.cat(feats, dim=-1)  # (B, 8, CHAIN_FEAT_DIM)
+    return chain_codes, desc_passcodes, desc_ns, chain_feats

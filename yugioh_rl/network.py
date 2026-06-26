@@ -12,10 +12,12 @@ from yugioh_rl.config import TrainingConfig
 from yugioh_rl.features import (
     ACTION_FEAT_DIM,
     CARD_FEAT_DIM,
+    CHAIN_FEAT_DIM,
     GLOBAL_FEAT_DIM,
     decode_actions,
     decode_cards,
     decode_global,
+    decode_pending_chain,
 )
 
 logger = logging.getLogger(__name__)
@@ -190,8 +192,18 @@ class YuGiOhNet(nn.Module):
             GLOBAL_FEAT_DIM, config.global_embed_dim, config.global_embed_dim
         )
 
+        # ── Pending chain encoder (optional) ──
+        self._chain_embed_dim = config.chain_embed_dim
+        if config.chain_embed_dim > 0:
+            chain_entry_dim = embed_dim + embed_dim + config.desc_n_embed_dim + CHAIN_FEAT_DIM
+            self.chain_encoder = _mlp(
+                chain_entry_dim, config.chain_embed_dim, config.chain_embed_dim
+            )
+
         # Board representation
-        board_input_dim = _NUM_ZONES * config.card_embed_dim + config.global_embed_dim
+        board_input_dim = (
+            _NUM_ZONES * config.card_embed_dim + config.global_embed_dim + config.chain_embed_dim
+        )
         self.board_mlp = _mlp(board_input_dim, config.board_hidden_dim, config.board_hidden_dim)
 
         # rnn_type="none" leaves self.rnn=None and head_in_dim=board_hidden_dim,
@@ -369,6 +381,7 @@ class YuGiOhNet(nn.Module):
         hx: tuple[torch.Tensor, torch.Tensor] | torch.Tensor | None = None,
         seq_shape: tuple[int, int] | None = None,
         dones: torch.Tensor | None = None,
+        obs_chain: torch.Tensor | None = None,
     ) -> tuple[
         torch.Tensor,
         torch.Tensor,
@@ -389,6 +402,7 @@ class YuGiOhNet(nn.Module):
             obs_actions: (B, 32, 28) uint8
             action_mask: (B, 32) int8 — 1=legal, 0=illegal.
             hx: LSTM tuple, GRU tensor, or ``None``.
+            obs_chain: (B, MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES) uint8 or ``None``.
 
         Returns ``(logits (B,32), values (B,), new_hx)``; ``new_hx`` matches
         the structure of ``hx`` (or ``None`` if no RNN).
@@ -427,8 +441,45 @@ class YuGiOhNet(nn.Module):
         # --- Global encoding ---
         global_enc = self.global_encoder(global_feats)  # (B, global_embed_dim)
 
+        # --- Pending chain encoding (optional) ---
+        if self._chain_embed_dim > 0 and obs_chain is not None:
+            chain_codes, chain_desc_passcodes, chain_desc_ns, chain_feats = decode_pending_chain(
+                obs_chain
+            )
+
+            chain_card_embed = self._embed_codes(chain_codes)
+            chain_desc_embed = self._embed_codes(chain_desc_passcodes)
+
+            # desc_n sysstring embedding, masked to 0 when per-card
+            # (same pattern as action features — per_card_desc_n scalar
+            # is already in chain_feats from decode_pending_chain)
+            is_sysstring = chain_desc_passcodes == 0
+            sys_embed = self.sysstring_emb(
+                chain_desc_ns.clamp(max=self.sysstring_emb.num_embeddings - 1)
+            )
+            sys_emb_masked = sys_embed * is_sysstring.float().unsqueeze(-1)
+
+            chain_input = torch.cat(
+                [chain_card_embed, chain_desc_embed, sys_emb_masked, chain_feats], dim=-1
+            )
+            chain_enc = self.chain_encoder(chain_input)  # (B, 8, chain_embed_dim)
+
+            # Mean-pool, masking zero-code entries
+            mask = (chain_codes != 0).float().unsqueeze(-1)  # (B, 8, 1)
+            count = mask.sum(dim=1).clamp(min=1)  # (B, 1)
+            chain_pooled = (chain_enc * mask).sum(dim=1) / count  # (B, chain_embed_dim)
+        else:
+            chain_pooled = (
+                torch.zeros(zone_flat.shape[0], self._chain_embed_dim, device=zone_flat.device)
+                if self._chain_embed_dim > 0
+                else None
+            )
+
         # --- Board representation ---
-        board_input = torch.cat([zone_flat, global_enc], dim=-1)
+        if chain_pooled is not None:
+            board_input = torch.cat([zone_flat, global_enc, chain_pooled], dim=-1)
+        else:
+            board_input = torch.cat([zone_flat, global_enc], dim=-1)
         board = self.board_mlp(board_input)  # (B, board_hidden_dim)
 
         # --- Recurrent layer (optional) ---

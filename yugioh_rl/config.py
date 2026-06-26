@@ -82,6 +82,10 @@ class TrainingConfig:
     vtrace_rho_bar: float = 1.0  # V-trace IS truncation (async advantage estimation)
     vtrace_c_bar: float = 1.0  # V-trace trace-cutting coefficient
 
+    # Pending chain encoder output dimension. Encodes the currently-building
+    # chain so the agent can see what it's chaining onto.
+    chain_embed_dim: int = 32
+
     @property
     def is_recurrent(self) -> bool:
         """Whether the network has an RNN module — drives TBPTT vs feed-forward."""
