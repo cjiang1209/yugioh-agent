@@ -12,9 +12,11 @@ import numpy as np
 from yugioh_core.encoding import (
     ACTION_FEATURES,
     CARD_FEATURES,
+    CHAIN_ENTRY_FEATURES,
     GLOBAL_FEATURES,
     MAX_ACTIONS,
     MAX_CARDS,
+    MAX_PENDING_CHAIN,
 )
 from yugioh_env.models import YuGiOhAction
 
@@ -61,6 +63,13 @@ def _obs_to_numpy(obs) -> dict[str, np.ndarray]:
             np.array(obs.action_mask, dtype=np.int8).reshape(MAX_ACTIONS)
             if obs.action_mask
             else np.zeros(MAX_ACTIONS, dtype=np.int8)
+        ),
+        "pending_chain": (
+            np.array(obs.pending_chain, dtype=np.uint8).reshape(
+                MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES
+            )
+            if obs.pending_chain
+            else np.zeros((MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES), dtype=np.uint8)
         ),
     }
 
@@ -479,6 +488,7 @@ class SubprocVecEnv:
         all_obs_global = np.zeros((T, N, GLOBAL_FEATURES), dtype=np.uint8)
         all_obs_actions = np.zeros((T, N, MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8)
         all_action_mask = np.zeros((T, N, MAX_ACTIONS), dtype=np.int8)
+        all_obs_chain = np.zeros((T, N, MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES), dtype=np.uint8)
         all_actions = np.zeros((T, N), dtype=np.int64)
         all_log_probs = np.zeros((T, N), dtype=np.float32)
         all_values = np.zeros((T, N), dtype=np.float32)
@@ -515,6 +525,7 @@ class SubprocVecEnv:
             all_obs_global[t] = obs["global_state"]
             all_obs_actions[t] = obs["actions"]
             all_action_mask[t] = obs["action_mask"]
+            all_obs_chain[t] = obs["pending_chain"]
             all_actions[t] = actions_np
             all_log_probs[t] = log_probs_np
             all_values[t] = values_np
@@ -542,6 +553,7 @@ class SubprocVecEnv:
                     "obs_global": all_obs_global[:, i],
                     "obs_actions": all_obs_actions[:, i],
                     "action_mask": all_action_mask[:, i],
+                    "obs_chain": all_obs_chain[:, i],
                     "actions": all_actions[:, i],
                     "log_probs": all_log_probs[:, i],
                     "values": all_values[:, i],
@@ -552,6 +564,7 @@ class SubprocVecEnv:
                     "final_obs_global": obs["global_state"][i],
                     "final_obs_actions": obs["actions"][i],
                     "final_action_mask": obs["action_mask"][i],
+                    "final_obs_chain": obs["pending_chain"][i],
                     "infos": all_infos[i],
                     "final_hx": YuGiOhNet.slice_hx(hx, env_indices[i]),
                 }

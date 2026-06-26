@@ -76,6 +76,7 @@ def _pack_rollout(
     obs_global = np.stack([t.obs["global_state"] for t in transitions])
     obs_actions = np.stack([t.obs["actions"] for t in transitions])
     action_mask = np.stack([t.obs["action_mask"] for t in transitions])
+    obs_chain = np.stack([t.obs["pending_chain"] for t in transitions])
     actions = np.array([t.action for t in transitions], dtype=np.int64)
     log_probs = np.array([t.log_prob for t in transitions], dtype=np.float32)
     values = np.array([t.value for t in transitions], dtype=np.float32)
@@ -91,6 +92,7 @@ def _pack_rollout(
         "obs_global": obs_global,
         "obs_actions": obs_actions,
         "action_mask": action_mask,
+        "obs_chain": obs_chain,
         "actions": actions,
         "log_probs": log_probs,
         "values": values,
@@ -101,6 +103,7 @@ def _pack_rollout(
         "final_obs_global": final_obs["global_state"],
         "final_obs_actions": final_obs["actions"],
         "final_action_mask": final_obs["action_mask"],
+        "final_obs_chain": final_obs["pending_chain"],
         "infos": [t.info for t in transitions],
         "final_hx": final_hx,
     }

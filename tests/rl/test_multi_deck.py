@@ -68,6 +68,7 @@ def _make_fake_obs():
     obs.global_state = [0] * 20
     obs.actions = [0] * (32 * 28)
     obs.action_mask = [0] * 32
+    obs.pending_chain = []
     obs.reward = 0.0
     obs.done = False
     return obs
