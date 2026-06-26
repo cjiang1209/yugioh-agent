@@ -293,6 +293,14 @@ def parse_args() -> argparse.Namespace:
         help="Truncated-BPTT chunk length; must divide rollout_steps when an RNN "
         "is enabled (default: 16). Ignored when --rnn-type=none.",
     )
+    net.add_argument(
+        "--chain-embed-dim",
+        type=int,
+        default=32,
+        help="Pending chain encoder output dimension. Encodes the "
+        "currently-building chain so the agent sees what it's chaining "
+        "onto. Set to 0 to disable (default: 32).",
+    )
 
     infra = parser.add_argument_group("infrastructure")
     infra.add_argument(

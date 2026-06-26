@@ -442,6 +442,7 @@ class PPOTrainer:
             "text_embed_dim",
             "learned_embed_dim",
             "rnn_type",
+            "chain_embed_dim",
         ]
         arch_defaults = {"rnn_type": "none"}
         mismatches = []
