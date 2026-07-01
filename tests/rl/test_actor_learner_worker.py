@@ -9,6 +9,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from yugioh_core.encoding import GLOBAL_FEATURES
+
 torch = pytest.importorskip("torch")
 
 from tests.rl.conftest import requires_engine
@@ -68,7 +70,7 @@ def test_worker_produces_valid_rollout() -> None:
         T = rollout_steps
         expected_shapes = {
             "obs_cards": (T, 200, 42),
-            "obs_global": (T, 20),
+            "obs_global": (T, GLOBAL_FEATURES),
             "obs_actions": (T, 32, 28),
             "action_mask": (T, 32),
             "actions": (T,),

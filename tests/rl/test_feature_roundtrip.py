@@ -593,9 +593,9 @@ class TestGlobalRoundtrip:
         gs = GameState()
         gs.phase = 0x04
         feats = decode_global(_global_tensor(gs))
-        phase_feats = feats[0, 3:11]
+        phase_feats = feats[0, 3:13]
         expected_set = _bit_index(_PHASE_BITS, 0x04)
-        for i in range(8):
+        for i in range(10):
             expected = 1.0 if i in expected_set else 0.0
             assert phase_feats[i].item() == expected, f"phase bit {i}"
 
@@ -603,16 +603,16 @@ class TestGlobalRoundtrip:
         gs = GameState()
         gs.current_player = 0
         feats = decode_global(_global_tensor(gs, agent_player=0))
-        assert feats[0, 11].item() == 1.0
+        assert feats[0, 13].item() == 1.0
 
         feats = decode_global(_global_tensor(gs, agent_player=1))
-        assert feats[0, 11].item() == 0.0
+        assert feats[0, 13].item() == 0.0
 
     def test_chain_count(self):
         gs = GameState()
         gs.chain_count = 3
         feats = decode_global(_global_tensor(gs))
-        assert feats[0, 12].item() == pytest.approx(3 / 5.0)
+        assert feats[0, 14].item() == pytest.approx(3 / 5.0)
 
     def test_zone_counts(self):
         gs = GameState()
@@ -622,11 +622,11 @@ class TestGlobalRoundtrip:
         gs.banished_count = [1, 2]
         gs.extra_count = [15, 10]
         feats = decode_global(_global_tensor(gs, agent_player=0))
-        # Bytes 9-18: [my_deck, my_hand, my_grave, my_banished, my_extra,
-        #              opp_deck, opp_hand, opp_grave, opp_banished, opp_extra]
+        # Bytes 10-19: [my_deck, my_hand, my_grave, my_banished, my_extra,
+        #               opp_deck, opp_hand, opp_grave, opp_banished, opp_extra]
         expected = [35, 5, 3, 1, 15, 30, 6, 4, 2, 10]
         for i, val in enumerate(expected):
-            assert feats[0, 13 + i].item() == pytest.approx(val / 40.0), f"zone count {i}"
+            assert feats[0, 15 + i].item() == pytest.approx(val / 40.0), f"zone count {i}"
 
     def test_lp_swap_for_opponent_perspective(self):
         """When agent_player=1, my_lp should be player 1's LP."""

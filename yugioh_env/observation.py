@@ -60,9 +60,9 @@ def build_observation(
     # turn_count
     global_state[idx] = min(game_state.turn_count, 255)
     idx += 1
-    # phase
-    global_state[idx] = game_state.phase & 0xFF
-    idx += 1
+    # phase (2 bytes, uint16 LE — bitmask values up to 0x200)
+    global_state[idx], global_state[idx + 1] = encode_u16(game_state.phase)
+    idx += 2
     # is_my_turn
     global_state[idx] = 1 if game_state.current_player == agent_player else 0
     idx += 1

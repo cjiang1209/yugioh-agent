@@ -8,6 +8,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from yugioh_core.encoding import GLOBAL_FEATURES
+
 torch = pytest.importorskip("torch")
 
 
@@ -65,7 +67,7 @@ def _make_fake_obs():
     """Return a minimal YuGiOhObservation-like object."""
     obs = MagicMock()
     obs.cards = [0] * (200 * 42)
-    obs.global_state = [0] * 20
+    obs.global_state = [0] * GLOBAL_FEATURES
     obs.actions = [0] * (32 * 28)
     obs.action_mask = [0] * 32
     obs.pending_chain = []

@@ -69,7 +69,7 @@ def main() -> None:
     )
 
     try:
-        obs = vec_env.reset()
+        obs = vec_env._reset()
 
         # Per-step capture
         actions_log: list[np.ndarray] = []
@@ -84,10 +84,10 @@ def main() -> None:
             # int8 mask returns first 1 if any, else 0). Same selection on
             # baseline-capture and post-refactor replay.
             actions = np.argmax(obs["action_mask"], axis=1).astype(np.int64)
-            next_obs, rewards, dones, _infos = vec_env.step(actions)
+            next_obs, rewards, dones, _infos = vec_env._step(actions)
             # Mirror the test's flow exactly so the captured hashes match
             # what the test will produce.
-            next_obs = vec_env.reset_done(dones, next_obs)
+            next_obs = vec_env._reset_done(dones, next_obs)
 
             actions_log.append(actions.copy())
             rewards_log.append(rewards.copy())

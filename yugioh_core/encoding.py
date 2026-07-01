@@ -7,7 +7,7 @@ import numpy as np
 # ─── Observation dimensions ──────────────────────────────────────────────────
 MAX_CARDS = 200
 CARD_FEATURES = 42
-GLOBAL_FEATURES = 20
+GLOBAL_FEATURES = 21
 MAX_ACTIONS = 32
 ACTION_FEATURES = 28
 MAX_PENDING_CHAIN = 8

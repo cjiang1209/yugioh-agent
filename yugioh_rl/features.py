@@ -230,22 +230,24 @@ def decode_cards(raw: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
 
 # ---------------------------------------------------------------------------
-# Global state: (B, 20) uint8 → (B, F_global) float
+# Global state: (B, 21) uint8 → (B, F_global) float
 # ---------------------------------------------------------------------------
 
-# Phase bits (byte 5) — draw=0x01, standby=0x02, main1=0x04, battle_start=0x08,
-# battle=0x10, damage=0x20, main2=0x40, end=0x80
-_PHASE_BITS = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80]
+# Phase bits (bytes 5-6, uint16 LE) — one bit per phase:
+# 0x01=draw, 0x02=standby, 0x04=main1, 0x08=battle_start,
+# 0x10=battle_step, 0x20=damage, 0x40=damage_cal, 0x80=battle,
+# 0x100=main2, 0x200=end
+_PHASE_BITS = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x100, 0x200]
 
-GLOBAL_FEAT_DIM = 2 + 1 + 8 + 1 + 1 + 10  # = 23
-# my_lp(1) + opp_lp(1) + turn(1) + phase(8) + is_my_turn(1) + chain(1) + zone_counts(10)
+GLOBAL_FEAT_DIM = 2 + 1 + 10 + 1 + 1 + 10  # = 25
+# my_lp(1) + opp_lp(1) + turn(1) + phase(10) + is_my_turn(1) + chain(1) + zone_counts(10)
 
 
 def decode_global(raw: torch.Tensor) -> torch.Tensor:
     """Decode global state bytes into float features.
 
     Args:
-        raw: (B, 20) uint8 tensor
+        raw: (B, 21) uint8 tensor
 
     Returns:
         global_feats: (B, GLOBAL_FEAT_DIM) float32 tensor
@@ -264,18 +266,18 @@ def decode_global(raw: torch.Tensor) -> torch.Tensor:
     # turn_count: byte 4
     feats.append((raw[..., 4].float() / 50.0).unsqueeze(-1))
 
-    # phase: byte 5 → 8 binary features
-    phase = raw[..., 5]
+    # phase: bytes 5-6 (uint16 LE) → 10 binary features
+    phase = _uint16_le(raw, 5)
     feats.append(_extract_bits(phase, _PHASE_BITS))
 
-    # is_my_turn: byte 6
-    feats.append(raw[..., 6].float().unsqueeze(-1))
+    # is_my_turn: byte 7
+    feats.append(raw[..., 7].float().unsqueeze(-1))
 
-    # chain_count: byte 7
-    feats.append((raw[..., 7].float() / 5.0).unsqueeze(-1))
+    # chain_count: byte 8
+    feats.append((raw[..., 8].float() / 5.0).unsqueeze(-1))
 
-    # zone counts: bytes 9-18 (10 bytes, skip byte 8 = msg_type)
-    for i in range(9, 19):
+    # zone counts: bytes 10-19 (10 bytes, skip byte 9 = msg_type)
+    for i in range(10, 20):
         feats.append((raw[..., i].float() / 40.0).unsqueeze(-1))
 
     return torch.cat(feats, dim=-1)

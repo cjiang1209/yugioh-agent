@@ -413,7 +413,7 @@ def test_recurrent_minibatch_shape_and_count():
     assert len(batches) == 4
     for b in batches:
         assert b.obs_cards.shape == (32, 1, 200, 42)
-        assert b.obs_global.shape == (32, 1, 20)
+        assert b.obs_global.shape == (32, 1, GLOBAL_FEATURES)
         assert b.actions.shape == (32, 1)
         assert b.dones.shape == (32, 1)
         h, c = b.hx_initial
