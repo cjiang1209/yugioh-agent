@@ -23,9 +23,11 @@ import pytest
 from yugioh_core.encoding import (
     ACTION_FEATURES,
     CARD_FEATURES,
+    CHAIN_ENTRY_FEATURES,
     GLOBAL_FEATURES,
     MAX_ACTIONS,
     MAX_CARDS,
+    MAX_PENDING_CHAIN,
 )
 from yugioh_env.action_space import ActionMapper
 from yugioh_env.models import YuGiOhAction
@@ -45,6 +47,9 @@ def _stub_build_observation(monkeypatch):
         lambda gs, msg, agent_player, query_fn=None: {
             "cards": np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8),
             "global_state": np.zeros(GLOBAL_FEATURES, dtype=np.uint8),
+            "pending_chain": np.zeros(
+                (MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES), dtype=np.uint8
+            ),
         },
     )
 
