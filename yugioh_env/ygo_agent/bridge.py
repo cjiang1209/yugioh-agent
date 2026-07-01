@@ -8,6 +8,27 @@ from __future__ import annotations
 
 import numpy as np
 
+from yugioh_core.constants import (
+    MSG_ANNOUNCE_ATTRIB,
+    MSG_ANNOUNCE_NUMBER,
+    MSG_SELECT_BATTLECMD,
+    MSG_SELECT_CARD,
+    MSG_SELECT_CHAIN,
+    MSG_SELECT_DISFIELD,
+    MSG_SELECT_EFFECTYN,
+    MSG_SELECT_IDLECMD,
+    MSG_SELECT_OPTION,
+    MSG_SELECT_PLACE,
+    MSG_SELECT_POSITION,
+    MSG_SELECT_SUM,
+    MSG_SELECT_TRIBUTE,
+    MSG_SELECT_UNSELECT_CARD,
+    MSG_SELECT_YESNO,
+    POS_FACEDOWN_ATTACK,
+    POS_FACEDOWN_DEFENSE,
+    POS_FACEUP_ATTACK,
+    POS_FACEUP_DEFENSE,
+)
 from yugioh_core.encoding import decode_u16, decode_u32
 
 # ---------------------------------------------------------------------------
@@ -215,4 +236,468 @@ def translate_global(obs_global: np.ndarray) -> dict:
         "phase": _decode_phase(phase),
         "is_first": is_first,
         "is_my_turn": is_my_turn,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Action message translation
+# ---------------------------------------------------------------------------
+
+
+# System string ID remap: edo9300 → Fluorohydride.
+# The two ygopro-core forks reassigned several system string IDs.
+# When a system-string desc from our engine reaches the ygo-agent server,
+# it must use the Fluorohydride ID so the server's ``system_string_to_id``
+# lookup succeeds and the model sees the correct embedding.
+_SYSSTRING_REMAP: dict[int, int] = {
+    503: 1192,  # Banish
+    504: 1191,  # Send to GY
+    507: 1193,  # Return to Deck
+    573: 1190,  # Add to hand
+    574: 1191,  # Send to GY
+    1170: 1169,  # Fusion Summon
+    1171: 1168,  # Ritual Summon
+    1172: 1164,  # Synchro Summon
+    1173: 1165,  # Xyz Summon
+    1174: 1166,  # Link Summon
+}
+# Fluorohydride 1167 (Tribute Summon) has no edo9300 equivalent — our engine
+# never produces it, so no reverse mapping is needed.
+
+
+def _convert_desc(desc: int) -> int:
+    """Convert edo9300 effect desc to Fluorohydride format.
+
+    Two conversions:
+
+    1. **Bit layout**: edo9300 uses 64-bit ``(card_code << 4 | effect_idx) << 16``;
+       Fluorohydride uses 32-bit ``card_code << 4 | effect_idx``.
+       Descs ≥ 0x10000 are right-shifted by 16.
+
+    2. **System string IDs**: descs < 0x10000 are system string references.
+       Some IDs were reassigned between the edo9300 and Fluorohydride forks
+       (e.g. "Fusion Summon" moved from 1170 to 1169).  These are remapped
+       via ``_SYSSTRING_REMAP``.
+    """
+    if desc < 0x10000:
+        return _SYSSTRING_REMAP.get(desc, desc)
+    return desc >> 16
+
+
+def _card_info(card: dict) -> dict:
+    """Build a ygo-agent CardInfo dict from our msg card dict."""
+    return {
+        "code": card.get("code", 0),
+        "controller": "me" if card.get("controller", 0) == 0 else "opponent",
+        "location": _decode_location(card.get("location", 0)),
+        "sequence": card.get("sequence", 0),
+    }
+
+
+def _card_location(card: dict) -> dict:
+    """Build a ygo-agent CardLocation dict from our msg card dict."""
+    return {
+        "controller": "me" if card.get("controller", 0) == 0 else "opponent",
+        "location": _decode_location(card.get("location", 0)),
+        "sequence": card.get("sequence", 0),
+        "overlay_sequence": card.get("subsequence", -1),
+    }
+
+
+def _translate_idle_cmd(msg: dict) -> dict:
+    """MSG_SELECT_IDLECMD → select_idlecmd."""
+    cmds = []
+
+    for category, key, cmd_type in [
+        (0, "summonable", "summon"),
+        (1, "sp_summonable", "sp_summon"),
+        (2, "repositionable", "reposition"),
+        (3, "mset", "mset"),
+        (4, "sset", "set"),
+    ]:
+        for i, card in enumerate(msg.get(key, [])):
+            cmds.append(
+                {
+                    "cmd_type": cmd_type,
+                    "data": {
+                        "card_info": _card_info(card),
+                        "effect_description": 0,
+                        "response": (i << 16) | category,
+                    },
+                }
+            )
+
+    for i, card in enumerate(msg.get("activatable", [])):
+        desc = card.get("desc", 0)
+        cmds.append(
+            {
+                "cmd_type": "activate",
+                "data": {
+                    "card_info": _card_info(card),
+                    "effect_description": _convert_desc(int(desc)),
+                    "response": (i << 16) | 5,
+                },
+            }
+        )
+
+    if msg.get("to_bp"):
+        cmds.append({"cmd_type": "to_bp", "data": None})
+    if msg.get("to_ep"):
+        cmds.append({"cmd_type": "to_ep", "data": None})
+
+    return {"data": {"msg_type": "select_idlecmd", "idle_cmds": cmds}}
+
+
+def _translate_chain(msg: dict) -> dict:
+    """MSG_SELECT_CHAIN → select_chain."""
+    chains = []
+    for i, chain in enumerate(msg.get("chains", [])):
+        chains.append(
+            {
+                "code": chain.get("code", 0),
+                "location": _card_location(chain),
+                "effect_description": _convert_desc(int(chain.get("desc", 0))),
+                "response": i,
+            }
+        )
+    return {
+        "data": {
+            "msg_type": "select_chain",
+            "forced": bool(msg.get("forced", 0)),
+            "chains": chains,
+        }
+    }
+
+
+def _translate_battlecmd(msg: dict) -> dict:
+    """MSG_SELECT_BATTLECMD → select_battlecmd."""
+    cmds = []
+    for i, card in enumerate(msg.get("activatable", [])):
+        desc = card.get("desc", 0)
+        cmds.append(
+            {
+                "cmd_type": "activate",
+                "data": {
+                    "card_info": _card_info(card),
+                    "effect_description": _convert_desc(int(desc)),
+                    "direct_attackable": False,
+                    "response": (i << 16) | 0,
+                },
+            }
+        )
+    for i, card in enumerate(msg.get("attackable", [])):
+        cmds.append(
+            {
+                "cmd_type": "attack",
+                "data": {
+                    "card_info": _card_info(card),
+                    "effect_description": 0,
+                    "direct_attackable": bool(card.get("direct_attackable", 0)),
+                    "response": (i << 16) | 1,
+                },
+            }
+        )
+    if msg.get("to_m2"):
+        cmds.append({"cmd_type": "to_m2", "data": None})
+    if msg.get("to_ep"):
+        cmds.append({"cmd_type": "to_ep", "data": None})
+    return {"data": {"msg_type": "select_battlecmd", "battle_cmds": cmds}}
+
+
+def _translate_effectyn(msg: dict) -> dict:
+    """MSG_SELECT_EFFECTYN → select_effectyn."""
+    return {
+        "data": {
+            "msg_type": "select_effectyn",
+            "code": msg.get("code", 0),
+            "location": _card_location(msg),
+            "effect_description": _convert_desc(int(msg.get("desc", 0))),
+        }
+    }
+
+
+def _translate_yesno(msg: dict) -> dict:
+    """MSG_SELECT_YESNO → select_yesno."""
+    return {
+        "data": {
+            "msg_type": "select_yesno",
+            "effect_description": _convert_desc(int(msg.get("desc", 0))),
+        }
+    }
+
+
+def _translate_option(msg: dict) -> dict:
+    """MSG_SELECT_OPTION → select_option."""
+    options = [
+        {"code": _convert_desc(int(o)), "response": i} for i, o in enumerate(msg.get("options", []))
+    ]
+    return {"data": {"msg_type": "select_option", "options": options}}
+
+
+def _translate_card(msg: dict) -> dict:
+    """MSG_SELECT_CARD → select_card."""
+    cards = []
+    for i, card in enumerate(msg.get("cards", [])):
+        cards.append(
+            {
+                "location": _card_location(card),
+                "response": i,
+            }
+        )
+    return {
+        "data": {
+            "msg_type": "select_card",
+            "cancelable": bool(msg.get("cancelable", 0)),
+            "min": msg.get("min", 1),
+            "max": msg.get("max", 1),
+            "cards": cards,
+            "selected": list(msg.get("_selected", [])),
+        }
+    }
+
+
+def _translate_position(msg: dict) -> dict:
+    """MSG_SELECT_POSITION → select_position."""
+    positions_bitmask = msg.get("positions", 0)
+    positions = []
+    for pos_val, pos_name in [
+        (POS_FACEUP_ATTACK, "faceup_attack"),
+        (POS_FACEDOWN_ATTACK, "facedown_attack"),
+        (POS_FACEUP_DEFENSE, "faceup_defense"),
+        (POS_FACEDOWN_DEFENSE, "facedown_defense"),
+    ]:
+        if positions_bitmask & pos_val:
+            positions.append(pos_name)
+    return {
+        "data": {
+            "msg_type": "select_position",
+            "code": msg.get("code", 0),
+            "positions": positions,
+        }
+    }
+
+
+def _translate_place(msg: dict, msg_type_name: str) -> dict:
+    """MSG_SELECT_PLACE / MSG_SELECT_DISFIELD → select_place / select_disfield."""
+    field_mask = msg.get("field_mask", 0)
+    places = []
+    for rel_player in range(2):
+        base_m = rel_player * 16
+        base_s = rel_player * 16 + 8
+        controller = "me" if rel_player == 0 else "opponent"
+        for seq in range(7):
+            bit = base_m + seq
+            if bit < 32 and not (field_mask & (1 << bit)):
+                places.append(
+                    {
+                        "controller": controller,
+                        "location": "mzone",
+                        "sequence": seq,
+                    }
+                )
+        for seq in range(6):
+            bit = base_s + seq
+            if bit < 32 and not (field_mask & (1 << bit)):
+                places.append(
+                    {
+                        "controller": controller,
+                        "location": "szone",
+                        "sequence": seq,
+                    }
+                )
+    return {
+        "data": {
+            "msg_type": msg_type_name,
+            "count": msg.get("count", 1),
+            "places": places,
+        }
+    }
+
+
+def _translate_tribute(msg: dict) -> dict:
+    """MSG_SELECT_TRIBUTE → select_tribute."""
+    cards = []
+    for i, card in enumerate(msg.get("cards", [])):
+        cards.append(
+            {
+                "location": _card_location(card),
+                "level": int(card.get("release_param", 1)),
+                "response": i,
+            }
+        )
+    return {
+        "data": {
+            "msg_type": "select_tribute",
+            "cancelable": bool(msg.get("cancelable", 0)),
+            "min": msg.get("min", 1),
+            "max": msg.get("max", 1),
+            "cards": cards,
+            "selected": list(msg.get("_selected", [])),
+        }
+    }
+
+
+def _translate_sum(msg: dict) -> dict:
+    """MSG_SELECT_SUM → select_sum."""
+    must_cards = []
+    for card in msg.get("must_cards", []):
+        param = card.get("param", 0)
+        must_cards.append(
+            {
+                "location": _card_location(card),
+                "level1": param & 0xFFFF,
+                "level2": (param >> 16) & 0xFFFF,
+                "response": -1,
+            }
+        )
+    opt_cards = []
+    for i, card in enumerate(msg.get("optional_cards", [])):
+        param = card.get("param", 0)
+        opt_cards.append(
+            {
+                "location": _card_location(card),
+                "level1": param & 0xFFFF,
+                "level2": (param >> 16) & 0xFFFF,
+                "response": i,
+            }
+        )
+    return {
+        "data": {
+            "msg_type": "select_sum",
+            "overflow": bool(msg.get("select_type", 0)),
+            "level_sum": msg.get("target_sum", 0),
+            "min": msg.get("min", 1),
+            "max": msg.get("max", 0),
+            "must_cards": must_cards,
+            "cards": opt_cards,
+            "selected": list(msg.get("_selected", [])),
+        }
+    }
+
+
+def _translate_unselect_card(msg: dict) -> dict:
+    """MSG_SELECT_UNSELECT_CARD → select_unselect_card."""
+    selectable = []
+    for i, card in enumerate(msg.get("selectable", [])):
+        selectable.append(
+            {
+                "location": _card_location(card),
+                "response": i,
+            }
+        )
+    return {
+        "data": {
+            "msg_type": "select_unselect_card",
+            "finishable": bool(msg.get("finishable", 0)),
+            "cancelable": bool(msg.get("cancelable", 0)),
+            "min": msg.get("min", 1),
+            "max": msg.get("max", 1),
+            "selected_cards": [],
+            "selectable_cards": selectable,
+        }
+    }
+
+
+def _translate_announce_attrib(msg: dict) -> dict:
+    """MSG_ANNOUNCE_ATTRIB → announce_attrib."""
+    available = msg.get("available", 0)
+    attribs = []
+    for bit in range(8):
+        mask = 1 << bit
+        if available & mask:
+            attribs.append(
+                {
+                    "attribute": _decode_attribute(mask),
+                    "response": mask,
+                }
+            )
+    return {
+        "data": {
+            "msg_type": "announce_attrib",
+            "count": msg.get("count", 1),
+            "attributes": attribs,
+        }
+    }
+
+
+def _translate_announce_number(msg: dict) -> dict:
+    """MSG_ANNOUNCE_NUMBER → announce_number."""
+    numbers = []
+    for i, num in enumerate(msg.get("numbers", [])):
+        numbers.append({"number": int(num), "response": i})
+    return {
+        "data": {
+            "msg_type": "announce_number",
+            "count": msg.get("count", 1),
+            "numbers": numbers,
+        }
+    }
+
+
+_ACTION_MSG_TRANSLATORS: dict[int, callable] = {
+    MSG_SELECT_IDLECMD: _translate_idle_cmd,
+    MSG_SELECT_CHAIN: _translate_chain,
+    MSG_SELECT_BATTLECMD: _translate_battlecmd,
+    MSG_SELECT_EFFECTYN: _translate_effectyn,
+    MSG_SELECT_YESNO: _translate_yesno,
+    MSG_SELECT_OPTION: _translate_option,
+    MSG_SELECT_CARD: _translate_card,
+    MSG_SELECT_POSITION: _translate_position,
+    MSG_SELECT_PLACE: lambda msg: _translate_place(msg, "select_place"),
+    MSG_SELECT_DISFIELD: lambda msg: _translate_place(msg, "select_disfield"),
+    MSG_SELECT_TRIBUTE: _translate_tribute,
+    MSG_SELECT_SUM: _translate_sum,
+    MSG_SELECT_UNSELECT_CARD: _translate_unselect_card,
+    MSG_ANNOUNCE_ATTRIB: _translate_announce_attrib,
+    MSG_ANNOUNCE_NUMBER: _translate_announce_number,
+}
+
+
+def translate_action_msg(msg: dict) -> dict:
+    """Convert our msg dict to a ygo-agent ActionMsg JSON dict.
+
+    Returns a dict with a ``data`` key containing the msg-type-specific payload.
+    Raises ``ValueError`` for unsupported message types.
+    """
+    msg_type = msg.get("msg_type", 0)
+    translator = _ACTION_MSG_TRANSLATORS.get(msg_type)
+    if translator is None:
+        raise ValueError(f"Unsupported msg_type for ygo-agent bridge: {msg_type}")
+    return translator(msg)
+
+
+# ---------------------------------------------------------------------------
+# Top-level predict input assembly
+# ---------------------------------------------------------------------------
+
+
+def build_predict_input(
+    obs: dict[str, np.ndarray],
+    msg: dict,
+    prev_action_idx: int,
+    index: int = 0,
+) -> dict:
+    """Build the full DuelPredictRequest body for the ygo-agent server.
+
+    Args:
+        obs: Observation dict with ``cards`` and ``global_state`` arrays.
+        msg: The current SELECT message dict.
+        prev_action_idx: Index of the previously selected action (0 for first).
+        index: Duel session index (must match server state).
+
+    Returns:
+        JSON-serializable dict matching ``DuelPredictRequest`` schema.
+    """
+    cards = translate_cards(obs["cards"])
+    global_state = translate_global(obs["global_state"])
+    action_msg = translate_action_msg(msg)
+
+    return {
+        "input": {
+            "global": global_state,
+            "cards": cards,
+            "action_msg": action_msg,
+        },
+        "prev_action_idx": prev_action_idx,
+        "index": index,
     }

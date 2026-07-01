@@ -5,8 +5,23 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from yugioh_core.constants import (
+    MSG_SELECT_BATTLECMD,
+    MSG_SELECT_CARD,
+    MSG_SELECT_CHAIN,
+    MSG_SELECT_EFFECTYN,
+    MSG_SELECT_IDLECMD,
+    MSG_SELECT_OPTION,
+    MSG_SELECT_POSITION,
+    MSG_SELECT_YESNO,
+)
 from yugioh_core.encoding import CARD_FEATURES, MAX_CARDS, encode_card, encode_u16
-from yugioh_env.ygo_agent.bridge import translate_cards, translate_global
+from yugioh_env.ygo_agent.bridge import (
+    build_predict_input,
+    translate_action_msg,
+    translate_cards,
+    translate_global,
+)
 
 
 class TestTranslateCards:
@@ -204,3 +219,205 @@ class TestTranslateGlobal:
         ]:
             g = translate_global(self._make_obs_global(phase=phase_val))
             assert g["phase"] == expected
+
+
+class TestTranslateActionMsg:
+    def test_idle_cmd_summon_and_to_bp(self):
+        msg = {
+            "msg_type": MSG_SELECT_IDLECMD,
+            "player": 0,
+            "summonable": [
+                {"code": 89631139, "controller": 0, "location": 0x02, "sequence": 0},
+            ],
+            "sp_summonable": [],
+            "repositionable": [],
+            "mset": [],
+            "sset": [],
+            "activatable": [],
+            "to_bp": 1,
+            "to_ep": 1,
+            "shuffle_hand": 0,
+        }
+        result = translate_action_msg(msg)
+        assert result["data"]["msg_type"] == "select_idlecmd"
+        cmds = result["data"]["idle_cmds"]
+        # summon + to_bp + to_ep = 3 commands
+        assert len(cmds) == 3
+        assert cmds[0]["cmd_type"] == "summon"
+        assert cmds[0]["data"]["card_info"]["code"] == 89631139
+        assert cmds[1]["cmd_type"] == "to_bp"
+        assert cmds[2]["cmd_type"] == "to_ep"
+
+    def test_idle_cmd_activate_with_desc(self):
+        msg = {
+            "msg_type": MSG_SELECT_IDLECMD,
+            "player": 0,
+            "summonable": [],
+            "sp_summonable": [],
+            "repositionable": [],
+            "mset": [],
+            "sset": [],
+            "activatable": [
+                {
+                    "code": 12345,
+                    "controller": 0,
+                    "location": 0x08,
+                    "sequence": 1,
+                    "desc": 0,
+                    "client_mode": 0,
+                },
+            ],
+            "to_bp": 0,
+            "to_ep": 1,
+            "shuffle_hand": 0,
+        }
+        result = translate_action_msg(msg)
+        cmds = result["data"]["idle_cmds"]
+        assert cmds[0]["cmd_type"] == "activate"
+        assert cmds[0]["data"]["card_info"]["code"] == 12345
+
+    def test_chain_with_cancel(self):
+        msg = {
+            "msg_type": MSG_SELECT_CHAIN,
+            "player": 0,
+            "forced": 0,
+            "spe_count": 0,
+            "hint_timing": 0,
+            "other_timing": 0,
+            "chains": [
+                {
+                    "code": 111,
+                    "controller": 0,
+                    "location": 0x08,
+                    "sequence": 0,
+                    "position": 0,
+                    "desc": 0,
+                    "client_mode": 0,
+                },
+            ],
+        }
+        result = translate_action_msg(msg)
+        assert result["data"]["msg_type"] == "select_chain"
+        assert result["data"]["forced"] is False
+        assert len(result["data"]["chains"]) == 1
+
+    def test_chain_forced(self):
+        msg = {
+            "msg_type": MSG_SELECT_CHAIN,
+            "player": 0,
+            "forced": 1,
+            "spe_count": 0,
+            "hint_timing": 0,
+            "other_timing": 0,
+            "chains": [
+                {
+                    "code": 222,
+                    "controller": 0,
+                    "location": 0x04,
+                    "sequence": 1,
+                    "position": 0,
+                    "desc": 0,
+                    "client_mode": 0,
+                },
+            ],
+        }
+        result = translate_action_msg(msg)
+        assert result["data"]["forced"] is True
+
+    def test_select_effectyn(self):
+        msg = {
+            "msg_type": MSG_SELECT_EFFECTYN,
+            "player": 0,
+            "code": 89631139,
+            "controller": 0,
+            "location": 0x04,
+            "sequence": 2,
+            "position": 0,
+            "desc": 89631139 << 4 | 0,
+        }
+        result = translate_action_msg(msg)
+        assert result["data"]["msg_type"] == "select_effectyn"
+        assert result["data"]["code"] == 89631139
+
+    def test_select_yesno(self):
+        msg = {"msg_type": MSG_SELECT_YESNO, "player": 0, "desc": 30}
+        result = translate_action_msg(msg)
+        assert result["data"]["msg_type"] == "select_yesno"
+        assert result["data"]["effect_description"] == 30
+
+    def test_select_position(self):
+        msg = {
+            "msg_type": MSG_SELECT_POSITION,
+            "player": 0,
+            "code": 111,
+            "positions": 0x5,  # FU-Atk | FU-Def
+        }
+        result = translate_action_msg(msg)
+        assert result["data"]["msg_type"] == "select_position"
+        assert "faceup_attack" in result["data"]["positions"]
+        assert "faceup_defense" in result["data"]["positions"]
+
+    def test_select_option(self):
+        msg = {"msg_type": MSG_SELECT_OPTION, "player": 0, "options": [1050, 1051]}
+        result = translate_action_msg(msg)
+        assert result["data"]["msg_type"] == "select_option"
+        assert len(result["data"]["options"]) == 2
+
+    def test_select_card(self):
+        msg = {
+            "msg_type": MSG_SELECT_CARD,
+            "player": 0,
+            "cancelable": 0,
+            "min": 1,
+            "max": 1,
+            "cards": [
+                {"code": 111, "controller": 0, "location": 0x02, "sequence": 0, "subsequence": 0},
+                {"code": 222, "controller": 0, "location": 0x02, "sequence": 1, "subsequence": 0},
+            ],
+        }
+        result = translate_action_msg(msg)
+        assert result["data"]["msg_type"] == "select_card"
+        assert result["data"]["min"] == 1
+        assert len(result["data"]["cards"]) == 2
+
+    def test_battlecmd_attack(self):
+        msg = {
+            "msg_type": MSG_SELECT_BATTLECMD,
+            "player": 0,
+            "activatable": [],
+            "attackable": [
+                {
+                    "code": 111,
+                    "controller": 0,
+                    "location": 0x04,
+                    "sequence": 0,
+                    "direct_attackable": 0,
+                },
+            ],
+            "to_m2": 1,
+            "to_ep": 0,
+        }
+        result = translate_action_msg(msg)
+        assert result["data"]["msg_type"] == "select_battlecmd"
+        cmds = result["data"]["battle_cmds"]
+        assert cmds[0]["cmd_type"] == "attack"
+        assert cmds[1]["cmd_type"] == "to_m2"
+
+
+class TestBuildPredictInput:
+    def test_assembles_all_parts(self):
+        obs = {
+            "cards": np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8),
+            "global_state": np.zeros(20, dtype=np.uint8),
+        }
+        # Set minimal global: turn=1, phase=main1, is_my_turn
+        obs["global_state"][4] = 1
+        obs["global_state"][5] = 0x04
+        obs["global_state"][6] = 1
+        msg = {"msg_type": MSG_SELECT_YESNO, "player": 0, "desc": 30}
+        result = build_predict_input(obs, msg, prev_action_idx=0)
+        assert "input" in result
+        assert "prev_action_idx" in result
+        assert "index" in result
+        assert result["input"]["global"]["phase"] == "main1"
+        assert result["input"]["action_msg"]["data"]["msg_type"] == "select_yesno"
