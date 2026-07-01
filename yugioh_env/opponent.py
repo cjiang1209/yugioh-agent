@@ -246,11 +246,15 @@ def parse_opponent_spec(spec: str) -> tuple[str, str]:
     - ``"greedy"`` → ``("greedy", "")``
     - ``"random"`` → ``("random", "")``
     - ``"model:/p.pt"`` → ``("model", "/p.pt")``
+    - ``"ygo-agent"`` → ``("ygo-agent", "")``
+    - ``"ygo-agent:http://host:3000"`` → ``("ygo-agent", "http://host:3000")``
 
     Does not validate that checkpoint files exist — that's a CLI-layer concern.
     """
     if spec.startswith("model:"):
         return "model", spec[len("model:") :]
+    if spec.startswith("ygo-agent:"):
+        return "ygo-agent", spec[len("ygo-agent:") :]
     return spec, ""
 
 
@@ -265,6 +269,8 @@ def make_opponent(
     - ``"greedy"`` → ``GreedyOpponent()``
     - ``"random"`` → ``RandomOpponent(seed=seed)``
     - ``"model:path.pt"`` → ``ModelOpponent(path, device=device)``
+    - ``"ygo-agent"`` → ``YGOAgentOpponent()`` (default localhost:3000)
+    - ``"ygo-agent:url"`` → ``YGOAgentOpponent(url)``
 
     Raises ``ValueError`` on empty model path or unknown kind. Checkpoint
     file-existence is not validated here — callers that want a clean CLI error
@@ -281,4 +287,8 @@ def make_opponent(
         return GreedyOpponent()
     if opponent_type == "random":
         return RandomOpponent(seed=seed)
+    if opponent_type == "ygo-agent":
+        from yugioh_env.ygo_agent import YGOAgentOpponent
+
+        return YGOAgentOpponent(checkpoint) if checkpoint else YGOAgentOpponent()
     raise ValueError(f"unknown opponent: {spec!r}")

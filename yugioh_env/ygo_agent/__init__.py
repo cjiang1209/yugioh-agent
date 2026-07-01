@@ -6,3 +6,7 @@ eval and leaderboard systems.
 """
 
 from __future__ import annotations
+
+from yugioh_env.ygo_agent.opponent import YGOAgentOpponent
+
+__all__ = ["YGOAgentOpponent"]

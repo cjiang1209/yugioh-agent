@@ -30,6 +30,8 @@ def validate_opponent_spec(spec: str, flag: str) -> None:
             fatal(f"{flag} model: entries must include a checkpoint path")
         if not Path(path).exists():
             fatal(f"{flag} opponent checkpoint not found: {path}")
+    elif spec.startswith("ygo-agent"):
+        pass  # ygo-agent or ygo-agent:url — validated at runtime by make_opponent
     elif spec not in ("greedy", "random"):
         fatal(f"unknown opponent: {spec}")
 
