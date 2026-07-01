@@ -33,6 +33,7 @@ from yugioh_core.constants import (
     LOCATION_OVERLAY,
     LOCATION_SZONE,
     MSG_ANNOUNCE_ATTRIB,
+    MSG_ANNOUNCE_CARD,
     MSG_ANNOUNCE_NUMBER,
     MSG_ANNOUNCE_RACE,
     MSG_ROCK_PAPER_SCISSORS,
@@ -99,6 +100,7 @@ _PROMPT_TYPE_MAP = {
     MSG_SELECT_TRIBUTE: "tribute",
     MSG_SELECT_UNSELECT_CARD: "select_card",
     MSG_ANNOUNCE_NUMBER: "number",
+    MSG_ANNOUNCE_CARD: "announce_card",
     MSG_ANNOUNCE_RACE: "race",
     MSG_ANNOUNCE_ATTRIB: "attribute",
     MSG_ROCK_PAPER_SCISSORS: "rps",
@@ -386,6 +388,10 @@ class ActionDescriber:
                 return "Finish selection", "finish"
             label = f"Select {card_name}" if card_name else f"Select card #{index_byte}"
             return label, "select_card"
+
+        if msg_type == MSG_ANNOUNCE_CARD:
+            label = f"Declare {card_name}" if card_name else f"Declare card #{index_byte}"
+            return label, "announce_card"
 
         if msg_type == MSG_ANNOUNCE_NUMBER:
             return (meta.label if meta else f"Announce #{index_byte}"), "number"

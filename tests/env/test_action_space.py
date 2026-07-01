@@ -1436,3 +1436,54 @@ def test_sort_card_multi_step_dispatch():
             assert wire == bytes([2, 0, 1])
             return
     raise AssertionError("build_response was never set; final pick did not finalize")
+
+
+def test_parse_announce_codes_single():
+    from yugioh_core.constants import OPCODE_ISCODE
+    from yugioh_env.action_space import _parse_announce_codes
+
+    assert _parse_announce_codes([111, OPCODE_ISCODE]) == [111]
+
+
+def test_parse_announce_codes_multi():
+    from yugioh_core.constants import OPCODE_ISCODE, OPCODE_OR
+    from yugioh_env.action_space import _parse_announce_codes
+
+    # Real Lua ordering: first card [code, ISCODE], each subsequent [code, ISCODE, OR]
+    opcodes = [111, OPCODE_ISCODE, 222, OPCODE_ISCODE, OPCODE_OR, 333, OPCODE_ISCODE, OPCODE_OR]
+    assert _parse_announce_codes(opcodes) == [111, 222, 333]
+
+
+def test_parse_announce_codes_masks_to_uint32():
+    from yugioh_core.constants import OPCODE_ISCODE
+    from yugioh_env.action_space import _parse_announce_codes
+
+    # A code with high bits set is masked to 32 bits.
+    assert _parse_announce_codes([0x1_0000_0457, OPCODE_ISCODE]) == [0x0457]
+
+
+def test_parse_announce_codes_general_filter_returns_empty():
+    from yugioh_env.action_space import _parse_announce_codes
+
+    # First entry is an opcode (>= 0x4000000000000000), not a card code -> no codes.
+    assert _parse_announce_codes([0x4000020000000000, 0x10, 0x4000030000000000]) == []
+
+
+def test_extract_announce_card_actions():
+    from yugioh_core.constants import MSG_ANNOUNCE_CARD, OPCODE_ISCODE, OPCODE_OR
+    from yugioh_env.action_space import ActionMapper
+
+    msg = {
+        "msg_type": MSG_ANNOUNCE_CARD,
+        "player": 0,
+        "opcodes": [111, OPCODE_ISCODE, 222, OPCODE_ISCODE, OPCODE_OR],
+    }
+    mapper = ActionMapper()
+    mapper.update(msg)
+    assert mapper.num_actions == 2
+    import struct
+
+    assert mapper.actions[0]["code"] == 111
+    assert mapper.actions[1]["code"] == 222
+    assert mapper.action_to_response(0) == struct.pack("<I", 111)
+    assert mapper.action_to_response(1) == struct.pack("<I", 222)

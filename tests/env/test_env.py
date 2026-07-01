@@ -295,3 +295,26 @@ def test_multi_select_step_returns_no_frames(env):
 
     # Intermediate multi-select should produce no frames
     assert env.last_frames == []
+
+
+def test_make_observation_raises_on_zero_actions(env):
+    """An agent-facing prompt with no legal actions (e.g. an unenumerable
+    MSG_ANNOUNCE_CARD general-predicate filter) must fail with a diagnosable
+    error naming the msg_type, not an opaque NaN downstream."""
+    from yugioh_core.constants import MSG_ANNOUNCE_CARD
+
+    env.reset(seed=42)
+
+    # General-predicate filter: the first opcode is an opcode word (>= 0x4000...),
+    # not a literal card code, so _parse_announce_codes yields [] -> 0 actions.
+    msg = {
+        "msg_type": MSG_ANNOUNCE_CARD,
+        "player": env._agent_player,
+        "opcodes": [0x4000020000000000, 0x10],
+    }
+    env._current_msg = msg
+    env._mapper.update({**msg, "_agent_player": env._agent_player})
+    assert env._mapper.num_actions == 0
+
+    with pytest.raises(RuntimeError, match=str(MSG_ANNOUNCE_CARD)):
+        env._make_observation()

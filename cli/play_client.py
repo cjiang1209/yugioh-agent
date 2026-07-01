@@ -85,6 +85,7 @@ _PROMPT_TYPE_LABELS = {
     "number": "Announce Number",
     "race": "Announce Race",
     "attribute": "Announce Attribute",
+    "announce_card": "Announce Card",
     "rps": "Rock-Paper-Scissors",
     "counter": "Select Counter",
     "unknown": "Unknown",

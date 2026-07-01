@@ -394,3 +394,20 @@ def test_describe_raises_on_inactive_slot():
     # Out-of-range slot also raises.
     with pytest.raises(IndexError, match="out of range"):
         describer.describe(obs, MAX_ACTIONS + 10)
+
+
+def test_describer_announce_card_uses_card_name():
+    """MSG_ANNOUNCE_CARD action resolves the declared card's name from the DB."""
+    from yugioh_core.constants import MSG_ANNOUNCE_CARD, OPCODE_ISCODE
+
+    obs = _obs_from_msg(
+        {
+            "msg_type": MSG_ANNOUNCE_CARD,
+            "player": 0,
+            "opcodes": [777, OPCODE_ISCODE],
+        }
+    )
+    describer = ActionDescriber(_StubCardDB(), sys_strings=None)
+    details = describer.describe_all(obs)
+    assert details[0].description == "Declare Card777"
+    assert details[0].category == "announce_card"

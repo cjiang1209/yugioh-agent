@@ -43,6 +43,7 @@ class ActionMeta(BaseModel):
                   MSG_SELECT_IDLECMD / MSG_SELECT_BATTLECMD. Yes/no prompts
                   (MSG_SELECT_YESNO, MSG_SELECT_EFFECTYN) emit no meta —
                   see prompt_meta.desc / prompt_text instead.
+      announce_card: raw_value=int (declared card passcode);              extras={}
     """
 
     kind: Literal[
@@ -54,6 +55,7 @@ class ActionMeta(BaseModel):
         "option",
         "chain_link",
         "effect",
+        "announce_card",
     ]
     label: str
     raw_value: int | None = None

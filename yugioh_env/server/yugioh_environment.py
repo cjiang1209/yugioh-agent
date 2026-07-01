@@ -13,6 +13,7 @@ from openenv.core.env_server.interfaces import Environment
 
 from yugioh_core.card_database import CardDatabase
 from yugioh_core.constants import (
+    MSG_ANNOUNCE_CARD,
     MSG_NEW_TURN,
     MSG_SELECT_BATTLECMD,
     MSG_SELECT_CARD,
@@ -587,6 +588,22 @@ class YuGiOhEnvironment(Environment):
 
     def _make_observation(self) -> YuGiOhObservation:
         """Build observation from current state."""
+        # Every path here is an agent-facing SELECT prompt, so the mapper must
+        # offer at least one action; a zero-action prompt yields an all-zero
+        # mask -> -inf logits -> NaN in Categorical. Fail loudly instead.
+        if self._mapper.num_actions == 0:
+            msg_type = self._current_msg.get("msg_type")
+            if msg_type == MSG_ANNOUNCE_CARD:
+                detail = (
+                    "MSG_ANNOUNCE_CARD uses a general predicate filter that is "
+                    "not enumerable (only literal card-list filters are supported)"
+                )
+            else:
+                detail = "no legal actions were extracted"
+            raise RuntimeError(
+                f"Cannot build a valid action mask for agent-facing prompt "
+                f"msg_type={msg_type}: {detail}."
+            )
 
         def query_fn(player: int, location: int) -> list[dict]:
             return self._duel.query_location(player, location)

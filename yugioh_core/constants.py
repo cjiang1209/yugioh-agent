@@ -293,6 +293,12 @@ MSG_MATCH_KILL = 170
 MSG_CUSTOM_MSG = 180
 MSG_REMOVE_CARDS = 190
 
+# Announce-card filter opcodes. A declare-a-card filter is built as:
+# code, OPCODE_ISCODE for the first card, then code, OPCODE_ISCODE, OPCODE_OR
+# for each subsequent card.
+OPCODE_ISCODE = 0x4000010000000000
+OPCODE_OR = 0x4000000500000000
+
 # Messages requiring a player response
 SELECT_MSGS = frozenset(
     {

@@ -100,6 +100,25 @@ class TestYGOAgentOpponent:
         msg = {"msg_type": MSG_SELECT_YESNO, "player": 0, "desc": 30}
         assert opp.select_action(msg, 2) == 0
 
+    def test_select_action_short_circuits_announce_card(self):
+        """announce_card is not supported by the ygo-agent server; the opponent
+        returns 0 without making an HTTP call."""
+        from yugioh_core.constants import MSG_ANNOUNCE_CARD
+
+        opp = YGOAgentOpponent()
+        opp._duel_id = "test-duel"
+        opp.set_observation(
+            {
+                "cards": np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8),
+                "global_state": np.zeros(GLOBAL_FEATURES, dtype=np.uint8),
+            }
+        )
+        msg = {"msg_type": MSG_ANNOUNCE_CARD, "player": 0, "opcodes": []}
+        with patch("yugioh_env.ygo_agent.opponent.requests") as mock_req:
+            result = opp.select_action(msg, num_actions=3)
+        assert result == 0
+        mock_req.post.assert_not_called()
+
 
 class TestYGOAgentOpponentFactory:
     def test_parse_ygo_agent_no_url(self):

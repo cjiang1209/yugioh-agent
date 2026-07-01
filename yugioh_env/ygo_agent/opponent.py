@@ -6,12 +6,14 @@ the predicted action back to this repo's action index.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 
 import numpy as np
 import requests
 
 from yugioh_core.constants import (
+    MSG_ANNOUNCE_CARD,
     MSG_ANNOUNCE_RACE,
     MSG_SELECT_COUNTER,
     MSG_SORT_CARD,
@@ -23,6 +25,19 @@ from yugioh_env.ygo_agent.bridge import build_predict_input, match_response
 logger = logging.getLogger(__name__)
 
 DEFAULT_URL = "http://localhost:3000"
+
+# Message types the ygo-agent server can't handle: its C++ env resolves these
+# internally and never presents them to the model, so the JSON API has no branch
+# for them. We skip the server and pick action 0 (default/first option).
+_SERVER_UNSUPPORTED_MSGS = frozenset(
+    {
+        MSG_SORT_CARD,
+        MSG_SORT_CHAIN,
+        MSG_SELECT_COUNTER,
+        MSG_ANNOUNCE_RACE,
+        MSG_ANNOUNCE_CARD,
+    }
+)
 
 
 class YGOAgentOpponent(Opponent):
@@ -51,10 +66,8 @@ class YGOAgentOpponent(Opponent):
     def _delete_session(self) -> None:
         """Best-effort delete of the current duel session."""
         if self._duel_id is not None:
-            try:
+            with contextlib.suppress(requests.RequestException):
                 requests.delete(f"{self._base_url}/v0/duels/{self._duel_id}")
-            except requests.RequestException:
-                pass
             self._duel_id = None
 
     def _create_session(self) -> None:
@@ -91,7 +104,7 @@ class YGOAgentOpponent(Opponent):
         # never presents them to the model.  We skip the server and pick
         # action 0 (default/first option).
         msg_type = msg.get("msg_type", 0)
-        if msg_type in (MSG_SORT_CARD, MSG_SORT_CHAIN, MSG_SELECT_COUNTER, MSG_ANNOUNCE_RACE):
+        if msg_type in _SERVER_UNSUPPORTED_MSGS:
             return 0
 
         body = build_predict_input(self._obs, msg, self._prev_action_idx, self._index)

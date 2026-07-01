@@ -947,6 +947,53 @@ def _extract_announce_number_actions(msg: dict) -> list[dict]:
     ]
 
 
+def _parse_announce_codes(opcodes: list[int]) -> list[int]:
+    """Extract literal card codes from an announce-card opcode filter.
+
+    Handles the literal card-list idiom: an OR-joined series of ``code,
+    OPCODE_ISCODE`` pairs (the first pair standalone, each subsequent pair
+    preceded on the wire by an ``OPCODE_OR``). Cards that let the player
+    declare one of a fixed set of names build their filter this way (e.g.
+    Crossout Designator).
+
+    Any other filter shape — a general attribute/type/race predicate such as
+    ``TYPE_MONSTER, OPCODE_ISTYPE`` — is not enumerable here and yields an
+    empty list.
+    """
+    codes: list[int] = []
+    i = 0
+    n = len(opcodes)
+    while i < n:
+        if opcodes[i] < 0x4000000000000000 and i + 1 < n and opcodes[i + 1] == OPCODE_ISCODE:
+            codes.append(opcodes[i] & 0xFFFFFFFF)
+            i += 2
+            if i < n and opcodes[i] == OPCODE_OR:
+                i += 1
+            continue
+        return []  # unrecognized (general filter) — no enumerable codes
+    return codes
+
+
+def _extract_announce_card_actions(msg: dict) -> list[dict]:
+    """MSG_ANNOUNCE_CARD: declare a card name from an opcode filter.
+
+    Only the literal ISCODE/OR card-list form is supported; general filters
+    yield no actions (see _parse_announce_codes)."""
+    codes = _parse_announce_codes(msg.get("opcodes", []))
+    return [
+        {
+            "category": 0,
+            "index": i,
+            "code": code,
+            "location": 0,
+            "sequence": 0,
+            "meta": {"kind": "announce_card", "label": f"Declare {code}", "raw_value": code},
+            "build_response": lambda c=code: rb.build_announce_card_response(c),
+        }
+        for i, code in enumerate(codes)
+    ]
+
+
 def _extract_rps_actions(msg: dict) -> list[dict]:
     return [
         {
@@ -1019,6 +1066,7 @@ _ACTION_EXTRACTORS = {
     MSG_ANNOUNCE_RACE: _extract_announce_race_actions,
     MSG_ANNOUNCE_ATTRIB: _extract_announce_attrib_actions,
     MSG_ANNOUNCE_NUMBER: _extract_announce_number_actions,
+    MSG_ANNOUNCE_CARD: _extract_announce_card_actions,
     MSG_ROCK_PAPER_SCISSORS: _extract_rps_actions,
     MSG_SELECT_COUNTER: _extract_counter_actions,
 }
