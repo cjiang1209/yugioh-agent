@@ -6,8 +6,16 @@ JSON-serializable dicts conforming to ygo-agent's ``ygoinf`` server schema.
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 
+from yugioh_core.action_categories import (
+    BATTLE_TO_EP,
+    BATTLE_TO_M2,
+    IDLE_TO_BP,
+    IDLE_TO_EP,
+)
 from yugioh_core.constants import (
     MSG_ANNOUNCE_ATTRIB,
     MSG_ANNOUNCE_NUMBER,
@@ -701,3 +709,138 @@ def build_predict_input(
         "prev_action_idx": prev_action_idx,
         "index": index,
     }
+
+
+# ---------------------------------------------------------------------------
+# Response matching
+# ---------------------------------------------------------------------------
+
+logger = logging.getLogger(__name__)
+
+
+def _match_cmd_response(
+    actions: list[dict],
+    response: int,
+    phase_a: int,
+    phase_b: int,
+) -> int:
+    """Match idle/battle cmd response. Phase responses use raw category values;
+    card responses use ``(index << 16) | category`` encoding."""
+    if response == phase_a:
+        for i, a in enumerate(actions):
+            if a.get("category") == phase_a:
+                return i
+    elif response == phase_b:
+        for i, a in enumerate(actions):
+            if a.get("category") == phase_b:
+                return i
+    else:
+        r_cat = response & 0xFFFF
+        r_idx = (response >> 16) & 0xFFFF
+        for i, a in enumerate(actions):
+            if a.get("category") == r_cat and a.get("index") == r_idx:
+                return i
+    return 0
+
+
+def _match_idle_response(actions: list[dict], response: int) -> int:
+    return _match_cmd_response(actions, response, IDLE_TO_BP, IDLE_TO_EP)
+
+
+def _match_battle_response(actions: list[dict], response: int) -> int:
+    return _match_cmd_response(actions, response, BATTLE_TO_M2, BATTLE_TO_EP)
+
+
+def _match_cancel_or_index(actions: list[dict], response: int) -> int:
+    """Match response = item index or -1 for cancel/finish."""
+    if response == -1:
+        for i, a in enumerate(actions):
+            if a.get("category") == 1:
+                return i
+    else:
+        for i, a in enumerate(actions):
+            if a.get("category") == 0 and a.get("index") == response:
+                return i
+    return 0
+
+
+def _match_yesno_response(actions: list[dict], response: int) -> int:
+    """Match yes/no response. 1=yes(category 0), 0=no(category 1)."""
+    target_cat = 0 if response == 1 else 1
+    for i, a in enumerate(actions):
+        if a.get("category") == target_cat:
+            return i
+    return 0
+
+
+def _match_position_response(actions: list[dict], response: int) -> int:
+    """Match position response. response = position bitmask."""
+    for i, a in enumerate(actions):
+        if a.get("index") == response:
+            return i
+    return 0
+
+
+def _match_index_response(actions: list[dict], response: int) -> int:
+    """Match by action index (select_card, select_tribute, select_sum, select_option, announce_number)."""
+    for i, a in enumerate(actions):
+        if a.get("category") == 0 and a.get("index") == response:
+            return i
+    return 0
+
+
+def _match_unselect_response(actions: list[dict], response: int) -> int:
+    return _match_cancel_or_index(actions, response)
+
+
+def _match_place_response(actions: list[dict], response: int) -> int:
+    """Match place/disfield response by index position."""
+    if 0 <= response < len(actions):
+        return response
+    return 0
+
+
+def _match_attrib_response(actions: list[dict], response: int) -> int:
+    """Match announce_attrib response. response = attribute bitmask."""
+    # Our actions have index = bit position; response = bitmask
+    for i, a in enumerate(actions):
+        if a.get("index") is not None and (1 << a["index"]) == response:
+            return i
+    return 0
+
+
+_RESPONSE_MATCHERS: dict[int, callable] = {
+    MSG_SELECT_IDLECMD: _match_idle_response,
+    MSG_SELECT_BATTLECMD: _match_battle_response,
+    MSG_SELECT_CHAIN: _match_cancel_or_index,
+    MSG_SELECT_EFFECTYN: _match_yesno_response,
+    MSG_SELECT_YESNO: _match_yesno_response,
+    MSG_SELECT_POSITION: _match_position_response,
+    MSG_SELECT_CARD: _match_index_response,
+    MSG_SELECT_TRIBUTE: _match_index_response,
+    MSG_SELECT_SUM: _match_index_response,
+    MSG_SELECT_OPTION: _match_index_response,
+    MSG_SELECT_UNSELECT_CARD: _match_unselect_response,
+    MSG_SELECT_PLACE: _match_place_response,
+    MSG_SELECT_DISFIELD: _match_place_response,
+    MSG_ANNOUNCE_ATTRIB: _match_attrib_response,
+    MSG_ANNOUNCE_NUMBER: _match_index_response,
+}
+
+
+def match_response(msg_type: int, actions: list[dict], response: int) -> int:
+    """Map a ygo-agent server response value to our action index.
+
+    Args:
+        msg_type: Our MSG_SELECT_* constant.
+        actions: Our ActionMapper.actions list.
+        response: The ``response`` field from ygo-agent's ``ActionPredict``.
+
+    Returns:
+        Action index in ``[0, len(actions))``. Falls back to 0 on no match.
+    """
+    matcher = _RESPONSE_MATCHERS.get(msg_type)
+    if matcher is None:
+        logger.warning("No response matcher for msg_type=%d, defaulting to action 0", msg_type)
+        return 0
+    return matcher(actions, response)

@@ -5,6 +5,14 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from yugioh_core.action_categories import (
+    BATTLE_ATTACK,
+    BATTLE_TO_M2,
+    IDLE_ACTIVATE,
+    IDLE_SUMMON,
+    IDLE_TO_BP,
+    IDLE_TO_EP,
+)
 from yugioh_core.constants import (
     MSG_SELECT_BATTLECMD,
     MSG_SELECT_CARD,
@@ -13,11 +21,13 @@ from yugioh_core.constants import (
     MSG_SELECT_IDLECMD,
     MSG_SELECT_OPTION,
     MSG_SELECT_POSITION,
+    MSG_SELECT_UNSELECT_CARD,
     MSG_SELECT_YESNO,
 )
 from yugioh_core.encoding import CARD_FEATURES, MAX_CARDS, encode_card, encode_u16
 from yugioh_env.ygo_agent.bridge import (
     build_predict_input,
+    match_response,
     translate_action_msg,
     translate_cards,
     translate_global,
@@ -421,3 +431,113 @@ class TestBuildPredictInput:
         assert "index" in result
         assert result["input"]["global"]["phase"] == "main1"
         assert result["input"]["action_msg"]["data"]["msg_type"] == "select_yesno"
+
+
+class TestMatchResponse:
+    def test_idle_summon(self):
+        actions = [
+            {"category": IDLE_SUMMON, "index": 0, "code": 111},
+            {"category": IDLE_SUMMON, "index": 1, "code": 222},
+            {"category": IDLE_TO_BP, "index": 0, "code": 0},
+        ]
+        # ygo-agent response for summon index 1: (1 << 16) | 0 = 65536
+        assert match_response(MSG_SELECT_IDLECMD, actions, (1 << 16) | IDLE_SUMMON) == 1
+
+    def test_idle_activate(self):
+        actions = [
+            {"category": IDLE_SUMMON, "index": 0, "code": 111},
+            {"category": IDLE_ACTIVATE, "index": 0, "code": 222},
+            {"category": IDLE_TO_BP, "index": 0, "code": 0},
+        ]
+        assert match_response(MSG_SELECT_IDLECMD, actions, (0 << 16) | IDLE_ACTIVATE) == 1
+
+    def test_idle_to_bp(self):
+        actions = [
+            {"category": IDLE_SUMMON, "index": 0, "code": 111},
+            {"category": IDLE_TO_BP, "index": 0, "code": 0},
+            {"category": IDLE_TO_EP, "index": 0, "code": 0},
+        ]
+        # ygo-agent response for to_bp is 6
+        assert match_response(MSG_SELECT_IDLECMD, actions, 6) == 1
+
+    def test_idle_to_ep(self):
+        actions = [
+            {"category": IDLE_TO_BP, "index": 0, "code": 0},
+            {"category": IDLE_TO_EP, "index": 0, "code": 0},
+        ]
+        assert match_response(MSG_SELECT_IDLECMD, actions, 7) == 1
+
+    def test_chain_select(self):
+        actions = [
+            {"category": 0, "index": 0, "code": 111},
+            {"category": 0, "index": 1, "code": 222},
+            {"category": 1, "index": 0, "code": 0},  # cancel
+        ]
+        assert match_response(MSG_SELECT_CHAIN, actions, 1) == 1
+
+    def test_chain_cancel(self):
+        actions = [
+            {"category": 0, "index": 0, "code": 111},
+            {"category": 1, "index": 0, "code": 0},
+        ]
+        assert match_response(MSG_SELECT_CHAIN, actions, -1) == 1
+
+    def test_battle_attack(self):
+        actions = [
+            {"category": BATTLE_ATTACK, "index": 0, "code": 111},
+            {"category": BATTLE_TO_M2, "index": 0, "code": 0},
+        ]
+        assert match_response(MSG_SELECT_BATTLECMD, actions, (0 << 16) | BATTLE_ATTACK) == 0
+
+    def test_battle_to_m2(self):
+        actions = [
+            {"category": BATTLE_ATTACK, "index": 0, "code": 111},
+            {"category": BATTLE_TO_M2, "index": 0, "code": 0},
+        ]
+        assert match_response(MSG_SELECT_BATTLECMD, actions, 2) == 1
+
+    def test_yesno_yes(self):
+        actions = [
+            {"category": 0, "index": 0},
+            {"category": 1, "index": 0},
+        ]
+        assert match_response(MSG_SELECT_YESNO, actions, 1) == 0
+
+    def test_yesno_no(self):
+        actions = [
+            {"category": 0, "index": 0},
+            {"category": 1, "index": 0},
+        ]
+        assert match_response(MSG_SELECT_YESNO, actions, 0) == 1
+
+    def test_position(self):
+        actions = [
+            {"category": 0, "index": 0x1},  # faceup_attack
+            {"category": 0, "index": 0x4},  # faceup_defense
+        ]
+        assert match_response(MSG_SELECT_POSITION, actions, 0x4) == 1
+
+    def test_select_card(self):
+        actions = [
+            {"category": 0, "index": 0, "code": 111},
+            {"category": 0, "index": 1, "code": 222},
+        ]
+        assert match_response(MSG_SELECT_CARD, actions, 1) == 1
+
+    def test_select_option(self):
+        actions = [
+            {"category": 0, "index": 0},
+            {"category": 0, "index": 1},
+        ]
+        assert match_response(MSG_SELECT_OPTION, actions, 1) == 1
+
+    def test_unselect_card_finish(self):
+        actions = [
+            {"category": 0, "index": 0, "code": 111},
+            {"category": 1, "index": 0, "code": 0},  # finish
+        ]
+        assert match_response(MSG_SELECT_UNSELECT_CARD, actions, -1) == 1
+
+    def test_no_match_returns_zero(self):
+        actions = [{"category": 0, "index": 0, "code": 111}]
+        assert match_response(MSG_SELECT_IDLECMD, actions, 99999) == 0
