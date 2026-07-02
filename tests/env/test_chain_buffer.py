@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
-from yugioh_core.constants import MSG_CHAIN_END, MSG_CHAINING
+import pytest
+
+from yugioh_core.constants import (
+    MSG_CHAIN_DISABLED,
+    MSG_CHAIN_END,
+    MSG_CHAIN_NEGATED,
+    MSG_CHAIN_SOLVED,
+    MSG_CHAIN_SOLVING,
+    MSG_CHAINED,
+    MSG_CHAINING,
+)
 from yugioh_core.encoding import MAX_PENDING_CHAIN
 from yugioh_env.game_state import ChainLink, ChainStatus, GameState
 
@@ -67,3 +77,51 @@ def test_list_holds_all_links_beyond_max():
         gs.update(_chaining(i, controller=0, location=0x04, sequence=0))
     assert gs.chain_count == MAX_PENDING_CHAIN + 2
     assert len(gs.pending_chain) == MAX_PENDING_CHAIN + 2
+
+
+def _build(gs, n):
+    for i in range(n):
+        gs.update(_chaining(1000 + i, controller=0, location=0x04, sequence=i))
+
+
+def test_solving_then_solved_sets_status():
+    gs = GameState()
+    _build(gs, 2)
+    gs.update({"msg_type": MSG_CHAIN_SOLVING, "chain_link": 2})
+    assert gs.pending_chain[1].status == ChainStatus.SOLVING
+    gs.update({"msg_type": MSG_CHAIN_SOLVED, "chain_link": 2})
+    assert gs.pending_chain[1].status == ChainStatus.SOLVED
+    # Link 1 untouched, still building
+    assert gs.pending_chain[0].status == ChainStatus.BUILDING
+
+
+@pytest.mark.parametrize(
+    "terminal_msg, terminal_status",
+    [
+        (MSG_CHAIN_NEGATED, ChainStatus.NEGATED),
+        (MSG_CHAIN_DISABLED, ChainStatus.DISABLED),
+    ],
+)
+def test_terminal_status_takes_precedence_over_solved(terminal_msg, terminal_status):
+    gs = GameState()
+    _build(gs, 1)
+    gs.update({"msg_type": terminal_msg, "chain_link": 1})
+    assert gs.pending_chain[0].status == terminal_status
+    # A later SOLVED for the same link must NOT overwrite the terminal status.
+    gs.update({"msg_type": MSG_CHAIN_SOLVED, "chain_link": 1})
+    assert gs.pending_chain[0].status == terminal_status
+
+
+def test_chained_message_does_not_change_status():
+    gs = GameState()
+    _build(gs, 1)
+    gs.update({"msg_type": MSG_CHAINED, "chain_link": 1})
+    assert gs.pending_chain[0].status == ChainStatus.BUILDING
+
+
+def test_unknown_chain_link_is_ignored_not_crash():
+    gs = GameState()
+    _build(gs, 1)
+    # No link #5 exists — must NOT raise, and must leave state intact.
+    gs.update({"msg_type": MSG_CHAIN_SOLVED, "chain_link": 5})
+    assert gs.pending_chain[0].status == ChainStatus.BUILDING

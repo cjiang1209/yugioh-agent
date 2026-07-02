@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 from enum import StrEnum
 
@@ -13,7 +14,12 @@ from yugioh_core.constants import (
     LOCATION_HAND,
     LOCATION_MZONE,
     LOCATION_SZONE,
+    MSG_CHAIN_DISABLED,
     MSG_CHAIN_END,
+    MSG_CHAIN_NEGATED,
+    MSG_CHAIN_SOLVED,
+    MSG_CHAIN_SOLVING,
+    MSG_CHAINED,
     MSG_CHAINING,
     MSG_DAMAGE,
     MSG_DRAW,
@@ -26,6 +32,8 @@ from yugioh_core.constants import (
     MSG_START,
     MSG_WIN,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ChainStatus(StrEnum):
@@ -144,6 +152,22 @@ class GameState:
                 )
             )
 
+        elif msg_type == MSG_CHAINED:
+            # Build-phase echo; carries chain_link but changes no state.
+            pass
+
+        elif msg_type == MSG_CHAIN_SOLVING:
+            self._set_link_status(msg.get("chain_link", 0), ChainStatus.SOLVING)
+
+        elif msg_type == MSG_CHAIN_SOLVED:
+            self._set_link_status(msg.get("chain_link", 0), ChainStatus.SOLVED)
+
+        elif msg_type == MSG_CHAIN_NEGATED:
+            self._set_link_status(msg.get("chain_link", 0), ChainStatus.NEGATED)
+
+        elif msg_type == MSG_CHAIN_DISABLED:
+            self._set_link_status(msg.get("chain_link", 0), ChainStatus.DISABLED)
+
         elif msg_type == MSG_CHAIN_END:
             self.chain_count = 0
             self.pending_chain.clear()
@@ -179,6 +203,38 @@ class GameState:
             attr = loc_to_counter[cur_loc]
             counts = getattr(self, attr)
             counts[cur_con] += 1
+
+    def _set_link_status(self, chain_link: int, status: ChainStatus) -> None:
+        """Stamp status on the link at index ``chain_link - 1`` (1-based).
+
+        Links are appended in order, so ``chain_link`` maps directly to a list
+        index. The entry's own ``chain_link`` is verified against the requested
+        value as a consistency check.
+
+        NEGATED/DISABLED are terminal and take precedence: a later SOLVED
+        must not overwrite them. An out-of-range or mismatched chain_link is
+        logged and ignored (wire-format robustness — never crash a live duel).
+        """
+        index = chain_link - 1
+        if not 0 <= index < len(self.pending_chain):
+            logger.warning(
+                "Chain resolution referenced unknown chain_link %d (have %d links)",
+                chain_link,
+                len(self.pending_chain),
+            )
+            return
+        link = self.pending_chain[index]
+        if link.chain_link != chain_link:
+            logger.warning(
+                "Chain link at index %d has chain_link %d, expected %d",
+                index,
+                link.chain_link,
+                chain_link,
+            )
+            return
+        if link.status in (ChainStatus.NEGATED, ChainStatus.DISABLED):
+            return
+        link.status = status
 
     def reset(self) -> None:
         """Reset state for a new duel."""
