@@ -2,6 +2,8 @@
 
 import struct
 
+import pytest
+
 from yugioh_core.constants import (
     MSG_ATTACK,
     MSG_BATTLE,
@@ -10,6 +12,11 @@ from yugioh_core.constants import (
     MSG_CARD_HINT,
     MSG_CARD_SELECTED,
     MSG_CARD_TARGET,
+    MSG_CHAIN_DISABLED,
+    MSG_CHAIN_NEGATED,
+    MSG_CHAIN_SOLVED,
+    MSG_CHAIN_SOLVING,
+    MSG_CHAINED,
     MSG_EQUIP,
     MSG_NEW_TURN,
     MSG_RANDOM_SELECTED,
@@ -556,3 +563,21 @@ def test_parser_emits_absolute_player_ids():
     assert parsed["player"] == 1
     assert parsed["chains"][0]["controller"] == 0, "chain entry 0 must keep absolute controller"
     assert parsed["chains"][1]["controller"] == 1, "chain entry 1 must keep absolute controller"
+
+
+@pytest.mark.parametrize(
+    "msg_type",
+    [
+        MSG_CHAINED,
+        MSG_CHAIN_SOLVING,
+        MSG_CHAIN_SOLVED,
+        MSG_CHAIN_NEGATED,
+        MSG_CHAIN_DISABLED,
+    ],
+)
+def test_parse_chain_link_reads_single_byte(msg_type):
+    buf = _wrap_message(msg_type, bytes([3]))  # chain_link = 3
+    msgs = parse_messages(buf)
+    assert len(msgs) == 1
+    assert msgs[0]["msg_type"] == msg_type
+    assert msgs[0]["chain_link"] == 3

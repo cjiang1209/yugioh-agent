@@ -703,6 +703,16 @@ def _parse_chaining(r: BinaryReader) -> dict:
     }
 
 
+def _parse_chain_link(r: BinaryReader) -> dict:
+    """Parse a chain-resolution message carrying a single uint8 chain link index.
+
+    Shared by MSG_CHAINED, MSG_CHAIN_SOLVING, MSG_CHAIN_SOLVED,
+    MSG_CHAIN_NEGATED, MSG_CHAIN_DISABLED. Each is `write<uint8_t>(chain_count)`
+    in ygopro-core (the 1-based index of the link the event refers to).
+    """
+    return {"chain_link": r.u8()}
+
+
 def _parse_attack(r: BinaryReader) -> dict:
     attacker = r.read_card_loc()
     target = r.read_card_loc()
@@ -1009,12 +1019,12 @@ MSG_PARSERS: dict[int, Any] = {
     MSG_FLIPSUMMONING: _parse_flipsummoning,
     MSG_FLIPSUMMONED: _parse_noop,
     MSG_CHAINING: _parse_chaining,
-    MSG_CHAINED: _parse_noop,
-    MSG_CHAIN_SOLVING: _parse_noop,
-    MSG_CHAIN_SOLVED: _parse_noop,
+    MSG_CHAINED: _parse_chain_link,  # single uint8 chain link index
+    MSG_CHAIN_SOLVING: _parse_chain_link,  # same format
+    MSG_CHAIN_SOLVED: _parse_chain_link,  # same format
     MSG_CHAIN_END: _parse_noop,
-    MSG_CHAIN_NEGATED: _parse_noop,
-    MSG_CHAIN_DISABLED: _parse_noop,
+    MSG_CHAIN_NEGATED: _parse_chain_link,  # same format
+    MSG_CHAIN_DISABLED: _parse_chain_link,  # same format
     MSG_ATTACK: _parse_attack,
     MSG_BATTLE: _parse_battle,
     MSG_ATTACK_DISABLED: _parse_noop,
