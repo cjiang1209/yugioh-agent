@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
-
-import numpy as np
+from enum import StrEnum
 
 from yugioh_core.constants import (
     LOCATION_BANISHED,
@@ -28,7 +26,34 @@ from yugioh_core.constants import (
     MSG_START,
     MSG_WIN,
 )
-from yugioh_core.encoding import CHAIN_ENTRY_FEATURES, MAX_PENDING_CHAIN, encode_chain_entry
+
+
+class ChainStatus(StrEnum):
+    """Lifecycle state of a single chain link."""
+
+    BUILDING = "building"
+    SOLVING = "solving"
+    SOLVED = "solved"
+    NEGATED = "negated"
+    DISABLED = "disabled"
+
+
+@dataclass
+class ChainLink:
+    """One link on the current chain.
+
+    ``controller`` is the RAW engine controller (0/1). Relativize to
+    agent/opponent at read sites (encoder, web JSON) — never store the
+    relativized value, matching the GameState.current_player convention.
+    """
+
+    code: int
+    desc: int
+    controller: int
+    location: int
+    sequence: int
+    chain_link: int  # 1-based
+    status: ChainStatus = ChainStatus.BUILDING
 
 
 @dataclass
@@ -54,12 +79,9 @@ class GameState:
     # Current chain count
     chain_count: int = 0
 
-    # Pending chain entries — (MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES) uint8.
-    # Contains the currently-building chain; cleared on MSG_CHAIN_END.
-    # Indexed by chain_count: entry i is written when chain_count == i + 1.
-    pending_chain: np.ndarray = field(
-        default_factory=lambda: np.zeros((MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES), dtype=np.uint8)
-    )
+    # Current chain, in build order. Each link carries its lifecycle status.
+    # Uncapped; the RL tensor cap (MAX_PENDING_CHAIN) is applied at encode time.
+    pending_chain: list[ChainLink] = field(default_factory=list)
 
     def update(self, msg: dict) -> None:
         """Update state from a parsed message."""
@@ -111,8 +133,8 @@ class GameState:
 
         elif msg_type == MSG_CHAINING:
             self.chain_count += 1
-            if self.chain_count <= MAX_PENDING_CHAIN:
-                self.pending_chain[self.chain_count - 1] = encode_chain_entry(
+            self.pending_chain.append(
+                ChainLink(
                     code=msg.get("code", 0),
                     desc=msg.get("desc", 0),
                     controller=msg.get("controller", 0),
@@ -120,17 +142,11 @@ class GameState:
                     sequence=msg.get("sequence", 0),
                     chain_link=self.chain_count,
                 )
-            else:
-                logging.getLogger(__name__).warning(
-                    "Chain count %d exceeds MAX_PENDING_CHAIN %d; "
-                    "chain link truncated from observation",
-                    self.chain_count,
-                    MAX_PENDING_CHAIN,
-                )
+            )
 
         elif msg_type == MSG_CHAIN_END:
             self.chain_count = 0
-            self.pending_chain[:] = 0
+            self.pending_chain.clear()
 
         elif msg_type == MSG_MOVE:
             self._update_zone_counts(msg)
@@ -180,4 +196,4 @@ class GameState:
         self.banished_count = [0, 0]
         self.extra_count = [0, 0]
         self.chain_count = 0
-        self.pending_chain[:] = 0
+        self.pending_chain.clear()

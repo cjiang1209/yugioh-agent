@@ -239,3 +239,47 @@ def test_prompt_meta_none_on_terminal(lib, db_path, script_dirs):
 
     assert obs.done
     assert obs.prompt_meta is None
+
+
+# ─── Chain encoder gap tests ────────────────────────────────────────────────
+
+
+from yugioh_core.encoding import MAX_PENDING_CHAIN, decode_u32
+from yugioh_env.game_state import ChainLink, GameState
+from yugioh_env.observation import build_observation
+
+
+def _gs_with_links(n, controller):
+    gs = GameState()
+    for i in range(n):
+        gs.pending_chain.append(
+            ChainLink(
+                code=1000 + i,
+                desc=0,
+                controller=controller,
+                location=0x04,
+                sequence=i,
+                chain_link=i + 1,
+            )
+        )
+    gs.chain_count = n
+    return gs
+
+
+def test_encoder_relativizes_controller_for_agent_player_1():
+    # Link controlled by engine player 1. With agent_player=1, that is "agent" (0).
+    gs = _gs_with_links(1, controller=1)
+    obs = build_observation(gs, None, agent_player=1, query_fn=lambda p, loc: [])
+    assert obs["pending_chain"][0, 12] == 0  # relativized to agent
+    # With agent_player=0, the same raw controller 1 relativizes to opponent (1).
+    obs0 = build_observation(gs, None, agent_player=0, query_fn=lambda p, loc: [])
+    assert obs0["pending_chain"][0, 12] == 1
+
+
+def test_encoder_truncates_beyond_max_pending_chain():
+    gs = _gs_with_links(MAX_PENDING_CHAIN + 2, controller=0)
+    obs = build_observation(gs, None, agent_player=0, query_fn=lambda p, loc: [])
+    pc = obs["pending_chain"]
+    assert pc.shape == (MAX_PENDING_CHAIN, pc.shape[1])
+    for i in range(MAX_PENDING_CHAIN):
+        assert decode_u32(pc[i], 0) == 1000 + i

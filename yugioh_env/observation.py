@@ -15,11 +15,13 @@ from yugioh_core.constants import (
 )
 from yugioh_core.encoding import (
     CARD_FEATURES,
+    CHAIN_ENTRY_FEATURES,
     GLOBAL_FEATURES,
     MAX_CARDS,
     MAX_PENDING_CHAIN,
     ZONE_SLOTS,
     encode_card,
+    encode_chain_entry,
     encode_u16,
 )
 from yugioh_env.game_state import GameState
@@ -150,14 +152,19 @@ def build_observation(
                         )
                     card_idx += 1
 
-    # Pending chain — relativize controller from engine player to agent/opponent
-    if game_state.chain_count > 0:
-        pending_chain = game_state.pending_chain.copy()
-        for i in range(min(game_state.chain_count, MAX_PENDING_CHAIN)):
-            raw_con = pending_chain[i, 12]
-            pending_chain[i, 12] = 0 if raw_con == agent_player else 1
-    else:
-        pending_chain = game_state.pending_chain
+    # Pending chain → (MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES) uint8 tensor.
+    # Relativize controller (raw engine → 0=agent / 1=opponent) BEFORE encoding.
+    pending_chain = np.zeros((MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES), dtype=np.uint8)
+    for i, link in enumerate(game_state.pending_chain[:MAX_PENDING_CHAIN]):
+        controller = 0 if link.controller == agent_player else 1
+        pending_chain[i] = encode_chain_entry(
+            code=link.code,
+            desc=link.desc,
+            controller=controller,
+            location=link.location,
+            sequence=link.sequence,
+            chain_link=link.chain_link,
+        )
 
     return {
         "cards": cards,
