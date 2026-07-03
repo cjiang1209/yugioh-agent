@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from yugioh_core.card_database import CardDatabase
-from yugioh_core.string_resolver import StringResolver, parse_sys_strings
+from yugioh_core.string_resolver import StringResolver, load_sys_strings, parse_sys_strings
 
 
 @pytest.fixture
@@ -123,3 +123,14 @@ def test_string_resolver_resolves_sysstring_from_parsed_file(tmp_path, db):
     assert resolver.resolve(0x46) == "Monster Cards"  # passcode=0, n=70
     assert resolver.resolve(0x47) == "Spell Cards"  # passcode=0, n=71
     assert resolver.resolve(0x63) is None  # n=99, unknown sysstring
+
+
+def test_load_sys_strings_returns_none_when_file_missing(tmp_path):
+    missing = tmp_path / "nope.conf"
+    assert load_sys_strings(strings_path=missing) is None
+
+
+def test_load_sys_strings_parses_file(tmp_path):
+    conf = tmp_path / "strings.conf"
+    conf.write_text("!system 1 Test system string\n", encoding="utf-8")
+    assert load_sys_strings(strings_path=conf) == {1: "Test system string"}

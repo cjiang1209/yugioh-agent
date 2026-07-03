@@ -24,7 +24,7 @@ from pathlib import Path
 
 from yugioh_core.card_database import CardDatabase
 from yugioh_core.constants import PHASE_NAMES
-from yugioh_core.string_resolver import parse_sys_strings
+from yugioh_core.string_resolver import load_sys_strings
 from yugioh_env.action_describer import ActionDescriber
 from yugioh_env.client import YuGiOhEnv
 from yugioh_env.deck_parser import parse_ydk
@@ -381,11 +381,8 @@ def main():
     db_path = os.environ.get("YUGIOH_DB_PATH") or str(
         Path(__file__).resolve().parent.parent / "assets" / "cards.cdb"
     )
-    strings_path = os.environ.get("YUGIOH_STRINGS_PATH") or str(
-        Path(__file__).resolve().parent.parent / "assets" / "strings.conf"
-    )
     card_db = CardDatabase(db_path)
-    sys_strings = parse_sys_strings(strings_path) if Path(strings_path).is_file() else None
+    sys_strings = load_sys_strings()
     describer = ActionDescriber(card_db, sys_strings=sys_strings)
     print(f"Agent player: {agent_player} ({'goes second' if agent_player == 1 else 'goes first'})")
     print(f"Connecting to {args.url} ...")

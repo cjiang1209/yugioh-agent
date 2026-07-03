@@ -15,12 +15,16 @@ Failed lookups return ``None``; callers fall back to a placeholder.
 
 from __future__ import annotations
 
+import logging
+import os
 import re
 from pathlib import Path
 
 from yugioh_core.card_database import CardDatabase
 
 _SYS_STRING_RE = re.compile(r"^!system\s+(\d+)\s+(.*)$")
+
+logger = logging.getLogger(__name__)
 
 
 def parse_sys_strings(path: str | Path) -> dict[int, str]:
@@ -62,3 +66,27 @@ class StringResolver:
         if passcode == 0:
             return self._sys.get(n)
         return self._card_db.get_card_string(passcode, n)
+
+
+def load_sys_strings(strings_path: str | Path | None = None) -> dict[int, str] | None:
+    """Load the sysstring table from strings.conf, or None if the file is absent.
+
+    Resolves the path from ``strings_path``, then ``YUGIOH_STRINGS_PATH``, then
+    ``<repo_root>/assets/strings.conf``. Returns None (with a warning) when the
+    file does not exist, so callers can fall back to placeholder labels. The
+    single source of truth for locating and parsing strings.conf.
+    """
+    if strings_path is None:
+        repo_root = Path(__file__).resolve().parent.parent
+        strings_path = os.environ.get(
+            "YUGIOH_STRINGS_PATH", str(repo_root / "assets" / "strings.conf")
+        )
+    strings_path = Path(strings_path)
+    if not strings_path.is_file():
+        logger.warning(
+            "strings.conf not found at %s; sysstring labels will use placeholders. "
+            "Run scripts/setup.sh to download.",
+            strings_path,
+        )
+        return None
+    return parse_sys_strings(strings_path)

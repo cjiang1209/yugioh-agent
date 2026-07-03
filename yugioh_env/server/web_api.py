@@ -2,21 +2,17 @@
 
 from __future__ import annotations
 
-import logging
-import os
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from yugioh_core.string_resolver import parse_sys_strings
+from yugioh_core.string_resolver import load_sys_strings
 from yugioh_env.action_describer import ActionDescriber
 from yugioh_env.deck_parser import parse_ydk
 from yugioh_env.models import YuGiOhAction
 from yugioh_env.server.board_state import build_board_state
 from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
-
-logger = logging.getLogger(__name__)
 
 web_router = APIRouter(prefix="/api/web")
 
@@ -91,23 +87,11 @@ def create_describer(
 ) -> ActionDescriber:
     """Construct the ActionDescriber the web UI shares across all requests.
 
-    Reuses the env's `cards.cdb` connection. Loads sysstring labels from
-    `strings_path` (or `YUGIOH_STRINGS_PATH` env var, or
-    `<project_root>/assets/strings.conf` as last resort). When the file
-    is missing, the describer falls back to placeholder labels.
+    Reuses the env's `cards.cdb` connection. Sysstring labels are loaded via
+    `load_sys_strings` (see it for path resolution); missing strings.conf falls
+    back to placeholder labels.
     """
-    if strings_path is None:
-        project_root = Path(__file__).resolve().parent.parent.parent
-        strings_path = os.environ.get(
-            "YUGIOH_STRINGS_PATH", str(project_root / "assets" / "strings.conf")
-        )
-    sys_strings = parse_sys_strings(strings_path) if Path(strings_path).is_file() else None
-    if sys_strings is None:
-        logger.warning(
-            "strings.conf not found at %s; sysstring labels will use placeholders. "
-            "Run scripts/setup.sh to download.",
-            strings_path,
-        )
+    sys_strings = load_sys_strings(strings_path)
     return ActionDescriber(env._card_db, sys_strings=sys_strings)
 
 
