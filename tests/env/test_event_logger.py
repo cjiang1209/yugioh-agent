@@ -1,5 +1,7 @@
 """Tests for the event_logger module."""
 
+import logging
+
 from yugioh_core.constants import (
     LOCATION_BANISHED,
     LOCATION_DECK,
@@ -42,6 +44,7 @@ from yugioh_env.event_logger import (
     CardInfo,
     EventDescriber,
     FieldTracker,
+    enrich_messages,
     format_card,
 )
 
@@ -64,10 +67,113 @@ class _FakeCardDB:
 
 
 def _fmt(messages, agent_player=0, tracker=None, sys_strings=None):
-    """Shorthand: describe messages via an EventDescriber over the fake DB."""
+    """Shorthand: enrich then describe via an EventDescriber over the fake DB."""
     if tracker is None:
         tracker = FieldTracker()
-    return EventDescriber(_FakeCardDB(), sys_strings).describe(messages, agent_player, tracker)
+    enriched = enrich_messages(messages, tracker)
+    return EventDescriber(_FakeCardDB(), sys_strings).describe(enriched, agent_player)
+
+
+# ---------------------------------------------------------------------------
+# enrich_messages
+# ---------------------------------------------------------------------------
+
+
+class TestEnrichMessages:
+    def test_attack_stamps_attacker_code(self):
+        tracker = FieldTracker()
+        tracker.update(
+            {
+                "msg_type": MSG_SUMMONING,
+                "code": 89631139,
+                "controller": 0,
+                "location": LOCATION_MZONE,
+                "sequence": 0,
+                "position": POS_FACEUP_ATTACK,
+            }
+        )
+        enriched = enrich_messages(
+            [
+                {
+                    "msg_type": MSG_ATTACK,
+                    "attacker_controller": 0,
+                    "attacker_location": LOCATION_MZONE,
+                    "attacker_sequence": 0,
+                    "target_location": 0,
+                    "target_controller": 0,
+                    "target_sequence": 0,
+                }
+            ],
+            tracker,
+        )
+        assert enriched[0]["attacker_code"] == 89631139
+
+    def test_equip_stamps_both_codes(self):
+        tracker = FieldTracker()
+        tracker.update(
+            {
+                "msg_type": MSG_SET,
+                "code": 5318639,
+                "controller": 0,
+                "location": LOCATION_SZONE,
+                "sequence": 0,
+                "position": POS_FACEUP,
+            }
+        )
+        tracker.update(
+            {
+                "msg_type": MSG_SUMMONING,
+                "code": 89631139,
+                "controller": 0,
+                "location": LOCATION_MZONE,
+                "sequence": 0,
+                "position": POS_FACEUP_ATTACK,
+            }
+        )
+        enriched = enrich_messages(
+            [
+                {
+                    "msg_type": MSG_EQUIP,
+                    "equip_controller": 0,
+                    "equip_location": LOCATION_SZONE,
+                    "equip_sequence": 0,
+                    "target_controller": 0,
+                    "target_location": LOCATION_MZONE,
+                    "target_sequence": 0,
+                }
+            ],
+            tracker,
+        )
+        assert enriched[0]["equip_code"] == 5318639
+        assert enriched[0]["target_code"] == 89631139
+
+    def test_passthrough_message_unchanged(self):
+        tracker = FieldTracker()
+        msgs = [{"msg_type": MSG_DRAW, "player": 0, "cards": [1, 2]}]
+        enriched = enrich_messages(msgs, tracker)
+        assert enriched[0] == {"msg_type": MSG_DRAW, "player": 0, "cards": [1, 2]}
+
+    def test_does_not_mutate_input(self):
+        tracker = FieldTracker()
+        tracker.update(
+            {
+                "msg_type": MSG_SUMMONING,
+                "code": 89631139,
+                "controller": 0,
+                "location": LOCATION_MZONE,
+                "sequence": 0,
+                "position": POS_FACEUP_ATTACK,
+            }
+        )
+        original = {
+            "msg_type": MSG_ATTACK,
+            "attacker_controller": 0,
+            "attacker_location": LOCATION_MZONE,
+            "attacker_sequence": 0,
+            "target_location": 0,
+        }
+        enrich_messages([original], tracker)
+        assert "attacker_code" not in original  # input untouched
 
 
 # ---------------------------------------------------------------------------
@@ -567,23 +673,57 @@ class TestFormatEventsAttack:
         assert "[89631139: Blue-Eyes White Dragon]" in events[0]
         assert "[38517737: Alexandrite Dragon]" in events[0]
 
-    def test_attack_unknown_card(self):
-        """Attack with no tracker info should show [0: ?]."""
+    def test_attack_unknown_card(self, caplog):
+        """Attack from a location the tracker never recorded (reconstruction
+        drift): the code is unknown ([0: ?]) but the engine-provided location is
+        preserved, so the line still shows the attacker's zone. The drift is
+        logged as a warning, not let go silently."""
         tracker = FieldTracker()
-        events = _fmt(
-            [
-                {
-                    "msg_type": MSG_ATTACK,
-                    "attacker_controller": 0,
-                    "attacker_location": LOCATION_MZONE,
-                    "attacker_sequence": 0,
-                    "target_location": 0,
-                }
-            ],
-            0,
-            tracker=tracker,
+        with caplog.at_level(logging.WARNING, logger="yugioh_env.event_logger"):
+            events = _fmt(
+                [
+                    {
+                        "msg_type": MSG_ATTACK,
+                        "attacker_controller": 0,
+                        "attacker_location": LOCATION_MZONE,
+                        "attacker_sequence": 0,
+                        "target_location": 0,
+                    }
+                ],
+                0,
+                tracker=tracker,
+            )
+        assert events[0] == "You: [0: ?][MZone-0] attacks directly"
+        assert any("drift" in r.message.lower() for r in caplog.records)
+
+    def test_attack_known_card_no_drift_warning(self, caplog):
+        """A tracker hit must NOT emit a drift warning."""
+        tracker = FieldTracker()
+        tracker.update(
+            {
+                "msg_type": MSG_SUMMONING,
+                "code": 89631139,
+                "controller": 0,
+                "location": LOCATION_MZONE,
+                "sequence": 0,
+                "position": POS_FACEUP_ATTACK,
+            }
         )
-        assert "[0: ?]" in events[0]
+        with caplog.at_level(logging.WARNING, logger="yugioh_env.event_logger"):
+            _fmt(
+                [
+                    {
+                        "msg_type": MSG_ATTACK,
+                        "attacker_controller": 0,
+                        "attacker_location": LOCATION_MZONE,
+                        "attacker_sequence": 0,
+                        "target_location": 0,
+                    }
+                ],
+                0,
+                tracker=tracker,
+            )
+        assert not any("drift" in r.message.lower() for r in caplog.records)
 
 
 class TestFormatEventsLPChanges:

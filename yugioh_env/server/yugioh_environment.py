@@ -45,7 +45,7 @@ from yugioh_core.string_resolver import load_sys_strings
 from yugioh_env.action_loop_filter import ActionLoopFilter
 from yugioh_env.action_space import ActionMapper
 from yugioh_env.duel import Duel
-from yugioh_env.event_logger import EventDescriber, FieldTracker
+from yugioh_env.event_logger import EventDescriber, FieldTracker, enrich_messages
 from yugioh_env.lib_loader import load_library
 from yugioh_env.models import ActionMeta, YuGiOhAction, YuGiOhObservation, YuGiOhState
 from yugioh_env.observation import build_observation
@@ -468,7 +468,9 @@ class YuGiOhEnvironment(Environment):
         """Format events and snapshot the board into a frame."""
         if not events:
             return
-        chunk_log = self._event_describer.describe(events, self._agent_player, self._field_tracker)
+        chunk_log = self._event_describer.describe(
+            enrich_messages(events, self._field_tracker), self._agent_player
+        )
         if chunk_log:
             self._last_frames.append(
                 {

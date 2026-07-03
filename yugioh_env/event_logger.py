@@ -7,6 +7,8 @@ between choice points and delivered as part of observations.
 
 from __future__ import annotations
 
+import logging
+
 from yugioh_core.constants import (
     LOCATION_BANISHED,
     LOCATION_DECK,
@@ -44,6 +46,8 @@ from yugioh_core.constants import (
     POS_FACEUP_DEFENSE,
 )
 from yugioh_core.string_resolver import StringResolver
+
+logger = logging.getLogger(__name__)
 
 _POS_NAMES = {
     POS_FACEUP_ATTACK: "FU-Atk",
@@ -197,15 +201,73 @@ class FieldTracker:
         self._field.clear()
 
 
+def enrich_messages(messages: list[dict], field_tracker: FieldTracker) -> list[dict]:
+    """Return copies of ``messages`` with structural facts stamped in.
+
+    Location-only messages (MSG_ATTACK, MSG_EQUIP) name their cards only by
+    field position; this fills in the card ``code`` and ``position`` from the
+    tracker so downstream consumers can format without a tracker. The tracker
+    is advanced over every message (in order) so its placement state stays
+    consistent. Input dicts are never mutated.
+
+    Enrichment scope is limited to the location-only messages the describer
+    renders; all other messages pass through as shallow copies.
+
+    Drift detection: a message that references a real (non-zero) field location
+    the tracker has no card for means the tracker's reconstruction has diverged
+    from the engine's actual field (a missed placement). That is unexpected and
+    is logged as a warning rather than silently rendered as an unknown card.
+    """
+
+    def stamp(out: dict, msg: dict, prefix: str, msg_type) -> None:
+        """Look up ``<prefix>_{controller,location,sequence}`` in the tracker and
+        stamp ``<prefix>_code``/``<prefix>_position`` onto ``out``. Warns on
+        drift (a non-zero location the tracker has no card for)."""
+        controller = msg.get(f"{prefix}_controller", 0)
+        location = msg.get(f"{prefix}_location", 0)
+        sequence = msg.get(f"{prefix}_sequence", 0)
+        info = field_tracker.get(controller, location, sequence)
+        if location != 0 and info.code == 0:
+            logger.warning(
+                "State reconstruction drift: %s of msg_type=%s at "
+                "controller=%d location=0x%02x sequence=%d has no tracked card",
+                prefix,
+                msg_type,
+                controller,
+                location,
+                sequence,
+            )
+        out[f"{prefix}_code"] = info.code
+        out[f"{prefix}_position"] = info.position
+
+    enriched: list[dict] = []
+    for msg in messages:
+        field_tracker.update(msg)
+        msg_type = msg.get("msg_type")
+        out = dict(msg)
+
+        if msg_type == MSG_ATTACK:
+            stamp(out, msg, "attacker", msg_type)
+            if msg.get("target_location", 0) != 0:
+                stamp(out, msg, "target", msg_type)
+
+        elif msg_type == MSG_EQUIP:
+            stamp(out, msg, "equip", msg_type)
+            stamp(out, msg, "target", msg_type)
+
+        enriched.append(out)
+    return enriched
+
+
 class EventDescriber:
     """Materializes engine messages into human-readable event-log lines.
 
     Counterpart to ActionDescriber. Owns the stable materialization deps
-    (card_db, sys_strings). The FieldTracker (reconstruction state) is passed
-    into describe() per call — it stays owned/reset by the caller.
+    (card_db, sys_strings). Messages must be pre-enriched via enrich_messages()
+    before being passed to describe(), which is a pure message→text formatter.
 
-    Env-independent by design: takes no env handle, reads no env-private
-    state, does not own the tracker. Do not add any of those.
+    Env-independent by design: takes no env handle and reads no env-private
+    state.
     """
 
     def __init__(self, card_db, sys_strings: dict[int, str] | None = None) -> None:
@@ -214,11 +276,8 @@ class EventDescriber:
             StringResolver(card_db, sys_strings=sys_strings) if sys_strings is not None else None
         )
 
-    def describe(
-        self, messages: list[dict], agent_player: int, field_tracker: FieldTracker
-    ) -> list[str]:
+    def describe(self, messages: list[dict], agent_player: int) -> list[str]:
         events: list[str] = []
-        tracker = field_tracker
 
         def tag(p: int) -> str:
             return "You:" if p == agent_player else "Opponent:"
@@ -227,15 +286,7 @@ class EventDescriber:
             name = self._card_db.get_card_name(code) if code else "?"
             return format_card(code, name, location, sequence, position)
 
-        def card_str_from_info(info: CardInfo) -> str:
-            name = self._card_db.get_card_name(info.code) if info.code else "?"
-            return format_card(info.code, name, info.location, info.sequence, info.position)
-
-        def card_str_from_loc(controller: int, location: int, sequence: int) -> str:
-            return card_str_from_info(tracker.get(controller, location, sequence))
-
         for msg in messages:
-            tracker.update(msg)
             msg_type = msg.get("msg_type")
 
             if msg_type == MSG_NEW_TURN:
@@ -309,16 +360,22 @@ class EventDescriber:
 
             elif msg_type == MSG_ATTACK:
                 a_con = msg.get("attacker_controller", 0)
-                a_loc = msg.get("attacker_location", 0)
-                a_seq = msg.get("attacker_sequence", 0)
-                t_loc = msg.get("target_location", 0)
-                attacker_str = card_str_from_loc(a_con, a_loc, a_seq)
-                if t_loc == 0:
+                attacker_str = card_str(
+                    msg.get("attacker_code", 0),
+                    msg.get("attacker_location", 0),
+                    msg.get("attacker_sequence", 0),
+                    msg.get("attacker_position", 0),
+                )
+                if msg.get("target_location", 0) == 0:
                     events.append(f"{tag(a_con)} {attacker_str} attacks directly")
                 else:
                     t_con = msg.get("target_controller", 0)
-                    t_seq = msg.get("target_sequence", 0)
-                    target_str = card_str_from_loc(t_con, t_loc, t_seq)
+                    target_str = card_str(
+                        msg.get("target_code", 0),
+                        msg.get("target_location", 0),
+                        msg.get("target_sequence", 0),
+                        msg.get("target_position", 0),
+                    )
                     events.append(f"{tag(a_con)} {attacker_str} attacks {tag(t_con)} {target_str}")
 
             elif msg_type == MSG_DAMAGE:
@@ -376,15 +433,17 @@ class EventDescriber:
                 events.append(f"{tag(p)} Set {c}")
 
             elif msg_type == MSG_EQUIP:
-                equip_str = card_str_from_loc(
-                    msg.get("equip_controller", 0),
+                equip_str = card_str(
+                    msg.get("equip_code", 0),
                     msg.get("equip_location", 0),
                     msg.get("equip_sequence", 0),
+                    msg.get("equip_position", 0),
                 )
-                target_str = card_str_from_loc(
-                    msg.get("target_controller", 0),
+                target_str = card_str(
+                    msg.get("target_code", 0),
                     msg.get("target_location", 0),
                     msg.get("target_sequence", 0),
+                    msg.get("target_position", 0),
                 )
                 events.append(f"{equip_str} is equipped to {target_str}")
 
