@@ -17,6 +17,7 @@ from yugioh_core.constants import (
     LOCATION_OVERLAY,
     LOCATION_SZONE,
     MSG_ATTACK,
+    MSG_CHAIN_DISABLED,
     MSG_CHAIN_NEGATED,
     MSG_CHAINING,
     MSG_DAMAGE,
@@ -290,10 +291,21 @@ class EventDescriber:
                     msg.get("sequence", 0),
                     msg.get("position", 0),
                 )
-                events.append(f"{tag(p)} Activate {c}")
+                effect = self._resolver.resolve(msg.get("desc", 0)) if self._resolver else None
+                chain_link = msg.get("chain_link")
+                prefix = f"[Chain {chain_link}] " if chain_link else ""
+                suffix = f": {effect}" if effect else ""
+                events.append(f"{tag(p)} {prefix}Activate {c}{suffix}")
 
             elif msg_type == MSG_CHAIN_NEGATED:
-                events.append("Chain is negated")
+                chain_link = msg.get("chain_link")
+                events.append(f"[Chain {chain_link}] negated" if chain_link else "Chain is negated")
+
+            elif msg_type == MSG_CHAIN_DISABLED:
+                chain_link = msg.get("chain_link")
+                events.append(
+                    f"[Chain {chain_link}] disabled" if chain_link else "Chain is disabled"
+                )
 
             elif msg_type == MSG_ATTACK:
                 a_con = msg.get("attacker_controller", 0)

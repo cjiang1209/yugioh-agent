@@ -10,6 +10,7 @@ from yugioh_core.constants import (
     LOCATION_OVERLAY,
     LOCATION_SZONE,
     MSG_ATTACK,
+    MSG_CHAIN_DISABLED,
     MSG_CHAIN_NEGATED,
     MSG_CHAINING,
     MSG_DAMAGE,
@@ -455,9 +456,39 @@ class TestFormatEventsChaining:
         )
         assert events[0] == "Opponent: Activate [5318639: Mystical Space Typhoon][SZone-0][FU]"
 
+    def test_activate_includes_chain_link(self):
+        events = _fmt(
+            [
+                {
+                    "msg_type": MSG_CHAINING,
+                    "code": 5318639,
+                    "controller": 1,
+                    "location": LOCATION_SZONE,
+                    "sequence": 0,
+                    "position": POS_FACEUP,
+                    "chain_link": 2,
+                }
+            ]
+        )
+        assert events[0] == (
+            "Opponent: [Chain 2] Activate [5318639: Mystical Space Typhoon][SZone-0][FU]"
+        )
+
     def test_chain_negated(self):
         events = _fmt([{"msg_type": MSG_CHAIN_NEGATED}])
         assert events == ["Chain is negated"]
+
+    def test_chain_negated_includes_chain_link(self):
+        events = _fmt([{"msg_type": MSG_CHAIN_NEGATED, "chain_link": 2}])
+        assert events == ["[Chain 2] negated"]
+
+    def test_chain_disabled(self):
+        events = _fmt([{"msg_type": MSG_CHAIN_DISABLED}])
+        assert events == ["Chain is disabled"]
+
+    def test_chain_disabled_includes_chain_link(self):
+        events = _fmt([{"msg_type": MSG_CHAIN_DISABLED, "chain_link": 3}])
+        assert events == ["[Chain 3] disabled"]
 
 
 class TestFormatEventsAttack:
@@ -962,3 +993,48 @@ class TestFieldTrackerPersistence:
         )
         # Card code should be 0 (unknown) after reset
         assert "[0: ?]" in events[0]
+
+
+# ---------------------------------------------------------------------------
+# Chain effect text — resolver integration
+# ---------------------------------------------------------------------------
+
+
+def test_chaining_with_resolver_appends_effect_text():
+    # desc=12345 -> passcode=0, n=12345 (a system string)
+    events = _fmt(
+        [
+            {
+                "msg_type": MSG_CHAINING,
+                "code": 5318639,
+                "controller": 1,
+                "location": LOCATION_SZONE,
+                "sequence": 0,
+                "position": POS_FACEUP,
+                "desc": 12345,
+                "chain_link": 1,
+            }
+        ],
+        sys_strings={12345: "Negate the summon"},
+    )
+    assert events[0] == (
+        "Opponent: [Chain 1] Activate [5318639: Mystical Space Typhoon][SZone-0][FU]: "
+        "Negate the summon"
+    )
+
+
+def test_chaining_without_resolver_is_name_only():
+    events = _fmt(
+        [
+            {
+                "msg_type": MSG_CHAINING,
+                "code": 5318639,
+                "controller": 1,
+                "location": LOCATION_SZONE,
+                "sequence": 0,
+                "position": POS_FACEUP,
+                "desc": 12345,
+            }
+        ]
+    )
+    assert events[0] == "Opponent: Activate [5318639: Mystical Space Typhoon][SZone-0][FU]"

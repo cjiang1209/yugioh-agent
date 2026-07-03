@@ -41,6 +41,7 @@ from yugioh_core.constants import (
     SELECT_MSGS,
 )
 from yugioh_core.encoding import MAX_ACTIONS
+from yugioh_core.string_resolver import load_sys_strings
 from yugioh_env.action_loop_filter import ActionLoopFilter
 from yugioh_env.action_space import ActionMapper
 from yugioh_env.duel import Duel
@@ -231,7 +232,7 @@ class YuGiOhEnvironment(Environment):
         self._card_sel: list[int] = []
         # Persistent field tracker for event log card-code resolution
         self._field_tracker = FieldTracker()
-        self._event_describer = EventDescriber(self._card_db)
+        self._event_describer = EventDescriber(self._card_db, load_sys_strings())
         # Intermediate board snapshots captured during _process_to_agent_choice()
         self._last_frames: list[dict] = []
         # When True, board snapshots include unhidden opponent card data

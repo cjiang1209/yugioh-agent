@@ -690,7 +690,7 @@ def _parse_chaining(r: BinaryReader) -> dict:
     triggering_loc = r.u8()
     triggering_seq = r.u32()
     desc = r.u64()
-    chain_count = r.u32()
+    chain_link = r.u32()
     return {
         "msg_type": MSG_CHAINING,
         "code": code,
@@ -699,7 +699,7 @@ def _parse_chaining(r: BinaryReader) -> dict:
         "triggering_location": triggering_loc,
         "triggering_sequence": triggering_seq,
         "desc": desc,
-        "chain_count": chain_count,
+        "chain_link": chain_link,
     }
 
 
@@ -707,8 +707,9 @@ def _parse_chain_link(r: BinaryReader) -> dict:
     """Parse a chain-resolution message carrying a single uint8 chain link index.
 
     Shared by MSG_CHAINED, MSG_CHAIN_SOLVING, MSG_CHAIN_SOLVED,
-    MSG_CHAIN_NEGATED, MSG_CHAIN_DISABLED. Each is `write<uint8_t>(chain_count)`
-    in ygopro-core (the 1-based index of the link the event refers to).
+    MSG_CHAIN_NEGATED, MSG_CHAIN_DISABLED. Each is a single ``uint8`` in
+    ygopro-core (the 1-based index of the link the event refers to), exposed
+    as ``chain_link`` to match ``_parse_chaining``.
     """
     return {"chain_link": r.u8()}
 
