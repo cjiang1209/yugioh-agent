@@ -44,7 +44,7 @@ from yugioh_core.encoding import MAX_ACTIONS
 from yugioh_env.action_loop_filter import ActionLoopFilter
 from yugioh_env.action_space import ActionMapper
 from yugioh_env.duel import Duel
-from yugioh_env.event_logger import FieldTracker, format_events
+from yugioh_env.event_logger import EventDescriber, FieldTracker
 from yugioh_env.lib_loader import load_library
 from yugioh_env.models import ActionMeta, YuGiOhAction, YuGiOhObservation, YuGiOhState
 from yugioh_env.observation import build_observation
@@ -231,6 +231,7 @@ class YuGiOhEnvironment(Environment):
         self._card_sel: list[int] = []
         # Persistent field tracker for event log card-code resolution
         self._field_tracker = FieldTracker()
+        self._event_describer = EventDescriber(self._card_db)
         # Intermediate board snapshots captured during _process_to_agent_choice()
         self._last_frames: list[dict] = []
         # When True, board snapshots include unhidden opponent card data
@@ -466,12 +467,7 @@ class YuGiOhEnvironment(Environment):
         """Format events and snapshot the board into a frame."""
         if not events:
             return
-        chunk_log = format_events(
-            events,
-            self._agent_player,
-            self._card_db.get_card_name,
-            self._field_tracker,
-        )
+        chunk_log = self._event_describer.describe(events, self._agent_player, self._field_tracker)
         if chunk_log:
             self._last_frames.append(
                 {

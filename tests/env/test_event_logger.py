@@ -39,9 +39,9 @@ from yugioh_core.constants import (
 )
 from yugioh_env.event_logger import (
     CardInfo,
+    EventDescriber,
     FieldTracker,
     format_card,
-    format_events,
 )
 
 # ---------------------------------------------------------------------------
@@ -57,15 +57,16 @@ NAMES = {
 }
 
 
-def _name(code: int) -> str:
-    return NAMES.get(code, f"Card#{code}")
+class _FakeCardDB:
+    def get_card_name(self, code: int) -> str:
+        return NAMES.get(code, f"Card#{code}")
 
 
-def _fmt(messages, agent_player=0, tracker=None):
-    """Shorthand for format_events with sensible defaults."""
+def _fmt(messages, agent_player=0, tracker=None, sys_strings=None):
+    """Shorthand: describe messages via an EventDescriber over the fake DB."""
     if tracker is None:
         tracker = FieldTracker()
-    return format_events(messages, agent_player, _name, tracker)
+    return EventDescriber(_FakeCardDB(), sys_strings).describe(messages, agent_player, tracker)
 
 
 # ---------------------------------------------------------------------------
@@ -473,7 +474,7 @@ class TestFormatEventsAttack:
                 "position": POS_FACEUP_ATTACK,
             }
         )
-        events = format_events(
+        events = _fmt(
             [
                 {
                     "msg_type": MSG_ATTACK,
@@ -486,8 +487,7 @@ class TestFormatEventsAttack:
                 }
             ],
             0,
-            _name,
-            tracker,
+            tracker=tracker,
         )
         assert len(events) == 1
         assert "You:" in events[0]
@@ -517,7 +517,7 @@ class TestFormatEventsAttack:
                 "position": POS_FACEUP_ATTACK,
             }
         )
-        events = format_events(
+        events = _fmt(
             [
                 {
                     "msg_type": MSG_ATTACK,
@@ -530,8 +530,7 @@ class TestFormatEventsAttack:
                 }
             ],
             0,
-            _name,
-            tracker,
+            tracker=tracker,
         )
         assert "attacks" in events[0]
         assert "[89631139: Blue-Eyes White Dragon]" in events[0]
@@ -540,7 +539,7 @@ class TestFormatEventsAttack:
     def test_attack_unknown_card(self):
         """Attack with no tracker info should show [0: ?]."""
         tracker = FieldTracker()
-        events = format_events(
+        events = _fmt(
             [
                 {
                     "msg_type": MSG_ATTACK,
@@ -551,8 +550,7 @@ class TestFormatEventsAttack:
                 }
             ],
             0,
-            _name,
-            tracker,
+            tracker=tracker,
         )
         assert "[0: ?]" in events[0]
 
@@ -817,7 +815,7 @@ class TestFormatEventsEquip:
                 "position": POS_FACEUP_ATTACK,
             }
         )
-        events = format_events(
+        events = _fmt(
             [
                 {
                     "msg_type": MSG_EQUIP,
@@ -830,8 +828,7 @@ class TestFormatEventsEquip:
                 }
             ],
             0,
-            _name,
-            tracker,
+            tracker=tracker,
         )
         assert "is equipped to" in events[0]
         assert "[5318639: Mystical Space Typhoon]" in events[0]
@@ -916,7 +913,7 @@ class TestFieldTrackerPersistence:
         )
 
         # Second call: attack with that monster (no summon in this batch)
-        events = format_events(
+        events = _fmt(
             [
                 {
                     "msg_type": MSG_ATTACK,
@@ -927,8 +924,7 @@ class TestFieldTrackerPersistence:
                 }
             ],
             0,
-            _name,
-            tracker,
+            tracker=tracker,
         )
         assert "[89631139: Blue-Eyes White Dragon]" in events[0]
 
@@ -951,7 +947,7 @@ class TestFieldTrackerPersistence:
 
         tracker.reset()
 
-        events = format_events(
+        events = _fmt(
             [
                 {
                     "msg_type": MSG_ATTACK,
@@ -962,8 +958,7 @@ class TestFieldTrackerPersistence:
                 }
             ],
             0,
-            _name,
-            tracker,
+            tracker=tracker,
         )
         # Card code should be 0 (unknown) after reset
         assert "[0: ?]" in events[0]

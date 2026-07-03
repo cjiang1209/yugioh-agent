@@ -7,8 +7,6 @@ between choice points and delivered as part of observations.
 
 from __future__ import annotations
 
-from collections.abc import Callable
-
 from yugioh_core.constants import (
     LOCATION_BANISHED,
     LOCATION_DECK,
@@ -44,6 +42,7 @@ from yugioh_core.constants import (
     POS_FACEUP_ATTACK,
     POS_FACEUP_DEFENSE,
 )
+from yugioh_core.string_resolver import StringResolver
 
 _POS_NAMES = {
     POS_FACEUP_ATTACK: "FU-Atk",
@@ -197,192 +196,193 @@ class FieldTracker:
         self._field.clear()
 
 
-def format_events(
-    messages: list[dict],
-    agent_player: int,
-    get_name_fn: Callable[[int], str],
-    field_tracker: FieldTracker,
-) -> list[str]:
-    """Convert parsed message dicts into human-readable event strings.
+class EventDescriber:
+    """Materializes engine messages into human-readable event-log lines.
 
-    Args:
-        messages: List of parsed message dicts from the engine.
-        agent_player: The player index of the agent (0 or 1).
-        get_name_fn: Callable that maps card code -> card name string.
-        field_tracker: Persistent tracker that maps field positions to card
-            codes. Updated in-place so it retains knowledge across calls
-            (i.e. across steps within an episode).
+    Counterpart to ActionDescriber. Owns the stable materialization deps
+    (card_db, sys_strings). The FieldTracker (reconstruction state) is passed
+    into describe() per call — it stays owned/reset by the caller.
 
-    Returns:
-        List of human-readable event descriptions.
+    Env-independent by design: takes no env handle, reads no env-private
+    state, does not own the tracker. Do not add any of those.
     """
-    events: list[str] = []
-    tracker = field_tracker
 
-    def tag(p: int) -> str:
-        return "You:" if p == agent_player else "Opponent:"
+    def __init__(self, card_db, sys_strings: dict[int, str] | None = None) -> None:
+        self._card_db = card_db
+        self._resolver: StringResolver | None = (
+            StringResolver(card_db, sys_strings=sys_strings) if sys_strings is not None else None
+        )
 
-    def card_str(code: int, location: int, sequence: int = 0, position: int = 0) -> str:
-        name = get_name_fn(code) if code else "?"
-        return format_card(code, name, location, sequence, position)
+    def describe(
+        self, messages: list[dict], agent_player: int, field_tracker: FieldTracker
+    ) -> list[str]:
+        events: list[str] = []
+        tracker = field_tracker
 
-    def card_str_from_info(info: CardInfo) -> str:
-        name = get_name_fn(info.code) if info.code else "?"
-        return format_card(info.code, name, info.location, info.sequence, info.position)
+        def tag(p: int) -> str:
+            return "You:" if p == agent_player else "Opponent:"
 
-    def card_str_from_loc(controller: int, location: int, sequence: int) -> str:
-        return card_str_from_info(tracker.get(controller, location, sequence))
+        def card_str(code: int, location: int, sequence: int = 0, position: int = 0) -> str:
+            name = self._card_db.get_card_name(code) if code else "?"
+            return format_card(code, name, location, sequence, position)
 
-    for msg in messages:
-        tracker.update(msg)
-        msg_type = msg.get("msg_type")
+        def card_str_from_info(info: CardInfo) -> str:
+            name = self._card_db.get_card_name(info.code) if info.code else "?"
+            return format_card(info.code, name, info.location, info.sequence, info.position)
 
-        if msg_type == MSG_NEW_TURN:
-            p = msg.get("player", 0)
-            events.append(f"{tag(p)} Turn start")
+        def card_str_from_loc(controller: int, location: int, sequence: int) -> str:
+            return card_str_from_info(tracker.get(controller, location, sequence))
 
-        elif msg_type == MSG_NEW_PHASE:
-            phase = msg.get("phase", 0)
-            phase_name = PHASE_NAMES.get(phase, f"0x{phase:02x}")
-            events.append(f"Phase: {phase_name}")
+        for msg in messages:
+            tracker.update(msg)
+            msg_type = msg.get("msg_type")
 
-        elif msg_type == MSG_DRAW:
-            p = msg.get("player", 0)
-            count = len(msg.get("cards", []))
-            s = "s" if count != 1 else ""
-            events.append(f"{tag(p)} Draw {count} card{s}")
+            if msg_type == MSG_NEW_TURN:
+                p = msg.get("player", 0)
+                events.append(f"{tag(p)} Turn start")
 
-        elif msg_type == MSG_SUMMONING:
-            p = msg.get("controller", 0)
-            c = card_str(
-                msg.get("code", 0),
-                msg.get("location", 0),
-                msg.get("sequence", 0),
-                msg.get("position", 0),
-            )
-            events.append(f"{tag(p)} Normal Summon {c}")
+            elif msg_type == MSG_NEW_PHASE:
+                phase = msg.get("phase", 0)
+                phase_name = PHASE_NAMES.get(phase, f"0x{phase:02x}")
+                events.append(f"Phase: {phase_name}")
 
-        elif msg_type == MSG_SPSUMMONING:
-            p = msg.get("controller", 0)
-            c = card_str(
-                msg.get("code", 0),
-                msg.get("location", 0),
-                msg.get("sequence", 0),
-                msg.get("position", 0),
-            )
-            events.append(f"{tag(p)} Special Summon {c}")
+            elif msg_type == MSG_DRAW:
+                p = msg.get("player", 0)
+                count = len(msg.get("cards", []))
+                s = "s" if count != 1 else ""
+                events.append(f"{tag(p)} Draw {count} card{s}")
 
-        elif msg_type == MSG_FLIPSUMMONING:
-            p = msg.get("controller", 0)
-            c = card_str(
-                msg.get("code", 0),
-                msg.get("location", 0),
-                msg.get("sequence", 0),
-                msg.get("position", 0),
-            )
-            events.append(f"{tag(p)} Flip Summon {c}")
+            elif msg_type == MSG_SUMMONING:
+                p = msg.get("controller", 0)
+                c = card_str(
+                    msg.get("code", 0),
+                    msg.get("location", 0),
+                    msg.get("sequence", 0),
+                    msg.get("position", 0),
+                )
+                events.append(f"{tag(p)} Normal Summon {c}")
 
-        elif msg_type == MSG_CHAINING:
-            p = msg.get("controller", 0)
-            c = card_str(
-                msg.get("code", 0),
-                msg.get("location", 0),
-                msg.get("sequence", 0),
-                msg.get("position", 0),
-            )
-            events.append(f"{tag(p)} Activate {c}")
+            elif msg_type == MSG_SPSUMMONING:
+                p = msg.get("controller", 0)
+                c = card_str(
+                    msg.get("code", 0),
+                    msg.get("location", 0),
+                    msg.get("sequence", 0),
+                    msg.get("position", 0),
+                )
+                events.append(f"{tag(p)} Special Summon {c}")
 
-        elif msg_type == MSG_CHAIN_NEGATED:
-            events.append("Chain is negated")
+            elif msg_type == MSG_FLIPSUMMONING:
+                p = msg.get("controller", 0)
+                c = card_str(
+                    msg.get("code", 0),
+                    msg.get("location", 0),
+                    msg.get("sequence", 0),
+                    msg.get("position", 0),
+                )
+                events.append(f"{tag(p)} Flip Summon {c}")
 
-        elif msg_type == MSG_ATTACK:
-            a_con = msg.get("attacker_controller", 0)
-            a_loc = msg.get("attacker_location", 0)
-            a_seq = msg.get("attacker_sequence", 0)
-            t_loc = msg.get("target_location", 0)
-            attacker_str = card_str_from_loc(a_con, a_loc, a_seq)
-            if t_loc == 0:
-                events.append(f"{tag(a_con)} {attacker_str} attacks directly")
-            else:
-                t_con = msg.get("target_controller", 0)
-                t_seq = msg.get("target_sequence", 0)
-                target_str = card_str_from_loc(t_con, t_loc, t_seq)
-                events.append(f"{tag(a_con)} {attacker_str} attacks {tag(t_con)} {target_str}")
+            elif msg_type == MSG_CHAINING:
+                p = msg.get("controller", 0)
+                c = card_str(
+                    msg.get("code", 0),
+                    msg.get("location", 0),
+                    msg.get("sequence", 0),
+                    msg.get("position", 0),
+                )
+                events.append(f"{tag(p)} Activate {c}")
 
-        elif msg_type == MSG_DAMAGE:
-            p = msg.get("player", 0)
-            events.append(f"{tag(p)} Take {msg.get('amount', 0)} damage")
+            elif msg_type == MSG_CHAIN_NEGATED:
+                events.append("Chain is negated")
 
-        elif msg_type == MSG_RECOVER:
-            p = msg.get("player", 0)
-            events.append(f"{tag(p)} Recover {msg.get('amount', 0)} LP")
+            elif msg_type == MSG_ATTACK:
+                a_con = msg.get("attacker_controller", 0)
+                a_loc = msg.get("attacker_location", 0)
+                a_seq = msg.get("attacker_sequence", 0)
+                t_loc = msg.get("target_location", 0)
+                attacker_str = card_str_from_loc(a_con, a_loc, a_seq)
+                if t_loc == 0:
+                    events.append(f"{tag(a_con)} {attacker_str} attacks directly")
+                else:
+                    t_con = msg.get("target_controller", 0)
+                    t_seq = msg.get("target_sequence", 0)
+                    target_str = card_str_from_loc(t_con, t_loc, t_seq)
+                    events.append(f"{tag(a_con)} {attacker_str} attacks {tag(t_con)} {target_str}")
 
-        elif msg_type == MSG_PAY_LPCOST:
-            p = msg.get("player", 0)
-            events.append(f"{tag(p)} Pay {msg.get('amount', 0)} LP")
+            elif msg_type == MSG_DAMAGE:
+                p = msg.get("player", 0)
+                events.append(f"{tag(p)} Take {msg.get('amount', 0)} damage")
 
-        elif msg_type == MSG_MOVE:
-            code = msg.get("code", 0)
-            prev_con = msg.get("prev_controller", 0)
-            prev_loc = msg.get("prev_location", 0)
-            prev_seq = msg.get("prev_sequence", 0)
-            prev_pos = msg.get("prev_position", 0)
-            cur_loc = msg.get("cur_location", 0)
-            c = card_str(code, prev_loc, prev_seq, prev_pos)
+            elif msg_type == MSG_RECOVER:
+                p = msg.get("player", 0)
+                events.append(f"{tag(p)} Recover {msg.get('amount', 0)} LP")
 
-            cur_con = msg.get("cur_controller", 0)
+            elif msg_type == MSG_PAY_LPCOST:
+                p = msg.get("player", 0)
+                events.append(f"{tag(p)} Pay {msg.get('amount', 0)} LP")
 
-            if cur_loc == LOCATION_GRAVE:
-                events.append(f"{tag(prev_con)} {c} is sent to Graveyard")
-            elif cur_loc == LOCATION_BANISHED:
-                events.append(f"{tag(prev_con)} {c} is banished")
-            elif cur_loc == LOCATION_DECK:
-                events.append(f"{tag(cur_con)} {c} is returned to Deck")
-            elif cur_loc == LOCATION_HAND and prev_loc == LOCATION_DECK:
-                events.append(f"{tag(cur_con)} {c} is added to Hand")
-            elif cur_loc == LOCATION_HAND:
-                events.append(f"{tag(prev_con)} {c} is returned to Hand")
+            elif msg_type == MSG_MOVE:
+                code = msg.get("code", 0)
+                prev_con = msg.get("prev_controller", 0)
+                prev_loc = msg.get("prev_location", 0)
+                prev_seq = msg.get("prev_sequence", 0)
+                prev_pos = msg.get("prev_position", 0)
+                cur_loc = msg.get("cur_location", 0)
+                c = card_str(code, prev_loc, prev_seq, prev_pos)
 
-        elif msg_type == MSG_POS_CHANGE:
-            p = msg.get("controller", 0)
-            prev_pos = msg.get("prev_position", 0)
-            cur_pos = msg.get("cur_position", 0)
-            c = card_str(
-                msg.get("code", 0), msg.get("location", 0), msg.get("sequence", 0), prev_pos
-            )
-            pos_name = _POS_NAMES.get(cur_pos, f"0x{cur_pos:x}")
-            events.append(f"{tag(p)} {c} changes position to {pos_name}")
+                cur_con = msg.get("cur_controller", 0)
 
-        elif msg_type == MSG_SET:
-            p = msg.get("controller", 0)
-            c = card_str(
-                msg.get("code", 0),
-                msg.get("location", 0),
-                msg.get("sequence", 0),
-                msg.get("position", 0),
-            )
-            events.append(f"{tag(p)} Set {c}")
+                if cur_loc == LOCATION_GRAVE:
+                    events.append(f"{tag(prev_con)} {c} is sent to Graveyard")
+                elif cur_loc == LOCATION_BANISHED:
+                    events.append(f"{tag(prev_con)} {c} is banished")
+                elif cur_loc == LOCATION_DECK:
+                    events.append(f"{tag(cur_con)} {c} is returned to Deck")
+                elif cur_loc == LOCATION_HAND and prev_loc == LOCATION_DECK:
+                    events.append(f"{tag(cur_con)} {c} is added to Hand")
+                elif cur_loc == LOCATION_HAND:
+                    events.append(f"{tag(prev_con)} {c} is returned to Hand")
 
-        elif msg_type == MSG_EQUIP:
-            equip_str = card_str_from_loc(
-                msg.get("equip_controller", 0),
-                msg.get("equip_location", 0),
-                msg.get("equip_sequence", 0),
-            )
-            target_str = card_str_from_loc(
-                msg.get("target_controller", 0),
-                msg.get("target_location", 0),
-                msg.get("target_sequence", 0),
-            )
-            events.append(f"{equip_str} is equipped to {target_str}")
+            elif msg_type == MSG_POS_CHANGE:
+                p = msg.get("controller", 0)
+                prev_pos = msg.get("prev_position", 0)
+                cur_pos = msg.get("cur_position", 0)
+                c = card_str(
+                    msg.get("code", 0), msg.get("location", 0), msg.get("sequence", 0), prev_pos
+                )
+                pos_name = _POS_NAMES.get(cur_pos, f"0x{cur_pos:x}")
+                events.append(f"{tag(p)} {c} changes position to {pos_name}")
 
-        elif msg_type == MSG_TOSS_COIN:
-            results = msg.get("results", [])
-            names = ["Heads" if r else "Tails" for r in results]
-            events.append(f"Coin toss: {', '.join(names)}")
+            elif msg_type == MSG_SET:
+                p = msg.get("controller", 0)
+                c = card_str(
+                    msg.get("code", 0),
+                    msg.get("location", 0),
+                    msg.get("sequence", 0),
+                    msg.get("position", 0),
+                )
+                events.append(f"{tag(p)} Set {c}")
 
-        elif msg_type == MSG_TOSS_DICE:
-            results = msg.get("results", [])
-            events.append(f"Dice roll: {', '.join(str(r) for r in results)}")
+            elif msg_type == MSG_EQUIP:
+                equip_str = card_str_from_loc(
+                    msg.get("equip_controller", 0),
+                    msg.get("equip_location", 0),
+                    msg.get("equip_sequence", 0),
+                )
+                target_str = card_str_from_loc(
+                    msg.get("target_controller", 0),
+                    msg.get("target_location", 0),
+                    msg.get("target_sequence", 0),
+                )
+                events.append(f"{equip_str} is equipped to {target_str}")
 
-    return events
+            elif msg_type == MSG_TOSS_COIN:
+                results = msg.get("results", [])
+                names = ["Heads" if r else "Tails" for r in results]
+                events.append(f"Coin toss: {', '.join(names)}")
+
+            elif msg_type == MSG_TOSS_DICE:
+                results = msg.get("results", [])
+                events.append(f"Dice roll: {', '.join(str(r) for r in results)}")
+
+        return events
