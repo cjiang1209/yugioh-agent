@@ -34,7 +34,7 @@ def obs_from_msg(msg: dict, *, _selected: list[int] | None = None):
         action_mask=mapper.get_action_mask().tolist(),
         action_meta=_build_action_meta_list(mapper.actions),
         prompt_meta=_build_prompt_meta(mapper),
-        event_log=[],
+        events=[],
         done=False,
         reward=0.0,
     )

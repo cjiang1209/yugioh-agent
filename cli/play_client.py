@@ -28,6 +28,7 @@ from yugioh_core.string_resolver import load_sys_strings
 from yugioh_env.action_describer import ActionDescriber
 from yugioh_env.client import YuGiOhEnv
 from yugioh_env.deck_parser import parse_ydk
+from yugioh_env.event_logger import EventDescriber
 from yugioh_env.models import YuGiOhAction, YuGiOhObservation
 
 
@@ -137,7 +138,7 @@ def _format_prompt_summary(prompt: dict | None) -> str:
     return label
 
 
-def display_state(obs: YuGiOhObservation, step_num: int, describer: ActionDescriber) -> None:
+def display_state(obs: YuGiOhObservation, step_num: int, action_describer: ActionDescriber) -> None:
     """Print a summary of the current observation."""
     gs = parse_global_state(obs.global_state)
     phase_name = PHASE_NAMES.get(gs["phase"], f"0x{gs['phase']:02x}")
@@ -161,7 +162,7 @@ def display_state(obs: YuGiOhObservation, step_num: int, describer: ActionDescri
         print(f"  Chain count: {gs['chain_count']}")
 
     legal_count = sum(1 for m in obs.action_mask if m == 1)
-    summary = _format_prompt_summary(describer.describe_prompt(obs))
+    summary = _format_prompt_summary(action_describer.describe_prompt(obs))
     decision_line = (
         f"  Decision: {summary}  ({legal_count} legal action{'s' if legal_count != 1 else ''})"
         if summary
@@ -172,7 +173,7 @@ def display_state(obs: YuGiOhObservation, step_num: int, describer: ActionDescri
     print(decision_line)
     print(f"{'─' * 60}")
 
-    for d in describer.describe_all(obs):
+    for d in action_describer.describe_all(obs):
         print(f"    [{d.index:>2}]  {d.description}")
 
     print()
@@ -215,7 +216,8 @@ def pick_action_greedy(obs: YuGiOhObservation) -> int:
 def run_episode(
     env: YuGiOhEnv,
     pick_action,
-    describer: ActionDescriber,
+    action_describer: ActionDescriber,
+    event_describer: EventDescriber,
     seed: int | None = None,
     verbose: bool = True,
     deck0: dict | None = None,
@@ -237,21 +239,29 @@ def run_episode(
     step_num = 0
 
     if verbose:
-        display_events(result.observation.event_log)
-        display_state(result.observation, step_num, describer)
+        display_events(
+            event_describer.describe(
+                result.observation.events, agent_player if agent_player is not None else 0
+            )
+        )
+        display_state(result.observation, step_num, action_describer)
 
     while not result.done:
         action_idx = pick_action(result.observation)
         if verbose:
-            d = describer.describe(result.observation, action_idx)
+            d = action_describer.describe(result.observation, action_idx)
             print(f"  -> Playing action [{action_idx}]: {d.description}")
 
         result = env.step(YuGiOhAction(action_index=action_idx))
         step_num += 1
 
         if verbose and not result.done:
-            display_events(result.observation.event_log)
-            display_state(result.observation, step_num, describer)
+            display_events(
+                event_describer.describe(
+                    result.observation.events, agent_player if agent_player is not None else 0
+                )
+            )
+            display_state(result.observation, step_num, action_describer)
 
     # Final summary
     gs = parse_global_state(result.observation.global_state)
@@ -383,7 +393,8 @@ def main():
     )
     card_db = CardDatabase(db_path)
     sys_strings = load_sys_strings()
-    describer = ActionDescriber(card_db, sys_strings=sys_strings)
+    action_describer = ActionDescriber(card_db, sys_strings=sys_strings)
+    event_describer = EventDescriber(card_db, sys_strings=sys_strings)
     print(f"Agent player: {agent_player} ({'goes second' if agent_player == 1 else 'goes first'})")
     print(f"Connecting to {args.url} ...")
 
@@ -404,7 +415,8 @@ def main():
                 stats = run_episode(
                     env,
                     pick_action,
-                    describer,
+                    action_describer,
+                    event_describer,
                     seed=seed,
                     verbose=verbose,
                     deck0=deck0,

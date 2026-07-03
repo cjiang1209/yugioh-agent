@@ -257,9 +257,11 @@ def test_frames_board_changes_across_steps(env):
     env.set_opponent(ScriptedOpponent(cursor))
     env.reset(puzzle=recording.setup["puzzle"], agent_player=1)
 
-    # Frames are produced during reset (opponent's turn is auto-played)
+    # The puzzle state and scripted replay are deterministic: the opponent's
+    # summon during reset spans exactly 3 message chunks (one frame each). The
+    # first-vs-last board comparison below relies on there being >1 frame.
     frames = env.last_frames
-    assert len(frames) == 2
+    assert len(frames) == 3
     first_monsters = frames[0]["board"]["opponent"]["monsters"]
     last_monsters = frames[-1]["board"]["opponent"]["monsters"]
     first_count = sum(1 for m in first_monsters if m is not None)

@@ -14,7 +14,12 @@ def web_client(lib, db_path, script_dirs, deck_path):
     from fastapi import FastAPI
     from starlette.testclient import TestClient
 
-    from yugioh_env.server.web_api import create_describer, create_web_env, web_router
+    from yugioh_env.server.web_api import (
+        create_action_describer,
+        create_event_describer,
+        create_web_env,
+        web_router,
+    )
 
     app = FastAPI()
     app.state.web_env = create_web_env(
@@ -26,7 +31,8 @@ def web_client(lib, db_path, script_dirs, deck_path):
             "opponent_seed": 42,
         }
     )
-    app.state.describer = create_describer(app.state.web_env)
+    app.state.action_describer = create_action_describer(app.state.web_env)
+    app.state.event_describer = create_event_describer(app.state.web_env)
     app.include_router(web_router)
     return TestClient(app)
 
@@ -432,6 +438,13 @@ def test_step_returns_frames_with_board_snapshots(web_client):
 
     for frame in frames:
         _assert_frame_structure(frame)
+
+
+def test_reset_frames_events_are_strings(web_client):
+    """Frame events in the web API response must be strings (TS contract)."""
+    resp = web_client.post("/api/web/reset", json={}).json()
+    for frame in resp["frames"]:
+        assert all(isinstance(e, str) for e in frame["events"])
 
 
 def test_frames_game_state_structure(web_client):

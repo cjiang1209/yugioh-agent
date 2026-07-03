@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from yugioh_core.string_resolver import load_sys_strings
 from yugioh_env.action_describer import ActionDescriber
 from yugioh_env.deck_parser import parse_ydk
+from yugioh_env.event_logger import EventDescriber
 from yugioh_env.models import YuGiOhAction
 from yugioh_env.server.board_state import build_board_state
 from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
@@ -39,7 +40,8 @@ class StepRequest(BaseModel):
 
 def _build_response(
     env: YuGiOhEnvironment,
-    describer: ActionDescriber,
+    action_describer: ActionDescriber,
+    event_describer: EventDescriber,
     obs,  # YuGiOhObservation
     done: bool,
     reward: float,
@@ -54,7 +56,18 @@ def _build_response(
             are fresh).  GET /state and multi-select steps must leave this
             False to avoid returning stale frames from a prior action.
     """
-    frames = env.last_frames if include_frames else []
+    raw_frames = env.last_frames if include_frames else []
+    frames = [
+        {
+            "events": formatted,
+            "board": f["board"],
+            "game_state": f["game_state"],
+        }
+        for f in raw_frames
+        # Drop frames whose messages rendered to no strings (describe() can
+        # return [] when a chunk holds only messages it does not materialize).
+        if (formatted := event_describer.describe(f["events"], env._agent_player))
+    ]
 
     # Reuse the last frame's board if available (avoids redundant FFI call)
     board = frames[-1]["board"] if frames else build_board_state(env, open_cards=env._open_cards)
@@ -63,8 +76,8 @@ def _build_response(
         actions = []
         prompt = None
     else:
-        actions = [d.to_dict() for d in describer.describe_all(obs)]
-        prompt = describer.describe_prompt(obs)
+        actions = [d.to_dict() for d in action_describer.describe_all(obs)]
+        prompt = action_describer.describe_prompt(obs)
 
     return {
         "board": board,
@@ -82,7 +95,7 @@ def create_web_env(config: dict | None = None) -> YuGiOhEnvironment:
     return YuGiOhEnvironment(config)
 
 
-def create_describer(
+def create_action_describer(
     env: YuGiOhEnvironment, strings_path: str | Path | None = None
 ) -> ActionDescriber:
     """Construct the ActionDescriber the web UI shares across all requests.
@@ -95,6 +108,19 @@ def create_describer(
     return ActionDescriber(env._card_db, sys_strings=sys_strings)
 
 
+def create_event_describer(
+    env: YuGiOhEnvironment, strings_path: str | Path | None = None
+) -> EventDescriber:
+    """Construct the EventDescriber the web UI uses to format frame events.
+
+    Mirrors `create_action_describer`: reuses the env's `cards.cdb` and loads sysstring
+    labels via `load_sys_strings` (missing strings.conf falls back to
+    placeholders).
+    """
+    sys_strings = load_sys_strings(strings_path)
+    return EventDescriber(env._card_db, sys_strings=sys_strings)
+
+
 # ─── Endpoints ──────────────────────────────────────────────────────────────
 
 
@@ -102,7 +128,8 @@ def create_describer(
 def reset_duel(body: ResetRequest, request: Request) -> dict:
     """Reset (or create) a duel and return the initial state."""
     env: YuGiOhEnvironment = request.app.state.web_env
-    describer: ActionDescriber = request.app.state.describer
+    action_describer: ActionDescriber = request.app.state.action_describer
+    event_describer: EventDescriber = request.app.state.event_describer
     try:
         obs = env.reset(
             seed=body.seed,
@@ -114,7 +141,9 @@ def reset_duel(body: ResetRequest, request: Request) -> dict:
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
-    return _build_response(env, describer, obs, obs.done, obs.reward, include_frames=True)
+    return _build_response(
+        env, action_describer, event_describer, obs, obs.done, obs.reward, include_frames=True
+    )
 
 
 @web_router.get("/decks")
@@ -155,11 +184,14 @@ def list_decks(request: Request) -> list[dict]:
 def step_duel(body: StepRequest, request: Request) -> dict:
     """Submit an action and return the resulting state."""
     env: YuGiOhEnvironment = request.app.state.web_env
-    describer: ActionDescriber = request.app.state.describer
+    action_describer: ActionDescriber = request.app.state.action_describer
+    event_describer: EventDescriber = request.app.state.event_describer
     if env._duel is None:
-        return _build_response(env, describer, None, True, 0.0)
+        return _build_response(env, action_describer, event_describer, None, True, 0.0)
     obs = env.step(YuGiOhAction(action_index=body.action_index))
-    return _build_response(env, describer, obs, obs.done, obs.reward, include_frames=True)
+    return _build_response(
+        env, action_describer, event_describer, obs, obs.done, obs.reward, include_frames=True
+    )
 
 
 @web_router.get("/state")
@@ -172,9 +204,10 @@ def get_state(request: Request) -> dict:
     empty when obs=None.
     """
     env: YuGiOhEnvironment = request.app.state.web_env
-    describer: ActionDescriber = request.app.state.describer
+    action_describer: ActionDescriber = request.app.state.action_describer
+    event_describer: EventDescriber = request.app.state.event_describer
     if env._duel is None:
-        return _build_response(env, describer, None, True, 0.0)
+        return _build_response(env, action_describer, event_describer, None, True, 0.0)
 
     done = env._duel.game_state.is_finished if env._duel else True
     reward = 0.0
@@ -184,4 +217,4 @@ def get_state(request: Request) -> dict:
             reward = 1.0
         elif winner == 1 - env._agent_player:
             reward = -1.0
-    return _build_response(env, describer, None, done, reward)
+    return _build_response(env, action_describer, event_describer, None, done, reward)

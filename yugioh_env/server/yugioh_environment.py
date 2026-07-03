@@ -41,11 +41,10 @@ from yugioh_core.constants import (
     SELECT_MSGS,
 )
 from yugioh_core.encoding import MAX_ACTIONS
-from yugioh_core.string_resolver import load_sys_strings
 from yugioh_env.action_loop_filter import ActionLoopFilter
 from yugioh_env.action_space import ActionMapper
 from yugioh_env.duel import Duel
-from yugioh_env.event_logger import EventDescriber, FieldTracker, enrich_messages
+from yugioh_env.event_logger import FieldTracker, enrich_messages
 from yugioh_env.lib_loader import load_library
 from yugioh_env.models import ActionMeta, YuGiOhAction, YuGiOhObservation, YuGiOhState
 from yugioh_env.observation import build_observation
@@ -232,7 +231,6 @@ class YuGiOhEnvironment(Environment):
         self._card_sel: list[int] = []
         # Persistent field tracker for event log card-code resolution
         self._field_tracker = FieldTracker()
-        self._event_describer = EventDescriber(self._card_db, load_sys_strings())
         # Intermediate board snapshots captured during _process_to_agent_choice()
         self._last_frames: list[dict] = []
         # When True, board snapshots include unhidden opponent card data
@@ -465,20 +463,17 @@ class YuGiOhEnvironment(Environment):
         }
 
     def _capture_frame(self, events: list[dict]) -> None:
-        """Format events and snapshot the board into a frame."""
+        """Enrich the chunk's messages and snapshot the board into a frame."""
         if not events:
             return
-        chunk_log = self._event_describer.describe(
-            enrich_messages(events, self._field_tracker), self._agent_player
+        enriched = enrich_messages(events, self._field_tracker)
+        self._last_frames.append(
+            {
+                "events": enriched,
+                "board": build_board_state(self, open_cards=self._open_cards),
+                "game_state": self._build_game_state_dict(),
+            }
         )
-        if chunk_log:
-            self._last_frames.append(
-                {
-                    "events": chunk_log,
-                    "board": build_board_state(self, open_cards=self._open_cards),
-                    "game_state": self._build_game_state_dict(),
-                }
-            )
 
     def _process_to_agent_choice(self) -> YuGiOhObservation:
         """Process the duel, auto-play opponent turns, until agent must decide."""
@@ -631,7 +626,7 @@ class YuGiOhEnvironment(Environment):
             pending_chain=obs_data["pending_chain"].tolist(),
             action_meta=action_meta,
             prompt_meta=_build_prompt_meta(self._mapper),
-            event_log=[e for f in self._last_frames for e in f["events"]],
+            events=[m for f in self._last_frames for m in f["events"]],
             done=False,
             reward=0.0,
         )
@@ -683,7 +678,7 @@ class YuGiOhEnvironment(Environment):
             pending_chain=pending_chain,
             action_meta=[],
             prompt_meta=None,
-            event_log=[e for f in self._last_frames for e in f["events"]],
+            events=[m for f in self._last_frames for m in f["events"]],
             done=True,
             reward=reward,
         )

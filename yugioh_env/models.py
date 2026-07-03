@@ -94,9 +94,9 @@ class YuGiOhObservation(Observation):
         description="Prompt-level metadata (min/max/cancelable/forced/etc.); "
         "None when no active prompt.",
     )
-    event_log: list[str] = Field(
+    events: list[dict] = Field(
         default_factory=list,
-        description="Human-readable descriptions of events since last action",
+        description="Raw enriched engine messages since last action (consumers format them)",
     )
 
 
