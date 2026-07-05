@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from yugioh_core.string_resolver import load_sys_strings
+from yugioh_core.string_resolver import CardTextResolver, load_sys_strings
 from yugioh_env.action_describer import ActionDescriber
 from yugioh_env.deck_parser import parse_ydk
 from yugioh_env.event_logger import EventDescriber
@@ -38,10 +38,33 @@ class StepRequest(BaseModel):
 # ─── Helpers ────────────────────────────────────────────────────────────────
 
 
+def _resolve_pending_chain(raw: list[dict], text: CardTextResolver) -> list[dict]:
+    """Resolve raw chain entries to display dicts with card names and effect text."""
+    return [
+        {
+            "chain_link": e["chain_link"],
+            "card_code": e["code"],
+            "card_name": text.card_name(e["code"]),
+            "effect_text": text.effect_text(e["desc"]),
+            "controller": e["controller"],
+        }
+        for e in raw
+    ]
+
+
+def _resolve_game_state(game_state: dict, text: CardTextResolver) -> dict:
+    """Copy a raw game_state dict with its pending_chain resolved to display text."""
+    return {
+        **game_state,
+        "pending_chain": _resolve_pending_chain(game_state["pending_chain"], text),
+    }
+
+
 def _build_response(
     env: YuGiOhEnvironment,
     action_describer: ActionDescriber,
     event_describer: EventDescriber,
+    card_text_resolver: CardTextResolver,
     obs,  # YuGiOhObservation
     done: bool,
     reward: float,
@@ -61,7 +84,7 @@ def _build_response(
         {
             "events": formatted,
             "board": f["board"],
-            "game_state": f["game_state"],
+            "game_state": _resolve_game_state(f["game_state"], card_text_resolver),
         }
         for f in raw_frames
         # Drop frames whose messages rendered to no strings (describe() can
@@ -79,9 +102,10 @@ def _build_response(
         actions = [d.to_dict() for d in action_describer.describe_all(obs)]
         prompt = action_describer.describe_prompt(obs)
 
+    top_gs = _resolve_game_state(env._build_game_state_dict(), card_text_resolver)
     return {
         "board": board,
-        "game_state": env._build_game_state_dict(),
+        "game_state": top_gs,
         "actions": actions,
         "prompt": prompt,
         "done": done,
@@ -121,6 +145,19 @@ def create_event_describer(
     return EventDescriber(env._card_db, sys_strings=sys_strings)
 
 
+def create_card_text_resolver(
+    env: YuGiOhEnvironment, strings_path: str | Path | None = None
+) -> CardTextResolver:
+    """Construct the CardTextResolver the web UI uses to resolve chain entries.
+
+    Reuses the env's `cards.cdb` connection. Sysstring labels are loaded via
+    `load_sys_strings`; missing strings.conf falls back to None (no sysstring
+    resolution).
+    """
+    sys_strings = load_sys_strings(strings_path)
+    return CardTextResolver(env._card_db, sys_strings=sys_strings)
+
+
 # ─── Endpoints ──────────────────────────────────────────────────────────────
 
 
@@ -130,6 +167,7 @@ def reset_duel(body: ResetRequest, request: Request) -> dict:
     env: YuGiOhEnvironment = request.app.state.web_env
     action_describer: ActionDescriber = request.app.state.action_describer
     event_describer: EventDescriber = request.app.state.event_describer
+    card_text_resolver: CardTextResolver = request.app.state.card_text_resolver
     try:
         obs = env.reset(
             seed=body.seed,
@@ -142,7 +180,14 @@ def reset_duel(body: ResetRequest, request: Request) -> dict:
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
     return _build_response(
-        env, action_describer, event_describer, obs, obs.done, obs.reward, include_frames=True
+        env,
+        action_describer,
+        event_describer,
+        card_text_resolver,
+        obs,
+        obs.done,
+        obs.reward,
+        include_frames=True,
     )
 
 
@@ -186,11 +231,21 @@ def step_duel(body: StepRequest, request: Request) -> dict:
     env: YuGiOhEnvironment = request.app.state.web_env
     action_describer: ActionDescriber = request.app.state.action_describer
     event_describer: EventDescriber = request.app.state.event_describer
+    card_text_resolver: CardTextResolver = request.app.state.card_text_resolver
     if env._duel is None:
-        return _build_response(env, action_describer, event_describer, None, True, 0.0)
+        return _build_response(
+            env, action_describer, event_describer, card_text_resolver, None, True, 0.0
+        )
     obs = env.step(YuGiOhAction(action_index=body.action_index))
     return _build_response(
-        env, action_describer, event_describer, obs, obs.done, obs.reward, include_frames=True
+        env,
+        action_describer,
+        event_describer,
+        card_text_resolver,
+        obs,
+        obs.done,
+        obs.reward,
+        include_frames=True,
     )
 
 
@@ -206,8 +261,11 @@ def get_state(request: Request) -> dict:
     env: YuGiOhEnvironment = request.app.state.web_env
     action_describer: ActionDescriber = request.app.state.action_describer
     event_describer: EventDescriber = request.app.state.event_describer
+    card_text_resolver: CardTextResolver = request.app.state.card_text_resolver
     if env._duel is None:
-        return _build_response(env, action_describer, event_describer, None, True, 0.0)
+        return _build_response(
+            env, action_describer, event_describer, card_text_resolver, None, True, 0.0
+        )
 
     done = env._duel.game_state.is_finished if env._duel else True
     reward = 0.0
@@ -217,4 +275,6 @@ def get_state(request: Request) -> dict:
             reward = 1.0
         elif winner == 1 - env._agent_player:
             reward = -1.0
-    return _build_response(env, action_describer, event_describer, None, done, reward)
+    return _build_response(
+        env, action_describer, event_describer, card_text_resolver, None, done, reward
+    )

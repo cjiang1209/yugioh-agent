@@ -14,6 +14,7 @@ from openenv.core.env_server.interfaces import Environment
 from yugioh_core.card_database import CardDatabase
 from yugioh_core.constants import (
     MSG_ANNOUNCE_CARD,
+    MSG_CHAINING,
     MSG_NEW_TURN,
     MSG_SELECT_BATTLECMD,
     MSG_SELECT_CARD,
@@ -42,7 +43,7 @@ from yugioh_core.constants import (
 )
 from yugioh_core.encoding import MAX_ACTIONS
 from yugioh_env.action_loop_filter import ActionLoopFilter
-from yugioh_env.action_space import ActionMapper
+from yugioh_env.action_space import ActionMapper, _relativize_controller
 from yugioh_env.duel import Duel
 from yugioh_env.event_buffer import EventHistoryBuffer
 from yugioh_env.event_logger import FieldTracker, enrich_messages
@@ -67,6 +68,31 @@ _API_PHASE_NAMES = {
     PHASE_MAIN2: "main2",
     PHASE_END: "end",
 }
+
+
+def _chain_entry(chain_link: int, code: int, desc: int, controller: int, agent_player: int) -> dict:
+    """One raw pending-chain entry with the controller relativized (0=agent,
+    1=opponent). Card name and effect text are resolved later by the consumer.
+    """
+    return {
+        "chain_link": chain_link,
+        "code": code,
+        "desc": desc,
+        "controller": _relativize_controller(controller, agent_player),
+    }
+
+
+def _raw_pending_chain(events: list[dict], agent_player: int) -> list[dict]:
+    """Raw pending-chain entries derived from a chunk's MSG_CHAINING messages.
+
+    Captures every link chained during the chunk (even if the chain also
+    resolved in it).
+    """
+    return [
+        _chain_entry(m["chain_link"], m.get("code", 0), m.get("desc", 0), m.get("controller", 0), agent_player)
+        for m in events
+        if m.get("msg_type") == MSG_CHAINING
+    ]
 
 
 def _resolve_opponent_device(config: dict[str, Any]) -> str:
@@ -455,16 +481,35 @@ class YuGiOhEnvironment(Environment):
             opp_hand_count=gs.hand_count[1 - self._agent_player],
         )
 
-    def _build_game_state_dict(self) -> dict:
-        """Build a game_state dict from the current duel state."""
+    def _build_game_state_dict(self, pending_chain: list[dict] | None = None) -> dict:
+        """Build a game_state dict from the current duel state.
+
+        ``pending_chain`` overrides the chain derived from the live ``GameState``
+        — frame capture passes the chunk-derived chain instead, since the live
+        chain may already have cleared by the choice point.
+        """
         gs = self._duel.game_state if self._duel else None
         if gs is None:
-            return {"turn": 0, "phase": "unknown", "is_my_turn": False, "chain_count": 0}
+            return {
+                "turn": 0,
+                "phase": "unknown",
+                "is_my_turn": False,
+                "chain_count": 0,
+                "pending_chain": pending_chain or [],
+            }
+        if pending_chain is None:
+            pending_chain = [
+                _chain_entry(
+                    link.chain_link, link.code, link.desc, link.controller, self._agent_player
+                )
+                for link in gs.pending_chain
+            ]
         return {
             "turn": gs.turn_count,
             "phase": _API_PHASE_NAMES.get(gs.phase, "unknown"),
             "is_my_turn": gs.current_player == self._agent_player,
             "chain_count": gs.chain_count,
+            "pending_chain": pending_chain,
         }
 
     def _capture_frame(self, events: list[dict]) -> None:
@@ -479,11 +524,14 @@ class YuGiOhEnvironment(Environment):
             current_player=gs.current_player,
             phase=gs.phase,
         )
+        game_state = self._build_game_state_dict(
+            pending_chain=_raw_pending_chain(events, self._agent_player)
+        )
         self._last_frames.append(
             {
                 "events": enriched,
                 "board": build_board_state(self, open_cards=self._open_cards),
-                "game_state": self._build_game_state_dict(),
+                "game_state": game_state,
             }
         )
 

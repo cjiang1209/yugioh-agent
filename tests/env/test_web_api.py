@@ -16,6 +16,7 @@ def web_client(lib, db_path, script_dirs, deck_path):
 
     from yugioh_env.server.web_api import (
         create_action_describer,
+        create_card_text_resolver,
         create_event_describer,
         create_web_env,
         web_router,
@@ -33,6 +34,7 @@ def web_client(lib, db_path, script_dirs, deck_path):
     )
     app.state.action_describer = create_action_describer(app.state.web_env)
     app.state.event_describer = create_event_describer(app.state.web_env)
+    app.state.card_text_resolver = create_card_text_resolver(app.state.web_env)
     app.include_router(web_router)
     return TestClient(app)
 
@@ -612,3 +614,13 @@ def test_state_response_carries_populated_card(web_client):
         f"parser may be raising on something the lenient one tolerated. "
         f"Board snapshot: {board!r}"
     )
+
+
+def test_reset_game_state_pending_chain_resolved(web_client):
+    resp = web_client.post("/api/web/reset", json={}).json()
+    gs = resp["game_state"]
+    assert "pending_chain" in gs and isinstance(gs["pending_chain"], list)
+    for e in gs["pending_chain"]:
+        assert set(e) >= {"chain_link", "card_code", "card_name", "effect_text", "controller"}
+    for frame in resp["frames"]:
+        assert "pending_chain" in frame["game_state"]
