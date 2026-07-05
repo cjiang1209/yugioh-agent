@@ -21,6 +21,8 @@ from yugioh_core.constants import (
     MSG_SELECT_IDLECMD,
     MSG_SELECT_OPTION,
     MSG_SELECT_POSITION,
+    MSG_SELECT_SUM,
+    MSG_SELECT_TRIBUTE,
     MSG_SELECT_UNSELECT_CARD,
     MSG_SELECT_YESNO,
 )
@@ -134,6 +136,36 @@ class TestTranslateCards:
         assert len(cards) == 2
         assert cards[0]["code"] == 1
         assert cards[1]["code"] == 2
+
+    def test_skips_empty_mzone_szone_slots(self):
+        # The engine reports empty monster/spell zone slots as code==0 rows
+        # with a non-zero location byte. These are holes, not cards, and must
+        # not be sent to ygo-agent (which never sees empty zones natively).
+        obs = np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8)
+        obs[0] = encode_card(
+            code=0, location=0x04, sequence=0, position=0, controller=0, is_public=False
+        )  # empty mzone slot
+        obs[1] = encode_card(
+            code=0, location=0x08, sequence=3, position=0, controller=1, is_public=False
+        )  # empty szone slot
+        obs[2] = encode_card(
+            code=89631139, location=0x04, sequence=1, position=0x1, controller=0, is_public=True
+        )  # a real monster
+        cards = translate_cards(obs)
+        assert len(cards) == 1
+        assert cards[0]["code"] == 89631139
+
+    def test_keeps_hidden_hand_card(self):
+        # A hidden card in hand/deck/extra is code==0 but a REAL card (the
+        # model needs the hand/deck counts). Only zone holes are dropped.
+        obs = np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8)
+        obs[0] = encode_card(
+            code=0, location=0x02, sequence=0, position=0, controller=1, is_public=False
+        )  # opponent's hidden hand card
+        cards = translate_cards(obs)
+        assert len(cards) == 1
+        assert cards[0]["location"] == "hand"
+        assert cards[0]["controller"] == "opponent"
 
     @pytest.mark.parametrize(
         "loc_byte,expected",
@@ -390,6 +422,27 @@ class TestTranslateActionMsg:
         assert result["data"]["min"] == 1
         assert len(result["data"]["cards"]) == 2
 
+    def test_select_card_non_overlay_has_overlay_seq_minus_one(self):
+        # The 4th loc_info field the parser stores as "subsequence" is actually
+        # the card's POSITION bitmask (0x0A = face-down for hand cards), not an
+        # Xyz overlay index. A hand/deck card is never an overlay material, so
+        # overlay_sequence must be -1; otherwise the server builds a bogus spec
+        # ("h1a11") that fails to match the card list and the model can't tell
+        # the cards apart.
+        msg = {
+            "msg_type": MSG_SELECT_CARD,
+            "player": 0,
+            "cancelable": 0,
+            "min": 1,
+            "max": 1,
+            "cards": [
+                # subsequence=10 is the facedown position bitmask, not overlay 10
+                {"code": 111, "controller": 0, "location": 0x02, "sequence": 0, "subsequence": 10},
+            ],
+        }
+        result = translate_action_msg(msg)
+        assert result["data"]["cards"][0]["location"]["overlay_sequence"] == -1
+
     def test_battlecmd_attack(self):
         msg = {
             "msg_type": MSG_SELECT_BATTLECMD,
@@ -431,6 +484,30 @@ class TestBuildPredictInput:
         assert "index" in result
         assert result["input"]["global"]["phase"] == "main1"
         assert result["input"]["action_msg"]["data"]["msg_type"] == "select_yesno"
+
+    def test_injects_hidden_deck_cards(self):
+        # Deck cards are hidden and absent from the obs card array (only their
+        # count lives in global_state). ygo-agent counts deck cards from the
+        # card list, so the bridge must synthesize hidden deck placeholders or
+        # the model sees an empty deck (off-distribution → uniform policy).
+        obs = {
+            "cards": np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8),
+            "global_state": np.zeros(20, dtype=np.uint8),
+        }
+        obs["global_state"][4] = 1  # turn
+        obs["global_state"][5] = 0x04  # phase main1
+        obs["global_state"][6] = 1  # is_my_turn
+        obs["global_state"][10] = 33  # agent deck count
+        obs["global_state"][15] = 36  # opponent deck count
+        msg = {"msg_type": MSG_SELECT_YESNO, "player": 0, "desc": 30}
+        result = build_predict_input(obs, msg, prev_action_idx=0)
+        cards = result["input"]["cards"]
+        my_deck = [c for c in cards if c["location"] == "deck" and c["controller"] == "me"]
+        op_deck = [c for c in cards if c["location"] == "deck" and c["controller"] == "opponent"]
+        assert len(my_deck) == 33
+        assert len(op_deck) == 36
+        # Deck cards are hidden: code 0.
+        assert all(c["code"] == 0 for c in my_deck + op_deck)
 
 
 class TestMatchResponse:
@@ -523,6 +600,29 @@ class TestMatchResponse:
             {"category": 0, "index": 1, "code": 222},
         ]
         assert match_response(MSG_SELECT_CARD, actions, 1) == 1
+
+    def test_select_card_finish(self):
+        # In multi-select, the model returns response=-1 to finish selecting.
+        # This must map to the finish action (category==1), not fall back to 0.
+        actions = [
+            {"category": 0, "index": 1, "code": 111},  # a selectable card
+            {"category": 1, "index": 0, "code": 0},  # finish
+        ]
+        assert match_response(MSG_SELECT_CARD, actions, -1) == 1
+
+    def test_select_tribute_finish(self):
+        actions = [
+            {"category": 0, "index": 1, "code": 111},
+            {"category": 1, "index": 0, "code": 0},  # finish
+        ]
+        assert match_response(MSG_SELECT_TRIBUTE, actions, -1) == 1
+
+    def test_select_sum_finish(self):
+        actions = [
+            {"category": 0, "index": 1, "code": 111},
+            {"category": 1, "index": 0, "code": 0},  # finish
+        ]
+        assert match_response(MSG_SELECT_SUM, actions, -1) == 1
 
     def test_select_option(self):
         actions = [

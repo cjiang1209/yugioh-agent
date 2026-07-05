@@ -184,15 +184,20 @@ def _decode_phase(phase_u16: int) -> str:
 def translate_cards(obs_cards: np.ndarray) -> list[dict]:
     """Convert obs card array (MAX_CARDS × CARD_FEATURES, uint8) to ygo-agent Card dicts.
 
-    Skips empty slots (location byte == 0 and code == 0).
+    Skips empty slots. Fully-empty rows (location byte == 0) are unused slots.
+    Monster/spell zones are fixed-size arrays whose empty holes the engine
+    reports as ``code == 0`` rows carrying only a location byte; ygo-agent
+    never sees empty zones natively, so these are skipped too. ``code == 0``
+    rows in other locations (hand/deck/extra) are hidden-but-real cards and
+    are kept — the model relies on their presence for location counts.
     """
     cards: list[dict] = []
     for i in range(obs_cards.shape[0]):
         row = obs_cards[i]
         code = decode_u32(row, 0)
         loc_byte = int(row[4])
-        # Skip empty slots
-        if code == 0 and loc_byte == 0:
+        # Skip fully-empty rows and empty monster/spell zone holes.
+        if code == 0 and loc_byte in (0x00, 0x04, 0x08):
             continue
 
         type_u32 = decode_u32(row, 9)
@@ -303,12 +308,21 @@ def _card_info(card: dict) -> dict:
 
 
 def _card_location(card: dict) -> dict:
-    """Build a ygo-agent CardLocation dict from our msg card dict."""
+    """Build a ygo-agent CardLocation dict from our msg card dict.
+
+    ``overlay_sequence`` is always -1: the ``loc_info`` struct the engine
+    writes for selectable cards has no Xyz-overlay index (its 4th field, which
+    our parser stores as ``subsequence``, is actually the position bitmask).
+    Cards offered in select_card/chain/tribute/etc. are field/hand/deck cards,
+    never overlay materials, so -1 is correct. Emitting the position here
+    instead produced bogus specs like ``h1a11`` that failed to match the card
+    list, leaving the model unable to tell the cards apart.
+    """
     return {
         "controller": "me" if card.get("controller", 0) == 0 else "opponent",
         "location": _decode_location(card.get("location", 0)),
         "sequence": card.get("sequence", 0),
-        "overlay_sequence": card.get("subsequence", -1),
+        "overlay_sequence": -1,
     }
 
 
@@ -679,6 +693,34 @@ def translate_action_msg(msg: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 
+def _hidden_deck_card(controller: str) -> dict:
+    """A face-down, unknown deck card. Deck cards are always hidden, so only
+    location/controller carry information; every other field is the ``none``/0
+    default the server uses for unknown cards."""
+    return {
+        "code": 0,
+        "location": "deck",
+        "sequence": 0,
+        "controller": controller,
+        "position": "faceup",
+        "overlay_sequence": -1,
+        "attribute": "none",
+        "race": "none",
+        "level": 0,
+        "counter": 0,
+        "negated": False,
+        "attack": 0,
+        "defense": 0,
+        "types": [],
+    }
+
+
+# Deck-count byte offsets in the observation global_state (agent-relative:
+# controller 0 == "me"). See build_observation's global layout.
+_GLOBAL_AGENT_DECK_IDX = 10
+_GLOBAL_OPP_DECK_IDX = 15
+
+
 def build_predict_input(
     obs: dict[str, np.ndarray],
     msg: dict,
@@ -699,6 +741,17 @@ def build_predict_input(
     cards = translate_cards(obs["cards"])
     global_state = translate_global(obs["global_state"])
     action_msg = translate_action_msg(msg)
+
+    # Deck cards are hidden and never appear in the obs card array — only their
+    # count lives in global_state. ygo-agent derives deck counts from the card
+    # list, so without these placeholders the model sees an empty deck, which is
+    # far off-distribution and collapses the policy toward uniform. Synthesize
+    # one hidden card per deck slot to restore the true count.
+    obs_global = obs["global_state"]
+    cards.extend(_hidden_deck_card("me") for _ in range(int(obs_global[_GLOBAL_AGENT_DECK_IDX])))
+    cards.extend(
+        _hidden_deck_card("opponent") for _ in range(int(obs_global[_GLOBAL_OPP_DECK_IDX]))
+    )
 
     return {
         "input": {
@@ -782,7 +835,12 @@ def _match_position_response(actions: list[dict], response: int) -> int:
 
 
 def _match_index_response(actions: list[dict], response: int) -> int:
-    """Match by action index (select_card, select_tribute, select_sum, select_option, announce_number)."""
+    """Match by action index (select_option, announce_number).
+
+    Pure index matcher with no finish action. Multi-select prompts that can
+    finish (select_card/tribute/sum) use ``_match_cancel_or_index`` instead,
+    which also handles the ``response == -1`` finish signal.
+    """
     for i, a in enumerate(actions):
         if a.get("category") == 0 and a.get("index") == response:
             return i
@@ -816,9 +874,9 @@ _RESPONSE_MATCHERS: dict[int, callable] = {
     MSG_SELECT_EFFECTYN: _match_yesno_response,
     MSG_SELECT_YESNO: _match_yesno_response,
     MSG_SELECT_POSITION: _match_position_response,
-    MSG_SELECT_CARD: _match_index_response,
-    MSG_SELECT_TRIBUTE: _match_index_response,
-    MSG_SELECT_SUM: _match_index_response,
+    MSG_SELECT_CARD: _match_cancel_or_index,
+    MSG_SELECT_TRIBUTE: _match_cancel_or_index,
+    MSG_SELECT_SUM: _match_cancel_or_index,
     MSG_SELECT_OPTION: _match_index_response,
     MSG_SELECT_UNSELECT_CARD: _match_unselect_response,
     MSG_SELECT_PLACE: _match_place_response,
