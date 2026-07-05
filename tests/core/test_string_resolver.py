@@ -134,3 +134,38 @@ def test_load_sys_strings_parses_file(tmp_path):
     conf = tmp_path / "strings.conf"
     conf.write_text("!system 1 Test system string\n", encoding="utf-8")
     assert load_sys_strings(strings_path=conf) == {1: "Test system string"}
+
+
+from yugioh_core.string_resolver import CardTextResolver
+
+
+def test_card_text_resolver_name_and_effect(tmp_path):
+    conf = tmp_path / "strings.conf"
+    conf.write_text("!system 3 Negate the summon\n", encoding="utf-8")
+    from yugioh_core.string_resolver import load_sys_strings
+
+    class _DB:
+        def get_card_name(self, code):
+            return "Solemn Judgment" if code == 41420027 else f"Card#{code}"
+
+        def get_card_string(self, passcode, n):
+            return None
+
+    r = CardTextResolver(_DB(), sys_strings=load_sys_strings(strings_path=conf))
+    assert r.card_name(41420027) == "Solemn Judgment"
+    assert r.card_name(0) == ""
+    assert r.effect_text(3) == "Negate the summon"  # passcode 0, n 3 -> system string
+    assert r.effect_text(0) is None
+
+
+def test_card_text_resolver_no_sys_strings():
+    class _DB:
+        def get_card_name(self, code):
+            return "X"
+
+        def get_card_string(self, passcode, n):
+            return None
+
+    r = CardTextResolver(_DB(), sys_strings=None)
+    assert r.card_name(1) == "X"
+    assert r.effect_text(123) is None

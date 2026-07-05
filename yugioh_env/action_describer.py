@@ -58,7 +58,7 @@ from yugioh_core.constants import (
     POS_FACEUP_DEFENSE,
 )
 from yugioh_core.encoding import decode_u16, decode_u32
-from yugioh_core.string_resolver import StringResolver
+from yugioh_core.string_resolver import CardTextResolver
 from yugioh_env.models import ActionMeta, YuGiOhObservation
 
 _IDLE_DESCS = {
@@ -193,10 +193,7 @@ class ActionDescriber:
         card_db: CardDatabase,
         sys_strings: dict[int, str] | None = None,
     ) -> None:
-        self._card_db = card_db
-        self._resolver: StringResolver | None = (
-            StringResolver(card_db, sys_strings=sys_strings) if sys_strings is not None else None
-        )
+        self._text = CardTextResolver(card_db, sys_strings=sys_strings)
 
     def describe(self, obs: YuGiOhObservation, action_idx: int) -> ActionDetails:
         """Describe a single legal action by slot index. Raises IndexError
@@ -233,7 +230,7 @@ class ActionDescriber:
         # prompts that carry one).
         if "card_code" in result:
             code = result["card_code"]
-            result["card_name"] = self._card_db.get_card_name(code) if code else ""
+            result["card_name"] = self._text.card_name(code)
         # Resolve the prompt-level desc (yes/no, effect-yn) to display text.
         # desc == 0 means "no specific prompt string"; an unknown id means the
         # resolver can't find it; a template with placeholders we can't fill
@@ -241,7 +238,7 @@ class ActionDescriber:
         # synthesized question.
         if "desc" in result:
             desc = result["desc"]
-            template = self._resolver.resolve(desc) if (self._resolver and desc) else None
+            template = self._text.effect_text(desc)
             if template is None:
                 result["prompt_text"] = None
             else:
@@ -265,7 +262,7 @@ class ActionDescriber:
         index_byte = bytes_[16]
         num_selected = bytes_[17]
         meta = obs.action_meta[idx] if idx < len(obs.action_meta) else None
-        card_name = self._card_db.get_card_name(code) if code else ""
+        card_name = self._text.card_name(code)
 
         description, category = self._dispatch(
             msg_type=msg_type,
@@ -330,9 +327,7 @@ class ActionDescriber:
         if msg_type == MSG_SELECT_OPTION:
             if meta is not None:
                 resolved = (
-                    self._resolver.resolve(meta.raw_value)
-                    if (self._resolver and meta.raw_value is not None)
-                    else None
+                    self._text.effect_text(meta.raw_value) if meta.raw_value is not None else None
                 )
                 return (resolved or meta.label), "option"
             return f"Option {index_byte + 1}", "option"
@@ -351,8 +346,8 @@ class ActionDescriber:
                 return "Pass (no chain)", "pass"
             target = card_name or f"#{index_byte}"
             resolved = (
-                self._resolver.resolve(meta.raw_value)
-                if (self._resolver and meta is not None and meta.raw_value is not None)
+                self._text.effect_text(meta.raw_value)
+                if (meta is not None and meta.raw_value is not None)
                 else None
             )
             if resolved and card_name:
@@ -421,8 +416,8 @@ class ActionDescriber:
 
     def _resolve_effect(self, meta: ActionMeta | None) -> str | None:
         """Return resolved effect text for a kind=effect meta, or None."""
-        if not self._resolver or meta is None or meta.kind != "effect":
+        if meta is None or meta.kind != "effect":
             return None
         if meta.raw_value is None:
             return None
-        return self._resolver.resolve(meta.raw_value)
+        return self._text.effect_text(meta.raw_value)

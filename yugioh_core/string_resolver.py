@@ -15,6 +15,7 @@ Failed lookups return ``None``; callers fall back to a placeholder.
 
 from __future__ import annotations
 
+import functools
 import logging
 import os
 import re
@@ -68,25 +69,51 @@ class StringResolver:
         return self._card_db.get_card_string(passcode, n)
 
 
+class CardTextResolver:
+    """Resolves card display text: names (via card_db) and effect descriptors
+    (via StringResolver). Single source for the card-text lookups that action
+    and event materialization both need.
+    """
+
+    def __init__(self, card_db, sys_strings: dict[int, str] | None = None) -> None:
+        self._card_db = card_db
+        self._resolver: StringResolver | None = (
+            StringResolver(card_db, sys_strings=sys_strings) if sys_strings is not None else None
+        )
+
+    def card_name(self, code: int) -> str:
+        return self._card_db.get_card_name(code) if code else ""
+
+    def effect_text(self, desc: int) -> str | None:
+        return self._resolver.resolve(desc) if (self._resolver and desc) else None
+
+
 def load_sys_strings(strings_path: str | Path | None = None) -> dict[int, str] | None:
     """Load the sysstring table from strings.conf, or None if the file is absent.
 
     Resolves the path from ``strings_path``, then ``YUGIOH_STRINGS_PATH``, then
     ``<repo_root>/assets/strings.conf``. Returns None (with a warning) when the
     file does not exist, so callers can fall back to placeholder labels. The
-    single source of truth for locating and parsing strings.conf.
+    single source of truth for locating and parsing strings.conf. Parsing is
+    memoized per resolved path so repeated callers (e.g. the action/event/chain
+    resolvers built at app startup) don't re-read the file.
     """
     if strings_path is None:
         repo_root = Path(__file__).resolve().parent.parent
         strings_path = os.environ.get(
             "YUGIOH_STRINGS_PATH", str(repo_root / "assets" / "strings.conf")
         )
-    strings_path = Path(strings_path)
-    if not strings_path.is_file():
+    return _load_sys_strings_cached(str(Path(strings_path)))
+
+
+@functools.cache
+def _load_sys_strings_cached(strings_path: str) -> dict[int, str] | None:
+    path = Path(strings_path)
+    if not path.is_file():
         logger.warning(
             "strings.conf not found at %s; sysstring labels will use placeholders. "
             "Run scripts/setup.sh to download.",
-            strings_path,
+            path,
         )
         return None
-    return parse_sys_strings(strings_path)
+    return parse_sys_strings(path)

@@ -45,7 +45,7 @@ from yugioh_core.constants import (
     POS_FACEUP_ATTACK,
     POS_FACEUP_DEFENSE,
 )
-from yugioh_core.string_resolver import StringResolver
+from yugioh_core.string_resolver import CardTextResolver
 
 logger = logging.getLogger(__name__)
 
@@ -271,10 +271,7 @@ class EventDescriber:
     """
 
     def __init__(self, card_db, sys_strings: dict[int, str] | None = None) -> None:
-        self._card_db = card_db
-        self._resolver: StringResolver | None = (
-            StringResolver(card_db, sys_strings=sys_strings) if sys_strings is not None else None
-        )
+        self._text = CardTextResolver(card_db, sys_strings=sys_strings)
 
     def describe(self, messages: list[dict], agent_player: int) -> list[str]:
         events: list[str] = []
@@ -283,7 +280,7 @@ class EventDescriber:
             return "You:" if p == agent_player else "Opponent:"
 
         def card_str(code: int, location: int, sequence: int = 0, position: int = 0) -> str:
-            name = self._card_db.get_card_name(code) if code else "?"
+            name = self._text.card_name(code) or "?"
             return format_card(code, name, location, sequence, position)
 
         for msg in messages:
@@ -342,7 +339,7 @@ class EventDescriber:
                     msg.get("sequence", 0),
                     msg.get("position", 0),
                 )
-                effect = self._resolver.resolve(msg.get("desc", 0)) if self._resolver else None
+                effect = self._text.effect_text(msg.get("desc", 0))
                 chain_link = msg.get("chain_link")
                 prefix = f"[Chain {chain_link}] " if chain_link else ""
                 suffix = f": {effect}" if effect else ""

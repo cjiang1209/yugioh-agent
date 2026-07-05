@@ -160,7 +160,7 @@ def test_describer_option_uses_resolver_when_provided():
         }
     )
     describer = ActionDescriber(_StubCardDB(), sys_strings={})  # gives an empty StringResolver
-    describer._resolver = _StubResolver({0xABC: "Special Summon a Spellcaster"})
+    describer._text._resolver = _StubResolver({0xABC: "Special Summon a Spellcaster"})
     details = describer.describe_all(obs)
     # Resolved option uses the real string.
     assert details[0].description == "Special Summon a Spellcaster"
@@ -192,7 +192,7 @@ def test_describer_chain_appends_resolved_effect_text():
         }
     )
     describer = ActionDescriber(_StubCardDB(), sys_strings={})
-    describer._resolver = _StubResolver({0x123: "Increase ATK by 1000"})
+    describer._text._resolver = _StubResolver({0x123: "Increase ATK by 1000"})
     details = describer.describe_all(obs)
     assert details[0].description == "Chain Card777: Increase ATK by 1000"
 
@@ -220,7 +220,7 @@ def test_describer_chain_falls_back_when_resolver_returns_none():
         }
     )
     describer = ActionDescriber(_StubCardDB(), sys_strings={})
-    describer._resolver = _StubResolver({})
+    describer._text._resolver = _StubResolver({})
     details = describer.describe_all(obs)
     assert details[0].description == "Chain Card777"
 
@@ -255,7 +255,7 @@ def test_describer_chain_drops_resolved_text_when_card_name_missing():
         }
     )
     describer = ActionDescriber(_NoNameDB(), sys_strings={})
-    describer._resolver = _StubResolver({0x123: "Real effect"})
+    describer._text._resolver = _StubResolver({0x123: "Real effect"})
     details = describer.describe_all(obs)
     # Resolved text dropped; falls back to anonymous "Chain #0".
     assert details[0].description == "Chain #0"
@@ -291,7 +291,7 @@ def test_describer_idle_activate_appends_resolved_effect_text():
         }
     )
     describer = ActionDescriber(_StubCardDB(), sys_strings={})
-    describer._resolver = _StubResolver({0xABC: "Increase ATK"})
+    describer._text._resolver = _StubResolver({0xABC: "Increase ATK"})
     details = describer.describe_all(obs)
     assert details[0].description == "Activate Card555: Increase ATK"
     assert details[0].category == "activate"
@@ -314,7 +314,7 @@ def test_describer_effectyn_yes_is_plain_yes():
         }
     )
     describer = ActionDescriber(_StubCardDB(), sys_strings={})
-    describer._resolver = _StubResolver({0xDEF: "Special Summon"})
+    describer._text._resolver = _StubResolver({0xDEF: "Special Summon"})
     details = describer.describe_all(obs)
     assert details[0].description == "Yes"
     assert details[1].description == "No"
@@ -333,7 +333,7 @@ def test_describer_yesno_yes_is_plain_yes():
         }
     )
     describer = ActionDescriber(_StubCardDB(), sys_strings={})
-    describer._resolver = _StubResolver({0x111: "Pay LP"})
+    describer._text._resolver = _StubResolver({0x111: "Pay LP"})
     details = describer.describe_all(obs)
     assert details[0].description == "Yes"
     assert details[1].description == "No"
