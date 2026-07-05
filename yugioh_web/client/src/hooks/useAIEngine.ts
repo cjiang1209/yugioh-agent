@@ -20,6 +20,7 @@ import type {
   EngineHandCard,
   EnginePrompt,
   EngineResponse,
+  PendingChainEntry,
 } from "../../../shared/engineTypes";
 import { useEventReplay } from "./useEventReplay";
 
@@ -274,6 +275,7 @@ function buildDuelState(
       : null,
     battleStep: null,
     log,
+    pendingChain: game_state.pending_chain ?? [],
   };
 }
 
@@ -304,6 +306,7 @@ const INITIAL_DUEL_STATE: DuelState = {
   winner: null,
   battleStep: null,
   log: [],
+  pendingChain: [],
 };
 
 // ─── Hook ────────────────────────────────────────────────────────────────────

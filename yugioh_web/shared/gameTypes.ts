@@ -1,5 +1,7 @@
 // ─── Yu-Gi-Oh! Duel Simulator – Shared Game Types ───────────────────────────
 
+import type { PendingChainEntry } from "./engineTypes";
+
 export type CardType =
   | "Normal Monster"
   | "Effect Monster"
@@ -105,6 +107,7 @@ export interface DuelState {
   winner: PlayerSide | null;
   battleStep: BattleStep | null;
   log: string[];
+  pendingChain: PendingChainEntry[];
 }
 
 export interface BattleStep {

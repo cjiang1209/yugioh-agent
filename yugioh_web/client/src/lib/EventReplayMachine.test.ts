@@ -34,7 +34,13 @@ function makeBoard(lp: number): EngineBoard {
 }
 
 function makeGameState(turn = 1): EngineGameState {
-  return { turn, phase: "main1", is_my_turn: true, chain_count: 0 };
+  return {
+    turn,
+    phase: "main1",
+    is_my_turn: true,
+    chain_count: 0,
+    pending_chain: [],
+  };
 }
 
 function makeFrame(events: string[], lp = 8000, turn = 1): EventFrame {

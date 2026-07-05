@@ -62,6 +62,14 @@ export interface EngineBoard {
   opponent: EngineOpponentBoard;
 }
 
+export interface PendingChainEntry {
+  chain_link: number;
+  card_code: number;
+  card_name: string;
+  effect_text: string | null;
+  controller: number; // 0 = you, 1 = opponent
+}
+
 /** Current duel phase and turn info. */
 export interface EngineGameState {
   turn: number;
@@ -79,6 +87,7 @@ export interface EngineGameState {
     | "unknown";
   is_my_turn: boolean;
   chain_count: number;
+  pending_chain: PendingChainEntry[];
 }
 
 /** A single legal action the engine offers. */

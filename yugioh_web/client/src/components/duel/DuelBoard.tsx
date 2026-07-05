@@ -17,6 +17,7 @@ import { AttackAnimation } from "./AttackAnimation";
 import { SummonAnimation } from "./SummonAnimation";
 import { PhaseIndicator } from "./PhaseIndicator";
 import { EnginePromptRouter } from "./EnginePromptRouter";
+import { ChainWidget } from "./ChainWidget";
 import type {
   EngineAction,
   EnginePrompt,
@@ -1474,8 +1475,10 @@ export function DuelBoard({
       {/* ── Field ── */}
       <div
         className="flex-1 flex flex-col"
-        style={{ minWidth: 0, overflowY: "auto" }}
+        style={{ minWidth: 0, overflowY: "auto", position: "relative" }}
       >
+        {/* Chain stack overlay */}
+        <ChainWidget entries={state.pendingChain} />
         {/* Spacer top */}
         <div className="flex-1" />
 
