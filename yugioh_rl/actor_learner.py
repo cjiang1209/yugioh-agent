@@ -62,7 +62,7 @@ def _pack_rollout(
 
     ``final_obs`` is the post-rollout observation (after the last env.step).
     The trainer uses it to bootstrap the value estimate for GAE; it is
-    emitted as the four ``final_obs_*`` keys (single per-env arrays, not
+    emitted as the ``final_obs_*`` keys (single per-env arrays, not
     stacked). ``infos`` is the list of per-step info dicts from env.step()
     so the trainer can drive episode tracking the same way it does in
     SubprocVecEnv (terminal_reward / episode_length / agent_deck_idx).
@@ -77,6 +77,7 @@ def _pack_rollout(
     obs_actions = np.stack([t.obs["actions"] for t in transitions])
     action_mask = np.stack([t.obs["action_mask"] for t in transitions])
     obs_chain = np.stack([t.obs["pending_chain"] for t in transitions])
+    obs_event = np.stack([t.obs["event_history"] for t in transitions])
     actions = np.array([t.action for t in transitions], dtype=np.int64)
     log_probs = np.array([t.log_prob for t in transitions], dtype=np.float32)
     values = np.array([t.value for t in transitions], dtype=np.float32)
@@ -93,6 +94,7 @@ def _pack_rollout(
         "obs_actions": obs_actions,
         "action_mask": action_mask,
         "obs_chain": obs_chain,
+        "obs_event": obs_event,
         "actions": actions,
         "log_probs": log_probs,
         "values": values,
@@ -104,6 +106,7 @@ def _pack_rollout(
         "final_obs_actions": final_obs["actions"],
         "final_action_mask": final_obs["action_mask"],
         "final_obs_chain": final_obs["pending_chain"],
+        "final_obs_event": final_obs["event_history"],
         "infos": [t.info for t in transitions],
         "final_hx": final_hx,
     }

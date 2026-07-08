@@ -301,6 +301,13 @@ def parse_args() -> argparse.Namespace:
         "currently-building chain so the agent sees what it's chaining "
         "onto. Set to 0 to disable (default: 32).",
     )
+    net.add_argument(
+        "--event-history-dim",
+        type=int,
+        default=0,
+        help="CNN event-history branch width; 0 disables (default: 0). "
+        "Feeds a rolling both-players event history into the value head.",
+    )
 
     infra = parser.add_argument_group("infrastructure")
     infra.add_argument(

@@ -17,9 +17,11 @@ from yugioh_core.encoding import (
     ACTION_FEATURES,
     CARD_FEATURES,
     CHAIN_ENTRY_FEATURES,
+    EVENT_ENTRY_FEATURES,
     GLOBAL_FEATURES,
     MAX_ACTIONS,
     MAX_CARDS,
+    MAX_EVENT_HISTORY,
     MAX_PENDING_CHAIN,
 )
 from yugioh_env.opponent import NetworkOpponent
@@ -51,6 +53,7 @@ class MiniBatch:
     obs_actions: torch.Tensor  # (M, MAX_ACTIONS, ACTION_FEATURES)
     action_mask: torch.Tensor  # (M, MAX_ACTIONS)
     obs_chain: torch.Tensor  # (M, MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES)
+    obs_event: torch.Tensor  # (M, MAX_EVENT_HISTORY, EVENT_ENTRY_FEATURES)
     actions: torch.Tensor  # (M,)
     old_log_probs: torch.Tensor  # (M,)
     advantages: torch.Tensor  # (M,)
@@ -72,6 +75,7 @@ class RecurrentMiniBatch:
     obs_actions: torch.Tensor  # (T, env_mb, MAX_ACTIONS, ACTION_FEATURES)
     action_mask: torch.Tensor  # (T, env_mb, MAX_ACTIONS)
     obs_chain: torch.Tensor  # (T, env_mb, MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES)
+    obs_event: torch.Tensor  # (T, env_mb, MAX_EVENT_HISTORY, EVENT_ENTRY_FEATURES)
     actions: torch.Tensor  # (T, env_mb)
     old_log_probs: torch.Tensor  # (T, env_mb)
     advantages: torch.Tensor  # (T, env_mb)
@@ -94,6 +98,7 @@ class RolloutBuffer:
         self.obs_actions = np.zeros((T, N, MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8)
         self.obs_mask = np.zeros((T, N, MAX_ACTIONS), dtype=np.int8)
         self.obs_chain = np.zeros((T, N, MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES), dtype=np.uint8)
+        self.obs_event = np.zeros((T, N, MAX_EVENT_HISTORY, EVENT_ENTRY_FEATURES), dtype=np.uint8)
         self.actions = np.zeros((T, N), dtype=np.int64)
         self.log_probs = np.zeros((T, N), dtype=np.float32)
         self.rewards = np.zeros((T, N), dtype=np.float32)
@@ -129,6 +134,7 @@ class RolloutBuffer:
         self.obs_actions[t] = obs["actions"]
         self.obs_mask[t] = obs["action_mask"]
         self.obs_chain[t] = obs["pending_chain"]
+        self.obs_event[t] = obs["event_history"]
         self.actions[t] = actions
         self.log_probs[t] = log_probs
         self.rewards[t] = rewards
@@ -153,6 +159,7 @@ class RolloutBuffer:
             self.obs_actions[:T, i] = r["obs_actions"]
             self.obs_mask[:T, i] = r["action_mask"]
             self.obs_chain[:T, i] = r["obs_chain"]
+            self.obs_event[:T, i] = r["obs_event"]
             self.actions[:T, i] = r["actions"]
             self.log_probs[:T, i] = r["log_probs"]
             self.values[:T, i] = r["values"]
@@ -164,6 +171,7 @@ class RolloutBuffer:
             "actions": np.stack([r["final_obs_actions"] for r in rollouts]),
             "action_mask": np.stack([r["final_action_mask"] for r in rollouts]),
             "pending_chain": np.stack([r["final_obs_chain"] for r in rollouts]),
+            "event_history": np.stack([r["final_obs_event"] for r in rollouts]),
         }
 
     def compute_advantages(
@@ -200,6 +208,7 @@ class RolloutBuffer:
         flat_actions_obs = self.obs_actions.reshape(total, MAX_ACTIONS, ACTION_FEATURES)
         flat_mask = self.obs_mask.reshape(total, MAX_ACTIONS)
         flat_chain = self.obs_chain.reshape(total, MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES)
+        flat_event = self.obs_event.reshape(total, MAX_EVENT_HISTORY, EVENT_ENTRY_FEATURES)
         flat_actions = self.actions.reshape(total)
         flat_log_probs = self.log_probs.reshape(total)
         flat_advantages = self.advantages.reshape(total)
@@ -223,6 +232,7 @@ class RolloutBuffer:
                 obs_actions=_to_tensor(flat_actions_obs[idx], device),
                 action_mask=_to_tensor(flat_mask[idx], device),
                 obs_chain=_to_tensor(flat_chain[idx], device),
+                obs_event=_to_tensor(flat_event[idx], device),
                 actions=_to_tensor(flat_actions[idx], device, long=True),
                 old_log_probs=_to_tensor(flat_log_probs[idx], device),
                 advantages=_to_tensor(flat_advantages[idx], device),
@@ -268,6 +278,7 @@ class RolloutBuffer:
                 obs_actions=_to_tensor(self.obs_actions[:, env_idx_np], device),
                 action_mask=_to_tensor(self.obs_mask[:, env_idx_np], device),
                 obs_chain=_to_tensor(self.obs_chain[:, env_idx_np], device),
+                obs_event=_to_tensor(self.obs_event[:, env_idx_np], device),
                 actions=_to_tensor(self.actions[:, env_idx_np], device, long=True),
                 old_log_probs=_to_tensor(self.log_probs[:, env_idx_np], device),
                 advantages=_to_tensor(norm_adv[:, env_idx_np], device),
@@ -443,6 +454,7 @@ class PPOTrainer:
             "learned_embed_dim",
             "rnn_type",
             "chain_embed_dim",
+            "event_history_dim",
         ]
         arch_defaults = {"rnn_type": "none"}
         mismatches = []
@@ -637,6 +649,7 @@ class PPOTrainer:
                     t_actions = torch.from_numpy(obs["actions"]).to(self.device)
                     t_mask = torch.from_numpy(obs["action_mask"]).to(self.device)
                     t_chain = torch.from_numpy(obs["pending_chain"]).to(self.device)
+                    t_event = torch.from_numpy(obs["event_history"]).to(self.device)
                     _, last_values, _ = self.network(
                         t_cards,
                         t_global,
@@ -644,6 +657,7 @@ class PPOTrainer:
                         t_mask,
                         hx=bootstrap_hx,
                         obs_chain=t_chain,
+                        obs_event=t_event,
                     )
                     last_values_np = last_values.cpu().numpy()
 
@@ -657,6 +671,7 @@ class PPOTrainer:
                         all_obs_actions = _to_tensor(self.buffer.obs_actions[:T], self.device)
                         all_obs_mask = _to_tensor(self.buffer.obs_mask[:T], self.device)
                         all_obs_chain = _to_tensor(self.buffer.obs_chain[:T], self.device)
+                        all_obs_event = _to_tensor(self.buffer.obs_event[:T], self.device)
                         all_actions = _to_tensor(self.buffer.actions[:T], self.device, long=True)
                         all_log_probs_old = _to_tensor(self.buffer.log_probs[:T], self.device)
 
@@ -667,6 +682,7 @@ class PPOTrainer:
                         )
                         flat_mask = all_obs_mask.reshape(T * N, *all_obs_mask.shape[2:])
                         flat_chain = all_obs_chain.reshape(T * N, *all_obs_chain.shape[2:])
+                        flat_event = all_obs_event.reshape(T * N, *all_obs_event.shape[2:])
                         flat_acts = all_actions.reshape(T * N)
 
                         logits_new, values_new, _ = self.network(
@@ -675,6 +691,7 @@ class PPOTrainer:
                             flat_actions_obs,
                             flat_mask,
                             obs_chain=flat_chain,
+                            obs_event=flat_event,
                         )
                         dist_new = Categorical(logits=logits_new)
                         log_probs_new = dist_new.log_prob(flat_acts)
@@ -894,6 +911,7 @@ class PPOTrainer:
                     batch.obs_actions,
                     batch.action_mask,
                     obs_chain=batch.obs_chain,
+                    obs_event=batch.obs_event,
                 )
                 pg, v, ent_loss, entropy = self._ppo_loss_terms_unreduced(
                     logits,
@@ -971,6 +989,9 @@ class PPOTrainer:
                         dones=batch.dones[chunk],
                         obs_chain=batch.obs_chain[chunk].reshape(
                             flat, MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES
+                        ),
+                        obs_event=batch.obs_event[chunk].reshape(
+                            flat, MAX_EVENT_HISTORY, EVENT_ENTRY_FEATURES
                         ),
                     )
 
