@@ -13,9 +13,11 @@ from yugioh_rl.features import (
     ACTION_FEAT_DIM,
     CARD_FEAT_DIM,
     CHAIN_FEAT_DIM,
+    EVENT_FEAT_DIM,
     GLOBAL_FEAT_DIM,
     decode_actions,
     decode_cards,
+    decode_event_history,
     decode_global,
     decode_pending_chain,
 )
@@ -36,6 +38,11 @@ _NUM_ZONES = len(_ZONE_LOC_BITS) * 2  # 6 zones × 2 players = 12
 # Card embedding vocabulary (card codes mod-hashed from uint32)
 _CARD_VOCAB = 131072
 _CARD_EMBED_DIM = 16
+
+# Event-history msg_type embedding vocab: only a small subset of engine MSG ids
+# are ever recorded (summon/set/chaining/attack/hint), the largest being
+# MSG_ATTACK=110; 160 gives ample headroom. Out-of-range ids clamp to the top row.
+_EVENT_MSG_VOCAB = 160
 
 
 def _mlp(in_dim: int, hidden_dim: int, out_dim: int) -> nn.Sequential:
@@ -238,9 +245,37 @@ class YuGiOhNet(nn.Module):
         # Policy head: project board (or RNN output) → action_embed_dim for dot product
         self.board_proj = nn.Linear(head_in_dim, config.action_embed_dim)
 
-        # Value head
+        # ── Event-history CNN branch (optional; fused into VALUE head only) ──
+        self._event_history_dim = config.event_history_dim
+        event_extra = 0
+        if config.event_history_dim > 0:
+            d2 = max(1, config.desc_n_embed_dim // 2)
+            self.event_msg_emb = nn.Embedding(_EVENT_MSG_VOCAB, config.desc_n_embed_dim)
+            self.event_hint_emb = nn.Embedding(16, d2)
+            self.event_ctrl_emb = nn.Embedding(2, d2)
+            self.event_turn_emb = nn.Embedding(2, d2)
+            self.event_phase_emb = nn.Embedding(16, d2)
+            aux_dim = config.desc_n_embed_dim + 4 * d2
+            event_entry_dim = (
+                embed_dim  # card_code → card embedding
+                + embed_dim  # desc_passcode → card embedding
+                + embed_dim  # target_code → card embedding
+                + config.desc_n_embed_dim  # desc_ns → sysstring table
+                + aux_dim
+                + EVENT_FEAT_DIM
+            )
+            self.event_encoder = _mlp(
+                event_entry_dim, config.event_history_dim, config.event_history_dim
+            )
+            c = config.event_history_dim
+            self.event_cnn = nn.ModuleList(
+                [nn.Conv1d(c, c, 3, padding=0, dilation=d) for d in (1, 2, 4)]
+            )
+            event_extra = config.event_history_dim
+
+        # Value head (widened by event_extra when the event branch is enabled)
         self.value_head = nn.Sequential(
-            nn.Linear(head_in_dim, 64),
+            nn.Linear(head_in_dim + event_extra, 64),
             nn.ReLU(),
             nn.Linear(64, 1),
         )
@@ -382,6 +417,7 @@ class YuGiOhNet(nn.Module):
         seq_shape: tuple[int, int] | None = None,
         dones: torch.Tensor | None = None,
         obs_chain: torch.Tensor | None = None,
+        obs_event: torch.Tensor | None = None,
     ) -> tuple[
         torch.Tensor,
         torch.Tensor,
@@ -529,7 +565,49 @@ class YuGiOhNet(nn.Module):
         # Mask illegal actions
         logits = logits.masked_fill(action_mask == 0, float("-inf"))
 
+        # --- Event-history CNN branch (value head only) ---
+        # NOTE: fed on the update path only. With async_actor_learner/V-trace the
+        # learner recomputes values here at update time, so advantages become
+        # event-aware and the branch reaches the policy. With the sync/GAE path,
+        # advantages are frozen from event-blind collection-time values, so the
+        # branch only refits the critic and does NOT steer the policy. Validate
+        # on async; feed obs_event at collection to make sync policy-aware.
+        if self._event_history_dim > 0:
+            if obs_event is not None:
+                ev_codes, ev_dp, ev_dn, ev_tc, ev_aux, ev_feats = decode_event_history(obs_event)
+                code_e = self._embed_codes(ev_codes)
+                dp_e = self._embed_codes(ev_dp)
+                tc_e = self._embed_codes(ev_tc)
+                is_sys = ev_dp == 0
+                dn_e = self.sysstring_emb(ev_dn)  # decode already clamped to vocab
+                dn_e = dn_e * is_sys.float().unsqueeze(-1)
+                aux_e = torch.cat(
+                    [
+                        self.event_msg_emb(ev_aux[..., 0].clamp(max=_EVENT_MSG_VOCAB - 1)),
+                        self.event_hint_emb(ev_aux[..., 1].clamp(max=15)),
+                        self.event_ctrl_emb(ev_aux[..., 2].clamp(max=1)),
+                        self.event_turn_emb(ev_aux[..., 3].clamp(max=1)),
+                        self.event_phase_emb(ev_aux[..., 4].clamp(max=15)),
+                    ],
+                    dim=-1,
+                )
+                ev_in = torch.cat([code_e, dp_e, tc_e, dn_e, aux_e, ev_feats], dim=-1)
+                ev_enc = self.event_encoder(ev_in)  # (B, T, C)
+                x = ev_enc.transpose(1, 2)  # (B, C, T)
+                for conv in self.event_cnn:
+                    pad = conv.dilation[0] * (conv.kernel_size[0] - 1)
+                    y = torch.relu(conv(torch.nn.functional.pad(x, (pad, 0))))
+                    x = x + y
+                event_pooled = x[..., -1]  # (B, C) last timestep
+            else:
+                event_pooled = torch.zeros(
+                    head_input.shape[0], self._event_history_dim, device=head_input.device
+                )
+            value_in = torch.cat([head_input, event_pooled], dim=-1)
+        else:
+            value_in = head_input
+
         # --- Value head ---
-        values = self.value_head(head_input).squeeze(-1)  # (B,)
+        values = self.value_head(value_in).squeeze(-1)  # (B,)
 
         return logits, values, new_hx

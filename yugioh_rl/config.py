@@ -86,6 +86,9 @@ class TrainingConfig:
     # chain so the agent can see what it's chaining onto.
     chain_embed_dim: int = 32
 
+    # CNN event-history branch width; 0 disables (checkpoint-compatible).
+    event_history_dim: int = 0
+
     @property
     def is_recurrent(self) -> bool:
         """Whether the network has an RNN module — drives TBPTT vs feed-forward."""

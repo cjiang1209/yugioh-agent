@@ -435,3 +435,59 @@ def decode_pending_chain(
 
     chain_feats = torch.cat(feats, dim=-1)  # (B, 8, CHAIN_FEAT_DIM)
     return chain_codes, desc_passcodes, desc_ns, chain_feats
+
+
+# ── Event history decoding ──────────────────────────────────────────────
+
+# Float features per event entry (msg_type/hint_type/etc. embedded via aux_ids):
+# [sequence, location, target_location, target_sequence, hint_value, turn_delta] = 6
+EVENT_FEAT_DIM = 6
+
+
+def decode_event_history(raw: torch.Tensor):
+    """Decode (B, 32, 30) uint8 event-history bytes (tagged/discriminated record).
+
+    Returns (codes, desc_passcodes, desc_ns, target_codes, aux_ids, feats).
+    turn_delta is computed relative to the newest event's turn_count in each row
+    (== current turn at encode), clamped to [0,16].
+    Byte offsets match encode_event_entry: msg_type[0], controller[1],
+    turn_player[2], phase[3], turn_count[4], card_code[5:9], location[9],
+    sequence[10], target_code[11:15], target_location[15], target_sequence[16],
+    desc[17:25], hint_type[25], hint_value[26:30].
+    """
+    raw_long = raw.long()
+    msg_type = raw_long[..., 0]
+    controller = raw_long[..., 1]
+    turn_player = raw_long[..., 2]
+    phase = raw_long[..., 3]
+    turn_count = raw_long[..., 4]
+    codes = _uint32_le(raw_long, 5)
+    location = raw_long[..., 9].float()
+    sequence = raw_long[..., 10].float()
+    target_codes = _uint32_le(raw_long, 11)
+    target_location = raw_long[..., 15].float()
+    target_sequence = raw_long[..., 16].float()
+    desc_full = _uint64_le(raw_long, 17)
+    desc_passcodes = desc_full >> 20
+    desc_ns = desc_full & 0xFFFFF
+    hint_type = raw_long[..., 25]
+    hint_value = _uint32_le(raw_long, 26).float()
+
+    nonempty = msg_type != 0
+    # newest turn = max turn_count over entries; empty rows are all-zero bytes
+    # so their turn_count is already 0 and never wins the max.
+    # NOTE: at a turn boundary where the current turn has recorded no event yet,
+    # this reference lags the true turn, so deltas are uniformly too small (a
+    # global shift; relative recency is preserved, self-corrects on next event).
+    cur_turn = turn_count.amax(dim=1, keepdim=True)
+    turn_delta = (cur_turn - turn_count).clamp(min=0, max=16).float()
+    turn_delta = torch.where(nonempty, turn_delta, torch.zeros_like(turn_delta))
+
+    aux_ids = torch.stack([msg_type, hint_type, controller, turn_player, phase], dim=-1)
+    feats = torch.stack(
+        [sequence, location, target_location, target_sequence, hint_value, turn_delta],
+        dim=-1,
+    )
+    # Clamp desc_ns to sysstring vocab range so embedding lookups are safe.
+    desc_ns = desc_ns.clamp(max=SYSSTRING_VOCAB - 1)
+    return codes, desc_passcodes, desc_ns, target_codes, aux_ids, feats
