@@ -242,10 +242,7 @@ class YuGiOhNet(nn.Module):
             action_input_dim, config.action_embed_dim, config.action_embed_dim
         )
 
-        # Policy head: project board (or RNN output) → action_embed_dim for dot product
-        self.board_proj = nn.Linear(head_in_dim, config.action_embed_dim)
-
-        # ── Event-history CNN branch (optional; fused into VALUE head only) ──
+        # ── Event-history CNN branch (optional; fused into BOTH heads) ──
         self._event_history_dim = config.event_history_dim
         event_extra = 0
         if config.event_history_dim > 0:
@@ -272,6 +269,11 @@ class YuGiOhNet(nn.Module):
                 [nn.Conv1d(c, c, 3, padding=0, dilation=d) for d in (1, 2, 4)]
             )
             event_extra = config.event_history_dim
+
+        # Policy head: project board (or RNN output, + event_pooled) →
+        # action_embed_dim for dot product. Widened by event_extra so the event
+        # branch reaches the policy logits, not just the value.
+        self.board_proj = nn.Linear(head_in_dim + event_extra, config.action_embed_dim)
 
         # Value head (widened by event_extra when the event branch is enabled)
         self.value_head = nn.Sequential(
@@ -558,20 +560,15 @@ class YuGiOhNet(nn.Module):
         )
         act_enc = self.action_encoder(act_input)  # (B, 32, action_embed_dim)
 
-        # --- Policy head: dot product ---
-        board_p = self.board_proj(head_input)  # (B, action_embed_dim)
-        logits = (act_enc * board_p.unsqueeze(1)).sum(dim=-1)  # (B, 32)
-
-        # Mask illegal actions
-        logits = logits.masked_fill(action_mask == 0, float("-inf"))
-
-        # --- Event-history CNN branch (value head only) ---
-        # NOTE: fed on the update path only. With async_actor_learner/V-trace the
-        # learner recomputes values here at update time, so advantages become
-        # event-aware and the branch reaches the policy. With the sync/GAE path,
-        # advantages are frozen from event-blind collection-time values, so the
-        # branch only refits the critic and does NOT steer the policy. Validate
-        # on async; feed obs_event at collection to make sync policy-aware.
+        # --- Event-history CNN branch (fused into BOTH heads) ---
+        # event_pooled is a single per-board vector concatenated onto head_input
+        # before the policy projection AND the value head, so events influence
+        # the action logits (not just the critic). Being per-board (added
+        # identically to every action's dot-product score) it preserves the
+        # policy head's permutation-invariance and MAX_ACTIONS truncation
+        # robustness. Requires obs_event at collection too (env_wrapper /
+        # actor_learner / NetworkOpponent) so the behavior and target policies
+        # match; otherwise selection sees zeros while the update sees events.
         if self._event_history_dim > 0:
             if obs_event is not None:
                 ev_codes, ev_dp, ev_dn, ev_tc, ev_aux, ev_feats = decode_event_history(obs_event)
@@ -603,11 +600,18 @@ class YuGiOhNet(nn.Module):
                 event_pooled = torch.zeros(
                     head_input.shape[0], self._event_history_dim, device=head_input.device
                 )
-            value_in = torch.cat([head_input, event_pooled], dim=-1)
+            head_feat = torch.cat([head_input, event_pooled], dim=-1)
         else:
-            value_in = head_input
+            head_feat = head_input
+
+        # --- Policy head: dot product ---
+        board_p = self.board_proj(head_feat)  # (B, action_embed_dim)
+        logits = (act_enc * board_p.unsqueeze(1)).sum(dim=-1)  # (B, 32)
+
+        # Mask illegal actions
+        logits = logits.masked_fill(action_mask == 0, float("-inf"))
 
         # --- Value head ---
-        values = self.value_head(value_in).squeeze(-1)  # (B,)
+        values = self.value_head(head_feat).squeeze(-1)  # (B,)
 
         return logits, values, new_hx

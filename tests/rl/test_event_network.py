@@ -13,7 +13,8 @@ def _dummy_obs(B=2):
     return cards, glob, actions, mask
 
 
-def test_event_branch_changes_value_not_logits():
+def test_event_branch_changes_both_heads():
+    # Policy-head fusion: events feed BOTH the value AND the policy logits.
     cfg = TrainingConfig(event_history_dim=32)
     net = YuGiOhNet(cfg)
     net.eval()
@@ -25,7 +26,7 @@ def test_event_branch_changes_value_not_logits():
     with torch.no_grad():
         logits0, val0, _ = net(cards, glob, actions, mask, obs_event=ev0)
         logits1, val1, _ = net(cards, glob, actions, mask, obs_event=ev1)
-    assert torch.allclose(logits0, logits1)  # policy untouched by event branch
+    assert not torch.allclose(logits0, logits1)  # policy responds to events
     assert not torch.allclose(val0, val1)  # value responds to events
 
 

@@ -177,6 +177,8 @@ class NetworkOpponent(Opponent):
         t_global = torch.from_numpy(obs["global_state"]).unsqueeze(0).to(self._device)
         t_actions = torch.from_numpy(obs["actions"]).unsqueeze(0).to(self._device)
         t_mask = torch.from_numpy(obs["action_mask"]).unsqueeze(0).to(self._device)
+        ev = obs.get("event_history")
+        t_event = torch.from_numpy(ev).unsqueeze(0).to(self._device) if ev is not None else None
 
         with torch.no_grad():
             logits, _, self._hx = self._network(
@@ -185,6 +187,7 @@ class NetworkOpponent(Opponent):
                 t_actions,
                 t_mask,
                 hx=self._hx,
+                obs_event=t_event,
             )
             masked = logits.masked_fill(~t_mask.bool(), float("-inf"))
             if self._stochastic:

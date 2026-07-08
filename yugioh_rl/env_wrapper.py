@@ -512,6 +512,7 @@ class SubprocVecEnv:
                 t_global = torch.from_numpy(obs["global_state"]).to(device)
                 t_actions = torch.from_numpy(obs["actions"]).to(device)
                 t_mask = torch.from_numpy(obs["action_mask"]).to(device)
+                t_event = torch.from_numpy(obs["event_history"]).to(device)
 
                 logits, values, hx_new = model(
                     t_cards,
@@ -519,6 +520,7 @@ class SubprocVecEnv:
                     t_actions,
                     t_mask,
                     hx=hx,
+                    obs_event=t_event,
                 )
                 dist = Categorical(logits=logits)
                 actions = dist.sample()

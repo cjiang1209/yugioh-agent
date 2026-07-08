@@ -177,12 +177,14 @@ def _collect_one_rollout(
             glob_t = torch.from_numpy(obs["global_state"]).unsqueeze(0)
             acts_t = torch.from_numpy(obs["actions"]).unsqueeze(0)
             mask_t = torch.from_numpy(obs["action_mask"]).unsqueeze(0)
+            event_t = torch.from_numpy(obs["event_history"]).unsqueeze(0)
             logits, value, hx_new = local_policy(
                 cards_t,
                 glob_t,
                 acts_t,
                 mask_t,
                 hx=hx,
+                obs_event=event_t,
             )
             dist = Categorical(logits=logits)
             action = dist.sample()

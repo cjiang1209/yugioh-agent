@@ -22,7 +22,7 @@ class _FakeNet(nn.Module):
     def init_hx(self, batch_size: int, device):
         return None
 
-    def forward(self, cards, global_state, actions, mask, hx=None):
+    def forward(self, cards, global_state, actions, mask, hx=None, obs_event=None):
         return self._logits, torch.zeros(1, 1), hx
 
 
