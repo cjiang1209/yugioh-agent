@@ -182,6 +182,15 @@ PHASE_NAMES = {
 }
 
 
+def phase_to_index(phase: int) -> int:
+    """Compact a ``PHASE_*`` single-bit flag (0x01..0x200) to a 0-based index.
+
+    The ``PHASE_*`` values are contiguous powers of two, so the bit position
+    is the index (DRAW=0 .. END=9). Returns 0 for a falsy/absent phase.
+    """
+    return (phase.bit_length() - 1) if phase else 0
+
+
 # ─── Utilities ───────────────────────────────────────────────────────────────
 
 

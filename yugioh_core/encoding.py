@@ -195,3 +195,65 @@ def encode_chain_entry(
     feat[14] = min(sequence, 255)
     feat[15] = chain_link & 0xFF
     return feat
+
+
+MAX_EVENT_HISTORY = 32
+EVENT_ENTRY_FEATURES = 30
+
+
+def encode_event_entry(
+    msg_type: int = 0,
+    controller: int = 0,
+    turn_player: int = 0,
+    phase: int = 0,
+    turn_count: int = 0,
+    card_code: int = 0,
+    location: int = 0,
+    sequence: int = 0,
+    target_code: int = 0,
+    target_location: int = 0,
+    target_sequence: int = 0,
+    desc: int = 0,
+    hint_type: int = 0,
+    hint_value: int = 0,
+) -> np.ndarray:
+    """Encode one event-history entry as a uint8 feature vector.
+
+    Tagged/discriminated record: ``msg_type`` (RAW engine MSG id) is the
+    discriminator; ``msg_type == 0`` marks an empty slot. ``controller``/
+    ``turn_player`` are RAW engine 0/1 (relativized at encode in
+    ``EventHistoryBuffer.to_tensor``). ``hint_type`` disambiguates the hint
+    sub-kinds that share ``msg_type == MSG_HINT``.
+
+    Byte layout (role-grouped, fixed offsets):
+        [0]      msg_type         discriminator; 0 = empty slot
+        [1]      controller       RAW 0/1
+        [2]      turn_player      RAW 0/1
+        [3]      phase            bit-index 0..9 (not raw bitmask)
+        [4]      turn_count       clamped 255
+        [5:9]    card_code        uint32 LE
+        [9]      location
+        [10]     sequence         clamped 255
+        [11:15]  target_code      uint32 LE (attack)
+        [15]     target_location  (attack)
+        [16]     target_sequence  (attack, clamped 255)
+        [17:25]  desc             uint64 LE (chaining)
+        [25]     hint_type        hint_value discriminator; 0 non-hint
+        [26:30]  hint_value       uint32 LE (number/race/attrib hint)
+    """
+    feat = np.zeros(EVENT_ENTRY_FEATURES, dtype=np.uint8)
+    feat[0] = msg_type & 0xFF
+    feat[1] = controller & 0xFF
+    feat[2] = turn_player & 0xFF
+    feat[3] = phase & 0xFF
+    feat[4] = min(turn_count, 255)
+    feat[5:9] = encode_u32(card_code & 0xFFFFFFFF)
+    feat[9] = location & 0xFF
+    feat[10] = min(sequence, 255)
+    feat[11:15] = encode_u32(target_code & 0xFFFFFFFF)
+    feat[15] = target_location & 0xFF
+    feat[16] = min(target_sequence, 255)
+    feat[17:25] = encode_u64(desc & 0xFFFFFFFFFFFFFFFF)
+    feat[25] = hint_type & 0xFF
+    feat[26:30] = encode_u32(hint_value & 0xFFFFFFFF)
+    return feat
