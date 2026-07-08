@@ -24,12 +24,15 @@ from yugioh_core.encoding import (
     ACTION_FEATURES,
     CARD_FEATURES,
     CHAIN_ENTRY_FEATURES,
+    EVENT_ENTRY_FEATURES,
     GLOBAL_FEATURES,
     MAX_ACTIONS,
     MAX_CARDS,
+    MAX_EVENT_HISTORY,
     MAX_PENDING_CHAIN,
 )
 from yugioh_env.action_space import ActionMapper
+from yugioh_env.event_buffer import EventHistoryBuffer
 from yugioh_env.models import YuGiOhAction
 from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
 
@@ -44,12 +47,11 @@ def _stub_build_observation(monkeypatch):
     monkeypatch.setattr(
         env_mod,
         "build_observation",
-        lambda gs, msg, agent_player, query_fn=None: {
+        lambda gs, msg, agent_player, query_fn=None, event_history=None: {
             "cards": np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8),
             "global_state": np.zeros(GLOBAL_FEATURES, dtype=np.uint8),
-            "pending_chain": np.zeros(
-                (MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES), dtype=np.uint8
-            ),
+            "pending_chain": np.zeros((MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES), dtype=np.uint8),
+            "event_history": np.zeros((MAX_EVENT_HISTORY, EVENT_ENTRY_FEATURES), dtype=np.uint8),
         },
     )
 
@@ -67,6 +69,7 @@ def _bare_env() -> YuGiOhEnvironment:
     env._agent_player = 0
     env._card_db = None
     env._collapse_forced = False
+    env._event_buffer = EventHistoryBuffer()
     return env
 
 

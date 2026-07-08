@@ -44,6 +44,7 @@ from yugioh_core.encoding import MAX_ACTIONS
 from yugioh_env.action_loop_filter import ActionLoopFilter
 from yugioh_env.action_space import ActionMapper
 from yugioh_env.duel import Duel
+from yugioh_env.event_buffer import EventHistoryBuffer
 from yugioh_env.event_logger import FieldTracker, enrich_messages
 from yugioh_env.lib_loader import load_library
 from yugioh_env.models import ActionMeta, YuGiOhAction, YuGiOhObservation, YuGiOhState
@@ -231,6 +232,9 @@ class YuGiOhEnvironment(Environment):
         self._card_sel: list[int] = []
         # Persistent field tracker for event log card-code resolution
         self._field_tracker = FieldTracker()
+        # Rolling event-history buffer (CNN event branch); populated from the
+        # enriched stream in _capture_frame, reset per-episode.
+        self._event_buffer = EventHistoryBuffer()
         # Intermediate board snapshots captured during _process_to_agent_choice()
         self._last_frames: list[dict] = []
         # When True, board snapshots include unhidden opponent card data
@@ -327,6 +331,7 @@ class YuGiOhEnvironment(Environment):
         self._episode_count += 1
         self._step_count = 0
         self._field_tracker.reset()
+        self._event_buffer.reset()
         self._loop_filter.reset()
         duel_seed = seed if seed is not None else self._episode_count
 
@@ -467,6 +472,13 @@ class YuGiOhEnvironment(Environment):
         if not events:
             return
         enriched = enrich_messages(events, self._field_tracker)
+        gs = self._duel.game_state
+        self._event_buffer.append_from_enriched(
+            enriched,
+            turn_count=gs.turn_count,
+            current_player=gs.current_player,
+            phase=gs.phase,
+        )
         self._last_frames.append(
             {
                 "events": enriched,
@@ -551,6 +563,9 @@ class YuGiOhEnvironment(Environment):
                                 msg,
                                 1 - self._agent_player,
                                 query_fn=lambda p, loc: self._duel.query_location(p, loc),
+                                event_history=self._event_buffer.to_tensor(
+                                    1 - self._agent_player,
+                                ),
                             )
                             opp_obs["actions"] = opp_mapper.get_action_features()
                             opp_obs["action_mask"] = opp_mapper.get_action_mask()
@@ -607,6 +622,7 @@ class YuGiOhEnvironment(Environment):
             self._current_msg,
             self._agent_player,
             query_fn=query_fn,
+            event_history=self._event_buffer.to_tensor(self._agent_player),
         )
 
         action_mask = self._mapper.get_action_mask()
@@ -624,6 +640,7 @@ class YuGiOhEnvironment(Environment):
             actions=action_features.tolist(),
             action_mask=action_mask.tolist(),
             pending_chain=obs_data["pending_chain"].tolist(),
+            event_history=obs_data["event_history"].tolist(),
             action_meta=action_meta,
             prompt_meta=_build_prompt_meta(self._mapper),
             events=[m for f in self._last_frames for m in f["events"]],
@@ -652,6 +669,7 @@ class YuGiOhEnvironment(Environment):
                 self._duel.game_state if self._duel else None,
                 None,
                 self._agent_player,
+                event_history=self._event_buffer.to_tensor(self._agent_player),
             )
             if self._duel
             else {"cards": [], "global_state": []}
@@ -670,12 +688,19 @@ class YuGiOhEnvironment(Environment):
             else []
         )
 
+        event_history = (
+            obs_data["event_history"].tolist()
+            if hasattr(obs_data.get("event_history", None), "tolist")
+            else []
+        )
+
         return YuGiOhObservation(
             cards=cards,
             global_state=global_state,
             actions=[],
             action_mask=[],
             pending_chain=pending_chain,
+            event_history=event_history,
             action_meta=[],
             prompt_meta=None,
             events=[m for f in self._last_frames for m in f["events"]],

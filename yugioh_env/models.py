@@ -84,6 +84,9 @@ class YuGiOhObservation(Observation):
     pending_chain: list[list[int]] = Field(
         default_factory=list,
     )
+    event_history: list[list[int]] = Field(
+        default_factory=list,
+    )
     action_meta: list[ActionMeta | None] = Field(
         default_factory=list,
         description="Per-action prompt metadata, parallel to actions[]; "

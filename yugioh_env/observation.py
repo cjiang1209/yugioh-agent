@@ -16,8 +16,10 @@ from yugioh_core.constants import (
 from yugioh_core.encoding import (
     CARD_FEATURES,
     CHAIN_ENTRY_FEATURES,
+    EVENT_ENTRY_FEATURES,
     GLOBAL_FEATURES,
     MAX_CARDS,
+    MAX_EVENT_HISTORY,
     MAX_PENDING_CHAIN,
     ZONE_SLOTS,
     encode_card,
@@ -32,6 +34,7 @@ def build_observation(
     current_msg: dict | None,
     agent_player: int,
     query_fn=None,
+    event_history: np.ndarray | None = None,
 ) -> dict[str, np.ndarray]:
     """Build the complete observation arrays.
 
@@ -166,8 +169,12 @@ def build_observation(
             chain_link=link.chain_link,
         )
 
+    if event_history is None:
+        event_history = np.zeros((MAX_EVENT_HISTORY, EVENT_ENTRY_FEATURES), dtype=np.uint8)
+
     return {
         "cards": cards,
         "global_state": global_state,
         "pending_chain": pending_chain,
+        "event_history": event_history,
     }
