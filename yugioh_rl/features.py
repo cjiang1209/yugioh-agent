@@ -9,6 +9,12 @@ from __future__ import annotations
 
 import torch
 
+from yugioh_core.constants import (
+    HINT_ATTRIB,
+    HINT_CODE,
+    HINT_NUMBER,
+    HINT_RACE,
+)
 from yugioh_core.encoding import (
     PER_CARD_DESC_N_VOCAB,
     SYSSTRING_VOCAB,
@@ -439,39 +445,58 @@ def decode_pending_chain(
 
 # ── Event history decoding ──────────────────────────────────────────────
 
-# Float features per event entry (msg_type/hint_type/etc. embedded via aux_ids):
-# [sequence, location, target_location, target_sequence, hint_value, turn_delta] = 6
-EVENT_FEAT_DIM = 6
+# Declaration-hint ids → 4 one-hot columns.
+_EVENT_HINT_IDS = [HINT_RACE, HINT_ATTRIB, HINT_CODE, HINT_NUMBER]
+
+# Float features per event entry. msg_type and phase are embedded via aux_ids;
+# everything else is fed here directly, in this column order (matches the
+# torch.cat in decode_event_history):
+#   scalar_feats(6): controller, turn_player, sequence, target_sequence,
+#                    hint_value, turn_delta
+#   + location(7 one-hot) + target_location(7 one-hot) + hint_type(4 one-hot)
+EVENT_FEAT_DIM = 6 + 2 * len(_LOC_BITS) + len(_EVENT_HINT_IDS)  # = 24
 
 
 def decode_event_history(raw: torch.Tensor):
     """Decode (B, 32, 30) uint8 event-history bytes (tagged/discriminated record).
 
     Returns (codes, desc_passcodes, desc_ns, target_codes, aux_ids, feats).
+    ``aux_ids`` carries only the embedded categoricals ``[msg_type, phase]``.
+    The remaining categoricals are encoded directly into ``feats``: location /
+    target_location as one-hot over ``_LOC_BITS`` (a card is in exactly one
+    zone; bit-expanded rather than fed as the raw bitmask scalar); hint_type as
+    one-hot over the four declaration ids; controller / turn_player as raw 0/1
+    scalars (already relativized to agent=0/opp=1 at encode time).
     turn_delta is computed relative to the newest event's turn_count in each row
     (== current turn at encode), clamped to [0,16].
-    Byte offsets match encode_event_entry: msg_type[0], controller[1],
+    Byte offsets match the entry encoder: msg_type[0], controller[1],
     turn_player[2], phase[3], turn_count[4], card_code[5:9], location[9],
     sequence[10], target_code[11:15], target_location[15], target_sequence[16],
     desc[17:25], hint_type[25], hint_value[26:30].
     """
     raw_long = raw.long()
     msg_type = raw_long[..., 0]
-    controller = raw_long[..., 1]
-    turn_player = raw_long[..., 2]
+    controller = raw_long[..., 1].float()
+    turn_player = raw_long[..., 2].float()
     phase = raw_long[..., 3]
     turn_count = raw_long[..., 4]
     codes = _uint32_le(raw_long, 5)
-    location = raw_long[..., 9].float()
+    location = _extract_bits(raw_long[..., 9], _LOC_BITS)  # (B,T,7) one-hot zone
     sequence = raw_long[..., 10].float()
     target_codes = _uint32_le(raw_long, 11)
-    target_location = raw_long[..., 15].float()
+    target_location = _extract_bits(raw_long[..., 15], _LOC_BITS)  # (B,T,7) one-hot zone
     target_sequence = raw_long[..., 16].float()
     desc_full = _uint64_le(raw_long, 17)
     desc_passcodes = desc_full >> 20
     desc_ns = desc_full & 0xFFFFF
     hint_type = raw_long[..., 25]
     hint_value = _uint32_le(raw_long, 26).float()
+
+    # hint_type is nominal (race/attrib/code/number) → one-hot; empty/non-hint
+    # entries (hint_type not in the set) get an all-zero row.
+    hint_onehot = torch.stack(
+        [(hint_type == hid).float() for hid in _EVENT_HINT_IDS], dim=-1
+    )  # (B,T,4)
 
     nonempty = msg_type != 0
     # newest turn = max turn_count over entries; empty rows are all-zero bytes
@@ -483,11 +508,12 @@ def decode_event_history(raw: torch.Tensor):
     turn_delta = (cur_turn - turn_count).clamp(min=0, max=16).float()
     turn_delta = torch.where(nonempty, turn_delta, torch.zeros_like(turn_delta))
 
-    aux_ids = torch.stack([msg_type, hint_type, controller, turn_player, phase], dim=-1)
-    feats = torch.stack(
-        [sequence, location, target_location, target_sequence, hint_value, turn_delta],
+    aux_ids = torch.stack([msg_type, phase], dim=-1)
+    scalar_feats = torch.stack(
+        [controller, turn_player, sequence, target_sequence, hint_value, turn_delta],
         dim=-1,
-    )
+    )  # (B,T,6)
+    feats = torch.cat([scalar_feats, location, target_location, hint_onehot], dim=-1)
     # Clamp desc_ns to sysstring vocab range so embedding lookups are safe.
     desc_ns = desc_ns.clamp(max=SYSSTRING_VOCAB - 1)
     return codes, desc_passcodes, desc_ns, target_codes, aux_ids, feats

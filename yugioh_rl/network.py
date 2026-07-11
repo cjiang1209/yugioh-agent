@@ -248,11 +248,8 @@ class YuGiOhNet(nn.Module):
         if config.event_history_dim > 0:
             d2 = max(1, config.desc_n_embed_dim // 2)
             self.event_msg_emb = nn.Embedding(_EVENT_MSG_VOCAB, config.desc_n_embed_dim)
-            self.event_hint_emb = nn.Embedding(16, d2)
-            self.event_ctrl_emb = nn.Embedding(2, d2)
-            self.event_turn_emb = nn.Embedding(2, d2)
             self.event_phase_emb = nn.Embedding(16, d2)
-            aux_dim = config.desc_n_embed_dim + 4 * d2
+            aux_dim = config.desc_n_embed_dim + d2  # msg_type + phase (only embedded aux)
             event_entry_dim = (
                 embed_dim  # card_code → card embedding
                 + embed_dim  # desc_passcode → card embedding
@@ -581,10 +578,7 @@ class YuGiOhNet(nn.Module):
                 aux_e = torch.cat(
                     [
                         self.event_msg_emb(ev_aux[..., 0].clamp(max=_EVENT_MSG_VOCAB - 1)),
-                        self.event_hint_emb(ev_aux[..., 1].clamp(max=15)),
-                        self.event_ctrl_emb(ev_aux[..., 2].clamp(max=1)),
-                        self.event_turn_emb(ev_aux[..., 3].clamp(max=1)),
-                        self.event_phase_emb(ev_aux[..., 4].clamp(max=15)),
+                        self.event_phase_emb(ev_aux[..., 1].clamp(max=15)),
                     ],
                     dim=-1,
                 )
