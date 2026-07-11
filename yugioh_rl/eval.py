@@ -36,7 +36,7 @@ from yugioh_env.opponent import (
     parse_opponent_spec,
 )
 from yugioh_rl.actor_learner import WorkerDiedError, WorkerTimeoutError
-from yugioh_rl.env_wrapper import DeckDict, TrainingEnv
+from yugioh_rl.env_wrapper import DeckDict, EvalEnv
 
 logger = logging.getLogger(__name__)
 
@@ -189,7 +189,7 @@ def make_eval_agent(
 
 def _play_one_episode(
     agent: Opponent,
-    env: TrainingEnv,
+    env: EvalEnv,
     *,
     base_seed: int,
     episode_idx: int,
@@ -218,7 +218,7 @@ def _play_one_episode(
 
 def run_match(
     agent: Opponent,
-    env: TrainingEnv,
+    env: EvalEnv,
     num_episodes: int,
     *,
     base_seed: int,
@@ -256,19 +256,17 @@ def _eval_worker(
     seed: int,
     agent_player: str,
     opponent_device: str | None,
+    deck_allocation: str = "random",
+    mirror_decks: bool = False,
 ) -> None:
-    """Parallel-eval worker process: holds one ``TrainingEnv`` cached by
+    """Parallel-eval worker process: holds one ``EvalEnv`` cached by
     opponent_spec, plays one episode per ``("task", _EvalTask)`` message,
     replies ``("partial", _PartialResult)`` or ``("error", traceback_str)``.
 
     Mirrors :func:`yugioh_rl.actor_learner._actor_learner_worker`'s pipe
     protocol and shutdown handshake.
     """
-    # Deferred imports keep the spawn-context module load minimal.
-    from yugioh_rl.env_wrapper import TrainingEnv as _TrainingEnv
-    from yugioh_rl.eval import _play_one_episode, make_eval_agent
-
-    env: _TrainingEnv | None = None
+    env: EvalEnv | None = None
     current_spec: str | None = None
     try:
         agent = make_eval_agent(agent_spec, seed=seed, device=agent_device)
@@ -282,13 +280,15 @@ def _eval_worker(
                 if task.opp_spec != current_spec:
                     if env is not None:
                         env.close()
-                    env = _TrainingEnv(
+                    env = EvalEnv(
                         **_make_eval_env_kwargs(
                             deck_pool,
                             task.opp_spec,
                             seed=seed,
                             agent_player=agent_player,
                             opponent_device=opponent_device,
+                            deck_allocation=deck_allocation,
+                            mirror_decks=mirror_decks,
                         )
                     )
                     current_spec = task.opp_spec
@@ -328,6 +328,8 @@ def _run_eval_pool(
     opponent_device: str | None,
     num_workers: int,
     worker_timeout_s: float,
+    deck_allocation: str = "random",
+    mirror_decks: bool = False,
     worker_fn=None,
 ) -> list[EvalResult]:
     """Fan ``opponent_specs × num_episodes`` out across worker processes.
@@ -356,6 +358,8 @@ def _run_eval_pool(
                 "seed": seed,
                 "agent_player": agent_player,
                 "opponent_device": opponent_device,
+                "deck_allocation": deck_allocation,
+                "mirror_decks": mirror_decks,
             },
             daemon=True,
         )
@@ -448,8 +452,10 @@ def _make_eval_env_kwargs(
     seed: int,
     agent_player: str,
     opponent_device: str | None,
+    deck_allocation: str = "random",
+    mirror_decks: bool = False,
 ) -> dict[str, Any]:
-    """Build the kwargs dict for an eval-side ``TrainingEnv``.
+    """Build the kwargs dict for an eval-side ``EvalEnv``.
 
     ``opponent_device`` is omitted when None so the ``YUGIOH_OPPONENT_DEVICE``
     env-var fallback inside ``YuGiOhEnvironment`` keeps working.
@@ -457,9 +463,10 @@ def _make_eval_env_kwargs(
     kwargs: dict[str, Any] = {
         "deck_pool": deck_pool,
         "opponent": opponent_spec,
-        "reward_shaping": False,
         "seed": seed,
         "agent_player": agent_player,
+        "deck_allocation": deck_allocation,
+        "mirror_decks": mirror_decks,
     }
     if opponent_device is not None:
         kwargs["opponent_device"] = opponent_device
@@ -475,17 +482,21 @@ def _run_sequential_match_set(
     seed: int,
     agent_player: str,
     opponent_device: str | None,
+    deck_allocation: str = "random",
+    mirror_decks: bool = False,
 ) -> list[EvalResult]:
     """Sequential per-opponent loop shared by both public entry points."""
     results: list[EvalResult] = []
     for spec in opponent_specs:
-        env = TrainingEnv(
+        env = EvalEnv(
             **_make_eval_env_kwargs(
                 deck_pool,
                 spec,
                 seed=seed,
                 agent_player=agent_player,
                 opponent_device=opponent_device,
+                deck_allocation=deck_allocation,
+                mirror_decks=mirror_decks,
             )
         )
         try:
@@ -516,6 +527,8 @@ def evaluate(
     workers: int = 1,
     agent_device: str = "cpu",
     worker_timeout_s: float = _DEFAULT_EVAL_WORKER_TIMEOUT_S,
+    deck_allocation: str = "random",
+    mirror_decks: bool = False,
 ) -> list[EvalResult]:
     """Run an agent (specified by string) against each opponent spec.
 
@@ -529,7 +542,7 @@ def evaluate(
     because the agent wraps a live ``nn.Module``), use
     :func:`evaluate_with_agent` instead.
 
-    Sequential (``workers=1``): a fresh ``TrainingEnv`` per spec with the
+    Sequential (``workers=1``): a fresh ``EvalEnv`` per spec with the
     same ``seed`` / ``agent_player``; ``opponent_device`` is forwarded only
     when non-None to preserve the ``YUGIOH_OPPONENT_DEVICE`` fallback.
 
@@ -547,6 +560,8 @@ def evaluate(
             seed=seed,
             agent_player=agent_player,
             opponent_device=opponent_device,
+            deck_allocation=deck_allocation,
+            mirror_decks=mirror_decks,
         )
     return _run_eval_pool(
         agent_spec=agent_spec,
@@ -559,6 +574,8 @@ def evaluate(
         opponent_device=opponent_device,
         num_workers=workers,
         worker_timeout_s=worker_timeout_s,
+        deck_allocation=deck_allocation,
+        mirror_decks=mirror_decks,
     )
 
 
@@ -571,6 +588,8 @@ def evaluate_with_agent(
     seed: int,
     agent_player: str = "random",
     opponent_device: str | None = None,
+    deck_allocation: str = "random",
+    mirror_decks: bool = False,
 ) -> list[EvalResult]:
     """Sequential eval with a pre-built :class:`Opponent` instance.
 
@@ -590,6 +609,8 @@ def evaluate_with_agent(
         seed=seed,
         agent_player=agent_player,
         opponent_device=opponent_device,
+        deck_allocation=deck_allocation,
+        mirror_decks=mirror_decks,
     )
 
 

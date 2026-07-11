@@ -74,6 +74,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Agent turn order per episode (default: random).",
     )
     parser.add_argument(
+        "--deck-allocation",
+        choices=["random", "balanced"],
+        default="random",
+        help="Per-episode deck assignment (default: random draw; "
+        "balanced round-robins for uniform per-deck coverage).",
+    )
+    parser.add_argument(
+        "--mirror-decks",
+        action="store_true",
+        help="Both players use the same decklist each episode.",
+    )
+    parser.add_argument(
         "--device",
         type=str,
         default="cpu",
@@ -175,6 +187,8 @@ def main(argv: list[str] | None = None) -> int:
         opponent_device=device,
         agent_device=device,
         workers=args.workers,
+        deck_allocation=args.deck_allocation,
+        mirror_decks=args.mirror_decks,
     )
 
     deck_stems = [Path(p).stem for p in args.deck_paths]

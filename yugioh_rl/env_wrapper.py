@@ -312,6 +312,95 @@ class TrainingEnv:
         self._env.close()
 
 
+class EvalEnv:
+    """Lean eval env over YuGiOhEnvironment: DeckSelector + one fixed opponent.
+
+    Exposes the duck-typed env contract the eval loop drives
+    (reset/step/current_msg/num_actions/close). Built from picklable kwargs
+    so eval workers can construct it in a spawned process.
+    """
+
+    def __init__(
+        self,
+        deck_pool: list[DeckDict],
+        opponent: str,
+        *,
+        seed: int,
+        agent_player: str = "random",
+        opponent_device: str | None = None,
+        deck_allocation: str = "random",
+        mirror_decks: bool = False,
+    ) -> None:
+        if not deck_pool:
+            raise ValueError("deck_pool must not be empty")
+        from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+        from yugioh_rl.deck_selector import DeckSelector
+
+        agent_player_map = {"first": 0, "second": 1, "random": "random"}
+        self._agent_player_setting = agent_player_map.get(agent_player, agent_player)
+
+        env_config: dict[str, Any] = {
+            "opponent": opponent,
+            "agent_player": self._agent_player_setting,
+            "collapse_forced": True,
+        }
+        if opponent_device is not None:
+            env_config["opponent_device"] = opponent_device
+
+        self._env = YuGiOhEnvironment(config=env_config)
+        self._deck_pool = deck_pool
+        self._selector = DeckSelector(
+            pool_size=len(deck_pool), seed=seed, allocation=deck_allocation, mirror=mirror_decks
+        )
+        self._seed = seed
+        self._player_rng = stdlib_random.Random()
+        self._last_agent_deck_idx = -1
+
+    def reset(self, *, episode_idx: int) -> dict[str, np.ndarray]:
+        episode_seed = self._seed + episode_idx
+        if self._agent_player_setting == "random":
+            self._player_rng.seed(episode_seed)
+            resolved_player = self._player_rng.randint(0, 1)
+        else:
+            resolved_player = int(self._agent_player_setting)
+
+        agent_deck_idx, opp_deck_idx = self._selector.select(episode_idx)
+        agent_deck = self._deck_pool[agent_deck_idx]
+        opp_deck = self._deck_pool[opp_deck_idx]
+
+        if resolved_player == 0:
+            deck0, deck1 = agent_deck, opp_deck
+        else:
+            deck0, deck1 = opp_deck, agent_deck
+
+        self._last_agent_deck_idx = agent_deck_idx
+        obs = self._env.reset(
+            seed=episode_seed, deck0=deck0, deck1=deck1, agent_player=resolved_player
+        )
+        return _obs_to_numpy(obs)
+
+    def step(self, action_index: int) -> tuple[dict[str, np.ndarray], float, bool, dict[str, Any]]:
+        obs = self._env.step(YuGiOhAction(action_index=action_index))
+        np_obs = _obs_to_numpy(obs)
+        info: dict[str, Any] = {}
+        if obs.done:
+            info["terminal_reward"] = obs.reward
+            info["episode_length"] = self._env._step_count
+            info["agent_deck_idx"] = self._last_agent_deck_idx
+        return np_obs, obs.reward, obs.done, info
+
+    @property
+    def current_msg(self) -> dict | None:
+        return self._env.current_msg
+
+    @property
+    def num_actions(self) -> int:
+        return self._env.num_actions
+
+    def close(self) -> None:
+        self._env.close()
+
+
 # ---------------------------------------------------------------------------
 # Vectorized environment using multiprocessing
 # ---------------------------------------------------------------------------

@@ -146,6 +146,8 @@ def run_sweep(
     seed,
     workers,
     agent_player,
+    deck_allocation="random",
+    mirror_decks=False,
     force,
     evaluate_fn=evaluate,
     load_fn=torch.load,
@@ -185,6 +187,8 @@ def run_sweep(
                     seed=seed,
                     workers=workers,
                     agent_player=agent_player,
+                    deck_allocation=deck_allocation,
+                    mirror_decks=mirror_decks,
                 )
                 # Log to TB and record in manifest
                 log_results_to_tensorboard(writer, results, deck_paths, global_step)
@@ -219,6 +223,18 @@ def parse_args(argv=None) -> argparse.Namespace:
         nargs="*",
         default=None,
         help="Override eval decks (default: derive from checkpoint config)",
+    )
+    p.add_argument(
+        "--deck-allocation",
+        choices=["random", "balanced"],
+        default="random",
+        help="Per-episode deck assignment (default: random draw; "
+        "balanced round-robins for uniform per-deck coverage).",
+    )
+    p.add_argument(
+        "--mirror-decks",
+        action="store_true",
+        help="Both players use the same decklist each episode.",
     )
     p.add_argument("--force", action="store_true", help="Re-evaluate recorded pairs")
     p.add_argument("--json", default=None, help="Also write a JSON summary to this path")
@@ -275,6 +291,8 @@ def main(argv=None) -> int:
             seed=args.seed,
             workers=args.workers,
             agent_player=args.agent_player,
+            deck_allocation=args.deck_allocation,
+            mirror_decks=args.mirror_decks,
             force=args.force,
         )
     finally:

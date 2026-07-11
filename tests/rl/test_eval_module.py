@@ -311,7 +311,7 @@ class TestEvaluate:
     def test_constructs_one_env_per_spec_with_correct_kwargs(self, fake_training_env_factory):
         FakeEnv, instances = fake_training_env_factory
         agent = _RecordingAgent()
-        with patch("yugioh_rl.eval.TrainingEnv", FakeEnv):
+        with patch("yugioh_rl.eval.EvalEnv", FakeEnv):
             results = evaluate_with_agent(
                 agent,
                 deck_pool=[{"main": list(range(40)), "extra": []}],
@@ -329,7 +329,8 @@ class TestEvaluate:
             instances, ["greedy", "random", "model:/p/v1.pt"], strict=True
         ):
             assert env.kwargs["opponent"] == expected_spec
-            assert env.kwargs["reward_shaping"] is False
+            assert env.kwargs["deck_allocation"] == "random"
+            assert env.kwargs["mirror_decks"] is False
             assert env.kwargs["seed"] == 42
             assert env.kwargs["agent_player"] == "random"
             # opponent_device omitted → kwarg absent so env-var fallback wins.
@@ -338,7 +339,7 @@ class TestEvaluate:
     def test_opponent_device_forwarded_only_when_provided(self, fake_training_env_factory):
         FakeEnv, instances = fake_training_env_factory
         agent = _RecordingAgent()
-        with patch("yugioh_rl.eval.TrainingEnv", FakeEnv):
+        with patch("yugioh_rl.eval.EvalEnv", FakeEnv):
             evaluate_with_agent(
                 agent,
                 deck_pool=[{"main": list(range(40)), "extra": []}],
@@ -352,7 +353,7 @@ class TestEvaluate:
     def test_results_carry_label_and_per_deck(self, fake_training_env_factory):
         FakeEnv, _ = fake_training_env_factory
         agent = _RecordingAgent()
-        with patch("yugioh_rl.eval.TrainingEnv", FakeEnv):
+        with patch("yugioh_rl.eval.EvalEnv", FakeEnv):
             results = evaluate_with_agent(
                 agent,
                 deck_pool=[{"main": list(range(40)), "extra": []}],
@@ -373,7 +374,7 @@ class TestEvaluate:
         """Episode 1 of opponent A and episode 1 of opponent B both reseed agent to seed+1."""
         FakeEnv, _ = fake_training_env_factory
         agent = _RecordingAgent()
-        with patch("yugioh_rl.eval.TrainingEnv", FakeEnv):
+        with patch("yugioh_rl.eval.EvalEnv", FakeEnv):
             evaluate_with_agent(
                 agent,
                 deck_pool=[{"main": list(range(40)), "extra": []}],

@@ -110,6 +110,8 @@ def test_eval_worker_signature_stable():
         "seed",
         "agent_player",
         "opponent_device",
+        "deck_allocation",
+        "mirror_decks",
     }
     assert set(params) == expected, (
         f"_eval_worker signature drifted: got {set(params)}, expected {expected}. "
