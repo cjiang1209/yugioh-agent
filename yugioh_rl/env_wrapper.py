@@ -106,6 +106,8 @@ class TrainingEnv:
         shaping_card_weight: float = 0.005,
         seed: int = 42,
         agent_player: str = "random",
+        deck_allocation: str = "random",
+        mirror_decks: bool = False,
         opponent_device: str | None = None,
         opponent_pool_handles: dict | None = None,
         opponent_pool_temperature: float = 1.0,
@@ -136,11 +138,13 @@ class TrainingEnv:
         self._seed = seed
         self._episode_count = 0
 
-        # Deck pool and sampling RNG.  ``_deck_rng`` is reseeded per-episode
-        # in reset() so deck draws are a pure function of (seed, episode_count)
-        # — required for episode-shard parallelism.
+        # Deck pool and DeckSelector for allocation/mirror.
+        from yugioh_rl.deck_selector import DeckSelector
+
         self._deck_pool = deck_pool
-        self._deck_rng = stdlib_random.Random(seed)
+        self._selector = DeckSelector(
+            pool_size=len(deck_pool), seed=seed, allocation=deck_allocation, mirror=mirror_decks
+        )
         self._player_rng = stdlib_random.Random()
         self._last_agent_deck_idx = -1
 
@@ -192,9 +196,7 @@ class TrainingEnv:
         else:
             resolved_player = int(self._agent_player_setting)
 
-        self._deck_rng = stdlib_random.Random(episode_seed)
-        agent_deck_idx = self._deck_rng.randrange(len(self._deck_pool))
-        opp_deck_idx = self._deck_rng.randrange(len(self._deck_pool))
+        agent_deck_idx, opp_deck_idx = self._selector.select(self._episode_count)
         agent_deck = self._deck_pool[agent_deck_idx]
         opp_deck = self._deck_pool[opp_deck_idx]
 
@@ -365,6 +367,8 @@ class SubprocVecEnv:
         shaping_card_weight: float = 0.005,
         seed: int = 42,
         agent_player: str = "random",
+        deck_allocation: str = "random",
+        mirror_decks: bool = False,
         opponent_device: str | None = None,
         master_model: nn.Module | None = None,
         rollout_steps: int = 256,
@@ -395,6 +399,8 @@ class SubprocVecEnv:
                 "shaping_card_weight": shaping_card_weight,
                 "seed": seed + i * 10000,
                 "agent_player": agent_player,
+                "deck_allocation": deck_allocation,
+                "mirror_decks": mirror_decks,
                 "opponent_device": opponent_device,
                 "opponent_pool_handles": opponent_pool_handles,
                 "opponent_pool_temperature": opponent_pool_temperature,

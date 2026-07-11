@@ -22,6 +22,8 @@ class TrainingConfig:
     self_play_temperature: float = 1.0
     self_play_sampling: Literal["uniform", "pfsp"] = "uniform"
     agent_player: str = "random"  # "first" (player 0), "second" (player 1), or "random"
+    deck_allocation: Literal["random", "balanced"] = "random"
+    mirror_decks: bool = False
     reward_shaping: bool = True
     shaping_lp_weight: float = 0.01
     shaping_card_weight: float = 0.005

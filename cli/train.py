@@ -177,6 +177,17 @@ def parse_args() -> argparse.Namespace:
         help="Agent turn order: 'first' (player 0), 'second' (player 1), "
         "or 'random' (coin flip per episode, default: random)",
     )
+    env.add_argument(
+        "--deck-allocation",
+        choices=["random", "balanced"],
+        default="random",
+        help="Per-episode deck assignment: random draw or balanced round-robin.",
+    )
+    env.add_argument(
+        "--mirror-decks",
+        action="store_true",
+        help="Both players use the same decklist each episode (independent shuffles).",
+    )
 
     ppo = parser.add_argument_group("PPO algorithm")
     ppo.add_argument(
