@@ -1,3 +1,4 @@
+import types
 from pathlib import Path
 
 import pytest
@@ -5,8 +6,10 @@ import pytest
 from yugioh_rl.metrics_logging import (
     CheckpointEvent,
     CheckpointRef,
+    MLflowSink,
     MultiSink,
     ScalarMetrics,
+    TensorBoardSink,
     compute_update_metrics,
     flatten_eval,
 )
@@ -141,3 +144,261 @@ def test_flatten_eval_keys_match_tb_convention():
         "win_rate_vs_greedy_deck_blue_eyes": 0.7,
         "win_rate_vs_greedy_deck_exodia": 0.9,
     }
+
+
+class _FakeWriter:
+    def __init__(self):
+        self.calls = []
+        self.closed = False
+
+    def add_scalar(self, key, value, step):
+        self.calls.append((key, value, step))
+
+    def close(self):
+        self.closed = True
+
+
+def test_tb_sink_scalar_metrics_no_prefix():
+    w = _FakeWriter()
+    TensorBoardSink(w).handle(ScalarMetrics(scalars={"loss/policy": 0.5}, global_step=100))
+    assert w.calls == [("loss/policy", 0.5, 100)]
+
+
+def test_tb_sink_checkpoint_event_eval_prefix_at_global_step():
+    w = _FakeWriter()
+    ref = CheckpointRef(path=Path("/tmp/checkpoint_5.pt"), update=5, global_step=999, tags={})
+    ev = CheckpointEvent(ref=ref, scalars={"win_rate_vs_greedy": 0.8})
+    TensorBoardSink(w).handle(ev)
+    assert w.calls == [("eval/win_rate_vs_greedy", 0.8, 999)]
+
+
+def test_tb_sink_registration_event_is_noop():
+    w = _FakeWriter()
+    ref = CheckpointRef(path=Path("/tmp/checkpoint_5.pt"), update=5, global_step=1, tags={})
+    TensorBoardSink(w).handle(CheckpointEvent(ref=ref))  # empty scalars
+    assert w.calls == []
+
+
+def test_tb_sink_close_closes_writer():
+    w = _FakeWriter()
+    TensorBoardSink(w).close()
+    assert w.closed
+
+
+class _FakeLoggedModel:
+    def __init__(self, model_id):
+        self.model_id = model_id
+
+
+class _FakeMlflow:
+    def __init__(self, existing=None):
+        self._existing = existing or []
+        self.metrics = []  # (key, value, step, model_id)
+        self.created = []  # (name, tags)
+        self.artifacts = []  # (local_path, artifact_path)
+        self.ended = False
+        self.system_metrics_enabled = False
+
+    def enable_system_metrics_logging(self):
+        self.system_metrics_enabled = True
+
+    def log_metrics(self, metrics, step=None, model_id=None):
+        for key, value in metrics.items():
+            self.metrics.append((key, value, step, model_id))
+
+    def search_logged_models(self, filter_string=None, output_format=None):
+        assert output_format == "list"
+        return list(self._existing)
+
+    def create_external_model(self, name=None, tags=None, params=None):
+        self.created.append((name, tags, params))
+        lm = _FakeLoggedModel(model_id=f"m-{name}")
+        self._existing = [lm]
+        return lm
+
+    def log_artifact(self, local_path, artifact_path=None):
+        self.artifacts.append((local_path, artifact_path))
+
+    def end_run(self):
+        self.ended = True
+
+
+def _write_ckpt(tmp_path, name="checkpoint_100.pt", data=b"weights"):
+    p = tmp_path / name
+    p.write_bytes(data)
+    return p
+
+
+def test_mlflow_sink_scalar_metrics_go_to_run():
+    fake = _FakeMlflow()
+    MLflowSink(fake).handle(ScalarMetrics(scalars={"loss/policy": 0.5}, global_step=100))
+    assert fake.metrics == [("loss/policy", 0.5, 100, None)]
+
+
+def test_mlflow_sink_registration_creates_model_and_uploads(tmp_path):
+    fake = _FakeMlflow(existing=[])
+    p = _write_ckpt(tmp_path)
+    ref = CheckpointRef(
+        path=p,
+        update=100,
+        global_step=2048,
+        params={"seed": "42"},
+        tags={"note": "manual"},  # optional arbitrary metadata; passed through verbatim
+    )
+    MLflowSink(fake).handle(CheckpointEvent(ref=ref))  # empty scalars
+    assert len(fake.created) == 1
+    name, tags, params = fake.created[0]
+    assert name == "checkpoint_100"
+    # tags: caller metadata passed through untouched
+    assert tags == {"note": "manual"}
+    # params: caller facts + sink-added defining facts (incl. the searchable hash join key)
+    assert params["seed"] == "42"
+    assert params["update"] == "100"
+    assert params["global_step"] == "2048"
+    assert len(params["checkpoint_hash"]) == 64
+    # defining facts are params, NOT tags
+    assert "checkpoint_hash" not in tags
+    assert "update" not in tags
+    assert "global_step" not in tags
+    assert fake.artifacts == [(str(p), "checkpoints/checkpoint_100")]
+    assert fake.metrics == []  # empty scalars -> no metric attached
+
+
+def test_mlflow_sink_eval_attaches_metrics_to_existing_model(tmp_path):
+    existing = _FakeLoggedModel(model_id="m-existing")
+    fake = _FakeMlflow(existing=[existing])
+    p = _write_ckpt(tmp_path)
+    ref = CheckpointRef(path=p, update=100, global_step=2048, tags={})
+    ev = CheckpointEvent(ref=ref, scalars={"win_rate_vs_greedy": 0.8})
+    MLflowSink(fake).handle(ev)
+    assert fake.created == []  # found existing -> no create
+    assert fake.metrics == [("win_rate_vs_greedy", 0.8, 2048, "m-existing")]
+
+
+def test_mlflow_sink_close_ends_run():
+    fake = _FakeMlflow()
+    MLflowSink(fake).close()
+    assert fake.ended
+
+
+def test_build_training_sinks_tensorboard_only(tmp_path):
+    from yugioh_rl.metrics_logging import build_training_sinks
+
+    sink = build_training_sinks(
+        log_to=["tensorboard"],
+        save_dir=str(tmp_path),
+        purge_step=None,
+        params={},
+    )
+    assert isinstance(sink, MultiSink)
+    assert len(sink._sinks) == 1
+    sink.close()
+
+
+def test_build_training_sinks_mlflow_missing_uri_hard_fails(tmp_path, monkeypatch):
+    from yugioh_rl import metrics_logging
+
+    fake = _FakeMlflow()  # _require_tracking_uri raises before any fake method is reached
+    monkeypatch.setattr(metrics_logging, "_import_mlflow", lambda: fake)
+    monkeypatch.delenv("MLFLOW_TRACKING_URI", raising=False)
+    with pytest.raises(RuntimeError, match="MLFLOW_TRACKING_URI"):
+        metrics_logging.build_training_sinks(
+            log_to=["mlflow"],
+            save_dir=str(tmp_path),
+            purge_step=None,
+            params={},
+        )
+
+
+def test_build_training_sinks_mlflow_writes_run_id(tmp_path, monkeypatch):
+    from yugioh_rl import metrics_logging
+
+    started = {}
+    fake = _FakeMlflow()
+    fake.set_tracking_uri = lambda uri: started.setdefault("uri", uri)
+    fake.set_experiment = lambda name: started.setdefault("exp", name)
+
+    def _start_run(**kwargs):
+        started["start_kwargs"] = kwargs
+        return types.SimpleNamespace(info=types.SimpleNamespace(run_id="run-xyz"))
+
+    fake.start_run = _start_run
+    fake.log_params = lambda p: started.setdefault("params", p)
+    monkeypatch.setattr(metrics_logging, "_import_mlflow", lambda: fake)
+    monkeypatch.setenv("MLFLOW_TRACKING_URI", "sqlite:///x.db")
+
+    (tmp_path / "config.json").write_text('{"seed": 42}')  # run's config snapshot
+
+    sink = metrics_logging.build_training_sinks(
+        log_to=["mlflow"],
+        save_dir=str(tmp_path),
+        purge_step=None,
+        params={"seed": "42"},
+    )
+    assert (tmp_path / "mlflow_run_id.txt").read_text().strip() == "run-xyz"
+    assert started["exp"] == "yugioh"
+    assert started["params"] == {"seed": "42"}
+    assert started["start_kwargs"].get("run_id") is None  # fresh run uses run_name
+    assert started["start_kwargs"]["run_name"] == f"train_{tmp_path.name}"  # symmetric w/ eval_
+    assert fake.system_metrics_enabled  # hardware telemetry turned on
+    assert fake.artifacts == [(str(tmp_path / "config.json"), None)]  # config snapshot uploaded
+    sink.close()
+
+
+def test_build_training_sinks_reattaches_existing_run_id(tmp_path, monkeypatch):
+    from yugioh_rl import metrics_logging
+
+    (tmp_path / "mlflow_run_id.txt").write_text("prev-run")
+    started = {}
+    fake = _FakeMlflow()
+    fake.set_tracking_uri = lambda uri: None
+    fake.set_experiment = lambda name: None
+
+    def _start_run(**kwargs):
+        started["start_kwargs"] = kwargs
+        return types.SimpleNamespace(info=types.SimpleNamespace(run_id="prev-run"))
+
+    fake.start_run = _start_run
+    fake.log_params = lambda p: started.setdefault("params", p)
+    monkeypatch.setattr(metrics_logging, "_import_mlflow", lambda: fake)
+    monkeypatch.setenv("MLFLOW_TRACKING_URI", "sqlite:///x.db")
+
+    metrics_logging.build_training_sinks(
+        log_to=["mlflow"],
+        save_dir=str(tmp_path),
+        purge_step=None,
+        params={"seed": "42"},
+    )
+    assert started["start_kwargs"]["run_id"] == "prev-run"
+    # Params must NOT be re-logged on reattach: re-logging a changed value
+    # (e.g. resume_checkpoint) makes MLflow raise and kills --resume.
+    assert "params" not in started
+
+
+def test_build_eval_sinks_opens_named_run(tmp_path, monkeypatch):
+    from yugioh_rl import metrics_logging
+
+    started = {}
+    fake = _FakeMlflow()
+    fake.set_tracking_uri = lambda uri: None
+    fake.set_experiment = lambda name: started.setdefault("exp", name)
+    fake.start_run = lambda **k: (
+        started.setdefault("start_kwargs", k)
+        or types.SimpleNamespace(info=types.SimpleNamespace(run_id="e1"))
+    )
+    fake.log_params = lambda p: started.setdefault("params", p)
+    monkeypatch.setattr(metrics_logging, "_import_mlflow", lambda: fake)
+    monkeypatch.setenv("MLFLOW_TRACKING_URI", "sqlite:///x.db")
+
+    run_dir = tmp_path / "20260713_120000_seed42"
+    run_dir.mkdir()
+    sink = metrics_logging.build_eval_sinks(
+        log_to=["mlflow"],
+        run_dir=str(run_dir),
+        params={"opponents": "greedy,random", "episodes": "1000"},
+    )
+    assert started["exp"] == "yugioh"
+    assert started["start_kwargs"]["run_name"] == "eval_20260713_120000_seed42"
+    assert started["params"] == {"opponents": "greedy,random", "episodes": "1000"}
+    assert fake.system_metrics_enabled  # hardware telemetry on for sweeps too
+    sink.close()

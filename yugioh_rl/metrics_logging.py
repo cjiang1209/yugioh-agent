@@ -7,6 +7,8 @@ is the only place ``mlflow`` and ``SummaryWriter`` are imported.
 
 from __future__ import annotations
 
+import hashlib
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
@@ -22,13 +24,17 @@ class ScalarMetrics:
 
 @dataclass
 class CheckpointRef:
-    """Identity + metadata for a checkpoint file. sha256 is computed lazily by
-    the MLflow sink; TensorBoard never needs it."""
+    """A checkpoint file plus the metadata a sink records alongside it.
+
+    ``params`` are immutable defining facts about the checkpoint (e.g. seed,
+    config signature); ``tags`` are optional mutable metadata.
+    """
 
     path: Path
     update: int
     global_step: int
-    tags: dict[str, str]
+    params: dict[str, str] = field(default_factory=dict)
+    tags: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -44,6 +50,9 @@ class CheckpointEvent:
 
 
 class LogSink(Protocol):
+    """A logging destination: ``handle`` records one event; ``close`` flushes
+    and releases the underlying resource."""
+
     def handle(self, event: ScalarMetrics | CheckpointEvent) -> None: ...
 
     def close(self) -> None: ...
@@ -80,7 +89,7 @@ def compute_update_metrics(
 ) -> ScalarMetrics:
     """Build the per-update training ScalarMetrics. Pure; no I/O.
 
-    Key names are byte-identical to the previous inline ``add_scalar`` calls.
+    The scalar keys are the sink-facing metric names.
     """
     scalars: dict[str, float] = {
         "loss/policy": policy_loss,
@@ -119,3 +128,189 @@ def flatten_eval(row: dict, label: str) -> dict[str, float]:
     for stem, d in row["per_deck"].items():
         out[f"win_rate_vs_{label}_deck_{stem}"] = d["win_rate"]
     return out
+
+
+def sha256_file(path: Path) -> str:
+    """sha256 hex digest of a file's bytes (read in chunks)."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+class TensorBoardSink:
+    """Writes events to a TensorBoard SummaryWriter.
+
+    ScalarMetrics keys are written verbatim; CheckpointEvent scalars are
+    prefixed with ``eval/`` and written at the checkpoint's global_step.
+    """
+
+    def __init__(self, writer) -> None:
+        self._writer = writer
+
+    def handle(self, event: ScalarMetrics | CheckpointEvent) -> None:
+        if isinstance(event, ScalarMetrics):
+            for key, value in event.scalars.items():
+                self._writer.add_scalar(key, value, event.global_step)
+        elif isinstance(event, CheckpointEvent):
+            for key, value in event.scalars.items():
+                self._writer.add_scalar(f"eval/{key}", value, event.ref.global_step)
+
+    def close(self) -> None:
+        self._writer.close()
+
+
+class MLflowSink:
+    """Writes events to MLflow, one external LoggedModel per checkpoint keyed by
+    the sha256 of its file: a registration event (no scalars) creates the model
+    and uploads the ``.pt``; an eval event finds that model by hash and attaches
+    its win-rate metrics. Run-level ScalarMetrics go to the active run.
+
+    ``mlflow_module`` is injected so the sink is testable with a fake; a run
+    must already be active (opened by the ``build_*_sinks`` factory).
+    """
+
+    def __init__(self, mlflow_module) -> None:
+        self._mlflow = mlflow_module
+        self._hash_cache: dict[Path, str] = {}
+
+    def handle(self, event: ScalarMetrics | CheckpointEvent) -> None:
+        if isinstance(event, ScalarMetrics):
+            self._mlflow.log_metrics(event.scalars, step=event.global_step)
+        elif isinstance(event, CheckpointEvent):
+            self._handle_checkpoint(event)
+
+    def _handle_checkpoint(self, event: CheckpointEvent) -> None:
+        ref = event.ref
+        # Cache by path: a sweep handles the same checkpoint once per opponent,
+        # and the file is immutable — hash it once, not once per pair.
+        sha = self._hash_cache.get(ref.path)
+        if sha is None:
+            sha = self._hash_cache[ref.path] = sha256_file(ref.path)
+        hits = self._mlflow.search_logged_models(
+            filter_string=f"params.checkpoint_hash='{sha}'",
+            output_format="list",
+        )
+        if hits:
+            model = hits[0]
+        else:
+            model = self._mlflow.create_external_model(
+                name=f"checkpoint_{ref.update}",
+                tags=dict(ref.tags),
+                params={
+                    **ref.params,
+                    "checkpoint_hash": sha,
+                    "update": str(ref.update),
+                    "global_step": str(ref.global_step),
+                },
+            )
+            self._mlflow.log_artifact(
+                str(ref.path),
+                artifact_path=f"checkpoints/checkpoint_{ref.update}",
+            )
+        if event.scalars:
+            self._mlflow.log_metrics(event.scalars, step=ref.global_step, model_id=model.model_id)
+
+    def close(self) -> None:
+        self._mlflow.end_run()
+
+
+EXPERIMENT_NAME = "yugioh"
+
+
+def _import_mlflow():
+    """Import mlflow, converting a missing dependency into an actionable error."""
+    try:
+        import mlflow
+    except ImportError as e:
+        raise RuntimeError(
+            "--log-to mlflow requires the 'mlflow' package. Install it with "
+            "`pip install -e '.[train]'` (the train extra includes mlflow)."
+        ) from e
+    return mlflow
+
+
+def _require_tracking_uri(mlflow_module) -> None:
+    uri = os.environ.get("MLFLOW_TRACKING_URI")
+    if not uri:
+        raise RuntimeError(
+            "--log-to mlflow requires the MLFLOW_TRACKING_URI environment "
+            "variable (e.g. http://127.0.0.1:5000)."
+        )
+    mlflow_module.set_tracking_uri(uri)
+
+
+def _new_tb_writer(log_dir: str, purge_step: int | None):
+    from torch.utils.tensorboard import SummaryWriter
+
+    return SummaryWriter(log_dir=log_dir, purge_step=purge_step)
+
+
+def _open_experiment():
+    """Import mlflow, configure the tracking URI + experiment, and enable
+    hardware telemetry (CPU/mem/disk/GPU as system/* metrics). Returns the
+    module, ready for the caller to start its run."""
+    mlflow = _import_mlflow()
+    _require_tracking_uri(mlflow)
+    mlflow.set_experiment(EXPERIMENT_NAME)
+    mlflow.enable_system_metrics_logging()
+    return mlflow
+
+
+def build_training_sinks(
+    *,
+    log_to: list[str],
+    save_dir: str,
+    purge_step: int | None,
+    params: dict[str, str],
+) -> MultiSink:
+    """Build the sink fan-out for a training run.
+
+    MLflow: reattaches the run recorded in ``<save_dir>/mlflow_run_id.txt`` if
+    present (continuous curve across --resume), else starts a fresh named run
+    and persists its id. Logs ``params`` once, and uploads the run's
+    ``config.json`` snapshot as an artifact (the authoritative, structured
+    record — ``params`` are the flattened/stringified view).
+    """
+    sinks: list[LogSink] = []
+    if "tensorboard" in log_to:
+        writer = _new_tb_writer(str(Path(save_dir) / "logs"), purge_step)
+        sinks.append(TensorBoardSink(writer))
+    if "mlflow" in log_to:
+        mlflow = _open_experiment()
+        id_file = Path(save_dir) / "mlflow_run_id.txt"
+        run_id = id_file.read_text().strip() if id_file.exists() else None
+        if run_id:
+            mlflow.start_run(run_id=run_id)
+        else:
+            run = mlflow.start_run(run_name=f"train_{Path(save_dir).name}")
+            id_file.write_text(run.info.run_id)
+            mlflow.log_params(params)
+        # Upload the config snapshot (structured; safe to re-log on resume so it
+        # reflects the effective config after any allowlisted overrides).
+        config_json = Path(save_dir) / "config.json"
+        if config_json.exists():
+            mlflow.log_artifact(str(config_json))
+        sinks.append(MLflowSink(mlflow))
+    return MultiSink(sinks)
+
+
+def build_eval_sinks(*, log_to: list[str], run_dir: str, params: dict[str, str]) -> MultiSink:
+    """Build the sink fan-out for an offline eval sweep.
+
+    MLflow: opens an explicit named run ``eval_<run_dir_name>`` (so eval
+    win-rate source-runs are meaningful, not auto-named orphans) and logs the
+    sweep's ``params`` (opponents, episodes, seed, decks, ...). Eval runs are
+    always fresh — no resume — so params are logged unconditionally.
+    """
+    sinks: list[LogSink] = []
+    if "tensorboard" in log_to:
+        log_dir = Path(run_dir) / "logs" / "eval"
+        sinks.append(TensorBoardSink(_new_tb_writer(str(log_dir), None)))
+    if "mlflow" in log_to:
+        mlflow = _open_experiment()
+        mlflow.start_run(run_name=f"eval_{Path(run_dir).name}")
+        mlflow.log_params(params)
+        sinks.append(MLflowSink(mlflow))
+    return MultiSink(sinks)
