@@ -624,3 +624,151 @@ def test_reset_game_state_pending_chain_resolved(web_client):
         assert set(e) >= {"chain_link", "card_code", "card_name", "effect_text", "controller"}
     for frame in resp["frames"]:
         assert "pending_chain" in frame["game_state"]
+
+
+def _make_app_with_recommender(db_path, script_dirs, deck_path, recommender):
+    from fastapi import FastAPI
+    from starlette.testclient import TestClient
+
+    from yugioh_env.server.web_api import (
+        create_action_describer,
+        create_card_text_resolver,
+        create_event_describer,
+        create_web_env,
+        web_router,
+    )
+
+    app = FastAPI()
+    app.state.web_env = create_web_env(
+        {
+            "db_path": str(db_path),
+            "script_dirs": [str(d) for d in script_dirs],
+            "deck_path": str(deck_path),
+            "opponent": "random",
+            "opponent_seed": 42,
+        }
+    )
+    app.state.action_describer = create_action_describer(app.state.web_env)
+    app.state.event_describer = create_event_describer(app.state.web_env)
+    app.state.card_text_resolver = create_card_text_resolver(app.state.web_env)
+    app.state.recommender = recommender
+    app.state.recommend_enabled = False
+    app.include_router(web_router)
+    return TestClient(app)
+
+
+class _FakeRec:
+    """Non-network fake recommender: picks the last (dense) legal slot."""
+
+    needs_observation = False
+
+    def set_observation(self, obs_dict):
+        pass
+
+    def select_action(self, msg, num_actions):
+        return num_actions - 1
+
+    def reseed(self, seed):
+        pass
+
+
+def test_recommend_absent_when_flag_off(lib, db_path, script_dirs, deck_path):
+    client = _make_app_with_recommender(db_path, script_dirs, deck_path, _FakeRec())
+    resp = client.post("/api/web/reset", json={"seed": 42})
+    assert resp.status_code == 200
+    assert resp.json()["recommended_action_index"] is None
+
+
+def test_recommend_present_and_legal_when_flag_on(lib, db_path, script_dirs, deck_path):
+    client = _make_app_with_recommender(db_path, script_dirs, deck_path, _FakeRec())
+    resp = client.post("/api/web/reset", json={"seed": 42, "recommend": True})
+    assert resp.status_code == 200
+    data = resp.json()
+    rec_idx = data["recommended_action_index"]
+    assert rec_idx is not None
+    offered = {a["index"] for a in data["actions"]}
+    assert rec_idx in offered
+
+
+def test_recommend_none_without_recommender(lib, db_path, script_dirs, deck_path):
+    client = _make_app_with_recommender(db_path, script_dirs, deck_path, None)
+    resp = client.post("/api/web/reset", json={"seed": 42, "recommend": True})
+    assert resp.status_code == 200
+    assert resp.json()["recommended_action_index"] is None
+
+
+def test_state_never_recommends(lib, db_path, script_dirs, deck_path):
+    client = _make_app_with_recommender(db_path, script_dirs, deck_path, _FakeRec())
+    client.post("/api/web/reset", json={"seed": 42, "recommend": True})
+    resp = client.get("/api/web/state")
+    assert resp.status_code == 200
+    assert resp.json()["recommended_action_index"] is None
+
+
+def test_config_reports_recommend_available_true(lib, db_path, script_dirs, deck_path):
+    client = _make_app_with_recommender(db_path, script_dirs, deck_path, _FakeRec())
+    resp = client.get("/api/web/config")
+    assert resp.status_code == 200
+    assert resp.json() == {"recommend_available": True}
+
+
+def test_config_reports_recommend_available_false(lib, db_path, script_dirs, deck_path):
+    client = _make_app_with_recommender(db_path, script_dirs, deck_path, None)
+    resp = client.get("/api/web/config")
+    assert resp.status_code == 200
+    assert resp.json() == {"recommend_available": False}
+
+
+class _RaisingReseedRec(_FakeRec):
+    """Fake recommender whose reseed() raises (e.g. offline ygo-agent server)."""
+
+    def reseed(self, seed):
+        raise RuntimeError("recommender server down")
+
+
+def test_reset_survives_reseed_failure(lib, db_path, script_dirs, deck_path):
+    """A recommender whose reseed() raises must not 500 the /reset. The duel
+    starts normally and recommendation is silently disabled for the duel."""
+    client = _make_app_with_recommender(db_path, script_dirs, deck_path, _RaisingReseedRec())
+    resp = client.post("/api/web/reset", json={"seed": 42, "recommend": True})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["done"] is False
+    assert data["recommended_action_index"] is None
+
+
+class _RaisingSelectRec(_FakeRec):
+    """Fake recommender whose select_action raises mid-duel."""
+
+    def select_action(self, msg, num_actions):
+        raise RuntimeError("recommender server down")
+
+
+def test_step_survives_recommend_failure(lib, db_path, script_dirs, deck_path):
+    """A recommender that throws during inference must not 500 a /step; the
+    duel continues and no recommendation is returned."""
+    client = _make_app_with_recommender(db_path, script_dirs, deck_path, _RaisingSelectRec())
+    reset = client.post("/api/web/reset", json={"seed": 42, "recommend": True})
+    assert reset.status_code == 200
+    assert reset.json()["recommended_action_index"] is None
+    step = client.post("/api/web/step", json={"action_index": 0})
+    assert step.status_code == 200
+    assert step.json()["recommended_action_index"] is None
+
+
+def test_failed_reset_does_not_arm_recommender(lib, db_path, script_dirs, deck_path):
+    """A reset that 422s must not leave recommend_enabled set. Arming happens
+    only after env.reset() succeeds, so a later reset without recommend stays
+    off (no recommendation leaks from the failed request)."""
+    client = _make_app_with_recommender(db_path, script_dirs, deck_path, _FakeRec())
+    # Malformed deck -> env.reset raises ValueError -> 422.
+    bad = client.post(
+        "/api/web/reset",
+        json={"seed": 42, "recommend": True, "deck0": {"main": [123456789]}},
+    )
+    assert bad.status_code == 422
+    assert client.app.state.recommend_enabled is False
+    # A subsequent reset that does NOT request recommendation stays off.
+    ok = client.post("/api/web/reset", json={"seed": 42})
+    assert ok.status_code == 200
+    assert ok.json()["recommended_action_index"] is None

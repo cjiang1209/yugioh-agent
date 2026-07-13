@@ -9,6 +9,8 @@ source "$PROJECT_ROOT/.venv/bin/activate"
 # Parse optional flags
 opponent=""
 opponent_device=""
+recommender=""
+recommender_device=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -20,9 +22,17 @@ while [[ $# -gt 0 ]]; do
             opponent_device="$2"
             shift 2
             ;;
+        --recommender)
+            recommender="$2"
+            shift 2
+            ;;
+        --recommender-device)
+            recommender_device="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown option: $1" >&2
-            echo "Usage: $0 [--opponent random|greedy|model:PATH] [--opponent-device cpu|cuda]" >&2
+            echo "Usage: $0 [--opponent random|greedy|model:PATH] [--opponent-device cpu|cuda] [--recommender random|greedy|model:PATH|ygo-agent] [--recommender-device cpu|cuda]" >&2
             exit 1
             ;;
     esac
@@ -33,6 +43,12 @@ if [[ -n "$opponent" ]]; then
 fi
 if [[ -n "$opponent_device" ]]; then
     export YUGIOH_OPPONENT_DEVICE="$opponent_device"
+fi
+if [[ -n "$recommender" ]]; then
+    export YUGIOH_RECOMMENDER="$recommender"
+fi
+if [[ -n "$recommender_device" ]]; then
+    export YUGIOH_RECOMMENDER_DEVICE="$recommender_device"
 fi
 
 exec uvicorn yugioh_env.server.app:app --host 0.0.0.0 --port "${PORT:-8000}"

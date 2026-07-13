@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
@@ -13,9 +14,12 @@ from yugioh_env.deck_parser import parse_ydk
 from yugioh_env.event_logger import EventDescriber
 from yugioh_env.models import YuGiOhAction
 from yugioh_env.server.board_state import build_board_state
+from yugioh_env.server.recommender import recommend_action_index
 from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
 
 web_router = APIRouter(prefix="/api/web")
+
+logger = logging.getLogger(__name__)
 
 
 # ─── Request / response models ─────────────────────────────────────────────
@@ -29,6 +33,7 @@ class ResetRequest(BaseModel):
     open_cards: bool = False
     agent_player: int | str | None = None  # 0, 1, or "random"; None uses env config default
     puzzle: dict | None = None
+    recommend: bool = False  # enable AI-assist action recommendation for this duel
 
 
 class StepRequest(BaseModel):
@@ -70,6 +75,7 @@ def _build_response(
     reward: float,
     *,
     include_frames: bool = False,
+    recommended_action_index: int | None = None,
 ) -> dict:
     """Build the unified JSON response from current env state.
 
@@ -111,7 +117,28 @@ def _build_response(
         "done": done,
         "reward": reward,
         "frames": frames,
+        "recommended_action_index": recommended_action_index,
     }
+
+
+def _resolve_recommendation(request: Request, env: YuGiOhEnvironment, obs) -> int | None:
+    """Best-effort recommended action index for the current prompt, or None.
+
+    Returns None when AI-assist is disabled for this duel, no recommender is
+    configured, the observation is terminal/empty, or inference fails. Called
+    only from the mutating endpoints (/reset, /step); the read-only /state
+    endpoint never recommends.
+    """
+    recommender = getattr(request.app.state, "recommender", None)
+    if not getattr(request.app.state, "recommend_enabled", False) or recommender is None:
+        return None
+    if obs is None or obs.done or not obs.action_mask:
+        return None
+    try:
+        return recommend_action_index(recommender, env, obs)
+    except Exception:
+        logger.warning("Recommendation failed; returning no recommendation", exc_info=True)
+        return None
 
 
 def create_web_env(config: dict | None = None) -> YuGiOhEnvironment:
@@ -179,6 +206,19 @@ def reset_duel(body: ResetRequest, request: Request) -> dict:
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
+    # Arm the recommender only after the duel resets successfully, so a failed
+    # reset (422) never leaves recommend_enabled set against a stale duel.
+    recommender = getattr(request.app.state, "recommender", None)
+    request.app.state.recommend_enabled = bool(body.recommend and recommender is not None)
+    if request.app.state.recommend_enabled:
+        try:
+            recommender.reseed(body.seed or 0)
+        except Exception:
+            logger.warning(
+                "Recommender reseed failed; disabling recommendation for this duel",
+                exc_info=True,
+            )
+            request.app.state.recommend_enabled = False
     return _build_response(
         env,
         action_describer,
@@ -188,7 +228,15 @@ def reset_duel(body: ResetRequest, request: Request) -> dict:
         obs.done,
         obs.reward,
         include_frames=True,
+        recommended_action_index=_resolve_recommendation(request, env, obs),
     )
+
+
+@web_router.get("/config")
+def get_config(request: Request) -> dict:
+    """Return UI capability flags (whether AI-assist recommendation is available)."""
+    recommender = getattr(request.app.state, "recommender", None)
+    return {"recommend_available": recommender is not None}
 
 
 @web_router.get("/decks")
@@ -246,6 +294,7 @@ def step_duel(body: StepRequest, request: Request) -> dict:
         obs.done,
         obs.reward,
         include_frames=True,
+        recommended_action_index=_resolve_recommendation(request, env, obs),
     )
 
 
