@@ -27,10 +27,39 @@ from yugioh_core.encoding import (
 from yugioh_env.opponent import NetworkOpponent
 from yugioh_rl.config import TrainingConfig
 from yugioh_rl.env_wrapper import SubprocVecEnv, parse_deck_pool
-from yugioh_rl.eval import evaluate_with_agent, log_results_to_tensorboard
+from yugioh_rl.eval import evaluate_with_agent
+from yugioh_rl.metrics_logging import (
+    CheckpointEvent,
+    CheckpointRef,
+    ScalarMetrics,
+    build_training_sinks,
+    compute_update_metrics,
+)
 from yugioh_rl.network import YuGiOhNet
 
 logger = logging.getLogger(__name__)
+
+
+def _feature_signature(config) -> str:
+    """Compact, stable string of the run's feature-extraction config, attached as
+    an MLflow model param so checkpoints group/compare by feature set."""
+    from yugioh_leaderboard.features import extract_features
+
+    feats = extract_features(config)
+    return ",".join(f"{k}={v}" for k, v in feats.items())
+
+
+def _eval_scalars(results, deck_paths: list[str]) -> dict[str, float]:
+    """Flatten in-training eval results into the run-level eval/win_rate_vs_*
+    scalars (overall per opponent, plus per-deck)."""
+    deck_stems = [Path(p).stem for p in deck_paths]
+    scalars: dict[str, float] = {}
+    for r in results:
+        scalars[f"eval/win_rate_vs_{r.opponent_label}"] = r.win_rate
+        for deck_idx, deck_results in r.per_deck_wins.items():
+            deck_wr = sum(deck_results) / len(deck_results) if deck_results else 0.0
+            scalars[f"eval/win_rate_vs_{r.opponent_label}_deck_{deck_stems[deck_idx]}"] = deck_wr
+    return scalars
 
 
 # ---------------------------------------------------------------------------
@@ -381,18 +410,14 @@ class PPOTrainer:
         # Deck pool (pre-parsed once; passed to env workers)
         self._deck_pool = parse_deck_pool(config.deck_paths)
 
-        # TensorBoard writer (optional)
-        self._writer = None
-        try:
-            from torch.utils.tensorboard import SummaryWriter
-
-            purge = self._resume_global_step if self._resume_global_step > 0 else None
-            self._writer = SummaryWriter(
-                log_dir=str(Path(config.save_dir) / "logs"),
-                purge_step=purge,
-            )
-        except ImportError:
-            logger.info("TensorBoard not available, skipping logging")
+        # Metrics logging: fan-out sink layer (TensorBoard and/or MLflow).
+        purge = self._resume_global_step if self._resume_global_step > 0 else None
+        self._sinks = build_training_sinks(
+            log_to=config.log_to,
+            save_dir=config.save_dir,
+            purge_step=purge,
+            params={k: str(v) for k, v in vars(config).items()},
+        )
 
     def _load_resume_checkpoint(self) -> tuple[int, int]:
         """Load full training state from a checkpoint for resumption.
@@ -770,56 +795,52 @@ class PPOTrainer:
 
                     logger.info(" | ".join(log_parts))
 
-                    if self._writer is not None:
-                        self._writer.add_scalar("loss/policy", avg_policy_loss, global_step)
-                        self._writer.add_scalar("loss/value", avg_value_loss, global_step)
-                        self._writer.add_scalar("loss/entropy", avg_entropy, global_step)
-                        self._writer.add_scalar("perf/fps", fps, global_step)
-                        if self._episode_rewards:
-                            self._writer.add_scalar("episode/reward", np.mean(recent), global_step)
-                            self._writer.add_scalar(
-                                "episode/win_rate", np.mean(recent_wins), global_step
-                            )
-                            self._writer.add_scalar(
-                                "episode/length", np.mean(recent_lens), global_step
-                            )
-                        for deck_idx, wins_list in self._deck_wins.items():
-                            if wins_list:
-                                deck_name = Path(self.config.deck_paths[deck_idx]).stem
-                                self._writer.add_scalar(
-                                    f"episode/win_rate_deck_{deck_name}",
-                                    np.mean(wins_list[-100:]),
-                                    global_step,
-                                )
-                        if self._opponent_pool is not None:
-                            elo = self._opponent_pool.elo_summary()
-                            self._writer.add_scalar("selfplay/elo_agent", elo["agent"], global_step)
-                            self._writer.add_scalar(
-                                "selfplay/elo_pool_mean", elo["pool_mean"], global_step
-                            )
-                            self._writer.add_scalar(
-                                "selfplay/elo_pool_min", elo["pool_min"], global_step
-                            )
-                            self._writer.add_scalar(
-                                "selfplay/elo_pool_max", elo["pool_max"], global_step
-                            )
-                            self._writer.add_scalar(
-                                "selfplay/occupied", elo["occupied"], global_step
-                            )
-                        if config.vec_env_type == "async_actor_learner":
-                            self._writer.add_scalar(
-                                "async/version_lag_mean",
-                                np.mean(async_version_lags) if async_version_lags else 0,
-                                global_step,
-                            )
-                            self._writer.add_scalar(
-                                "async/rollouts_discarded",
-                                async_discarded,
-                                global_step,
-                            )
-                            depth = vec_env.queue_depth
-                            if depth is not None:
-                                self._writer.add_scalar("async/queue_depth", depth, global_step)
+                    async_stats = None
+                    if config.vec_env_type == "async_actor_learner":
+                        async_stats = {
+                            "version_lag_mean": (
+                                float(np.mean(async_version_lags)) if async_version_lags else 0.0
+                            ),
+                            "rollouts_discarded": async_discarded,
+                        }
+                        depth = vec_env.queue_depth
+                        if depth is not None:
+                            async_stats["queue_depth"] = depth
+
+                    elo = (
+                        self._opponent_pool.elo_summary()
+                        if self._opponent_pool is not None
+                        else None
+                    )
+
+                    deck_win_rates = {
+                        Path(self.config.deck_paths[deck_idx]).stem: float(
+                            np.mean(wins_list[-100:])
+                        )
+                        for deck_idx, wins_list in self._deck_wins.items()
+                        if wins_list
+                    }
+
+                    have_episodes = bool(self._episode_rewards)
+                    self._sinks.handle(
+                        compute_update_metrics(
+                            global_step=global_step,
+                            policy_loss=avg_policy_loss,
+                            value_loss=avg_value_loss,
+                            entropy=avg_entropy,
+                            fps=fps,
+                            episode_reward_mean=(float(np.mean(recent)) if have_episodes else None),
+                            episode_win_rate=(
+                                float(np.mean(recent_wins)) if have_episodes else None
+                            ),
+                            episode_length_mean=(
+                                float(np.mean(recent_lens)) if have_episodes else None
+                            ),
+                            deck_win_rates=deck_win_rates,
+                            elo=elo,
+                            async_stats=async_stats,
+                        )
+                    )
 
                 # --- Evaluation ---
                 if update % config.eval_interval == 0:
@@ -835,8 +856,7 @@ class PPOTrainer:
 
         finally:
             vec_env.close()
-            if self._writer is not None:
-                self._writer.close()
+            self._sinks.close()
 
         logger.info("Training complete. Total steps: %d", global_step)
 
@@ -1072,13 +1092,12 @@ class PPOTrainer:
                         len(deck_results),
                         float(np.mean(deck_results)) * 100,
                     )
-            if self._writer is not None:
-                log_results_to_tensorboard(
-                    self._writer,
-                    results,
-                    self.config.deck_paths,
-                    global_step,
+            self._sinks.handle(
+                ScalarMetrics(
+                    scalars=_eval_scalars(results, self.config.deck_paths),
+                    global_step=global_step,
                 )
+            )
         finally:
             self.network.train()
 
@@ -1108,6 +1127,20 @@ class PPOTrainer:
         latest.symlink_to(path.name)
 
         logger.info("Saved checkpoint to %s", path)
+
+        self._sinks.handle(
+            CheckpointEvent(
+                ref=CheckpointRef(
+                    path=path,
+                    update=update,
+                    global_step=global_step,
+                    params={
+                        "seed": str(self.config.seed),
+                        "feature_signature": _feature_signature(self.config),
+                    },
+                )
+            )
+        )
 
         if self._opponent_pool is not None:
             self._opponent_pool.add_snapshot(self.network)

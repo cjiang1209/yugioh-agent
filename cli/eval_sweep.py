@@ -18,8 +18,13 @@ import torch
 
 from yugioh_rl.eval import (
     evaluate,
-    log_results_to_tensorboard,
     opponent_label_from_spec,
+)
+from yugioh_rl.metrics_logging import (
+    CheckpointEvent,
+    CheckpointRef,
+    build_eval_sinks,
+    flatten_eval,
 )
 
 logger = logging.getLogger(__name__)
@@ -127,11 +132,15 @@ def result_row(r, deck_stems: list[str]) -> dict:
     return {"win_rate": r.win_rate, "wins": r.wins, "episodes": r.episodes, "per_deck": per_deck}
 
 
-def _log_row(writer, label: str, row: dict, global_step: int) -> None:
-    """Emit eval/win_rate scalars from a stored row (replay path)."""
-    writer.add_scalar(f"eval/win_rate_vs_{label}", row["win_rate"], global_step)
-    for stem, d in row["per_deck"].items():
-        writer.add_scalar(f"eval/win_rate_vs_{label}_deck_{stem}", d["win_rate"], global_step)
+def _emit_row(sink, label: str, ckpt: Path, update: int, row: dict, global_step: int) -> None:
+    """Emit a per-checkpoint eval measurement (CheckpointEvent) from a result row;
+    shared by the replayed-from-manifest and freshly-evaluated paths."""
+    sink.handle(
+        CheckpointEvent(
+            ref=CheckpointRef(path=Path(ckpt), update=update, global_step=global_step),
+            scalars=flatten_eval(row, label),
+        )
+    )
 
 
 def run_sweep(
@@ -141,7 +150,7 @@ def run_sweep(
     deck_pool,
     deck_paths,
     manifest,
-    writer,
+    sink,
     num_episodes,
     seed,
     workers,
@@ -166,10 +175,10 @@ def run_sweep(
         for opp in opponents:
             label = opponent_label_from_spec(opp)
             if manifest.has(update, label) and not force:
-                # Replay recorded result to TB, using the global_step stored at record time.
+                # Replay recorded result, using the global_step stored at record time.
                 row = manifest.get(update, label)
                 gs = row.get("global_step", update)
-                _log_row(writer, label, row, gs)
+                _emit_row(sink, label, ckpt, update, row, gs)
                 skipped += 1
                 continue
             try:
@@ -190,10 +199,10 @@ def run_sweep(
                     deck_allocation=deck_allocation,
                     mirror_decks=mirror_decks,
                 )
-                # Log to TB and record in manifest
-                log_results_to_tensorboard(writer, results, deck_paths, global_step)
+                # Record in manifest and emit event.
                 row = result_row(results[0], deck_stems)
                 row["global_step"] = global_step
+                _emit_row(sink, label, ckpt, update, row, global_step)
                 manifest.record(update, label, row)
                 ok += 1
             except Exception as e:
@@ -237,6 +246,13 @@ def parse_args(argv=None) -> argparse.Namespace:
         help="Both players use the same decklist each episode.",
     )
     p.add_argument("--force", action="store_true", help="Re-evaluate recorded pairs")
+    p.add_argument(
+        "--log-to",
+        nargs="+",
+        choices=["tensorboard", "mlflow"],
+        default=["tensorboard"],
+        help="Logging destinations (default: tensorboard).",
+    )
     p.add_argument("--json", default=None, help="Also write a JSON summary to this path")
     p.add_argument("--verbose", action="store_true")
     return p.parse_args(argv)
@@ -260,7 +276,6 @@ def main(argv=None) -> int:
 
     # Deferred imports (torch/env) so arg errors are cheap.
     from cli.utils import validate_deck_paths, validate_opponent_spec
-    from torch.utils.tensorboard import SummaryWriter
 
     from yugioh_rl.env_wrapper import parse_deck_pool
 
@@ -278,7 +293,19 @@ def main(argv=None) -> int:
     log_dir = Path(args.run_dir) / "logs" / "eval"
     log_dir.mkdir(parents=True, exist_ok=True)
     manifest = Manifest.load(log_dir / "manifest.json")
-    writer = SummaryWriter(log_dir=str(log_dir))
+    eval_params = {
+        "run_dir": args.run_dir,
+        "opponents": ",".join(args.opponents),
+        "episodes": str(args.episodes),
+        "seed": str(args.seed),
+        "workers": str(args.workers),
+        "agent_player": args.agent_player,
+        "deck_allocation": args.deck_allocation,
+        "mirror_decks": str(args.mirror_decks),
+        "stride": str(args.stride),
+        "decks": ",".join(Path(p).stem for p in deck_paths),
+    }
+    sink = build_eval_sinks(log_to=args.log_to, run_dir=args.run_dir, params=eval_params)
     try:
         summary = run_sweep(
             checkpoints=checkpoints,
@@ -286,7 +313,7 @@ def main(argv=None) -> int:
             deck_pool=deck_pool,
             deck_paths=deck_paths,
             manifest=manifest,
-            writer=writer,
+            sink=sink,
             num_episodes=args.episodes,
             seed=args.seed,
             workers=args.workers,
@@ -296,7 +323,7 @@ def main(argv=None) -> int:
             force=args.force,
         )
     finally:
-        writer.close()
+        sink.close()
 
     print(
         f"\nSweep complete: {summary['ok']} ok, {summary['failed']} failed, "

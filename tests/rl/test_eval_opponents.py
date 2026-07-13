@@ -2,8 +2,8 @@
 
 These pin the contract that ``PPOTrainer._evaluate`` is a faithful, thin
 wrapper around ``yugioh_rl.eval.evaluate``: forwarding the right kwargs,
-constructing a ``NetworkOpponent`` from ``self.network``, gating the
-TensorBoard write on ``self._writer``, and toggling ``network.eval()`` /
+constructing a ``NetworkOpponent`` from ``self.network``, emitting eval
+scalars through ``self._sinks``, and toggling ``network.eval()`` /
 ``.train()`` around the call.
 
 Eval-module internals (TrainingEnv construction, label derivation, win
@@ -21,11 +21,23 @@ torch = pytest.importorskip("torch")
 
 from yugioh_rl.config import TrainingConfig
 from yugioh_rl.eval import EvalResult
+from yugioh_rl.metrics_logging import MultiSink, ScalarMetrics
 from yugioh_rl.ppo import PPOTrainer
 
 # ---------------------------------------------------------------------------
 # Trainer wrapper integration — patch yugioh_rl.ppo.evaluate_with_agent
 # ---------------------------------------------------------------------------
+
+
+class _RecordingSink:
+    def __init__(self):
+        self.events = []
+
+    def handle(self, event):
+        self.events.append(event)
+
+    def close(self):
+        pass
 
 
 def _make_trainer_stub(config: TrainingConfig) -> PPOTrainer:
@@ -35,7 +47,7 @@ def _make_trainer_stub(config: TrainingConfig) -> PPOTrainer:
     trainer.device = torch.device("cpu")
     trainer.network = MagicMock()
     trainer._episode_rewards = []
-    trainer._writer = None
+    trainer._sinks = MultiSink([_RecordingSink()])
     trainer._deck_pool = [{"main": list(range(1, 41)), "extra": []}]
     trainer._deck_wins = {}
     return trainer
@@ -116,26 +128,7 @@ class TestEvaluateWrapper:
         assert "train" in method_names
         assert method_names.index("eval") < method_names.index("train")
 
-    def test_skips_tensorboard_when_writer_is_none(self, tmp_path):
-        config = TrainingConfig(
-            save_dir=str(tmp_path / "run"),
-            num_envs=1,
-            eval_episodes=1,
-            eval_opponents=["greedy"],
-        )
-        trainer = _make_trainer_stub(config)
-        assert trainer._writer is None
-
-        results = [EvalResult("greedy", 1, 1, 1.0, {0: [1.0]})]
-        with (
-            patch("yugioh_rl.ppo.evaluate_with_agent", return_value=results),
-            patch("yugioh_rl.ppo.log_results_to_tensorboard") as log_mock,
-        ):
-            trainer._evaluate(num_episodes=1, global_step=0)
-
-        log_mock.assert_not_called()
-
-    def test_logs_to_tensorboard_when_writer_present(self, tmp_path):
+    def test_emits_eval_scalars_to_sink(self, tmp_path):
         config = TrainingConfig(
             save_dir=str(tmp_path / "run"),
             num_envs=1,
@@ -144,18 +137,14 @@ class TestEvaluateWrapper:
             deck_paths=["assets/decks/blue_eyes.ydk"],
         )
         trainer = _make_trainer_stub(config)
-        trainer._writer = MagicMock()
-
         results = [EvalResult("greedy", 1, 1, 1.0, {0: [1.0]})]
-        with (
-            patch("yugioh_rl.ppo.evaluate_with_agent", return_value=results),
-            patch("yugioh_rl.ppo.log_results_to_tensorboard") as log_mock,
-        ):
+        with patch("yugioh_rl.ppo.evaluate_with_agent", return_value=results):
             trainer._evaluate(num_episodes=1, global_step=42)
 
-        log_mock.assert_called_once_with(
-            trainer._writer,
-            results,
-            trainer.config.deck_paths,
-            42,
-        )
+        recording = trainer._sinks._sinks[0]
+        scalar_events = [e for e in recording.events if isinstance(e, ScalarMetrics)]
+        assert len(scalar_events) == 1
+        ev = scalar_events[0]
+        assert ev.global_step == 42
+        assert ev.scalars["eval/win_rate_vs_greedy"] == 1.0
+        assert ev.scalars["eval/win_rate_vs_greedy_deck_blue_eyes"] == 1.0

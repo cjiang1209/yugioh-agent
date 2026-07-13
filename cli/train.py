@@ -35,6 +35,7 @@ _RESUME_OVERRIDE_ALLOWLIST: dict[str, str] = {
     "--eval-opponents": "eval_opponents",
     "--save-interval": "save_interval",
     "--opponent": "opponent",
+    "--log-to": "log_to",
 }
 
 # Flags that are legal alongside --resume but do not correspond to a
@@ -187,6 +188,13 @@ def parse_args() -> argparse.Namespace:
         "--mirror-decks",
         action="store_true",
         help="Both players use the same decklist each episode (independent shuffles).",
+    )
+    env.add_argument(
+        "--log-to",
+        nargs="+",
+        choices=["tensorboard", "mlflow"],
+        default=["tensorboard"],
+        help="Logging destinations (default: tensorboard).",
     )
 
     ppo = parser.add_argument_group("PPO algorithm")

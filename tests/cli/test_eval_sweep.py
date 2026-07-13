@@ -128,12 +128,27 @@ class _FakeResult:
     per_deck_wins: dict = field(default_factory=dict)
 
 
-class _FakeWriter:
-    def __init__(self):
-        self.scalars = []
+class _FakeSink:
+    """Records emitted events and exposes a ``scalars`` view identical to what a
+    real TensorBoardSink would write (eval/-prefixed, at the event's
+    global_step), so these tests still assert on byte-identical TB keys."""
 
-    def add_scalar(self, key, value, step):
-        self.scalars.append((key, value, step))
+    def __init__(self):
+        self.events = []
+
+    def handle(self, event):
+        self.events.append(event)
+
+    def close(self):
+        pass
+
+    @property
+    def scalars(self):
+        out = []
+        for ev in self.events:
+            for key, value in ev.scalars.items():
+                out.append((f"eval/{key}", value, ev.ref.global_step))
+        return out
 
 
 def _mk_ckpts(tmp_path, updates):
@@ -146,7 +161,7 @@ def _mk_ckpts(tmp_path, updates):
 
 def test_run_sweep_evals_and_records(tmp_path):
     ckpts = _mk_ckpts(tmp_path, [100, 200])
-    writer = _FakeWriter()
+    sink = _FakeSink()
     manifest = Manifest.load(tmp_path / "logs" / "eval" / "manifest.json")
 
     def fake_eval(**kwargs):
@@ -161,7 +176,7 @@ def test_run_sweep_evals_and_records(tmp_path):
         deck_pool=[{"main": [1]}],
         deck_paths=["deck.ydk"],
         manifest=manifest,
-        writer=writer,
+        sink=sink,
         num_episodes=10,
         seed=0,
         workers=1,
@@ -174,13 +189,13 @@ def test_run_sweep_evals_and_records(tmp_path):
     # both checkpoints recorded
     assert manifest.has(100, "random") and manifest.has(200, "random")
     # TB got win_rate at each step (global_step == update in this stub)
-    assert ("eval/win_rate_vs_random", 0.6, 100) in writer.scalars
-    assert ("eval/win_rate_vs_random", 0.6, 200) in writer.scalars
+    assert ("eval/win_rate_vs_random", 0.6, 100) in sink.scalars
+    assert ("eval/win_rate_vs_random", 0.6, 200) in sink.scalars
 
 
 def test_run_sweep_skips_recorded_and_replays_to_tb(tmp_path):
     ckpts = _mk_ckpts(tmp_path, [100])
-    writer = _FakeWriter()
+    sink = _FakeSink()
     manifest = Manifest.load(tmp_path / "logs" / "eval" / "manifest.json")
     manifest.record(100, "random", {"win_rate": 0.9, "wins": 9, "episodes": 10, "per_deck": {}})
 
@@ -196,7 +211,7 @@ def test_run_sweep_skips_recorded_and_replays_to_tb(tmp_path):
         deck_pool=[],
         deck_paths=["d.ydk"],
         manifest=manifest,
-        writer=writer,
+        sink=sink,
         num_episodes=10,
         seed=0,
         workers=1,
@@ -207,12 +222,12 @@ def test_run_sweep_skips_recorded_and_replays_to_tb(tmp_path):
     )
     assert summary["skipped"] == 1 and summary["ok"] == 0
     # replayed the stored win_rate to TB using fallback global_step (= update = 100)
-    assert ("eval/win_rate_vs_random", 0.9, 100) in writer.scalars
+    assert ("eval/win_rate_vs_random", 0.9, 100) in sink.scalars
 
 
 def test_run_sweep_failure_is_skipped_not_recorded(tmp_path):
     ckpts = _mk_ckpts(tmp_path, [100, 200])
-    writer = _FakeWriter()
+    sink = _FakeSink()
     manifest = Manifest.load(tmp_path / "logs" / "eval" / "manifest.json")
 
     def flaky_eval(**kwargs):
@@ -230,7 +245,7 @@ def test_run_sweep_failure_is_skipped_not_recorded(tmp_path):
         deck_pool=[],
         deck_paths=["d.ydk"],
         manifest=manifest,
-        writer=writer,
+        sink=sink,
         num_episodes=10,
         seed=0,
         workers=1,
@@ -247,7 +262,7 @@ def test_run_sweep_failure_is_skipped_not_recorded(tmp_path):
 
 def test_run_sweep_force_reevaluates(tmp_path):
     ckpts = _mk_ckpts(tmp_path, [100])
-    writer = _FakeWriter()
+    sink = _FakeSink()
     manifest = Manifest.load(tmp_path / "logs" / "eval" / "manifest.json")
     manifest.record(100, "random", {"win_rate": 0.1, "wins": 1, "episodes": 10, "per_deck": {}})
 
@@ -263,7 +278,7 @@ def test_run_sweep_force_reevaluates(tmp_path):
         deck_pool=[],
         deck_paths=["d.ydk"],
         manifest=manifest,
-        writer=writer,
+        sink=sink,
         num_episodes=10,
         seed=0,
         workers=1,
@@ -279,7 +294,7 @@ def test_run_sweep_force_reevaluates(tmp_path):
 def test_run_sweep_records_global_step_and_replays_it(tmp_path):
     """Record a result with global_step, then replay it without reloading the checkpoint."""
     ckpts = _mk_ckpts(tmp_path, [100])
-    writer = _FakeWriter()
+    sink = _FakeSink()
     manifest = Manifest.load(tmp_path / "logs" / "eval" / "manifest.json")
 
     def fake_eval(**kwargs):
@@ -296,7 +311,7 @@ def test_run_sweep_records_global_step_and_replays_it(tmp_path):
         deck_pool=[{"main": [1]}],
         deck_paths=["deck.ydk"],
         manifest=manifest,
-        writer=writer,
+        sink=sink,
         num_episodes=10,
         seed=0,
         workers=1,
@@ -311,7 +326,7 @@ def test_run_sweep_records_global_step_and_replays_it(tmp_path):
     assert recorded_row["global_step"] == 12345
 
     # Second run: replay the result (with a load_fn that would fail if called)
-    writer2 = _FakeWriter()
+    sink2 = _FakeSink()
 
     def boom_load(p, **k):
         raise AssertionError("load_fn should NOT be called on the skip/replay path")
@@ -322,7 +337,7 @@ def test_run_sweep_records_global_step_and_replays_it(tmp_path):
         deck_pool=[{"main": [1]}],
         deck_paths=["deck.ydk"],
         manifest=manifest,
-        writer=writer2,
+        sink=sink2,
         num_episodes=10,
         seed=0,
         workers=1,
@@ -333,7 +348,7 @@ def test_run_sweep_records_global_step_and_replays_it(tmp_path):
     )
     assert summary2["skipped"] == 1 and summary2["ok"] == 0
     # Verify it replayed to TB at the recorded global_step (12345), not at update (100)
-    assert ("eval/win_rate_vs_random", 0.6, 12345) in writer2.scalars
+    assert ("eval/win_rate_vs_random", 0.6, 12345) in sink2.scalars
 
 
 def test_parse_args_defaults():

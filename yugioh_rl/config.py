@@ -72,6 +72,7 @@ class TrainingConfig:
     save_dir: str = (
         "checkpoints"  # Exact run directory (CLI builds this from --base-dir + timestamp)
     )
+    log_to: list[str] = field(default_factory=lambda: ["tensorboard"])
     device: str = "auto"
 
     # "sync_actor_learner": workers hold a local policy and submit full
