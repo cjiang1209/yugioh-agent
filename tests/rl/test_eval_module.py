@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -20,9 +20,7 @@ from yugioh_env.opponent import (
     RandomOpponent,
 )
 from yugioh_rl.eval import (
-    EvalResult,
     evaluate_with_agent,
-    log_results_to_tensorboard,
     make_eval_agent,
     opponent_label_from_spec,
     run_match,
@@ -495,70 +493,3 @@ class TestAggregatePartials:
         assert results[0].episodes == 0
         assert results[0].wins == 0
         assert results[0].win_rate == 0.0
-
-
-# ---------------------------------------------------------------------------
-# log_results_to_tensorboard — exact key strings
-# ---------------------------------------------------------------------------
-
-
-class TestLogResultsToTensorboard:
-    def test_emits_top_level_and_per_deck_keys(self):
-        writer = MagicMock()
-        results = [
-            EvalResult(
-                opponent_label="greedy",
-                episodes=10,
-                wins=7,
-                win_rate=0.7,
-                per_deck_wins={0: [1.0, 1.0, 0.0], 1: [0.0, 1.0]},
-            ),
-        ]
-        deck_paths = ["assets/decks/blue_eyes.ydk", "assets/decks/dark_magician.ydk"]
-
-        log_results_to_tensorboard(writer, results, deck_paths, global_step=5000)
-
-        keys = [c[0][0] for c in writer.add_scalar.call_args_list]
-        assert "eval/win_rate_vs_greedy" in keys
-        assert "eval/win_rate_vs_greedy_deck_blue_eyes" in keys
-        assert "eval/win_rate_vs_greedy_deck_dark_magician" in keys
-
-    def test_top_level_value_is_win_rate(self):
-        writer = MagicMock()
-        results = [
-            EvalResult("random", episodes=10, wins=3, win_rate=0.3, per_deck_wins={}),
-        ]
-        log_results_to_tensorboard(writer, results, deck_paths=[], global_step=42)
-        # Look for the "eval/win_rate_vs_random" call, ignore others.
-        for c in writer.add_scalar.call_args_list:
-            if c[0][0] == "eval/win_rate_vs_random":
-                assert c[0][1] == 0.3
-                assert c[0][2] == 42
-                break
-        else:
-            pytest.fail("eval/win_rate_vs_random scalar was not written")
-
-    def test_per_deck_value_is_mean(self):
-        writer = MagicMock()
-        results = [
-            EvalResult(
-                opponent_label="model_run1_latest",
-                episodes=4,
-                wins=3,
-                win_rate=0.75,
-                per_deck_wins={0: [1.0, 1.0, 1.0, 0.0]},
-            ),
-        ]
-        log_results_to_tensorboard(
-            writer,
-            results,
-            deck_paths=["a/b/blue_eyes.ydk"],
-            global_step=1,
-        )
-        per_deck_calls = [
-            c
-            for c in writer.add_scalar.call_args_list
-            if c[0][0] == "eval/win_rate_vs_model_run1_latest_deck_blue_eyes"
-        ]
-        assert len(per_deck_calls) == 1
-        assert per_deck_calls[0][0][1] == pytest.approx(0.75)

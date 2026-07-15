@@ -129,27 +129,9 @@ def _validate(args: argparse.Namespace) -> None:
 
 def _build_rows(results: list, deck_stems: list[str]) -> list[dict]:
     """Normalize EvalResults into plain dicts for both console + JSON output."""
-    rows = []
-    for r in results:
-        decks = {}
-        for deck_idx, wl in r.per_deck_wins.items():
-            wins = int(sum(wl))
-            n = len(wl)
-            decks[deck_stems[deck_idx]] = {
-                "wins": wins,
-                "episodes": n,
-                "win_rate": wins / n if n else 0.0,
-            }
-        rows.append(
-            {
-                "label": r.opponent_label,
-                "episodes": r.episodes,
-                "wins": r.wins,
-                "win_rate": r.win_rate,
-                "per_deck": decks,
-            }
-        )
-    return rows
+    from yugioh_rl.eval import eval_result_to_row
+
+    return [{"label": r.opponent_label, **eval_result_to_row(r, deck_stems)} for r in results]
 
 
 def _print_table(rows: list[dict]) -> None:

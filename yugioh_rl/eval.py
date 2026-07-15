@@ -3,8 +3,8 @@
 Powers two callers:
 
 1. ``PPOTrainer._evaluate`` — periodic in-training eval. The trainer wraps
-   its live ``YuGiOhNet`` in a ``NetworkOpponent`` and calls ``evaluate(...)``
-   plus ``log_results_to_tensorboard(...)``.
+   its live ``YuGiOhNet`` in a ``NetworkOpponent``, calls ``evaluate(...)``,
+   then routes the results through its logging sinks.
 2. The standalone eval CLI (added in Phase 3) — compares any two agents
    without a training loop.
 
@@ -614,24 +614,19 @@ def evaluate_with_agent(
     )
 
 
-def log_results_to_tensorboard(
-    writer,
-    results: list[EvalResult],
-    deck_paths: list[str],
-    global_step: int,
-) -> None:
-    """Write eval/win_rate_vs_{label} and per-deck scalars.
+def eval_result_to_row(r: EvalResult, deck_stems: list[str]) -> dict:
+    """Normalize an EvalResult to a JSON-able row keyed by deck stem.
 
-    Key format must stay byte-identical to the pre-refactor output so
-    existing TensorBoard runs continue without a metric split.
+    Shared shape behind the eval-sweep manifest/replay and the sink-layer
+    scalar flattener (``metrics_logging.flatten_eval``).
     """
-    deck_stems = [Path(p).stem for p in deck_paths]
-    for r in results:
-        writer.add_scalar(f"eval/win_rate_vs_{r.opponent_label}", r.win_rate, global_step)
-        for deck_idx, deck_results in r.per_deck_wins.items():
-            deck_wr = sum(deck_results) / len(deck_results) if deck_results else 0.0
-            writer.add_scalar(
-                f"eval/win_rate_vs_{r.opponent_label}_deck_{deck_stems[deck_idx]}",
-                deck_wr,
-                global_step,
-            )
+    per_deck = {}
+    for deck_idx, wl in r.per_deck_wins.items():
+        wins = int(sum(wl))
+        n = len(wl)
+        per_deck[deck_stems[deck_idx]] = {
+            "wins": wins,
+            "episodes": n,
+            "win_rate": wins / n if n else 0.0,
+        }
+    return {"win_rate": r.win_rate, "wins": r.wins, "episodes": r.episodes, "per_deck": per_deck}

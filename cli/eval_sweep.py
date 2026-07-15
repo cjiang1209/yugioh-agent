@@ -17,6 +17,7 @@ from pathlib import Path
 import torch
 
 from yugioh_rl.eval import (
+    eval_result_to_row,
     evaluate,
     opponent_label_from_spec,
 )
@@ -118,20 +119,6 @@ def derive_deck_paths(checkpoints, override, load_fn=torch.load) -> list[str]:
     raise SweepError("could not derive deck pool from any checkpoint; pass --deck-paths")
 
 
-def result_row(r, deck_stems: list[str]) -> dict:
-    """Normalize an EvalResult to a JSON-able row (used for manifest + replay)."""
-    per_deck = {}
-    for deck_idx, wl in r.per_deck_wins.items():
-        wins = int(sum(wl))
-        n = len(wl)
-        per_deck[deck_stems[deck_idx]] = {
-            "wins": wins,
-            "episodes": n,
-            "win_rate": wins / n if n else 0.0,
-        }
-    return {"win_rate": r.win_rate, "wins": r.wins, "episodes": r.episodes, "per_deck": per_deck}
-
-
 def _emit_row(sink, label: str, ckpt: Path, update: int, row: dict, global_step: int) -> None:
     """Emit a per-checkpoint eval measurement (CheckpointEvent) from a result row;
     shared by the replayed-from-manifest and freshly-evaluated paths."""
@@ -200,7 +187,7 @@ def run_sweep(
                     mirror_decks=mirror_decks,
                 )
                 # Record in manifest and emit event.
-                row = result_row(results[0], deck_stems)
+                row = eval_result_to_row(results[0], deck_stems)
                 row["global_step"] = global_step
                 _emit_row(sink, label, ckpt, update, row, global_step)
                 manifest.record(update, label, row)

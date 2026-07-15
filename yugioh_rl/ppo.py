@@ -27,13 +27,14 @@ from yugioh_core.encoding import (
 from yugioh_env.opponent import NetworkOpponent
 from yugioh_rl.config import TrainingConfig
 from yugioh_rl.env_wrapper import SubprocVecEnv, parse_deck_pool
-from yugioh_rl.eval import evaluate_with_agent
+from yugioh_rl.eval import eval_result_to_row, evaluate_with_agent
 from yugioh_rl.metrics_logging import (
     CheckpointEvent,
     CheckpointRef,
     ScalarMetrics,
     build_training_sinks,
     compute_update_metrics,
+    flatten_eval,
 )
 from yugioh_rl.network import YuGiOhNet
 
@@ -55,10 +56,8 @@ def _eval_scalars(results, deck_paths: list[str]) -> dict[str, float]:
     deck_stems = [Path(p).stem for p in deck_paths]
     scalars: dict[str, float] = {}
     for r in results:
-        scalars[f"eval/win_rate_vs_{r.opponent_label}"] = r.win_rate
-        for deck_idx, deck_results in r.per_deck_wins.items():
-            deck_wr = sum(deck_results) / len(deck_results) if deck_results else 0.0
-            scalars[f"eval/win_rate_vs_{r.opponent_label}_deck_{deck_stems[deck_idx]}"] = deck_wr
+        row = eval_result_to_row(r, deck_stems)
+        scalars.update({f"eval/{k}": v for k, v in flatten_eval(row, r.opponent_label).items()})
     return scalars
 
 
