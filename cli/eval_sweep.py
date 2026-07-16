@@ -1,7 +1,10 @@
 """Offline checkpoint-sweep evaluator.
 
-Evaluates a training run's checkpoints against chosen opponents and writes
-win-rate curves to <run-dir>/logs/eval/ keyed by each checkpoint's global_step.
+Evaluates a training run's checkpoints against fixed opponent specs
+(``--opponents``) or, in **step-matched evaluation** (``--opponent-dir``),
+against a second run's checkpoints matched by update number N. Writes win-rate
+curves keyed by each checkpoint's global_step — classic sweeps to
+<run-dir>/logs/eval/, step-matched evaluation to <run-dir>/logs/eval_vs_<opponent>/.
 Thin driver over yugioh_rl.eval.evaluate; the trainer is never modified.
 """
 
@@ -95,12 +98,13 @@ class Manifest:
         self.path.write_text(_json.dumps({"results": list(self._index.values())}, indent=2))
 
 
-def _config_deck_paths(config) -> list[str] | None:
+def _config_get(config, key: str):
+    """Read ``key`` from a checkpoint's config, stored either as a dict or an object."""
     if config is None:
         return None
     if isinstance(config, dict):
-        return config.get("deck_paths")
-    return getattr(config, "deck_paths", None)
+        return config.get(key)
+    return getattr(config, key, None)
 
 
 def derive_deck_paths(checkpoints, override, load_fn=torch.load) -> list[str]:
@@ -111,12 +115,66 @@ def derive_deck_paths(checkpoints, override, load_fn=torch.load) -> list[str]:
     for ckpt in checkpoints:
         try:
             data = load_fn(ckpt, map_location="cpu", weights_only=False)
-            paths = _config_deck_paths(data.get("config"))
+            paths = _config_get(data.get("config"), "deck_paths")
         except Exception:
             continue
         if paths:
             return list(paths)
     raise SweepError("could not derive deck pool from any checkpoint; pass --deck-paths")
+
+
+def _match_opponent_dir(
+    run_ckpts: list[Path], opponent_ckpts: list[Path]
+) -> list[tuple[Path, Path]]:
+    """Pair run checkpoints with opponent checkpoints sharing the same update N.
+
+    Unmatched checkpoints on either side are ignored (and logged). Returns
+    ``(run_ckpt, opponent_ckpt)`` pairs in run-dir order.
+    """
+    opp_index = {checkpoint_update(p): p for p in opponent_ckpts}
+    run_updates = {checkpoint_update(p) for p in run_ckpts}
+    matched = [
+        (rc, opp_index[checkpoint_update(rc)])
+        for rc in run_ckpts
+        if checkpoint_update(rc) in opp_index
+    ]
+    logger.info(
+        "step-matched: %d matched, %d only in run-dir, %d only in opponent-dir (ignored)",
+        len(matched),
+        len(run_updates - opp_index.keys()),
+        len(opp_index.keys() - run_updates),
+    )
+    return matched
+
+
+def _steps_per_update(ckpts, load_fn=torch.load) -> int | None:
+    """num_envs × rollout_steps from the first readable checkpoint config, or None.
+
+    Step-matched evaluation matches by update number N; N only aligns on global_step
+    when the two runs share this product, so ``main`` uses it to warn on a mismatch.
+    """
+    for ckpt in ckpts:
+        try:
+            cfg = load_fn(ckpt, map_location="cpu", weights_only=False).get("config")
+        except Exception:
+            continue
+        ne, rs = _config_get(cfg, "num_envs"), _config_get(cfg, "rollout_steps")
+        if ne and rs:
+            return ne * rs
+    return None
+
+
+def _step_matched_decks(run_ckpts, opponent_ckpts, override, load_fn=torch.load) -> list[str]:
+    """Eval deck pool for step-matched evaluation: ``override`` wins; else the
+    intersection of the two runs' checkpoint-config deck pools (run-dir order preserved)."""
+    if override:
+        return list(override)
+    run_decks = derive_deck_paths(run_ckpts, None, load_fn)
+    opp_decks = set(derive_deck_paths(opponent_ckpts, None, load_fn))
+    shared = [p for p in run_decks if p in opp_decks]
+    if not shared:
+        raise SweepError("run-dir and opponent-dir share no decks; pass --deck-paths")
+    return shared
 
 
 def _emit_row(sink, label: str, ckpt: Path, update: int, row: dict, global_step: int) -> None:
@@ -132,8 +190,7 @@ def _emit_row(sink, label: str, ckpt: Path, update: int, row: dict, global_step:
 
 def run_sweep(
     *,
-    checkpoints,
-    opponents,
+    pairs,
     deck_pool,
     deck_paths,
     manifest,
@@ -148,19 +205,24 @@ def run_sweep(
     evaluate_fn=evaluate,
     load_fn=torch.load,
 ) -> dict:
-    """Sweep evaluator: for each (checkpoint, opponent) pair, eval or replay.
+    """Sweep evaluator: for each (agent checkpoint, opponent) pair, eval or replay.
 
-    Returns dict with keys: ok, failed, skipped, failures.
+    ``pairs`` is a list of ``(agent_checkpoint, agent_spec, [(opponent_spec, label)])``
+    — the caller builds it and owns all spec formatting AND metric labelling
+    (checkpoints × fixed opponents in normal mode; matched-by-N pairs in
+    step-matched evaluation, where every N shares one constant series label so the
+    win-rate forms a single curve over global_step). The checkpoint path is kept
+    alongside its spec for the update number, the lazy global_step load, and the
+    emitted CheckpointRef. Returns dict with keys: ok, failed, skipped, failures.
     """
     deck_stems = [Path(p).stem for p in deck_paths]
     ok = failed = skipped = 0
     failures: list[tuple[int, str]] = []
 
-    for ckpt in checkpoints:
+    for ckpt, agent_spec, opps in pairs:
         update = checkpoint_update(ckpt)
         global_step = None  # loaded lazily once per checkpoint, reused across opponents
-        for opp in opponents:
-            label = opponent_label_from_spec(opp)
+        for opp_spec, label in opps:
             if manifest.has(update, label) and not force:
                 # Replay recorded result, using the global_step stored at record time.
                 row = manifest.get(update, label)
@@ -176,9 +238,9 @@ def run_sweep(
                     ]
                 # Evaluate
                 results = evaluate_fn(
-                    agent_spec=f"model:{ckpt}",
+                    agent_spec=agent_spec,
                     deck_pool=deck_pool,
-                    opponent_specs=[opp],
+                    opponent_specs=[opp_spec],
                     num_episodes=num_episodes,
                     seed=seed,
                     workers=workers,
@@ -203,11 +265,17 @@ def run_sweep(
 def parse_args(argv=None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Evaluate a run's checkpoints against opponents.")
     p.add_argument("--run-dir", required=True, help="Training run dir with checkpoint_*.pt")
-    p.add_argument(
+    opp_source = p.add_mutually_exclusive_group(required=True)
+    opp_source.add_argument(
         "--opponents",
-        required=True,
         nargs="+",
         help="Opponent specs: random / greedy / model:path / ygo-agent:url",
+    )
+    opp_source.add_argument(
+        "--opponent-dir",
+        default=None,
+        help="Step-matched evaluation: a second run dir of checkpoint_<N>.pt, "
+        "matched to --run-dir by update number N (unmatched ignored).",
     )
     p.add_argument("--stride", type=int, default=1, help="Evaluate every Nth checkpoint")
     p.add_argument("--episodes", type=int, default=1000)
@@ -266,23 +334,58 @@ def main(argv=None) -> int:
 
     from yugioh_rl.env_wrapper import parse_deck_pool
 
-    for opp in args.opponents:
-        validate_opponent_spec(opp, "--opponents")  # exits via fatal() on malformed spec
-
+    step_matched = args.opponent_dir is not None
     try:
-        deck_paths = derive_deck_paths(checkpoints, args.deck_paths)
+        if step_matched:
+            opponent_ckpts = discover_checkpoints(args.opponent_dir, 1)
+            if not opponent_ckpts:
+                raise SweepError(f"no checkpoints found in {args.opponent_dir}")
+            matched = _match_opponent_dir(checkpoints, opponent_ckpts)
+            if not matched:
+                raise SweepError(
+                    "run-dir and opponent-dir share no checkpoints (matched by update number)"
+                )
+            run_spu, opp_spu = _steps_per_update(checkpoints), _steps_per_update(opponent_ckpts)
+            if run_spu and opp_spu and run_spu != opp_spu:
+                logger.warning(
+                    "run-dir and opponent-dir have different steps-per-update (%d vs %d): "
+                    "matching by update number N does NOT align on global_step",
+                    run_spu,
+                    opp_spu,
+                )
+            deck_paths = _step_matched_decks(checkpoints, opponent_ckpts, args.deck_paths)
+            # One constant series label across all matched N -> a single win-rate
+            # curve over global_step (not a distinct metric per opponent checkpoint).
+            opp_name = Path(args.opponent_dir).name
+            series_label = f"model_{opp_name}"
+            pairs = [(rc, f"model:{rc}", [(f"model:{oc}", series_label)]) for rc, oc in matched]
+            eval_subdir = f"eval_vs_{opp_name}"
+            run_name = f"eval_{Path(args.run_dir).name}_vs_{opp_name}"
+        else:
+            for opp in args.opponents:
+                validate_opponent_spec(opp, "--opponents")  # exits via fatal() on bad spec
+            deck_paths = derive_deck_paths(checkpoints, args.deck_paths)
+            pairs = [
+                (
+                    ckpt,
+                    f"model:{ckpt}",
+                    [(opp, opponent_label_from_spec(opp)) for opp in args.opponents],
+                )
+                for ckpt in checkpoints
+            ]
+            eval_subdir = "eval"
+            run_name = f"eval_{Path(args.run_dir).name}"
     except SweepError as e:
         print(str(e), file=sys.stderr)
         return 2
 
     validate_deck_paths(deck_paths)  # exits via fatal() on missing / non-.ydk paths
     deck_pool = parse_deck_pool(deck_paths)
-    log_dir = Path(args.run_dir) / "logs" / "eval"
+    log_dir = Path(args.run_dir) / "logs" / eval_subdir
     log_dir.mkdir(parents=True, exist_ok=True)
     manifest = Manifest.load(log_dir / "manifest.json")
     eval_params = {
         "run_dir": args.run_dir,
-        "opponents": ",".join(args.opponents),
         "episodes": str(args.episodes),
         "seed": str(args.seed),
         "workers": str(args.workers),
@@ -292,11 +395,20 @@ def main(argv=None) -> int:
         "stride": str(args.stride),
         "decks": ",".join(Path(p).stem for p in deck_paths),
     }
-    sink = build_eval_sinks(log_to=args.log_to, run_dir=args.run_dir, params=eval_params)
+    if step_matched:
+        eval_params["opponent_dir"] = args.opponent_dir
+    else:
+        eval_params["opponents"] = ",".join(args.opponents)
+    sink = build_eval_sinks(
+        log_to=args.log_to,
+        run_dir=args.run_dir,
+        params=eval_params,
+        subdir=eval_subdir,
+        run_name=run_name,
+    )
     try:
         summary = run_sweep(
-            checkpoints=checkpoints,
-            opponents=args.opponents,
+            pairs=pairs,
             deck_pool=deck_pool,
             deck_paths=deck_paths,
             manifest=manifest,

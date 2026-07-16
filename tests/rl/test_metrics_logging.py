@@ -402,3 +402,37 @@ def test_build_eval_sinks_opens_named_run(tmp_path, monkeypatch):
     assert started["params"] == {"opponents": "greedy,random", "episodes": "1000"}
     assert fake.system_metrics_enabled  # hardware telemetry on for sweeps too
     sink.close()
+
+
+def test_build_eval_sinks_custom_subdir_and_run_name(tmp_path, monkeypatch):
+    """Step-matched evaluation lands in its own TB board + MLflow run."""
+    from yugioh_rl import metrics_logging
+
+    started = {}
+    fake = _FakeMlflow()
+    fake.set_tracking_uri = lambda uri: None
+    fake.set_experiment = lambda name: None
+    fake.start_run = lambda **k: (
+        started.setdefault("start_kwargs", k)
+        or types.SimpleNamespace(info=types.SimpleNamespace(run_id="e2"))
+    )
+    fake.log_params = lambda p: None
+    monkeypatch.setattr(metrics_logging, "_import_mlflow", lambda: fake)
+    # Capture the TB log dir without a real SummaryWriter (keep this file torch-free).
+    monkeypatch.setattr(
+        metrics_logging,
+        "_new_tb_writer",
+        lambda log_dir, purge_step: (started.update({"tb_dir": log_dir}), _FakeWriter())[1],
+    )
+    monkeypatch.setenv("MLFLOW_TRACKING_URI", "sqlite:///x.db")
+
+    sink = metrics_logging.build_eval_sinks(
+        log_to=["tensorboard", "mlflow"],
+        run_dir=str(tmp_path / "runA"),
+        params={},
+        subdir="eval_vs_runB",
+        run_name="eval_runA_vs_runB",
+    )
+    assert started["start_kwargs"]["run_name"] == "eval_runA_vs_runB"
+    assert started["tb_dir"].endswith("runA/logs/eval_vs_runB")  # own TB board dir
+    sink.close()

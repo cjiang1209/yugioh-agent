@@ -296,21 +296,31 @@ def build_training_sinks(
     return MultiSink(sinks)
 
 
-def build_eval_sinks(*, log_to: list[str], run_dir: str, params: dict[str, str]) -> MultiSink:
+def build_eval_sinks(
+    *,
+    log_to: list[str],
+    run_dir: str,
+    params: dict[str, str],
+    subdir: str = "eval",
+    run_name: str | None = None,
+) -> MultiSink:
     """Build the sink fan-out for an offline eval sweep.
 
-    MLflow: opens an explicit named run ``eval_<run_dir_name>`` (so eval
-    win-rate source-runs are meaningful, not auto-named orphans) and logs the
-    sweep's ``params`` (opponents, episodes, seed, decks, ...). Eval runs are
-    always fresh — no resume — so params are logged unconditionally.
+    TensorBoard writes to ``<run_dir>/logs/<subdir>`` and MLflow opens a named run
+    ``run_name`` (default ``eval_<run_dir_name>``), so eval win-rate source-runs are
+    meaningful, not auto-named orphans. ``subdir``/``run_name`` let step-matched
+    evaluation land in its own board + run (e.g. ``eval_vs_<opponent>``) instead of
+    the classic ``eval`` board. Eval runs are always fresh — no resume — so params
+    are logged unconditionally.
     """
+    run_name = run_name or f"eval_{Path(run_dir).name}"
     sinks: list[LogSink] = []
     if "tensorboard" in log_to:
-        log_dir = Path(run_dir) / "logs" / "eval"
+        log_dir = Path(run_dir) / "logs" / subdir
         sinks.append(TensorBoardSink(_new_tb_writer(str(log_dir), None)))
     if "mlflow" in log_to:
         mlflow = _open_experiment()
-        mlflow.start_run(run_name=f"eval_{Path(run_dir).name}")
+        mlflow.start_run(run_name=run_name)
         mlflow.log_params(params)
         sinks.append(MLflowSink(mlflow))
     return MultiSink(sinks)

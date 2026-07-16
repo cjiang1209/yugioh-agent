@@ -40,8 +40,7 @@ def test_run_sweep_emits_checkpoint_event_per_pair(tmp_path):
     manifest = Manifest.load(tmp_path / "manifest.json")
 
     summary = run_sweep(
-        checkpoints=[ckpt],
-        opponents=["greedy"],
+        pairs=[(ckpt, f"model:{ckpt}", [("greedy", "greedy")])],
         deck_pool=[{}],
         deck_paths=["assets/decks/starter.ydk"],
         manifest=manifest,

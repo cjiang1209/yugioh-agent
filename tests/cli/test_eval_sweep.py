@@ -5,6 +5,8 @@ import pytest
 from cli.eval_sweep import (
     Manifest,
     SweepError,
+    _match_opponent_dir,
+    _step_matched_decks,
     checkpoint_update,
     derive_deck_paths,
     discover_checkpoints,
@@ -119,6 +121,61 @@ def test_derive_raises_when_unresolvable():
         derive_deck_paths([Path("checkpoint_100.pt")], override=None, load_fn=fake_load)
 
 
+def test_match_opponent_dir_pairs_by_update_and_ignores_unmatched():
+    run = [Path(f"run/checkpoint_{n}.pt") for n in (100, 200, 300)]
+    opp = [Path(f"opp/checkpoint_{n}.pt") for n in (200, 300, 400)]
+    matched = _match_opponent_dir(run, opp)
+    # matched on N in {200, 300}; run-100 and opp-400 ignored. Run-dir order kept.
+    assert [(checkpoint_update(r), checkpoint_update(o)) for r, o in matched] == [
+        (200, 200),
+        (300, 300),
+    ]
+    assert matched[0] == (Path("run/checkpoint_200.pt"), Path("opp/checkpoint_200.pt"))
+
+
+def test_match_opponent_dir_disjoint_yields_empty():
+    run = [Path("run/checkpoint_100.pt")]
+    opp = [Path("opp/checkpoint_200.pt")]
+    assert _match_opponent_dir(run, opp) == []  # main turns this into SweepError/rc 2
+
+
+def test_step_matched_decks_override_wins():
+    got = _step_matched_decks(
+        [Path("run/checkpoint_1.pt")],
+        [Path("base/checkpoint_1.pt")],
+        override=["x.ydk"],
+        load_fn=lambda p, **k: {},
+    )
+    assert got == ["x.ydk"]
+
+
+def test_step_matched_decks_intersects_configs():
+    def fake_load(p, **k):
+        decks = ["a.ydk", "b.ydk", "c.ydk"] if "run" in str(p) else ["b.ydk", "c.ydk", "d.ydk"]
+        return {"config": _Cfg(decks)}
+
+    got = _step_matched_decks(
+        [Path("run/checkpoint_1.pt")],
+        [Path("base/checkpoint_1.pt")],
+        override=None,
+        load_fn=fake_load,
+    )
+    assert got == ["b.ydk", "c.ydk"]  # intersection, run-dir order preserved
+
+
+def test_step_matched_decks_empty_intersection_raises():
+    def fake_load(p, **k):
+        return {"config": _Cfg(["a.ydk"] if "run" in str(p) else ["z.ydk"])}
+
+    with pytest.raises(SweepError):
+        _step_matched_decks(
+            [Path("run/checkpoint_1.pt")],
+            [Path("base/checkpoint_1.pt")],
+            override=None,
+            load_fn=fake_load,
+        )
+
+
 @dataclass
 class _FakeResult:
     opponent_label: str
@@ -171,8 +228,7 @@ def test_run_sweep_evals_and_records(tmp_path):
         return {"global_step": checkpoint_update(p)}
 
     summary = run_sweep(
-        checkpoints=ckpts,
-        opponents=["random"],
+        pairs=[(c, f"model:{c}", [("random", "random")]) for c in ckpts],
         deck_pool=[{"main": [1]}],
         deck_paths=["deck.ydk"],
         manifest=manifest,
@@ -206,8 +262,7 @@ def test_run_sweep_skips_recorded_and_replays_to_tb(tmp_path):
         raise AssertionError("load_fn should not be called on the skip/replay path")
 
     summary = run_sweep(
-        checkpoints=ckpts,
-        opponents=["random"],
+        pairs=[(c, f"model:{c}", [("random", "random")]) for c in ckpts],
         deck_pool=[],
         deck_paths=["d.ydk"],
         manifest=manifest,
@@ -240,8 +295,7 @@ def test_run_sweep_failure_is_skipped_not_recorded(tmp_path):
         return {"global_step": checkpoint_update(p)}
 
     summary = run_sweep(
-        checkpoints=ckpts,
-        opponents=["random"],
+        pairs=[(c, f"model:{c}", [("random", "random")]) for c in ckpts],
         deck_pool=[],
         deck_paths=["d.ydk"],
         manifest=manifest,
@@ -273,8 +327,7 @@ def test_run_sweep_force_reevaluates(tmp_path):
         return {"global_step": 100}
 
     summary = run_sweep(
-        checkpoints=ckpts,
-        opponents=["random"],
+        pairs=[(c, f"model:{c}", [("random", "random")]) for c in ckpts],
         deck_pool=[],
         deck_paths=["d.ydk"],
         manifest=manifest,
@@ -306,8 +359,7 @@ def test_run_sweep_records_global_step_and_replays_it(tmp_path):
 
     # First run: evaluate and record with global_step
     summary1 = run_sweep(
-        checkpoints=ckpts,
-        opponents=["random"],
+        pairs=[(c, f"model:{c}", [("random", "random")]) for c in ckpts],
         deck_pool=[{"main": [1]}],
         deck_paths=["deck.ydk"],
         manifest=manifest,
@@ -332,8 +384,7 @@ def test_run_sweep_records_global_step_and_replays_it(tmp_path):
         raise AssertionError("load_fn should NOT be called on the skip/replay path")
 
     summary2 = run_sweep(
-        checkpoints=ckpts,
-        opponents=["random"],
+        pairs=[(c, f"model:{c}", [("random", "random")]) for c in ckpts],
         deck_pool=[{"main": [1]}],
         deck_paths=["deck.ydk"],
         manifest=manifest,
@@ -351,6 +402,100 @@ def test_run_sweep_records_global_step_and_replays_it(tmp_path):
     assert ("eval/win_rate_vs_random", 0.6, 12345) in sink2.scalars
 
 
+def test_run_sweep_cross_play_uses_provided_label(tmp_path):
+    """A step-matched-evaluation pair evaluates run-ckpt vs an opponent model: spec,
+    labelled by the caller-supplied (constant) series label; event ref is the run ckpt."""
+    run_ckpt = tmp_path / "symbolic" / "checkpoint_200.pt"
+    opp_ckpt = tmp_path / "opponent" / "checkpoint_200.pt"
+    sink = _FakeSink()
+    manifest = Manifest.load(tmp_path / "logs" / "eval" / "manifest.json")
+
+    def fake_eval(**kwargs):
+        assert kwargs["agent_spec"] == f"model:{run_ckpt}"
+        assert kwargs["opponent_specs"] == [f"model:{opp_ckpt}"]
+        return [_FakeResult("ignored", 10, 7, 0.7)]
+
+    def fake_load(p, **k):
+        return {"global_step": 2048}
+
+    summary = run_sweep(
+        pairs=[(run_ckpt, f"model:{run_ckpt}", [(f"model:{opp_ckpt}", "model_opponent")])],
+        deck_pool=[{"main": [1]}],
+        deck_paths=["deck.ydk"],
+        manifest=manifest,
+        sink=sink,
+        num_episodes=10,
+        seed=0,
+        workers=1,
+        agent_player="random",
+        force=False,
+        evaluate_fn=fake_eval,
+        load_fn=fake_load,
+    )
+    assert summary["ok"] == 1
+    # Metric keyed by the provided series label; event ref is the run checkpoint.
+    assert ("eval/win_rate_vs_model_opponent", 0.7, 2048) in sink.scalars
+    assert sink.events[0].ref.path == run_ckpt
+    assert manifest.has(200, "model_opponent")
+
+
+def test_run_sweep_cross_play_constant_label_is_one_curve(tmp_path):
+    """Across matched N, one constant series label => a single metric tag with a
+    point per checkpoint (a curve over global_step), not a distinct tag per N."""
+    run_100 = tmp_path / "run" / "checkpoint_100.pt"
+    run_200 = tmp_path / "run" / "checkpoint_200.pt"
+    opp_100 = tmp_path / "opp" / "checkpoint_100.pt"
+    opp_200 = tmp_path / "opp" / "checkpoint_200.pt"
+    sink = _FakeSink()
+    manifest = Manifest.load(tmp_path / "logs" / "eval_vs_opp" / "manifest.json")
+
+    summary = run_sweep(
+        pairs=[
+            (run_100, f"model:{run_100}", [(f"model:{opp_100}", "model_opp")]),
+            (run_200, f"model:{run_200}", [(f"model:{opp_200}", "model_opp")]),
+        ],
+        deck_pool=[{"main": [1]}],
+        deck_paths=["deck.ydk"],
+        manifest=manifest,
+        sink=sink,
+        num_episodes=10,
+        seed=0,
+        workers=1,
+        agent_player="random",
+        force=False,
+        evaluate_fn=lambda **k: [_FakeResult("ignored", 10, 6, 0.6)],
+        load_fn=lambda p, **k: {"global_step": checkpoint_update(p) * 2048},
+    )
+    assert summary["ok"] == 2
+    tags = {(key, step) for key, _, step in sink.scalars}
+    # Same tag, two points at the two checkpoints' global_steps.
+    assert ("eval/win_rate_vs_model_opp", 100 * 2048) in tags
+    assert ("eval/win_rate_vs_model_opp", 200 * 2048) in tags
+    assert {key for key, _, _ in sink.scalars} == {"eval/win_rate_vs_model_opp"}
+
+
+def test_steps_per_update_reads_config_product():
+    from cli.eval_sweep import _steps_per_update
+
+    # config as a dict
+    def dict_load(p, **k):
+        return {"config": {"num_envs": 8, "rollout_steps": 256}}
+
+    assert _steps_per_update([Path("run/checkpoint_1.pt")], load_fn=dict_load) == 8 * 256
+
+    # config as an object (getattr path)
+    class _C:
+        num_envs, rollout_steps = 4, 128
+
+    def obj_load(p, **k):
+        return {"config": _C()}
+
+    assert _steps_per_update([Path("run/checkpoint_1.pt")], load_fn=obj_load) == 4 * 128
+
+    # No config -> None (caller then skips the mismatch warning).
+    assert _steps_per_update([Path("x/checkpoint_1.pt")], load_fn=lambda p, **k: {}) is None
+
+
 def test_parse_args_defaults():
     a = parse_args(["--run-dir", "r", "--opponents", "random"])
     assert a.run_dir == "r" and a.opponents == ["random"]
@@ -363,6 +508,11 @@ def test_parse_args_multi_opponents_and_stride():
         ["--run-dir", "r", "--opponents", "random", "greedy", "--stride", "5", "--force"]
     )
     assert a.opponents == ["random", "greedy"] and a.stride == 5 and a.force is True
+
+
+def test_parse_args_opponent_dir():
+    a = parse_args(["--run-dir", "r", "--opponent-dir", "o"])
+    assert a.opponent_dir == "o" and a.opponents is None
 
 
 def test_main_no_checkpoints_returns_nonzero(tmp_path, capsys):
