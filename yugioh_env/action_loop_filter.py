@@ -1,19 +1,13 @@
 """Action loop detection and suppression for YuGiOhEnvironment.
 
-Detects controlled loops — voluntary repetitions of the same action
-that produce no net change to the game state — and suppresses the
-looping action to break the cycle.
-
-Each action key is tracked independently — intervening selections of
-other actions do not reset a key's loop count.  Game-state
-fingerprinting is deferred until a key has been selected
-``threshold - 1`` times, so the common case (one-off actions) pays no
-fingerprint cost.  A looping action repeats at most ``threshold``
-times before suppression.
+Detects controlled loops — a player repeatedly selecting the same action
+with no net change to the game state — and suppresses the looping action so
+the duel can progress.  ``ActionLoopFilter`` documents the mechanism.
 """
 
 from __future__ import annotations
 
+from collections import deque
 from typing import TYPE_CHECKING
 
 from yugioh_core.constants import (
@@ -31,7 +25,14 @@ if TYPE_CHECKING:
 
 # ─── Module-level constants ───────────────────────────────────────────────────
 
-LOOP_DETECTION_THRESHOLD = 3
+# Default ``sampling_start``: selection (1-based, per action key) at which
+# fingerprinting begins; earlier selections are exempt.
+SAMPLING_START = 2
+
+# Max fingerprints retained per action key for recurrence detection.  Bounds
+# the longest detectable loop period; real controlled loops are tiny (the known
+# case is period-2), so a small window suffices.  Stored as hashes (ints).
+_FP_HISTORY_MAX = 8
 
 # Type alias: (code, controller, location, sequence, action_type, desc)
 ActionKey = tuple[int, int, int, int, int, int]
@@ -61,19 +62,20 @@ class ActionLoopFilter:
     action (e.g. activating a disabled card effect) and each repetition
     leaves the game state unchanged.
 
-    Each action key is tracked independently via a per-key selection
-    count and game-state fingerprint.  Fingerprinting is deferred: the
-    first ``threshold - 2`` selections of a key are free.
+    Each action key is tracked independently.  Fingerprint sampling begins
+    at the ``sampling_start``-th selection of a key (earlier selections are
+    exempt — a one-off action cannot loop, so it pays no cost); each sampled
+    selection fingerprints the game state.  Detection is by **recurrence**:
 
-    At selection ``threshold - 1``, a "before" game-state snapshot is
-    captured.  On the ``threshold``-th selection (and beyond), an
-    "after" snapshot is compared with the stored "before":
+    - If the current state matches an earlier fingerprint for this key,
+      the loop has returned to a state it already visited (no net
+      progress) → suppress the action.
+    - If the state is new → real progress → lift any suppression.
 
-    - If the game state is unchanged → the action is suppressed.
-    - If the game state changed → the new snapshot becomes the next
-      "before" (the action had a net change but may loop again).
-
-    A looping action therefore repeats at most ``threshold`` times.
+    Because it triggers on *any* recurrence (not just equality with the
+    previous state), this catches period-N loops, not only period-1 —
+    including loops whose only per-cycle delta is a derived status bit that
+    oscillates.
 
     Usage (called by YuGiOhEnvironment)::
 
@@ -88,15 +90,15 @@ class ActionLoopFilter:
     def __init__(
         self,
         env: YuGiOhEnvironment,
-        threshold: int = LOOP_DETECTION_THRESHOLD,
+        sampling_start: int = SAMPLING_START,
     ) -> None:
-        if threshold < 2:
-            raise ValueError(f"threshold must be >= 2, got {threshold}")
+        if sampling_start < 1:
+            raise ValueError(f"sampling_start must be >= 1, got {sampling_start}")
         self._env = env
-        self._threshold = threshold
+        self._sampling_start = sampling_start
 
         self._seen: dict[ActionKey, int] = {}
-        self._pending_fp: dict[ActionKey, tuple] = {}
+        self._fp_history: dict[ActionKey, deque] = {}
         self._looping_keys: set[ActionKey] = set()
 
     # ─── Public API ──────────────────────────────────────────────────────────
@@ -119,17 +121,13 @@ class ActionLoopFilter:
         )
 
     def record_selection(self, action: dict) -> None:
-        """Record that *action* was selected.
+        """Record that *action* was selected, updating its loop tracking.
 
-        Structural actions (code == 0, e.g. phase transitions and chain
-        declines) are ignored — only card-specific actions are tracked.
-
-        No game-state fingerprinting until the key has been selected
-        ``threshold - 1`` times.  At that point a "before" snapshot is
-        captured; on the ``threshold``-th selection the "after" is
-        compared.  If the game state is unchanged the action is
-        suppressed — so a looping action repeats at most ``threshold``
-        times.
+        Structural actions (``code == 0``, e.g. phase transitions and chain
+        declines) are ignored.  For a card action, if its game state matches
+        one already seen for this key the action is flagged looping; a new
+        state clears the flag.  Sampling starts at ``sampling_start`` (see
+        ``ActionLoopFilter``).
         """
         if action.get("code", 0) == 0:
             return
@@ -138,22 +136,16 @@ class ActionLoopFilter:
         seen = self._seen.get(key, 0) + 1
         self._seen[key] = seen
 
-        if seen < self._threshold - 1:
-            return
+        if seen < self._sampling_start:
+            return  # before sampling starts: too few selections to judge a loop
 
-        fp_now = self._game_state_fingerprint()
-
-        if seen == self._threshold - 1:
-            self._pending_fp[key] = fp_now
-            return
-
-        # seen >= threshold — compare "after" with stored "before"
-        if fp_now == self._pending_fp[key]:
-            self._looping_keys.add(key)
+        fp_now = hash(self._game_state_fingerprint())
+        hist = self._fp_history.setdefault(key, deque(maxlen=_FP_HISTORY_MAX))
+        if fp_now in hist:
+            self._looping_keys.add(key)  # state recurred → no net progress
         else:
-            self._looping_keys.discard(key)
-
-        self._pending_fp[key] = fp_now
+            self._looping_keys.discard(key)  # new state → progress → lift
+        hist.append(fp_now)
 
     def is_looping(self, action: dict) -> bool:
         """Return True if *action* is currently suppressed as a loop."""
@@ -162,7 +154,7 @@ class ActionLoopFilter:
     def reset(self) -> None:
         """Clear all tracking state (call on env reset and new turn)."""
         self._seen.clear()
-        self._pending_fp.clear()
+        self._fp_history.clear()
         self._looping_keys.clear()
 
     # ─── Private helpers ─────────────────────────────────────────────────────
