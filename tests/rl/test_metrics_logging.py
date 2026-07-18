@@ -140,10 +140,80 @@ def test_flatten_eval_keys_match_tb_convention():
     }
     out = flatten_eval(row, "greedy")
     assert out == {
-        "win_rate_vs_greedy": 0.8,
-        "win_rate_vs_greedy_deck_blue_eyes": 0.7,
-        "win_rate_vs_greedy_deck_exodia": 0.9,
+        "win_rate/greedy/overall": 0.8,
+        "win_rate_by_deck/greedy/blue_eyes": 0.7,
+        "win_rate_by_deck/greedy/exodia": 0.9,
     }
+
+
+def test_flatten_eval_new_scheme():
+    row = {
+        "win_rate": 0.75,
+        "wins": 3,
+        "episodes": 4,
+        "per_deck": {"blue_eyes": {"wins": 2, "episodes": 3, "win_rate": 0.667}},
+        "steps": {"mean": 25.0, "std": 1.0, "median": 25.0, "max": 40},
+        "turns": {"mean": 7.0, "std": 2.0, "median": 7.0, "max": 10},
+        "play_first_rate": 0.5,
+        "wins_first": 2,
+        "episodes_first": 2,
+        "wins_second": 1,
+        "episodes_second": 2,
+    }
+    out = flatten_eval(row, "opp")
+    assert out["win_rate/opp/overall"] == 0.75
+    assert out["win_rate_by_deck/opp/blue_eyes"] == 0.667
+    assert out["steps/opp/mean"] == 25.0 and out["steps/opp/max"] == 40
+    assert out["turns/opp/median"] == 7.0 and out["play_first_rate/opp"] == 0.5
+    assert out["win_rate/opp/play_first"] == 1.0 and out["win_rate/opp/play_second"] == 0.5
+
+
+def test_in_training_eval_scalars_prefixed_new_scheme():
+    from yugioh_rl.eval import EvalResult
+    from yugioh_rl.ppo import _eval_scalars
+
+    r = EvalResult(
+        opponent_label="random",
+        episodes=2,
+        wins=1,
+        per_deck_wins={0: [1.0, 0.0]},
+        steps_mean=3.0,
+        steps_std=0.0,
+        steps_median=3.0,
+        steps_max=3,
+        turns_mean=2.0,
+        turns_std=0.0,
+        turns_median=2.0,
+        turns_max=2,
+        wins_first=1,
+        episodes_first=2,
+        wins_second=0,
+        episodes_second=0,
+    )
+    s = _eval_scalars([r], ["decks/blue_eyes.ydk"])
+    assert s["eval/win_rate/random/overall"] == 0.5
+    assert s["eval/win_rate_by_deck/random/blue_eyes"] == 0.5
+    assert s["eval/steps/random/mean"] == 3.0 and s["eval/play_first_rate/random"] == 1.0
+    assert s["eval/win_rate/random/play_first"] == 0.5
+    assert "eval/win_rate/random/play_second" not in s
+
+
+def test_flatten_eval_omits_empty_split():
+    row = {
+        "win_rate": 0.6,
+        "wins": 6,
+        "episodes": 10,
+        "per_deck": {},
+        "steps": {"mean": 1, "std": 0, "median": 1, "max": 1},
+        "turns": {"mean": 1, "std": 0, "median": 1, "max": 1},
+        "play_first_rate": 1.0,
+        "wins_first": 6,
+        "episodes_first": 10,
+        "wins_second": 0,
+        "episodes_second": 0,
+    }
+    out = flatten_eval(row, "opp")
+    assert "win_rate/opp/play_first" in out and "win_rate/opp/play_second" not in out
 
 
 class _FakeWriter:
@@ -164,12 +234,20 @@ def test_tb_sink_scalar_metrics_no_prefix():
     assert w.calls == [("loss/policy", 0.5, 100)]
 
 
-def test_tb_sink_checkpoint_event_eval_prefix_at_global_step():
+def test_tb_sink_checkpoint_event_scalars_unprefixed_at_global_step():
     w = _FakeWriter()
     ref = CheckpointRef(path=Path("/tmp/checkpoint_5.pt"), update=5, global_step=999, tags={})
-    ev = CheckpointEvent(ref=ref, scalars={"win_rate_vs_greedy": 0.8})
+    ev = CheckpointEvent(ref=ref, scalars={"win_rate/greedy/overall": 0.8})
     TensorBoardSink(w).handle(ev)
-    assert w.calls == [("eval/win_rate_vs_greedy", 0.8, 999)]
+    assert w.calls == [("win_rate/greedy/overall", 0.8, 999)]
+
+
+def test_tb_sink_eval_scalars_unprefixed():
+    w = _FakeWriter()
+    ref = CheckpointRef(path=Path("checkpoint_100.pt"), update=100, global_step=2048, tags={})
+    TensorBoardSink(w).handle(CheckpointEvent(ref=ref, scalars={"win_rate/opp/overall": 0.6}))
+    keys = [k for k, _, _ in w.calls]
+    assert "win_rate/opp/overall" in keys and "eval/win_rate/opp/overall" not in keys
 
 
 def test_tb_sink_registration_event_is_noop():
@@ -269,10 +347,10 @@ def test_mlflow_sink_eval_attaches_metrics_to_existing_model(tmp_path):
     fake = _FakeMlflow(existing=[existing])
     p = _write_ckpt(tmp_path)
     ref = CheckpointRef(path=p, update=100, global_step=2048, tags={})
-    ev = CheckpointEvent(ref=ref, scalars={"win_rate_vs_greedy": 0.8})
+    ev = CheckpointEvent(ref=ref, scalars={"win_rate/greedy/overall": 0.8})
     MLflowSink(fake).handle(ev)
     assert fake.created == []  # found existing -> no create
-    assert fake.metrics == [("win_rate_vs_greedy", 0.8, 2048, "m-existing")]
+    assert fake.metrics == [("win_rate/greedy/overall", 0.8, 2048, "m-existing")]
 
 
 def test_mlflow_sink_close_ends_run():

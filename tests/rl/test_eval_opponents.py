@@ -137,7 +137,7 @@ class TestEvaluateWrapper:
             deck_paths=["assets/decks/blue_eyes.ydk"],
         )
         trainer = _make_trainer_stub(config)
-        results = [EvalResult("greedy", 1, 1, 1.0, {0: [1.0]})]
+        results = [EvalResult("greedy", 1, 1, {0: [1.0]})]
         with patch("yugioh_rl.ppo.evaluate_with_agent", return_value=results):
             trainer._evaluate(num_episodes=1, global_step=42)
 
@@ -146,5 +146,5 @@ class TestEvaluateWrapper:
         assert len(scalar_events) == 1
         ev = scalar_events[0]
         assert ev.global_step == 42
-        assert ev.scalars["eval/win_rate_vs_greedy"] == 1.0
-        assert ev.scalars["eval/win_rate_vs_greedy_deck_blue_eyes"] == 1.0
+        assert ev.scalars["eval/win_rate/greedy/overall"] == 1.0
+        assert ev.scalars["eval/win_rate_by_deck/greedy/blue_eyes"] == 1.0

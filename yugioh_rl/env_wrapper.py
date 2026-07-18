@@ -356,6 +356,7 @@ class EvalEnv:
         self._seed = seed
         self._player_rng = stdlib_random.Random()
         self._last_agent_deck_idx = -1
+        self._last_agent_player = -1
 
     def reset(self, *, episode_idx: int) -> dict[str, np.ndarray]:
         episode_seed = self._seed + episode_idx
@@ -375,6 +376,7 @@ class EvalEnv:
             deck0, deck1 = opp_deck, agent_deck
 
         self._last_agent_deck_idx = agent_deck_idx
+        self._last_agent_player = resolved_player
         obs = self._env.reset(
             seed=episode_seed, deck0=deck0, deck1=deck1, agent_player=resolved_player
         )
@@ -388,6 +390,8 @@ class EvalEnv:
             info["terminal_reward"] = obs.reward
             info["episode_length"] = self._env._step_count
             info["agent_deck_idx"] = self._last_agent_deck_idx
+            info["turn_count"] = self._env._duel.game_state.turn_count
+            info["agent_player"] = self._last_agent_player
         return np_obs, obs.reward, obs.done, info
 
     @property

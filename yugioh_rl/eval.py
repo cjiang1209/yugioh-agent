@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 import multiprocessing as mp
+import statistics
 import traceback
 from contextlib import suppress
 from dataclasses import dataclass, field
@@ -64,8 +65,30 @@ class EvalResult:
     opponent_label: str
     episodes: int
     wins: int
-    win_rate: float
     per_deck_wins: dict[int, list[float]] = field(default_factory=dict)
+    steps_mean: float = 0.0
+    steps_std: float = 0.0
+    steps_median: float = 0.0
+    steps_max: int = 0
+    turns_mean: float = 0.0
+    turns_std: float = 0.0
+    turns_median: float = 0.0
+    turns_max: int = 0
+    wins_first: int = 0
+    episodes_first: int = 0
+    wins_second: int = 0
+    episodes_second: int = 0
+
+    @property
+    def win_rate(self) -> float:
+        """Fraction of episodes won — derived from ``wins``/``episodes``."""
+        return self.wins / self.episodes if self.episodes else 0.0
+
+    @property
+    def play_first_rate(self) -> float:
+        """Fraction of episodes the agent went first — derived; every episode is
+        either first or second, so ``episodes_first + episodes_second == episodes``."""
+        return self.episodes_first / self.episodes if self.episodes else 0.0
 
 
 @dataclass(frozen=True)
@@ -78,11 +101,26 @@ class _EvalTask:
     episode_idx: int
 
 
+class _EpisodeRecord(NamedTuple):
+    """One completed episode's outcome, independent of any (opponent, worker)
+    bookkeeping — the shared input type to :func:`_aggregate_one`."""
+
+    episode_idx: int
+    win: bool
+    agent_deck_idx: int
+    steps: int
+    turns: int
+    went_first: bool
+
+
 class _PartialResult(NamedTuple):
     opp_idx: int
     episode_idx: int
     win: bool
     agent_deck_idx: int
+    steps: int
+    turns: int
+    went_first: bool
 
 
 class EvalWorkerError(RuntimeError):
@@ -113,6 +151,49 @@ def _build_tasks(opponent_specs: list[str], num_episodes: int) -> list[_EvalTask
     ]
 
 
+def _aggregate_one(records, opponent_label: str) -> EvalResult:
+    """Build an EvalResult from per-episode records (pre-sorted by episode_idx).
+
+    Shared aggregator for both the sequential (``_run_sequential_match_set``)
+    and parallel (``_aggregate_partials``) paths — the single place win/steps/
+    turns/order-split math lives, so the two paths can't drift apart.
+    """
+    n = len(records)
+    wins = sum(1 for r in records if r.win)
+    per_deck: dict[int, list[float]] = {}
+    for r in records:
+        per_deck.setdefault(r.agent_deck_idx, []).append(1.0 if r.win else 0.0)
+
+    def _stats(vals):
+        if not vals:
+            return 0.0, 0.0, 0.0, 0
+        std = statistics.pstdev(vals) if len(vals) > 1 else 0.0
+        return statistics.mean(vals), std, statistics.median(vals), max(vals)
+
+    s_mean, s_std, s_med, s_max = _stats([r.steps for r in records])
+    t_mean, t_std, t_med, t_max = _stats([r.turns for r in records])
+    firsts = [r for r in records if r.went_first]
+    seconds = [r for r in records if not r.went_first]
+    return EvalResult(
+        opponent_label=opponent_label,
+        episodes=n,
+        wins=wins,
+        per_deck_wins=per_deck,
+        steps_mean=s_mean,
+        steps_std=s_std,
+        steps_median=s_med,
+        steps_max=s_max,
+        turns_mean=t_mean,
+        turns_std=t_std,
+        turns_median=t_med,
+        turns_max=t_max,
+        wins_first=sum(1 for r in firsts if r.win),
+        episodes_first=len(firsts),
+        wins_second=sum(1 for r in seconds if r.win),
+        episodes_second=len(seconds),
+    )
+
+
 def _aggregate_partials(
     partials: list[_PartialResult],
     opponent_specs: list[str],
@@ -133,20 +214,7 @@ def _aggregate_partials(
     results: list[EvalResult] = []
     for opp_idx, spec in enumerate(opponent_specs):
         opp_parts = sorted(by_opp.get(opp_idx, []), key=lambda p: p.episode_idx)
-        wins = sum(1 for p in opp_parts if p.win)
-        episodes = len(opp_parts)
-        per_deck: dict[int, list[float]] = {}
-        for p in opp_parts:
-            per_deck.setdefault(p.agent_deck_idx, []).append(1.0 if p.win else 0.0)
-        results.append(
-            EvalResult(
-                opponent_label=opponent_label_from_spec(spec),
-                episodes=episodes,
-                wins=wins,
-                win_rate=(wins / episodes) if episodes > 0 else 0.0,
-                per_deck_wins=per_deck,
-            )
-        )
+        results.append(_aggregate_one(opp_parts, opponent_label_from_spec(spec)))
     return results
 
 
@@ -193,7 +261,7 @@ def _play_one_episode(
     *,
     base_seed: int,
     episode_idx: int,
-) -> tuple[bool, int]:
+) -> _EpisodeRecord:
     """Play episode index ``episode_idx`` (1-indexed to match _episode_count).
 
     Reseeds the agent from ``base_seed + episode_idx`` and resets the env
@@ -201,7 +269,7 @@ def _play_one_episode(
     sequential ``run_match`` (idx=1..N in order) and by parallel-eval
     workers dispatching episodes by absolute index.
 
-    Returns ``(win, agent_deck_idx)`` from the terminal info dict.
+    Returns an ``_EpisodeRecord`` built from the terminal info dict.
     """
     agent.reseed(base_seed + episode_idx)
     obs = env.reset(episode_idx=episode_idx)
@@ -212,8 +280,14 @@ def _play_one_episode(
             agent.set_observation(obs)
         action = agent.select_action(env.current_msg, env.num_actions)
         obs, _reward, done, info = env.step(action)
-    win = info.get("terminal_reward", 0) > 0
-    return win, int(info.get("agent_deck_idx", 0))
+    return _EpisodeRecord(
+        episode_idx=episode_idx,
+        win=info.get("terminal_reward", 0) > 0,
+        agent_deck_idx=int(info.get("agent_deck_idx", 0)),
+        steps=int(info.get("episode_length", 0)),
+        turns=int(info.get("turn_count", 0)),
+        went_first=int(info.get("agent_player", 0)) == 0,
+    )
 
 
 def run_match(
@@ -222,29 +296,19 @@ def run_match(
     num_episodes: int,
     *,
     base_seed: int,
-) -> tuple[int, dict[int, list[float]]]:
+) -> list[_EpisodeRecord]:
     """Run ``num_episodes`` against the env's pre-configured opponent.
 
-    Returns ``(total_wins, per_deck)`` where ``per_deck`` maps
-    ``agent_deck_idx`` → list of 1.0/0.0 win records.
+    Returns per-episode records in ``episode_idx`` order (1..num_episodes).
     """
-    total_wins = 0
-    per_deck: dict[int, list[float]] = {}
     # num_episodes == 0 is a valid "skip" signal; don't pay a duel-init cost
     # just to play zero episodes (matches the pre-refactor for-loop semantics).
     if num_episodes <= 0:
-        return total_wins, per_deck
-    for i in range(num_episodes):
-        win, deck_idx = _play_one_episode(
-            agent,
-            env,
-            base_seed=base_seed,
-            episode_idx=i + 1,
-        )
-        if win:
-            total_wins += 1
-        per_deck.setdefault(deck_idx, []).append(1.0 if win else 0.0)
-    return total_wins, per_deck
+        return []
+    return [
+        _play_one_episode(agent, env, base_seed=base_seed, episode_idx=i + 1)
+        for i in range(num_episodes)
+    ]
 
 
 def _eval_worker(
@@ -293,7 +357,7 @@ def _eval_worker(
                     )
                     current_spec = task.opp_spec
 
-                win, agent_deck_idx = _play_one_episode(
+                rec = _play_one_episode(
                     agent,
                     env,
                     base_seed=seed,
@@ -302,7 +366,15 @@ def _eval_worker(
                 remote.send(
                     (
                         _REPLY_PARTIAL,
-                        _PartialResult(task.opp_idx, task.episode_idx, win, agent_deck_idx),
+                        _PartialResult(
+                            task.opp_idx,
+                            task.episode_idx,
+                            rec.win,
+                            rec.agent_deck_idx,
+                            rec.steps,
+                            rec.turns,
+                            rec.went_first,
+                        ),
                     )
                 )
             except Exception:
@@ -500,18 +572,10 @@ def _run_sequential_match_set(
             )
         )
         try:
-            wins, per_deck = run_match(agent, env, num_episodes, base_seed=seed)
+            records = run_match(agent, env, num_episodes, base_seed=seed)
         finally:
             env.close()
-        results.append(
-            EvalResult(
-                opponent_label=opponent_label_from_spec(spec),
-                episodes=num_episodes,
-                wins=wins,
-                win_rate=wins / max(num_episodes, 1),
-                per_deck_wins=per_deck,
-            )
-        )
+        results.append(_aggregate_one(records, opponent_label_from_spec(spec)))
     return results
 
 
@@ -629,4 +693,26 @@ def eval_result_to_row(r: EvalResult, deck_stems: list[str]) -> dict:
             "episodes": n,
             "win_rate": wins / n if n else 0.0,
         }
-    return {"win_rate": r.win_rate, "wins": r.wins, "episodes": r.episodes, "per_deck": per_deck}
+    return {
+        "win_rate": r.win_rate,
+        "wins": r.wins,
+        "episodes": r.episodes,
+        "per_deck": per_deck,
+        "steps": {
+            "mean": r.steps_mean,
+            "std": r.steps_std,
+            "median": r.steps_median,
+            "max": r.steps_max,
+        },
+        "turns": {
+            "mean": r.turns_mean,
+            "std": r.turns_std,
+            "median": r.turns_median,
+            "max": r.turns_max,
+        },
+        "play_first_rate": r.play_first_rate,
+        "wins_first": r.wins_first,
+        "episodes_first": r.episodes_first,
+        "wins_second": r.wins_second,
+        "episodes_second": r.episodes_second,
+    }

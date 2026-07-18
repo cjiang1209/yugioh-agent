@@ -28,7 +28,7 @@ def stub_eval_pipeline():
     """
     captured: dict = {
         "results": [
-            EvalResult("greedy", episodes=2, wins=1, win_rate=0.5, per_deck_wins={0: [1.0, 0.0]}),
+            EvalResult("greedy", episodes=2, wins=1, per_deck_wins={0: [1.0, 0.0]}),
         ]
     }
 
@@ -138,12 +138,8 @@ def test_device_auto_resolved_before_forwarding(stub_eval_pipeline, deck_path_st
 def test_json_output_writes_expected_shape(stub_eval_pipeline, deck_path_str, tmp_path):
     out = tmp_path / "results.json"
     stub_eval_pipeline["results"] = [
-        EvalResult(
-            "greedy", episodes=4, wins=3, win_rate=0.75, per_deck_wins={0: [1.0, 1.0, 1.0, 0.0]}
-        ),
-        EvalResult(
-            "random", episodes=4, wins=2, win_rate=0.5, per_deck_wins={0: [1.0, 0.0, 1.0, 0.0]}
-        ),
+        EvalResult("greedy", episodes=4, wins=3, per_deck_wins={0: [1.0, 1.0, 1.0, 0.0]}),
+        EvalResult("random", episodes=4, wins=2, per_deck_wins={0: [1.0, 0.0, 1.0, 0.0]}),
     ]
     cli_eval.main(
         [

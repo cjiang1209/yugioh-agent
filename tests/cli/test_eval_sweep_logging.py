@@ -2,6 +2,7 @@
 
 from cli.eval_sweep import Manifest, run_sweep
 
+from yugioh_rl.eval import EvalResult
 from yugioh_rl.metrics_logging import CheckpointEvent
 
 
@@ -16,17 +17,8 @@ class _FakeSink:
         pass
 
 
-class _EvalResultStub:
-    def __init__(self, win_rate, wins, episodes, per_deck_wins):
-        self.opponent_label = "greedy"
-        self.win_rate = win_rate
-        self.wins = wins
-        self.episodes = episodes
-        self.per_deck_wins = per_deck_wins
-
-
 def _fake_evaluate(**kwargs):
-    return [_EvalResultStub(win_rate=1.0, wins=1, episodes=1, per_deck_wins={0: [1.0]})]
+    return [EvalResult(opponent_label="greedy", episodes=1, wins=1, per_deck_wins={0: [1.0]})]
 
 
 def _fake_load(path, map_location=None, weights_only=None):
@@ -60,5 +52,5 @@ def test_run_sweep_emits_checkpoint_event_per_pair(tmp_path):
     ev = events[0]
     assert ev.ref.update == 200
     assert ev.ref.global_step == 4096
-    assert ev.scalars["win_rate_vs_greedy"] == 1.0
-    assert ev.scalars["win_rate_vs_greedy_deck_starter"] == 1.0
+    assert ev.scalars["win_rate/greedy/overall"] == 1.0
+    assert ev.scalars["win_rate_by_deck/greedy/starter"] == 1.0

@@ -44,7 +44,20 @@ def _fake_worker_replies_then_crashes(remote, **_kwargs) -> None:
     Tests the second send site's WorkerDiedError wrapping."""
     cmd, payload = remote.recv()
     assert cmd == "task"
-    remote.send(("partial", _PartialResult(payload.opp_idx, payload.episode_idx, True, 0)))
+    remote.send(
+        (
+            "partial",
+            _PartialResult(
+                payload.opp_idx,
+                payload.episode_idx,
+                True,
+                0,
+                steps=0,
+                turns=0,
+                went_first=True,
+            ),
+        )
+    )
     # Crash before reading the next task. Sleep so the parent has time
     # to receive the partial and call _send_task before we exit (a
     # too-short window can race on a loaded CI box).

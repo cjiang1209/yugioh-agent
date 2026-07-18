@@ -119,14 +119,29 @@ def compute_update_metrics(
 
 
 def flatten_eval(row: dict, label: str) -> dict[str, float]:
-    """Flatten a stored eval ``row`` into a scalars dict keyed by opponent label.
+    """Flatten a stored eval ``row`` into scalars keyed ``<metric>/<opponent>/<sub>``.
 
-    Keys have no ``eval/`` prefix — the TensorBoard sink adds it so MLflow model
-    metrics stay unprefixed.
+    The opponent sits in the middle so both UIs section usefully: TensorBoard
+    groups on the first ``/`` (``<metric>``), MLflow on the last ``/`` (so
+    ``<metric>/<opponent>`` becomes one card with the sub-series overlaid, e.g.
+    win_rate overall/play_first/play_second together per opponent). No ``eval/``
+    prefix. A win-rate split is emitted only when it had episodes; missing
+    (old-row) fields are skipped.
     """
-    out: dict[str, float] = {f"win_rate_vs_{label}": row["win_rate"]}
-    for stem, d in row["per_deck"].items():
-        out[f"win_rate_vs_{label}_deck_{stem}"] = d["win_rate"]
+    out: dict[str, float] = {f"win_rate/{label}/overall": row["win_rate"]}
+    for stem, d in row.get("per_deck", {}).items():
+        out[f"win_rate_by_deck/{label}/{stem}"] = d["win_rate"]
+    for metric in ("steps", "turns"):
+        stats = row.get(metric)
+        if stats:
+            for sub in ("mean", "std", "median", "max"):
+                out[f"{metric}/{label}/{sub}"] = stats[sub]
+    if "play_first_rate" in row:
+        out[f"play_first_rate/{label}"] = row["play_first_rate"]
+    if row.get("episodes_first"):
+        out[f"win_rate/{label}/play_first"] = row["wins_first"] / row["episodes_first"]
+    if row.get("episodes_second"):
+        out[f"win_rate/{label}/play_second"] = row["wins_second"] / row["episodes_second"]
     return out
 
 
@@ -142,8 +157,8 @@ def sha256_file(path: Path) -> str:
 class TensorBoardSink:
     """Writes events to a TensorBoard SummaryWriter.
 
-    ScalarMetrics keys are written verbatim; CheckpointEvent scalars are
-    prefixed with ``eval/`` and written at the checkpoint's global_step.
+    All scalar keys are written verbatim: ScalarMetrics at ``event.global_step``,
+    CheckpointEvent scalars at the checkpoint's ``global_step``.
     """
 
     def __init__(self, writer) -> None:
@@ -155,7 +170,7 @@ class TensorBoardSink:
                 self._writer.add_scalar(key, value, event.global_step)
         elif isinstance(event, CheckpointEvent):
             for key, value in event.scalars.items():
-                self._writer.add_scalar(f"eval/{key}", value, event.ref.global_step)
+                self._writer.add_scalar(key, value, event.ref.global_step)
 
     def close(self) -> None:
         self._writer.close()

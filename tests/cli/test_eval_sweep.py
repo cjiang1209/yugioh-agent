@@ -1,4 +1,3 @@
-from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
@@ -13,6 +12,8 @@ from cli.eval_sweep import (
     parse_args,
     run_sweep,
 )
+
+from yugioh_rl.eval import EvalResult
 
 
 def _touch(p: Path):
@@ -176,19 +177,10 @@ def test_step_matched_decks_empty_intersection_raises():
         )
 
 
-@dataclass
-class _FakeResult:
-    opponent_label: str
-    episodes: int
-    wins: int
-    win_rate: float
-    per_deck_wins: dict = field(default_factory=dict)
-
-
 class _FakeSink:
     """Records emitted events and exposes a ``scalars`` view identical to what a
-    real TensorBoardSink would write (eval/-prefixed, at the event's
-    global_step), so these tests still assert on byte-identical TB keys."""
+    real TensorBoardSink would write (unprefixed, at the event's global_step),
+    so these tests still assert on byte-identical TB keys."""
 
     def __init__(self):
         self.events = []
@@ -204,7 +196,7 @@ class _FakeSink:
         out = []
         for ev in self.events:
             for key, value in ev.scalars.items():
-                out.append((f"eval/{key}", value, ev.ref.global_step))
+                out.append((key, value, ev.ref.global_step))
         return out
 
 
@@ -222,7 +214,7 @@ def test_run_sweep_evals_and_records(tmp_path):
     manifest = Manifest.load(tmp_path / "logs" / "eval" / "manifest.json")
 
     def fake_eval(**kwargs):
-        return [_FakeResult("random", 10, 6, 0.6)]
+        return [EvalResult("random", 10, 6)]
 
     def fake_load(p, **k):
         return {"global_step": checkpoint_update(p)}
@@ -245,8 +237,8 @@ def test_run_sweep_evals_and_records(tmp_path):
     # both checkpoints recorded
     assert manifest.has(100, "random") and manifest.has(200, "random")
     # TB got win_rate at each step (global_step == update in this stub)
-    assert ("eval/win_rate_vs_random", 0.6, 100) in sink.scalars
-    assert ("eval/win_rate_vs_random", 0.6, 200) in sink.scalars
+    assert ("win_rate/random/overall", 0.6, 100) in sink.scalars
+    assert ("win_rate/random/overall", 0.6, 200) in sink.scalars
 
 
 def test_run_sweep_skips_recorded_and_replays_to_tb(tmp_path):
@@ -277,7 +269,7 @@ def test_run_sweep_skips_recorded_and_replays_to_tb(tmp_path):
     )
     assert summary["skipped"] == 1 and summary["ok"] == 0
     # replayed the stored win_rate to TB using fallback global_step (= update = 100)
-    assert ("eval/win_rate_vs_random", 0.9, 100) in sink.scalars
+    assert ("win_rate/random/overall", 0.9, 100) in sink.scalars
 
 
 def test_run_sweep_failure_is_skipped_not_recorded(tmp_path):
@@ -289,7 +281,7 @@ def test_run_sweep_failure_is_skipped_not_recorded(tmp_path):
         # fail for checkpoint 100, succeed for 200
         if "checkpoint_100" in kwargs["agent_spec"]:
             raise RuntimeError("bridge 500")
-        return [_FakeResult("random", 10, 5, 0.5)]
+        return [EvalResult("random", 10, 5)]
 
     def fake_load(p, **k):
         return {"global_step": checkpoint_update(p)}
@@ -321,7 +313,7 @@ def test_run_sweep_force_reevaluates(tmp_path):
     manifest.record(100, "random", {"win_rate": 0.1, "wins": 1, "episodes": 10, "per_deck": {}})
 
     def fake_eval(**kwargs):
-        return [_FakeResult("random", 10, 8, 0.8)]
+        return [EvalResult("random", 10, 8)]
 
     def fake_load(p, **k):
         return {"global_step": 100}
@@ -351,7 +343,7 @@ def test_run_sweep_records_global_step_and_replays_it(tmp_path):
     manifest = Manifest.load(tmp_path / "logs" / "eval" / "manifest.json")
 
     def fake_eval(**kwargs):
-        return [_FakeResult("random", 10, 6, 0.6)]
+        return [EvalResult("random", 10, 6)]
 
     def fake_load(p, **k):
         # First call: record phase returns global_step=12345
@@ -399,7 +391,7 @@ def test_run_sweep_records_global_step_and_replays_it(tmp_path):
     )
     assert summary2["skipped"] == 1 and summary2["ok"] == 0
     # Verify it replayed to TB at the recorded global_step (12345), not at update (100)
-    assert ("eval/win_rate_vs_random", 0.6, 12345) in sink2.scalars
+    assert ("win_rate/random/overall", 0.6, 12345) in sink2.scalars
 
 
 def test_run_sweep_cross_play_uses_provided_label(tmp_path):
@@ -413,7 +405,7 @@ def test_run_sweep_cross_play_uses_provided_label(tmp_path):
     def fake_eval(**kwargs):
         assert kwargs["agent_spec"] == f"model:{run_ckpt}"
         assert kwargs["opponent_specs"] == [f"model:{opp_ckpt}"]
-        return [_FakeResult("ignored", 10, 7, 0.7)]
+        return [EvalResult("ignored", 10, 7)]
 
     def fake_load(p, **k):
         return {"global_step": 2048}
@@ -434,7 +426,7 @@ def test_run_sweep_cross_play_uses_provided_label(tmp_path):
     )
     assert summary["ok"] == 1
     # Metric keyed by the provided series label; event ref is the run checkpoint.
-    assert ("eval/win_rate_vs_model_opponent", 0.7, 2048) in sink.scalars
+    assert ("win_rate/model_opponent/overall", 0.7, 2048) in sink.scalars
     assert sink.events[0].ref.path == run_ckpt
     assert manifest.has(200, "model_opponent")
 
@@ -463,15 +455,21 @@ def test_run_sweep_cross_play_constant_label_is_one_curve(tmp_path):
         workers=1,
         agent_player="random",
         force=False,
-        evaluate_fn=lambda **k: [_FakeResult("ignored", 10, 6, 0.6)],
+        evaluate_fn=lambda **k: [EvalResult("ignored", 10, 6)],
         load_fn=lambda p, **k: {"global_step": checkpoint_update(p) * 2048},
     )
     assert summary["ok"] == 2
     tags = {(key, step) for key, _, step in sink.scalars}
     # Same tag, two points at the two checkpoints' global_steps.
-    assert ("eval/win_rate_vs_model_opp", 100 * 2048) in tags
-    assert ("eval/win_rate_vs_model_opp", 200 * 2048) in tags
-    assert {key for key, _, _ in sink.scalars} == {"eval/win_rate_vs_model_opp"}
+    assert ("win_rate/model_opp/overall", 100 * 2048) in tags
+    assert ("win_rate/model_opp/overall", 200 * 2048) in tags
+    # Exactly one win-rate tag across both checkpoints (a curve, not one tag per N).
+    win_rate_keys = {
+        key
+        for key, _, _ in sink.scalars
+        if key.startswith("win_rate/") and key.endswith("/overall")
+    }
+    assert win_rate_keys == {"win_rate/model_opp/overall"}
 
 
 def test_steps_per_update_reads_config_product():

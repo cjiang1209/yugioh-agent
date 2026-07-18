@@ -52,8 +52,10 @@ def _feature_signature(config) -> str:
 
 
 def _eval_scalars(results, deck_paths: list[str]) -> dict[str, float]:
-    """Flatten in-training eval results into the run-level eval/win_rate_vs_*
-    scalars (overall per opponent, plus per-deck)."""
+    """Flatten in-training eval results into run-level ``eval/<metric>/<opp>/<sub>``
+    scalars (e.g. ``eval/win_rate/<opp>/overall``, ``eval/win_rate_by_deck/<opp>/<deck>``,
+    ``eval/steps/<opp>/mean``). The ``eval/`` prefix is kept here so these share one
+    section on the training board, apart from ``loss/*``/``reward/*``."""
     deck_stems = [Path(p).stem for p in deck_paths]
     scalars: dict[str, float] = {}
     for r in results:

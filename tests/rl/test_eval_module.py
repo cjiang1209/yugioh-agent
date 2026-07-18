@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
 import pytest
 
+from tests.rl.conftest import requires_engine
 from yugioh_core.encoding import (
     ACTION_FEATURES,
     CARD_FEATURES,
@@ -20,11 +22,26 @@ from yugioh_env.opponent import (
     RandomOpponent,
 )
 from yugioh_rl.eval import (
+    EvalResult,
+    _aggregate_one,
+    _EpisodeRecord,
+    eval_result_to_row,
     evaluate_with_agent,
     make_eval_agent,
     opponent_label_from_spec,
     run_match,
 )
+
+_DECK_PATH = Path("assets/decks/blue_eyes.ydk")
+
+
+def _deck_pool_or_skip():
+    from yugioh_rl.env_wrapper import parse_deck_pool
+
+    if not _DECK_PATH.exists():
+        pytest.skip(f"missing deck: {_DECK_PATH}")
+    return parse_deck_pool([str(_DECK_PATH)])
+
 
 # ---------------------------------------------------------------------------
 # opponent_label_from_spec — pinned to the pre-refactor TensorBoard label format
@@ -168,6 +185,9 @@ class _ScriptedEnv:
         if done:
             info["terminal_reward"] = outcome.get("reward", 0.0)
             info["agent_deck_idx"] = outcome.get("agent_deck_idx", 0)
+            info["episode_length"] = outcome.get("episode_length", 0)
+            info["turn_count"] = outcome.get("turn_count", 0)
+            info["agent_player"] = outcome.get("agent_player", 0)
             # No auto-advance — caller is responsible for the next reset.
         return _dummy_obs(), 0.0, done, info
 
@@ -193,9 +213,67 @@ class TestRunMatch:
                 [{"done": True, "reward": 1.0, "agent_deck_idx": 1}],
             ]
         )
-        wins, per_deck = run_match(agent, env, num_episodes=4, base_seed=42)
+        records = run_match(agent, env, num_episodes=4, base_seed=42)
+        wins = sum(1 for r in records if r.win)
+        per_deck: dict[int, list[float]] = {}
+        for r in records:
+            per_deck.setdefault(r.agent_deck_idx, []).append(1.0 if r.win else 0.0)
         assert wins == 3
         assert per_deck == {0: [1.0, 0.0], 1: [1.0, 1.0]}
+
+    def test_returns_episode_records_with_steps_turns_and_order(self):
+        """New fields flow end-to-end: terminal info -> _EpisodeRecord."""
+        agent = _RecordingAgent()
+        env = _ScriptedEnv(
+            [
+                [
+                    {
+                        "done": True,
+                        "reward": 1.0,
+                        "agent_deck_idx": 0,
+                        "episode_length": 3,
+                        "turn_count": 2,
+                        "agent_player": 0,
+                    }
+                ],
+                [
+                    {
+                        "done": True,
+                        "reward": -1.0,
+                        "agent_deck_idx": 0,
+                        "episode_length": 5,
+                        "turn_count": 3,
+                        "agent_player": 1,
+                    }
+                ],
+                [
+                    {
+                        "done": True,
+                        "reward": 1.0,
+                        "agent_deck_idx": 1,
+                        "episode_length": 4,
+                        "turn_count": 2,
+                        "agent_player": 0,
+                    }
+                ],
+                [
+                    {
+                        "done": True,
+                        "reward": 1.0,
+                        "agent_deck_idx": 1,
+                        "episode_length": 6,
+                        "turn_count": 4,
+                        "agent_player": 1,
+                    }
+                ],
+            ]
+        )
+        recs = run_match(agent, env, num_episodes=4, base_seed=42)
+        assert all(isinstance(r, _EpisodeRecord) for r in recs)
+        assert [r.steps for r in recs] == [3, 5, 4, 6]
+        assert [r.turns for r in recs] == [2, 3, 2, 4]
+        assert [r.went_first for r in recs] == [True, False, True, False]
+        assert [r.episode_idx for r in recs] == [1, 2, 3, 4]
 
     def test_reseeds_agent_per_episode(self):
         """run_match(base_seed=S) calls agent.reseed(S+i+1) before episode i."""
@@ -238,9 +316,8 @@ class TestRunMatch:
         not pay a duel-init cost (or trigger reset-time failures)."""
         agent = _RecordingAgent()
         env = _ScriptedEnv([])
-        wins, per_deck = run_match(agent, env, num_episodes=0, base_seed=42)
-        assert wins == 0
-        assert per_deck == {}
+        records = run_match(agent, env, num_episodes=0, base_seed=42)
+        assert records == []
         assert env.reset_calls == 0
         assert agent.reseed_calls == []
 
@@ -424,9 +501,33 @@ class TestAggregatePartials:
         from yugioh_rl.eval import _aggregate_partials, _PartialResult
 
         partials = [
-            _PartialResult(opp_idx=1, episode_idx=1, win=True, agent_deck_idx=0),
-            _PartialResult(opp_idx=0, episode_idx=1, win=False, agent_deck_idx=0),
-            _PartialResult(opp_idx=0, episode_idx=2, win=True, agent_deck_idx=0),
+            _PartialResult(
+                opp_idx=1,
+                episode_idx=1,
+                win=True,
+                agent_deck_idx=0,
+                steps=1,
+                turns=1,
+                went_first=True,
+            ),
+            _PartialResult(
+                opp_idx=0,
+                episode_idx=1,
+                win=False,
+                agent_deck_idx=0,
+                steps=1,
+                turns=1,
+                went_first=True,
+            ),
+            _PartialResult(
+                opp_idx=0,
+                episode_idx=2,
+                win=True,
+                agent_deck_idx=0,
+                steps=1,
+                turns=1,
+                went_first=True,
+            ),
         ]
         results = _aggregate_partials(partials, ["random", "greedy"])
         assert len(results) == 2
@@ -451,10 +552,10 @@ class TestAggregatePartials:
         # Build 4 partials for one opponent, in episode_idx order: 1,2,3,4.
         # Episodes 1, 3 used deck 0 (win, lose); episodes 2, 4 used deck 1 (lose, win).
         in_order = [
-            _PartialResult(0, 1, True, 0),
-            _PartialResult(0, 2, False, 1),
-            _PartialResult(0, 3, False, 0),
-            _PartialResult(0, 4, True, 1),
+            _PartialResult(0, 1, True, 0, 1, 1, True),
+            _PartialResult(0, 2, False, 1, 1, 1, True),
+            _PartialResult(0, 3, False, 0, 1, 1, True),
+            _PartialResult(0, 4, True, 1, 1, 1, True),
         ]
         shuffled = [in_order[i] for i in (3, 0, 2, 1)]  # arbitrary worker reply order
 
@@ -474,10 +575,10 @@ class TestAggregatePartials:
         from yugioh_rl.eval import _aggregate_partials, _PartialResult
 
         partials = [
-            _PartialResult(0, 1, True, 0),
-            _PartialResult(0, 2, True, 0),
-            _PartialResult(0, 3, False, 0),
-            _PartialResult(0, 4, True, 0),
+            _PartialResult(0, 1, True, 0, 1, 1, True),
+            _PartialResult(0, 2, True, 0, 1, 1, True),
+            _PartialResult(0, 3, False, 0, 1, 1, True),
+            _PartialResult(0, 4, True, 0, 1, 1, True),
         ]
         results = _aggregate_partials(partials, ["x"])
         assert results[0].wins == 3
@@ -493,3 +594,114 @@ class TestAggregatePartials:
         assert results[0].episodes == 0
         assert results[0].wins == 0
         assert results[0].win_rate == 0.0
+
+
+# ---------------------------------------------------------------------------
+# _aggregate_one — the shared aggregator behind both the sequential and
+# parallel (_aggregate_partials) paths.
+# ---------------------------------------------------------------------------
+
+
+class TestAggregateOne:
+    def test_computes_all_metrics(self):
+        recs = [
+            _EpisodeRecord(1, True, 0, 10, 4, True),
+            _EpisodeRecord(2, False, 0, 20, 6, False),
+            _EpisodeRecord(3, True, 1, 30, 8, True),
+            _EpisodeRecord(4, True, 1, 40, 10, False),
+        ]
+        r = _aggregate_one(recs, "opp")
+        assert (r.episodes, r.wins, r.win_rate) == (4, 3, 0.75)
+        assert (r.steps_mean, r.steps_median, r.steps_max) == (25.0, 25.0, 40)
+        assert (r.turns_mean, r.turns_max) == (7.0, 10)
+        assert (r.wins_first, r.episodes_first) == (2, 2)
+        assert (r.wins_second, r.episodes_second) == (1, 2)
+        assert r.per_deck_wins == {0: [1.0, 0.0], 1: [1.0, 1.0]}
+
+    def test_empty_and_singleton(self):
+        assert _aggregate_one([], "opp").episodes == 0
+        one = _aggregate_one([_EpisodeRecord(1, True, 0, 5, 3, True)], "opp")
+        assert one.steps_std == 0.0 and one.steps_mean == 5.0
+
+
+# ---------------------------------------------------------------------------
+# eval_result_to_row — new metrics carried through to the JSON-able row.
+# ---------------------------------------------------------------------------
+
+
+class TestEvalResultToRow:
+    def test_carries_new_fields(self):
+        r = EvalResult(
+            opponent_label="opp",
+            episodes=4,
+            wins=3,
+            per_deck_wins={0: [1.0, 0.0]},
+            steps_mean=25.0,
+            steps_std=1.0,
+            steps_median=25.0,
+            steps_max=40,
+            turns_mean=7.0,
+            turns_std=2.0,
+            turns_median=7.0,
+            turns_max=10,
+            wins_first=2,
+            episodes_first=2,
+            wins_second=1,
+            episodes_second=2,
+        )
+        row = eval_result_to_row(r, ["blue_eyes"])
+        assert row["steps"] == {"mean": 25.0, "std": 1.0, "median": 25.0, "max": 40}
+        # play_first_rate is derived from the order-split counts (2 of 4 episodes first).
+        assert row["turns"]["mean"] == 7.0 and row["play_first_rate"] == 0.5
+        assert row["episodes_first"] == 2 and row["wins_first"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Engine-gated: real EvalEnv terminal info + parallel/sequential parity for
+# the new per-episode metrics. Skip (via requires_engine) when libocgcore /
+# cards.cdb are absent.
+# ---------------------------------------------------------------------------
+
+
+@requires_engine
+def test_evalenv_terminal_info_has_turn_and_player() -> None:
+    from yugioh_rl.env_wrapper import EvalEnv
+
+    deck_pool = _deck_pool_or_skip()
+    env = EvalEnv(deck_pool=deck_pool, opponent="random", seed=0, agent_player="first")
+    try:
+        env.reset(episode_idx=1)
+        info, done = {}, False
+        while not done:
+            _obs, _reward, done, info = env.step(0)
+        assert info["agent_player"] == 0
+        assert isinstance(info["turn_count"], int) and info["turn_count"] >= 1
+        assert "episode_length" in info
+    finally:
+        env.close()
+
+
+@requires_engine
+def test_parallel_matches_sequential_new_fields() -> None:
+    from yugioh_rl.eval import evaluate
+
+    kw = dict(
+        deck_pool=_deck_pool_or_skip(),
+        opponent_specs=["random"],
+        num_episodes=6,
+        seed=0,
+        agent_player="random",
+    )
+    r1 = evaluate("random", workers=1, **kw)[0]
+    r2 = evaluate("random", workers=2, **kw)[0]
+    for f in (
+        "wins",
+        "steps_mean",
+        "steps_std",
+        "turns_mean",
+        "wins_first",
+        "episodes_first",
+        "wins_second",
+        "episodes_second",
+    ):
+        assert getattr(r1, f) == getattr(r2, f), f
