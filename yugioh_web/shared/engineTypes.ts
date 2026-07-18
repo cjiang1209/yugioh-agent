@@ -192,4 +192,7 @@ export interface EngineResponse {
   done: boolean;
   reward: number;
   frames: EventFrame[];
+  /** Index of the action the recommender suggests, or null when AI-assist is
+   *  off / unavailable / terminal. Matches an EngineAction.index. */
+  recommended_action_index: number | null;
 }

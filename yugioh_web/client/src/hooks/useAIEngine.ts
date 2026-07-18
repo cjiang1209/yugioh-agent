@@ -29,6 +29,7 @@ export type AIEngineStatus = "idle" | "loading" | "dueling" | "ended" | "error";
 export interface UseAIEngineReturn {
   state: DuelState | null;
   engineActions: EngineAction[];
+  recommendedActionIndex: number | null;
   enginePrompt: EnginePrompt | null;
   visibleLog: string[];
   isReplaying: boolean;
@@ -313,10 +314,14 @@ const INITIAL_DUEL_STATE: DuelState = {
 
 export function useAIEngine(
   apiUrl: string = "http://localhost:8000",
-  openCards: boolean = false
+  openCards: boolean = false,
+  recommend: boolean = false
 ): UseAIEngineReturn {
   const [state, setState] = useState<DuelState | null>(null);
   const [engineActions, setEngineActions] = useState<EngineAction[]>([]);
+  const [recommendedActionIndex, setRecommendedActionIndex] = useState<
+    number | null
+  >(null);
   const [enginePrompt, setEnginePrompt] = useState<EnginePrompt | null>(null);
   const [status, setStatus] = useState<AIEngineStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -370,9 +375,11 @@ export function useAIEngine(
         ) {
           setEngineActions([]);
           setEnginePrompt(null);
+          setRecommendedActionIndex(null);
           setTimeout(() => submitRef.current?.(resp.actions[0].index), 0);
         } else {
           setEngineActions(resp.actions);
+          setRecommendedActionIndex(resp.recommended_action_index);
         }
       };
 
@@ -380,6 +387,7 @@ export function useAIEngine(
       if (resp.frames && resp.frames.length > 0) {
         setEngineActions([]);
         setEnginePrompt(null);
+        setRecommendedActionIndex(null);
         startReplay(logRef.current, resp.frames, finalize);
       } else {
         finalize();
@@ -407,6 +415,7 @@ export function useAIEngine(
         if (deck1 !== undefined) body.deck1 = deck1;
         if (openCards) body.open_cards = true;
         if (agentPlayer !== undefined) body.agent_player = agentPlayer;
+        if (recommend) body.recommend = true;
         const res = await fetch(`${apiUrl}/api/web/reset`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -420,7 +429,7 @@ export function useAIEngine(
         setStatus("error");
       }
     },
-    [apiUrl, applyResponse, resetReplay, openCards]
+    [apiUrl, applyResponse, resetReplay, openCards, recommend]
   );
 
   const submitAction = useCallback(
@@ -450,6 +459,7 @@ export function useAIEngine(
   return {
     state,
     engineActions,
+    recommendedActionIndex,
     enginePrompt,
     visibleLog,
     isReplaying,
