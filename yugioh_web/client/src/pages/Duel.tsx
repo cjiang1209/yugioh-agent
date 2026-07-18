@@ -26,18 +26,20 @@ export default function Duel() {
   const [turnOrder, setTurnOrder] = useState<TurnOrder>("random");
   const [agentPlayer, setAgentPlayer] = useState<0 | 1>(0);
   const [pendingCoinFlip, setPendingCoinFlip] = useState<0 | 1 | null>(null);
+  const [recommend, setRecommend] = useState(false);
 
   // Phase 1: Deck selection — scrollable page, no fixed wrapper
   if (!myDeck || !oppDeck) {
     return (
       <DeckSelector
         apiUrl={ENGINE_API_URL}
-        onDeckSelected={(my, opp, oc, to, ap, animate) => {
+        onDeckSelected={(my, opp, oc, to, ap, animate, rec) => {
           setMyDeck(my);
           setOppDeck(opp);
           setOpenCards(oc);
           setTurnOrder(to);
           setAgentPlayer(ap);
+          setRecommend(rec);
           if (animate) setPendingCoinFlip(ap);
         }}
       />
@@ -62,6 +64,7 @@ export default function Duel() {
         oppDeck={oppDeck}
         openCards={openCards}
         agentPlayer={agentPlayer}
+        recommend={recommend}
         onRestartTurnOrder={() => {
           const { agentPlayer: ap, animateCoinFlip } =
             resolveTurnOrder(turnOrder);
@@ -81,17 +84,20 @@ function AIModeDuel({
   oppDeck,
   openCards,
   agentPlayer,
+  recommend,
   onRestartTurnOrder,
 }: {
   myDeck: DeckPayload;
   oppDeck: DeckPayload;
   openCards: boolean;
   agentPlayer: 0 | 1;
+  recommend: boolean;
   onRestartTurnOrder: () => { agentPlayer: 0 | 1; willAnimate: boolean };
 }) {
   const {
     state,
     engineActions,
+    recommendedActionIndex,
     enginePrompt,
     visibleLog,
     isReplaying,
@@ -99,7 +105,7 @@ function AIModeDuel({
     error,
     reset,
     submitAction,
-  } = useAIEngine(ENGINE_API_URL, openCards);
+  } = useAIEngine(ENGINE_API_URL, openCards, recommend);
 
   const deck0 = agentPlayer === 0 ? myDeck : oppDeck;
   const deck1 = agentPlayer === 0 ? oppDeck : myDeck;
@@ -165,6 +171,7 @@ function AIModeDuel({
       onAction={() => {}}
       engineMode
       engineActions={engineActions}
+      recommendedActionIndex={recommendedActionIndex}
       enginePrompt={enginePrompt}
       onEngineAction={submitAction}
       onRestart={() => {

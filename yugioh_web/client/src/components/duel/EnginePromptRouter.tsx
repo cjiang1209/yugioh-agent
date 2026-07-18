@@ -12,15 +12,23 @@ interface EnginePromptRouterProps {
   actions: EngineAction[];
   prompt: EnginePrompt | null;
   onAction: (actionIndex: number) => void;
+  recommendedIndex?: number | null;
 }
 
 export function EnginePromptRouter({
   actions,
   prompt,
   onAction,
+  recommendedIndex,
 }: EnginePromptRouterProps) {
   if (!prompt) {
-    return <EngineActionPanel actions={actions} onAction={onAction} />;
+    return (
+      <EngineActionPanel
+        actions={actions}
+        onAction={onAction}
+        recommendedIndex={recommendedIndex}
+      />
+    );
   }
 
   switch (prompt.type) {
@@ -51,6 +59,12 @@ export function EnginePromptRouter({
       );
 
     default:
-      return <EngineActionPanel actions={actions} onAction={onAction} />;
+      return (
+        <EngineActionPanel
+          actions={actions}
+          onAction={onAction}
+          recommendedIndex={recommendedIndex}
+        />
+      );
   }
 }

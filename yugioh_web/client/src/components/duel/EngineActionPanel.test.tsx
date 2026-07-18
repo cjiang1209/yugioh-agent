@@ -1,0 +1,62 @@
+import { render, within } from "@testing-library/react";
+import { describe, it, expect } from "vitest";
+import { EngineActionPanel } from "./EngineActionPanel";
+import type { EngineAction } from "../../../../shared/engineTypes";
+
+const actions: EngineAction[] = [
+  {
+    index: 3,
+    description: "Summon Blue-Eyes",
+    card_code: 89631139,
+    card_name: "Blue-Eyes White Dragon",
+    category: "summon",
+  },
+  {
+    index: 5,
+    description: "Set spell",
+    card_code: 0,
+    card_name: "Face-down",
+    category: "spell_set",
+  },
+];
+
+describe("EngineActionPanel recommended tag", () => {
+  it("shows the recommended badge on the matching action only", () => {
+    const { container } = render(
+      <EngineActionPanel
+        actions={actions}
+        onAction={() => {}}
+        recommendedIndex={3}
+      />
+    );
+    expect(
+      within(container).getAllByTitle("Recommended by AI Assist")
+    ).toHaveLength(1);
+  });
+
+  it("shows no badge when recommendedIndex is null", () => {
+    const { container } = render(
+      <EngineActionPanel
+        actions={actions}
+        onAction={() => {}}
+        recommendedIndex={null}
+      />
+    );
+    expect(
+      within(container).queryAllByTitle("Recommended by AI Assist")
+    ).toHaveLength(0);
+  });
+
+  it("shows no badge when recommendedIndex matches no action", () => {
+    const { container } = render(
+      <EngineActionPanel
+        actions={actions}
+        onAction={() => {}}
+        recommendedIndex={99}
+      />
+    );
+    expect(
+      within(container).queryAllByTitle("Recommended by AI Assist")
+    ).toHaveLength(0);
+  });
+});

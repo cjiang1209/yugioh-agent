@@ -115,11 +115,13 @@ function categoryLabel(cat: string): string {
 interface EngineActionPanelProps {
   actions: EngineAction[];
   onAction: (actionIndex: number) => void;
+  recommendedIndex?: number | null;
 }
 
 export function EngineActionPanel({
   actions,
   onAction,
+  recommendedIndex,
 }: EngineActionPanelProps) {
   return (
     <div className="flex flex-col h-full">
@@ -146,6 +148,8 @@ export function EngineActionPanel({
         ) : (
           actions.map(action => {
             const colors = CATEGORY_COLORS[action.category] ?? DEFAULT_COLOR;
+            const isRecommended =
+              recommendedIndex != null && action.index === recommendedIndex;
             return (
               <button
                 key={action.index}
@@ -172,24 +176,51 @@ export function EngineActionPanel({
                     "transparent";
                 }}
               >
-                <CardThumbnail
-                  cardCode={action.card_code}
-                  width={50}
-                  height={70}
-                  borderColor={colors.border}
-                  location={action.location}
-                  fallback={
+                {/* Thumbnail with corner recommendation badge */}
+                <div style={{ position: "relative", flexShrink: 0 }}>
+                  <CardThumbnail
+                    cardCode={action.card_code}
+                    width={50}
+                    height={70}
+                    borderColor={colors.border}
+                    location={action.location}
+                    fallback={
+                      <span
+                        style={{
+                          fontSize: "0.6rem",
+                          color: colors.text,
+                          opacity: 0.5,
+                        }}
+                      >
+                        ?
+                      </span>
+                    }
+                  />
+                  {isRecommended && (
                     <span
+                      title="Recommended by AI Assist"
                       style={{
+                        position: "absolute",
+                        top: "-5px",
+                        left: "-5px",
+                        width: "18px",
+                        height: "18px",
+                        borderRadius: "50%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
                         fontSize: "0.6rem",
-                        color: colors.text,
-                        opacity: 0.5,
+                        lineHeight: 1,
+                        background: "#ffb020",
+                        color: "#1a1200",
+                        border: "1px solid #ffd67a",
+                        boxShadow: "0 0 8px rgba(255,176,32,0.9)",
                       }}
                     >
-                      ?
+                      ★
                     </span>
-                  }
-                />
+                  )}
+                </div>
 
                 {/* Text content */}
                 <div style={{ flex: 1, minWidth: 0 }}>

@@ -88,6 +88,18 @@ scripts/start_server.sh &
 scripts/start_web.sh
 ```
 
+### AI Assist
+
+Configure a recommender to have the web UI mark the move it suggests as you play:
+
+```bash
+./scripts/start_server.sh --recommender model:checkpoints/run/checkpoint.pt
+# or a built-in policy, or via env var:
+export YUGIOH_RECOMMENDER=greedy
+```
+
+Then enable **AI Assist** when starting a duel.
+
 ### Run a bot in a multiplayer MUD
 Connect two bots to a [yugioh-game](https://github.com/tspivey/yugioh-game)
 MUD server (a third-party Twisted-based text MUD) that we build locally

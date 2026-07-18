@@ -29,6 +29,7 @@ interface DuelBoardProps {
   onAction: (action: GameAction) => void;
   engineMode?: boolean;
   engineActions?: EngineAction[];
+  recommendedActionIndex?: number | null;
   enginePrompt?: EnginePrompt | null;
   onEngineAction?: (actionIndex: number) => void;
   onRestart?: () => void;
@@ -191,6 +192,7 @@ export function DuelBoard({
   onAction,
   engineMode,
   engineActions,
+  recommendedActionIndex,
   enginePrompt,
   onEngineAction,
   onRestart,
@@ -2006,6 +2008,7 @@ export function DuelBoard({
                     actions={engineActions}
                     prompt={enginePrompt ?? null}
                     onAction={onEngineAction}
+                    recommendedIndex={recommendedActionIndex}
                   />
                 ) : (
                   <DuelLog

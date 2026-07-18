@@ -26,7 +26,8 @@ interface DeckSelectorProps {
     openCards: boolean,
     turnOrder: TurnOrder,
     agentPlayer: 0 | 1,
-    animateCoinFlip: boolean
+    animateCoinFlip: boolean,
+    recommend: boolean
   ) => void;
 }
 
@@ -48,6 +49,11 @@ export function DeckSelector({
   const [oppDeck, setOppDeck] = useState<DeckDefinition | null>(null);
   const [openCards, setOpenCards] = useState(false);
   const [turnOrder, setTurnOrder] = useState<TurnOrder>("random");
+  const [aiAssist, setAiAssist] = useState(false);
+  // Availability of a server-side recommender for the AI-assist toggle.
+  const [recommendStatus, setRecommendStatus] = useState<
+    "checking" | "available" | "unavailable"
+  >("checking");
 
   useEffect(() => {
     fetch(`${apiUrl}/api/web/decks`)
@@ -63,6 +69,17 @@ export function DeckSelector({
         setError(e instanceof Error ? e.message : "Failed to load decks");
         setLoading(false);
       });
+  }, [apiUrl]);
+
+  useEffect(() => {
+    fetch(`${apiUrl}/api/web/config`)
+      .then(res => (res.ok ? res.json() : { recommend_available: false }))
+      .then((cfg: { recommend_available?: boolean }) =>
+        setRecommendStatus(
+          cfg.recommend_available ? "available" : "unavailable"
+        )
+      )
+      .catch(() => setRecommendStatus("unavailable"));
   }, [apiUrl]);
 
   if (loading) {
@@ -113,6 +130,7 @@ export function DeckSelector({
   }
 
   const canStart = myDeck !== null && oppDeck !== null;
+  const assistHint = RECOMMEND_HINTS[recommendStatus];
 
   return (
     <div
@@ -228,38 +246,26 @@ export function DeckSelector({
       </div>
 
       {/* Open cards toggle */}
-      <div className="flex flex-col items-center mb-6">
-        <button
-          onClick={() => setOpenCards(v => !v)}
-          className="flex items-center gap-2 px-4 py-2 rounded transition-all"
-          style={{
-            fontFamily: "'Orbitron', sans-serif",
-            fontSize: "0.6rem",
-            letterSpacing: "0.1em",
-            background: openCards
-              ? "rgba(255,215,0,0.1)"
-              : "rgba(255,255,255,0.03)",
-            border: `1px solid ${openCards ? "rgba(255,215,0,0.8)" : "var(--border-dim)"}`,
-            color: openCards ? "rgba(255,215,0,1)" : "var(--text-muted)",
-            boxShadow: openCards ? "0 0 12px rgba(255,215,0,0.25)" : "none",
-          }}
-        >
-          <span style={{ fontSize: "0.85rem" }}>
-            {openCards ? "\u{1F441}" : "\u{1F441}\u200D\u{1F5E8}"}
-          </span>
-          {openCards ? "OPEN CARDS: ON" : "OPEN CARDS: OFF"}
-        </button>
-        <span
-          className="mt-1 opacity-40"
-          style={{
-            color: "var(--text-secondary)",
-            fontFamily: "'Share Tech Mono', monospace",
-            fontSize: "0.5rem",
-          }}
-        >
-          Show opponent hidden cards
-        </span>
-      </div>
+      <ToggleButton
+        on={openCards}
+        onToggle={() => setOpenCards(v => !v)}
+        accent={GOLD_ACCENT}
+        icon={openCards ? "\u{1F441}" : "\u{1F441}\u200D\u{1F5E8}"}
+        label="OPEN CARDS"
+        caption="Show opponent hidden cards"
+      />
+
+      {/* AI-assist toggle */}
+      <ToggleButton
+        on={aiAssist}
+        onToggle={() => setAiAssist(v => !v)}
+        accent={AMBER_ACCENT}
+        icon="✨"
+        label="AI ASSIST"
+        disabled={recommendStatus !== "available"}
+        title={assistHint.title}
+        caption={assistHint.caption}
+      />
 
       {/* Confirm button */}
       <button
@@ -274,7 +280,8 @@ export function DeckSelector({
               openCards,
               turnOrder,
               agentPlayer,
-              animateCoinFlip
+              animateCoinFlip,
+              aiAssist
             );
           }
         }}
@@ -294,6 +301,113 @@ export function DeckSelector({
       >
         {canStart ? "ENTER THE DUEL \u25B6" : "SELECT BOTH DECKS"}
       </button>
+    </div>
+  );
+}
+
+// ─── Toggle button ─────────────────────────────────────────────────────────────
+
+interface ToggleAccent {
+  /** Text/border color when the toggle is on. */
+  color: string;
+  /** Translucent background when on. */
+  background: string;
+  /** Glow box-shadow when on. */
+  glow: string;
+}
+
+const NEON_CYAN_ACCENT: ToggleAccent = {
+  color: "var(--neon-cyan)",
+  background: "rgba(0,245,255,0.1)",
+  glow: "0 0 12px rgba(0,245,255,0.25)",
+};
+
+const GOLD_ACCENT: ToggleAccent = {
+  color: "rgba(255,215,0,1)",
+  background: "rgba(255,215,0,0.1)",
+  glow: "0 0 12px rgba(255,215,0,0.25)",
+};
+
+// Amber, matching the recommended-action star badge (EngineActionPanel), so the
+// AI-assist toggle and the highlight it produces read as the same feature.
+const AMBER_ACCENT: ToggleAccent = {
+  color: "#ffb020",
+  background: "rgba(255,176,32,0.1)",
+  glow: "0 0 12px rgba(255,176,32,0.25)",
+};
+
+// Title (tooltip) + caption for the AI-assist toggle, per recommender status.
+const RECOMMEND_HINTS: Record<
+  "checking" | "available" | "unavailable",
+  { title: string; caption: string }
+> = {
+  checking: {
+    title: "Checking for a recommender…",
+    caption: "Checking for a recommender…",
+  },
+  available: {
+    title: "Highlight the move the recommender suggests",
+    caption: "Tag the recommender's suggested action",
+  },
+  unavailable: {
+    title: "No recommender configured",
+    caption: "No recommender configured",
+  },
+};
+
+/** An on/off toggle with an icon, ON/OFF label, and a caption below.
+ *  Optionally disabled (dimmed, not-allowed) for unavailable features. */
+function ToggleButton({
+  on,
+  onToggle,
+  accent,
+  icon,
+  label,
+  caption,
+  disabled = false,
+  title,
+}: {
+  on: boolean;
+  onToggle: () => void;
+  accent: ToggleAccent;
+  icon: string;
+  label: string;
+  caption: string;
+  disabled?: boolean;
+  title?: string;
+}) {
+  return (
+    <div className="flex flex-col items-center mb-6">
+      <button
+        disabled={disabled}
+        onClick={onToggle}
+        title={title}
+        className="flex items-center gap-2 px-4 py-2 rounded transition-all"
+        style={{
+          fontFamily: "'Orbitron', sans-serif",
+          fontSize: "0.6rem",
+          letterSpacing: "0.1em",
+          background: on ? accent.background : "rgba(255,255,255,0.03)",
+          border: `1px solid ${on ? accent.color : "var(--border-dim)"}`,
+          color: on ? accent.color : "var(--text-muted)",
+          boxShadow: on ? accent.glow : "none",
+          opacity: disabled ? 0.4 : 1,
+          cursor: disabled ? "not-allowed" : "pointer",
+        }}
+      >
+        <span style={{ fontSize: "0.85rem" }}>{icon}</span>
+        {label}: {on ? "ON" : "OFF"}
+      </button>
+      <span
+        className="mt-1 opacity-40"
+        style={{
+          color: "var(--text-secondary)",
+          fontFamily: "'Share Tech Mono', monospace",
+          fontSize: "0.5rem",
+        }}
+      >
+        {caption}
+      </span>
     </div>
   );
 }
@@ -322,10 +436,12 @@ function TurnOrderButton({
         fontFamily: "'Orbitron', sans-serif",
         fontSize: "0.6rem",
         letterSpacing: "0.1em",
-        background: selected ? "rgba(0,245,255,0.1)" : "rgba(255,255,255,0.03)",
-        border: `1px solid ${selected ? "var(--neon-cyan)" : "var(--border-dim)"}`,
-        color: selected ? "var(--neon-cyan)" : "var(--text-muted)",
-        boxShadow: selected ? "0 0 12px rgba(0,245,255,0.25)" : "none",
+        background: selected
+          ? NEON_CYAN_ACCENT.background
+          : "rgba(255,255,255,0.03)",
+        border: `1px solid ${selected ? NEON_CYAN_ACCENT.color : "var(--border-dim)"}`,
+        color: selected ? NEON_CYAN_ACCENT.color : "var(--text-muted)",
+        boxShadow: selected ? NEON_CYAN_ACCENT.glow : "none",
       }}
     >
       {label}
