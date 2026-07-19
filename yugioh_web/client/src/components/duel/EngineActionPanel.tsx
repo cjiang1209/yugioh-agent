@@ -1,5 +1,6 @@
 import type { EngineAction } from "../../../../shared/engineTypes";
 import { CardThumbnail } from "./CardThumbnail";
+import { RecommendedBadge } from "./RecommendedBadge";
 
 const CATEGORY_COLORS: Record<
   string,
@@ -196,30 +197,7 @@ export function EngineActionPanel({
                       </span>
                     }
                   />
-                  {isRecommended && (
-                    <span
-                      title="Recommended by AI Assist"
-                      style={{
-                        position: "absolute",
-                        top: "-5px",
-                        left: "-5px",
-                        width: "18px",
-                        height: "18px",
-                        borderRadius: "50%",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: "0.6rem",
-                        lineHeight: 1,
-                        background: "#ffb020",
-                        color: "#1a1200",
-                        border: "1px solid #ffd67a",
-                        boxShadow: "0 0 8px rgba(255,176,32,0.9)",
-                      }}
-                    >
-                      ★
-                    </span>
-                  )}
+                  {isRecommended && <RecommendedBadge />}
                 </div>
 
                 {/* Text content */}

@@ -2,25 +2,34 @@ import type {
   EngineAction,
   EnginePrompt,
 } from "../../../../../shared/engineTypes";
-import { CardThumbnail } from "../CardThumbnail";
+import {
+  RecommendedBadge,
+  RECOMMENDED_BORDER,
+  RECOMMENDED_SHADOW,
+} from "../RecommendedBadge";
 import { PickedCardRow } from "./PickedCardRow";
+import { SelectableCardTile } from "./SelectableCardTile";
 
 interface SelectCardPanelProps {
   actions: EngineAction[];
   prompt: EnginePrompt;
   onAction: (actionIndex: number) => void;
+  recommendedIndex?: number | null;
 }
 
 export function SelectCardPanel({
   actions,
   prompt,
   onAction,
+  recommendedIndex,
 }: SelectCardPanelProps) {
   const isTribute = prompt.type === "tribute";
   const cardActions = actions.filter(
     a => a.category === "select_card" || a.category === "tribute"
   );
   const finishAction = actions.find(a => a.category === "finish");
+  const finishRecommended =
+    recommendedIndex != null && finishAction?.index === recommendedIndex;
   const pickedCards = prompt.picked_cards ?? [];
   // Hide the picked row when only one card needs picking (would just echo the user's click).
   const maxCards = isTribute ? prompt.max_cards : prompt.max;
@@ -106,76 +115,16 @@ export function SelectCardPanel({
           scrollbarColor: "rgba(0,245,255,0.3) transparent",
         }}
       >
-        {cardActions.map(action => {
-          return (
-            <button
-              key={action.index}
-              onClick={() => onAction(action.index)}
-              className="transition-all"
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                gap: "3px",
-                padding: "6px 4px",
-                borderRadius: "4px",
-                border: "1px solid rgba(180,79,255,0.3)",
-                background: "rgba(180,79,255,0.06)",
-                cursor: "pointer",
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.background = "rgba(180,79,255,0.18)";
-                e.currentTarget.style.borderColor = "rgba(180,79,255,0.6)";
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.background = "rgba(180,79,255,0.06)";
-                e.currentTarget.style.borderColor = "rgba(180,79,255,0.3)";
-              }}
-            >
-              <CardThumbnail
-                cardCode={action.card_code}
-                width={80}
-                height={112}
-                borderRadius={3}
-                borderColor={
-                  action.card_code > 0
-                    ? "rgba(180,79,255,0.4)"
-                    : "rgba(180,79,255,0.3)"
-                }
-                location={action.location}
-                badgeSize={18}
-                alt={action.card_name}
-                fallback={
-                  <span
-                    style={{
-                      fontSize: "0.7rem",
-                      color: "#b44fff",
-                      opacity: 0.5,
-                    }}
-                  >
-                    ?
-                  </span>
-                }
-              />
-              <span
-                style={{
-                  fontFamily: "'Share Tech Mono', monospace",
-                  fontSize: "0.45rem",
-                  color: "#c8d8e8",
-                  lineHeight: 1.2,
-                  textAlign: "center",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  width: "100%",
-                }}
-                title={action.card_name}
-              >
-                {action.card_name || action.description}
-              </span>
-            </button>
-          );
-        })}
+        {cardActions.map(action => (
+          <SelectableCardTile
+            key={action.index}
+            action={action}
+            isRecommended={
+              recommendedIndex != null && action.index === recommendedIndex
+            }
+            onSelect={onAction}
+          />
+        ))}
       </div>
 
       {/* Finish button */}
@@ -190,10 +139,14 @@ export function SelectCardPanel({
             onClick={() => onAction(finishAction.index)}
             className="transition-all"
             style={{
+              position: "relative",
               width: "100%",
               padding: "8px 0",
               borderRadius: "4px",
-              border: "1px solid rgba(0,245,255,0.5)",
+              border: finishRecommended
+                ? RECOMMENDED_BORDER
+                : "1px solid rgba(0,245,255,0.5)",
+              boxShadow: finishRecommended ? RECOMMENDED_SHADOW : undefined,
               background: "rgba(0,245,255,0.12)",
               color: "var(--neon-cyan)",
               fontFamily: "'Orbitron', sans-serif",
@@ -208,6 +161,7 @@ export function SelectCardPanel({
               e.currentTarget.style.background = "rgba(0,245,255,0.12)";
             }}
           >
+            {finishRecommended && <RecommendedBadge />}
             {finishAction.description.toUpperCase()}
           </button>
         </div>

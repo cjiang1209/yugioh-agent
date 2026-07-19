@@ -3,16 +3,32 @@ import type {
   EnginePrompt,
 } from "../../../../../shared/engineTypes";
 import { CardThumbnail } from "../CardThumbnail";
+import {
+  RecommendedBadge,
+  RECOMMENDED_BORDER,
+  RECOMMENDED_SHADOW,
+} from "../RecommendedBadge";
 
 interface YesNoPanelProps {
   actions: EngineAction[];
   prompt: EnginePrompt;
   onAction: (actionIndex: number) => void;
+  recommendedIndex?: number | null;
 }
 
-export function YesNoPanel({ actions, prompt, onAction }: YesNoPanelProps) {
+export function YesNoPanel({
+  actions,
+  prompt,
+  onAction,
+  recommendedIndex,
+}: YesNoPanelProps) {
   const yesAction = actions.find(a => a.category === "yes");
   const noAction = actions.find(a => a.category === "no");
+
+  const yesRecommended =
+    recommendedIndex != null && yesAction?.index === recommendedIndex;
+  const noRecommended =
+    recommendedIndex != null && noAction?.index === recommendedIndex;
 
   const isEffect = prompt.type === "effect_yn";
   const cardCode = prompt.card_code ?? 0;
@@ -67,10 +83,14 @@ export function YesNoPanel({ actions, prompt, onAction }: YesNoPanelProps) {
             onClick={() => onAction(yesAction.index)}
             className="transition-all"
             style={{
+              position: "relative",
               flex: 1,
               padding: "8px 0",
               borderRadius: "4px",
-              border: "1px solid rgba(0,200,80,0.5)",
+              border: yesRecommended
+                ? RECOMMENDED_BORDER
+                : "1px solid rgba(0,200,80,0.5)",
+              boxShadow: yesRecommended ? RECOMMENDED_SHADOW : undefined,
               background: "rgba(0,200,80,0.12)",
               color: "#00d850",
               fontFamily: "'Orbitron', sans-serif",
@@ -85,6 +105,7 @@ export function YesNoPanel({ actions, prompt, onAction }: YesNoPanelProps) {
               e.currentTarget.style.background = "rgba(0,200,80,0.12)";
             }}
           >
+            {yesRecommended && <RecommendedBadge />}
             YES
           </button>
         )}
@@ -93,10 +114,14 @@ export function YesNoPanel({ actions, prompt, onAction }: YesNoPanelProps) {
             onClick={() => onAction(noAction.index)}
             className="transition-all"
             style={{
+              position: "relative",
               flex: 1,
               padding: "8px 0",
               borderRadius: "4px",
-              border: "1px solid rgba(255,45,120,0.5)",
+              border: noRecommended
+                ? RECOMMENDED_BORDER
+                : "1px solid rgba(255,45,120,0.5)",
+              boxShadow: noRecommended ? RECOMMENDED_SHADOW : undefined,
               background: "rgba(255,45,120,0.12)",
               color: "#ff2d78",
               fontFamily: "'Orbitron', sans-serif",
@@ -111,6 +136,7 @@ export function YesNoPanel({ actions, prompt, onAction }: YesNoPanelProps) {
               e.currentTarget.style.background = "rgba(255,45,120,0.12)";
             }}
           >
+            {noRecommended && <RecommendedBadge />}
             NO
           </button>
         )}

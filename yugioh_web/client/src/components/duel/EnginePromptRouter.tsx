@@ -35,12 +35,22 @@ export function EnginePromptRouter({
     case "effect_yn":
     case "yes_no":
       return (
-        <YesNoPanel actions={actions} prompt={prompt} onAction={onAction} />
+        <YesNoPanel
+          actions={actions}
+          prompt={prompt}
+          onAction={onAction}
+          recommendedIndex={recommendedIndex}
+        />
       );
 
     case "position":
       return (
-        <PositionPanel actions={actions} prompt={prompt} onAction={onAction} />
+        <PositionPanel
+          actions={actions}
+          prompt={prompt}
+          onAction={onAction}
+          recommendedIndex={recommendedIndex}
+        />
       );
 
     case "select_card":
@@ -50,12 +60,18 @@ export function EnginePromptRouter({
           actions={actions}
           prompt={prompt}
           onAction={onAction}
+          recommendedIndex={recommendedIndex}
         />
       );
 
     case "sort_card":
       return (
-        <SortCardPanel actions={actions} prompt={prompt} onAction={onAction} />
+        <SortCardPanel
+          actions={actions}
+          prompt={prompt}
+          onAction={onAction}
+          recommendedIndex={recommendedIndex}
+        />
       );
 
     default:

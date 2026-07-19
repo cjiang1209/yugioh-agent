@@ -3,6 +3,11 @@ import type {
   EnginePrompt,
 } from "../../../../../shared/engineTypes";
 import { CardThumbnail } from "../CardThumbnail";
+import {
+  RecommendedBadge,
+  RECOMMENDED_BORDER,
+  RECOMMENDED_SHADOW,
+} from "../RecommendedBadge";
 
 const POSITION_ICONS: Record<string, string> = {
   "Face-up Attack": "\u2694\uFE0F",
@@ -47,12 +52,14 @@ interface PositionPanelProps {
   actions: EngineAction[];
   prompt: EnginePrompt;
   onAction: (actionIndex: number) => void;
+  recommendedIndex?: number | null;
 }
 
 export function PositionPanel({
   actions,
   prompt,
   onAction,
+  recommendedIndex,
 }: PositionPanelProps) {
   const cardCode = prompt.card_code ?? 0;
   const cardName = prompt.card_name ?? "";
@@ -97,6 +104,8 @@ export function PositionPanel({
           const posName = action.description.replace(`${cardName}: `, "");
           const colors = POSITION_COLORS[posName] ?? DEFAULT_POS_COLOR;
           const icon = POSITION_ICONS[posName] ?? "";
+          const isRecommended =
+            recommendedIndex != null && action.index === recommendedIndex;
 
           return (
             <button
@@ -104,12 +113,16 @@ export function PositionPanel({
               onClick={() => onAction(action.index)}
               className="transition-all"
               style={{
+                position: "relative",
                 display: "flex",
                 alignItems: "center",
                 gap: "8px",
                 padding: "8px 12px",
                 borderRadius: "4px",
-                border: `1px solid ${colors.border}`,
+                border: isRecommended
+                  ? RECOMMENDED_BORDER
+                  : `1px solid ${colors.border}`,
+                boxShadow: isRecommended ? RECOMMENDED_SHADOW : undefined,
                 background: colors.bg,
                 color: colors.text,
                 fontFamily: "'Orbitron', sans-serif",
@@ -128,6 +141,7 @@ export function PositionPanel({
                 e.currentTarget.style.background = colors.bg;
               }}
             >
+              {isRecommended && <RecommendedBadge />}
               <span style={{ fontSize: "0.8rem" }}>{icon}</span>
               <span>{posName.toUpperCase()}</span>
             </button>
