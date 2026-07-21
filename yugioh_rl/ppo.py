@@ -37,6 +37,7 @@ from yugioh_rl.metrics_logging import (
     flatten_eval,
 )
 from yugioh_rl.network import YuGiOhNet
+from yugioh_rl.policy_inputs import build_forward_inputs
 
 logger = logging.getLogger(__name__)
 
@@ -674,21 +675,8 @@ class PPOTrainer:
                     self.device,
                 )
                 with torch.no_grad():
-                    t_cards = torch.from_numpy(obs["cards"]).to(self.device)
-                    t_global = torch.from_numpy(obs["global_state"]).to(self.device)
-                    t_actions = torch.from_numpy(obs["actions"]).to(self.device)
-                    t_mask = torch.from_numpy(obs["action_mask"]).to(self.device)
-                    t_chain = torch.from_numpy(obs["pending_chain"]).to(self.device)
-                    t_event = torch.from_numpy(obs["event_history"]).to(self.device)
-                    _, last_values, _ = self.network(
-                        t_cards,
-                        t_global,
-                        t_actions,
-                        t_mask,
-                        hx=bootstrap_hx,
-                        obs_chain=t_chain,
-                        obs_event=t_event,
-                    )
+                    inputs = build_forward_inputs(obs, device=self.device)
+                    _, last_values, _ = self.network(**inputs, hx=bootstrap_hx)
                     last_values_np = last_values.cpu().numpy()
 
                 if config.vec_env_type == "async_actor_learner":

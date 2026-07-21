@@ -58,6 +58,7 @@ def test_recommend_action_index_network_gets_obs():
     """A needs_observation recommender receives numpy obs arrays; its index is returned."""
     import numpy as np
 
+    from yugioh_core.encoding import CHAIN_ENTRY_FEATURES, MAX_PENDING_CHAIN
     from yugioh_env.models import YuGiOhObservation
 
     class FakeNet:
@@ -77,6 +78,7 @@ def test_recommend_action_index_network_gets_obs():
         global_state=[0, 0],
         actions=[[0], [0], [0]],
         action_mask=[1, 1, 1],
+        pending_chain=[[0] * CHAIN_ENTRY_FEATURES for _ in range(MAX_PENDING_CHAIN)],
         event_history=[[0]],
     )
     rec = FakeNet()
@@ -86,6 +88,8 @@ def test_recommend_action_index_network_gets_obs():
     assert obs.action_mask[idx] == 1
     assert isinstance(rec.seen["cards"], np.ndarray)
     assert rec.seen["action_mask"].tolist() == [1, 1, 1]
+    assert isinstance(rec.seen["pending_chain"], np.ndarray)
+    assert rec.seen["pending_chain"].shape == (MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES)
 
 
 def test_recommend_action_index_non_network_skips_obs():

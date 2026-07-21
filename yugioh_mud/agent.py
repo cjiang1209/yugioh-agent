@@ -267,20 +267,15 @@ class ModelAgent:
 
         import torch
 
+        from yugioh_rl.policy_inputs import build_forward_inputs
+
         obs = self._obs_builder.build(game_state, prompt)
-        t_cards = torch.from_numpy(obs["cards"]).unsqueeze(0).to(self._device)
-        t_global = torch.from_numpy(obs["global_state"]).unsqueeze(0).to(self._device)
-        t_actions = torch.from_numpy(obs["actions"]).unsqueeze(0).to(self._device)
-        t_mask = torch.from_numpy(obs["action_mask"]).unsqueeze(0).to(self._device)
+        inputs = build_forward_inputs(
+            obs, device=self._device, add_batch_dim=True, guard_optional=True
+        )
 
         with torch.no_grad():
-            logits, _, self._hx = self._network(
-                t_cards,
-                t_global,
-                t_actions,
-                t_mask,
-                hx=self._hx,
-            )
+            logits, _, self._hx = self._network(**inputs, hx=self._hx)
             action_idx = logits.argmax(dim=-1).item()
 
         return map_model_action(action_idx, prompt)

@@ -54,6 +54,7 @@ def recommend_action_index(recommender: Opponent, env, obs: YuGiOhObservation) -
             "global_state": np.asarray(obs.global_state, dtype=np.uint8),
             "actions": np.asarray(obs.actions, dtype=np.uint8),
             "action_mask": np.asarray(obs.action_mask, dtype=np.int8),
+            "pending_chain": np.asarray(obs.pending_chain, dtype=np.uint8),
             "event_history": np.asarray(obs.event_history, dtype=np.uint8),
         }
         recommender.set_observation(obs_dict)

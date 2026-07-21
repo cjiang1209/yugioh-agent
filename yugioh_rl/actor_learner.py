@@ -17,6 +17,8 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 
 import numpy as np
 
+from yugioh_rl.policy_inputs import build_forward_inputs
+
 if TYPE_CHECKING:
     import torch.nn as nn
 
@@ -173,19 +175,8 @@ def _collect_one_rollout(
         # so the obs reference held in `transitions` is never
         # mutated underneath us.
         with torch.no_grad():
-            cards_t = torch.from_numpy(obs["cards"]).unsqueeze(0)
-            glob_t = torch.from_numpy(obs["global_state"]).unsqueeze(0)
-            acts_t = torch.from_numpy(obs["actions"]).unsqueeze(0)
-            mask_t = torch.from_numpy(obs["action_mask"]).unsqueeze(0)
-            event_t = torch.from_numpy(obs["event_history"]).unsqueeze(0)
-            logits, value, hx_new = local_policy(
-                cards_t,
-                glob_t,
-                acts_t,
-                mask_t,
-                hx=hx,
-                obs_event=event_t,
-            )
+            inputs = build_forward_inputs(obs, add_batch_dim=True)
+            logits, value, hx_new = local_policy(**inputs, hx=hx)
             dist = Categorical(logits=logits)
             action = dist.sample()
             log_prob = dist.log_prob(action)

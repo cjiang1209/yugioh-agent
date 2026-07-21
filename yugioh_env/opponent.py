@@ -169,27 +169,18 @@ class NetworkOpponent(Opponent):
     def select_action(self, msg: dict, num_actions: int) -> int:
         import torch
 
+        from yugioh_rl.policy_inputs import build_forward_inputs
+
         if self._obs is None:
             return 0
 
-        obs = self._obs
-        t_cards = torch.from_numpy(obs["cards"]).unsqueeze(0).to(self._device)
-        t_global = torch.from_numpy(obs["global_state"]).unsqueeze(0).to(self._device)
-        t_actions = torch.from_numpy(obs["actions"]).unsqueeze(0).to(self._device)
-        t_mask = torch.from_numpy(obs["action_mask"]).unsqueeze(0).to(self._device)
-        ev = obs.get("event_history")
-        t_event = torch.from_numpy(ev).unsqueeze(0).to(self._device) if ev is not None else None
+        inputs = build_forward_inputs(
+            self._obs, device=self._device, add_batch_dim=True, guard_optional=True
+        )
 
         with torch.no_grad():
-            logits, _, self._hx = self._network(
-                t_cards,
-                t_global,
-                t_actions,
-                t_mask,
-                hx=self._hx,
-                obs_event=t_event,
-            )
-            masked = logits.masked_fill(~t_mask.bool(), float("-inf"))
+            logits, _, self._hx = self._network(**inputs, hx=self._hx)
+            masked = logits.masked_fill(~inputs["action_mask"].bool(), float("-inf"))
             if self._stochastic:
                 probs = torch.softmax(masked / self._temperature, dim=-1)
                 action = int(torch.multinomial(probs[0], 1).item())

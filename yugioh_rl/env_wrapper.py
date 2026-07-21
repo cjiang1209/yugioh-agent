@@ -21,6 +21,7 @@ from yugioh_core.encoding import (
     MAX_PENDING_CHAIN,
 )
 from yugioh_env.models import YuGiOhAction
+from yugioh_rl.policy_inputs import build_forward_inputs
 
 if TYPE_CHECKING:
     import torch.nn as nn
@@ -603,20 +604,8 @@ class SubprocVecEnv:
 
         for t in range(T):
             with torch.no_grad():
-                t_cards = torch.from_numpy(obs["cards"]).to(device)
-                t_global = torch.from_numpy(obs["global_state"]).to(device)
-                t_actions = torch.from_numpy(obs["actions"]).to(device)
-                t_mask = torch.from_numpy(obs["action_mask"]).to(device)
-                t_event = torch.from_numpy(obs["event_history"]).to(device)
-
-                logits, values, hx_new = model(
-                    t_cards,
-                    t_global,
-                    t_actions,
-                    t_mask,
-                    hx=hx,
-                    obs_event=t_event,
-                )
+                inputs = build_forward_inputs(obs, device=device)
+                logits, values, hx_new = model(**inputs, hx=hx)
                 dist = Categorical(logits=logits)
                 actions = dist.sample()
                 log_probs = dist.log_prob(actions)
