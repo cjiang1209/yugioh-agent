@@ -338,7 +338,8 @@ def parse_args() -> argparse.Namespace:
         default="mean",
         choices=POOLING_CHOICES,
         help="Board zone pooling operator: mean (default); mean_max (concat "
-        "masked mean+max — adds a count-invariant presence channel).",
+        "masked mean+max — adds a count-invariant presence channel); attn "
+        "(self-attention over in-play known cards, then mean).",
     )
 
     infra = parser.add_argument_group("infrastructure")

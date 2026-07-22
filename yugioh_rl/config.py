@@ -8,7 +8,7 @@ from typing import Literal, get_args
 VecEnvType = Literal["subproc", "sync_actor_learner", "async_actor_learner"]
 VEC_ENV_TYPES: tuple[str, ...] = get_args(VecEnvType)
 
-Pooling = Literal["mean", "mean_max"]
+Pooling = Literal["mean", "mean_max", "attn"]
 POOLING_CHOICES: tuple[str, ...] = get_args(Pooling)
 
 

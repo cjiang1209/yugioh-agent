@@ -40,8 +40,11 @@ _CARD_VOCAB = 131072
 _CARD_EMBED_DIM = 16
 
 # Per-zone output-width multiplier by pooling operator. Keep in sync with the
-# readout in _pool_zones: "mean_max" concatenates [mean, max] (2x), "mean" is 1x.
-_ZONE_WIDTH_MULT = {"mean": 1, "mean_max": 2}
+# readout in _pool_zones: "mean_max" concatenates [mean, max] (2x); "mean" and
+# "attn" (refine then mean-pool) are 1x.
+_ZONE_WIDTH_MULT = {"mean": 1, "mean_max": 2, "attn": 1}
+# Attention pooling head count (module constant, not a config knob).
+_ATTN_HEADS = 4
 
 # Event-history msg_type embedding vocab: only a small subset of engine MSG ids
 # are ever recorded (summon/set/chaining/attack/hint), the largest being
@@ -221,6 +224,21 @@ class YuGiOhNet(nn.Module):
         )
         self.board_mlp = _mlp(board_input_dim, config.board_hidden_dim, config.board_hidden_dim)
 
+        if config.pooling == "attn":
+            if config.card_embed_dim % _ATTN_HEADS != 0:
+                raise ValueError(
+                    f"pooling='attn' requires card_embed_dim divisible by "
+                    f"{_ATTN_HEADS}; got card_embed_dim={config.card_embed_dim}. "
+                    f"Choose a multiple of {_ATTN_HEADS} (e.g. 64)."
+                )
+            self.card_attn = nn.MultiheadAttention(
+                embed_dim=config.card_embed_dim,
+                num_heads=_ATTN_HEADS,
+                batch_first=True,
+                dropout=0.0,
+            )
+            self.card_attn_norm = nn.LayerNorm(config.card_embed_dim)
+
         # rnn_type="none" leaves self.rnn=None and head_in_dim=board_hidden_dim,
         # so the state dict stays byte-identical to pre-RNN checkpoints.
         if config.rnn_type == "none":
@@ -320,6 +338,14 @@ class YuGiOhNet(nn.Module):
                 f"config.rnn_type={config.rnn_type!r}"
             )
 
+        has_attn_keys = any(k.startswith("card_attn.") for k in state_dict)
+        if has_attn_keys != (config.pooling == "attn"):
+            raise ValueError(
+                f"checkpoint state_dict / config mismatch: "
+                f"card_attn.* keys present={has_attn_keys} but "
+                f"config.pooling={config.pooling!r}"
+            )
+
         net = cls(config, text_lookup)
         net.load_state_dict(state_dict)
         return net
@@ -414,17 +440,57 @@ class YuGiOhNet(nn.Module):
         else:
             return self.card_embedding(codes % _CARD_VOCAB)
 
+    def _attend_cards(self, card_enc: torch.Tensor, card_ids: torch.Tensor) -> torch.Tensor:
+        """Self-attention refinement over in-play KNOWN cards (code != 0).
+
+        Refines only known-card rows (residual); hidden/padding rows keep
+        their card_enc. Then LayerNorms ALL rows uniformly so known and
+        hidden rows share one scale before pooling. Truncating to the highest
+        known-card index (+1) makes cost O(M^2) not O(200^2) while giving the
+        same result as full-width attention: masked keys leave the softmax and
+        non-known rows are dropped by the scatter.
+        """
+        known = card_ids != 0  # (B, 200)
+        # Truncate to the highest known-card INDEX (+1), not the known count.
+        # Known cards are interspersed among real cards (hidden cards, e.g. the
+        # opponent's hand, occupy lower indices than public known cards like the
+        # graveyard), so a prefix sized by count would drop known cards past it.
+        # Slicing to the max known index keeps every known card; interspersed
+        # hidden/padding rows inside the window are masked as keys and discarded
+        # by the scatter.
+        idx = torch.arange(known.shape[1], device=known.device)
+        m = int(torch.where(known, idx, torch.full_like(idx, -1)).max().item()) + 1
+        if m == 0:  # no known cards anywhere
+            return self.card_attn_norm(card_enc)
+        sub = card_enc[:, :m, :]  # (B, M, D)
+        key_pad = ~known[:, :m]  # (B, M) True = ignore as key
+        empty_rows = key_pad.all(dim=1)  # (B,) rows with no known card
+        safe_pad = key_pad.clone()
+        # A fully-masked row would make softmax return NaN; unmask those rows so
+        # card_attn stays finite. Their output is discarded by the scatter below
+        # (sub_known is all-False there), so unmasking is harmless.
+        safe_pad[empty_rows] = False
+        attn_out, _ = self.card_attn(sub, sub, sub, key_padding_mask=safe_pad)
+        refined_sub = sub + attn_out  # residual
+        sub_known = known[:, :m].unsqueeze(-1)  # (B, M, 1)
+        out = card_enc.clone()
+        out[:, :m, :] = torch.where(sub_known, refined_sub, sub)
+        return self.card_attn_norm(out)
+
     def _pool_zones(
         self,
         card_enc: torch.Tensor,  # (B, 200, card_embed_dim)
         raw_loc: torch.Tensor,  # (B, 200) location byte
         raw_ctrl: torch.Tensor,  # (B, 200) controller byte
+        card_ids: torch.Tensor,  # (B, 200) card codes (attn pooling only)
     ) -> torch.Tensor:
         """Collapse per-card encodings into a flat zone vector.
 
         Returns (B, _NUM_ZONES * card_embed_dim * mult); mult=2 for
         'mean_max' (per-zone [mean, max]), else 1.
         """
+        if self._pooling == "attn":
+            card_enc = self._attend_cards(card_enc, card_ids)
         neg_inf = torch.finfo(card_enc.dtype).min  # masked-max sentinel (mean_max)
         zone_parts = []
         for ctrl in (0, 1):
@@ -494,7 +560,7 @@ class YuGiOhNet(nn.Module):
         # --- Zone pooling ---
         raw_loc = obs_cards[..., 4].long()  # (B, 200) location bitmask
         raw_ctrl = obs_cards[..., 7].long()  # (B, 200) controller
-        zone_flat = self._pool_zones(card_enc, raw_loc, raw_ctrl)
+        zone_flat = self._pool_zones(card_enc, raw_loc, raw_ctrl, card_ids)
 
         # --- Global encoding ---
         global_enc = self.global_encoder(global_feats)  # (B, global_embed_dim)

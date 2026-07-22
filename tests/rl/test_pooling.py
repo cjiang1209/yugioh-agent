@@ -49,6 +49,13 @@ def _ckpt(config):
     return {"config": config, "model_state_dict": {}}
 
 
+@pytest.fixture
+def attn_net():
+    net = YuGiOhNet.from_config(TrainingConfig(pooling="attn"))
+    net.eval()
+    return net
+
+
 def test_pooling_defaults_to_mean():
     assert TrainingConfig().pooling == "mean"
 
@@ -75,12 +82,13 @@ def test_mean_pool_matches_reference():
     card_enc = torch.randn(B, 200, _D)
     raw_loc = torch.zeros(B, 200, dtype=torch.long)
     raw_ctrl = torch.zeros(B, 200, dtype=torch.long)
+    card_ids = torch.zeros(B, 200, dtype=torch.long)  # unused by mean pooling
     # Two cards in controller-0 hand (bit 0x02), one in controller-0 mzone (0x04).
     raw_loc[:, 0] = 0x02
     raw_loc[:, 1] = 0x02
     raw_loc[:, 2] = 0x04
 
-    out = net._pool_zones(card_enc, raw_loc, raw_ctrl)
+    out = net._pool_zones(card_enc, raw_loc, raw_ctrl, card_ids)
     assert out.shape == (B, _NUM_ZONES * _D)  # mult == 1
 
     # Zone 0 = (ctrl 0, hand): mean of rows 0 and 1.
@@ -105,7 +113,8 @@ def test_mean_max_width_is_doubled():
     card_enc = torch.zeros(B, 200, _D)
     raw_loc = torch.zeros(B, 200, dtype=torch.long)
     raw_ctrl = torch.zeros(B, 200, dtype=torch.long)
-    out = net._pool_zones(card_enc, raw_loc, raw_ctrl)
+    card_ids = torch.zeros(B, 200, dtype=torch.long)  # unused by mean_max pooling
+    out = net._pool_zones(card_enc, raw_loc, raw_ctrl, card_ids)
     assert out.shape == (B, _NUM_ZONES * _D * 2)
 
 
@@ -116,6 +125,7 @@ def test_mean_max_max_channel_junk_invariant():
     card_enc = torch.zeros(B, 200, _D)
     raw_loc = torch.zeros(B, 200, dtype=torch.long)
     raw_ctrl = torch.zeros(B, 200, dtype=torch.long)
+    card_ids = torch.zeros(B, 200, dtype=torch.long)  # unused by mean_max pooling
 
     # Row 0: standout card in ctrl-0 hand, dim-0 activation = 10.
     raw_loc[:, 0] = 0x02
@@ -127,7 +137,7 @@ def test_mean_max_max_channel_junk_invariant():
     raw_loc[0, 1] = 0x02
     card_enc[0, 1, 0] = 1.0
 
-    out = net._pool_zones(card_enc, raw_loc, raw_ctrl)
+    out = net._pool_zones(card_enc, raw_loc, raw_ctrl, card_ids)
     # Zone 0 layout: [mean(0:D), max(D:2D)].
     mean_dim0 = out[:, 0]
     max_dim0 = out[:, _D]
@@ -156,3 +166,118 @@ def test_compat_legacy_missing_pooling_is_mean():
     # ...a mean_max run is rejected.
     with pytest.raises(ValueError, match="pooling"):
         PPOTrainer._validate_checkpoint_compat(TrainingConfig(pooling="mean_max"), ckpt)
+
+
+def test_attn_forward_shapes():
+    net = YuGiOhNet.from_config(TrainingConfig(pooling="attn"))
+    logits, values, _ = net(*_obs(2))
+    assert logits.shape == (2, 32)
+    assert values.shape == (2,)
+
+
+def test_attn_head_guard_raises():
+    with pytest.raises(ValueError, match="card_embed_dim"):
+        YuGiOhNet.from_config(TrainingConfig(pooling="attn", card_embed_dim=50))
+
+
+def test_attn_and_pool_ignore_padding(attn_net):
+    """Padding rows (code 0, location 0) never affect the pooled output."""
+    B = 1
+    card_ids = torch.zeros(B, 200, dtype=torch.long)
+    raw_loc = torch.zeros(B, 200, dtype=torch.long)
+    raw_ctrl = torch.zeros(B, 200, dtype=torch.long)
+    # One known card in ctrl-0 hand.
+    card_ids[:, 0] = 111
+    raw_loc[:, 0] = 0x02
+    torch.manual_seed(1)
+    base = torch.randn(B, 200, _D)
+    with torch.no_grad():
+        out_a = attn_net._pool_zones(base.clone(), raw_loc, raw_ctrl, card_ids)
+        # Scribble arbitrary values into padding rows (code 0, loc 0).
+        noisy = base.clone()
+        noisy[:, 50:] = torch.randn(B, 150, _D)
+        out_b = attn_net._pool_zones(noisy, raw_loc, raw_ctrl, card_ids)
+    assert torch.allclose(out_a, out_b, atol=1e-6)
+
+
+def test_attn_pool_includes_hidden_cards(attn_net):
+    """A hidden card (code 0, location != 0) is dropped from attention but
+    still contributes to its zone mean."""
+    B = 1
+    raw_ctrl = torch.zeros(B, 200, dtype=torch.long)
+    # Zone 0 (ctrl-0 hand) holds only a hidden card at row 0.
+    card_ids = torch.zeros(B, 200, dtype=torch.long)
+    raw_loc = torch.zeros(B, 200, dtype=torch.long)
+    raw_loc[:, 0] = 0x02  # location set, code stays 0 (hidden)
+    card_enc = torch.zeros(B, 200, _D)
+    card_enc[:, 0, 3] = 7.0
+    with torch.no_grad():
+        out = attn_net._pool_zones(card_enc, raw_loc, raw_ctrl, card_ids)
+    # Zone-0 mean channel reflects the hidden card (post-LayerNorm,
+    # so just assert it is non-zero rather than an exact value).
+    assert out[:, 0:_D].abs().sum().item() > 0.0
+
+
+def test_attn_degenerate_empty_known_no_nan(attn_net):
+    """All cards hidden/empty → no NaN in forward (m == 0 short-circuit)."""
+    obs_cards, obs_global, obs_actions, action_mask = _obs(2)
+    # Give a hidden card (location set, code 0) so location!=0 but code==0.
+    obs_cards[:, 0, 4] = 0x02  # location byte
+    with torch.no_grad():
+        logits, values, _ = attn_net(obs_cards, obs_global, obs_actions, action_mask)
+    assert not torch.isnan(logits).any()
+    assert not torch.isnan(values).any()
+
+
+def test_attn_mixed_empty_row_no_nan(attn_net):
+    """Batch where one row has a known card and another has none exercises
+    the per-row all-masked-softmax guard (m > 0, empty_rows non-empty)."""
+    B = 2
+    card_ids = torch.zeros(B, 200, dtype=torch.long)
+    raw_loc = torch.zeros(B, 200, dtype=torch.long)
+    raw_ctrl = torch.zeros(B, 200, dtype=torch.long)
+    # Sample 0 has a known card; sample 1 has none → m == 1, row 1 all-masked.
+    card_ids[0, 0] = 111
+    raw_loc[0, 0] = 0x02
+    card_enc = torch.randn(B, 200, _D)
+    with torch.no_grad():
+        out = attn_net._pool_zones(card_enc, raw_loc, raw_ctrl, card_ids)
+    assert not torch.isnan(out).any()
+
+
+def test_compat_rejects_attn_arch_mismatch():
+    """A mean checkpoint cannot be resumed under an attn config."""
+    ckpt = _ckpt(_arch_ns(pooling="mean"))
+    with pytest.raises(ValueError, match="pooling"):
+        PPOTrainer._validate_checkpoint_compat(TrainingConfig(pooling="attn"), ckpt)
+
+
+def test_attn_refines_known_cards_behind_hidden(attn_net):
+    """Known cards at higher indices than hidden cards must still be refined by
+    attention (regression: truncating by known COUNT dropped them)."""
+    B = 1
+    card_ids = torch.zeros(B, 200, dtype=torch.long)
+    # Rows 0-4: hidden (code 0). Rows 5-6: known (code != 0) — behind the hidden run.
+    card_ids[0, 5] = 111
+    card_ids[0, 6] = 222
+    torch.manual_seed(3)
+    card_enc = torch.randn(B, 200, _D)
+    with torch.no_grad():
+        refined = attn_net._attend_cards(card_enc, card_ids)
+        norm_only = attn_net.card_attn_norm(card_enc)
+    # Known rows must be changed by attention, not left as LayerNorm(card_enc).
+    assert not torch.allclose(refined[:, 5:7], norm_only[:, 5:7], atol=1e-5)
+
+
+def test_from_state_dict_attn_key_guard():
+    attn_net = YuGiOhNet.from_config(TrainingConfig(pooling="attn"))
+    attn_sd = attn_net.state_dict()
+    # attn weights loaded under a mean config → reject with a clear message.
+    with pytest.raises(ValueError, match="card_attn"):
+        YuGiOhNet.from_state_dict(TrainingConfig(pooling="mean"), attn_sd)
+
+    mean_net = YuGiOhNet.from_config(TrainingConfig(pooling="mean"))
+    mean_sd = mean_net.state_dict()
+    # mean weights loaded under an attn config → reject.
+    with pytest.raises(ValueError, match="card_attn"):
+        YuGiOhNet.from_state_dict(TrainingConfig(pooling="attn"), mean_sd)
