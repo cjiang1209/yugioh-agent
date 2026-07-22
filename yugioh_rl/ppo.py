@@ -482,8 +482,9 @@ class PPOTrainer:
             "rnn_type",
             "chain_embed_dim",
             "event_history_dim",
+            "pooling",
         ]
-        arch_defaults = {"rnn_type": "none"}
+        arch_defaults = {"rnn_type": "none", "pooling": "mean"}
         mismatches = []
         missing = []
         sentinel = object()

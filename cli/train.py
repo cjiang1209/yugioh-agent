@@ -20,7 +20,12 @@ from cli.utils import (
     was_provided,
 )
 
-from yugioh_rl.config import VEC_ENV_TYPES, TrainingConfig, normalize_legacy_config
+from yugioh_rl.config import (
+    POOLING_CHOICES,
+    VEC_ENV_TYPES,
+    TrainingConfig,
+    normalize_legacy_config,
+)
 from yugioh_rl.opponent_pool import SAMPLING_CHOICES
 
 # Flags whose values may override the checkpoint's stored config on --resume.
@@ -326,6 +331,14 @@ def parse_args() -> argparse.Namespace:
         default=0,
         help="CNN event-history branch width; 0 disables (default: 0). "
         "Feeds a rolling both-players event history into the value head.",
+    )
+    net.add_argument(
+        "--pooling",
+        type=str,
+        default="mean",
+        choices=POOLING_CHOICES,
+        help="Board zone pooling operator: mean (default); mean_max (concat "
+        "masked mean+max — adds a count-invariant presence channel).",
     )
 
     infra = parser.add_argument_group("infrastructure")

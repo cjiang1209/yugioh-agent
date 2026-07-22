@@ -39,6 +39,10 @@ _NUM_ZONES = len(_ZONE_LOC_BITS) * 2  # 6 zones × 2 players = 12
 _CARD_VOCAB = 131072
 _CARD_EMBED_DIM = 16
 
+# Per-zone output-width multiplier by pooling operator. Keep in sync with the
+# readout in _pool_zones: "mean_max" concatenates [mean, max] (2x), "mean" is 1x.
+_ZONE_WIDTH_MULT = {"mean": 1, "mean_max": 2}
+
 # Event-history msg_type embedding vocab: only a small subset of engine MSG ids
 # are ever recorded (summon/set/chaining/attack/hint), the largest being
 # MSG_ATTACK=110; 160 gives ample headroom. Out-of-range ids clamp to the top row.
@@ -208,8 +212,12 @@ class YuGiOhNet(nn.Module):
             )
 
         # Board representation
+        self._pooling = config.pooling
+        mult = _ZONE_WIDTH_MULT[config.pooling]
         board_input_dim = (
-            _NUM_ZONES * config.card_embed_dim + config.global_embed_dim + config.chain_embed_dim
+            _NUM_ZONES * config.card_embed_dim * mult
+            + config.global_embed_dim
+            + config.chain_embed_dim
         )
         self.board_mlp = _mlp(board_input_dim, config.board_hidden_dim, config.board_hidden_dim)
 
@@ -406,6 +414,35 @@ class YuGiOhNet(nn.Module):
         else:
             return self.card_embedding(codes % _CARD_VOCAB)
 
+    def _pool_zones(
+        self,
+        card_enc: torch.Tensor,  # (B, 200, card_embed_dim)
+        raw_loc: torch.Tensor,  # (B, 200) location byte
+        raw_ctrl: torch.Tensor,  # (B, 200) controller byte
+    ) -> torch.Tensor:
+        """Collapse per-card encodings into a flat zone vector.
+
+        Returns (B, _NUM_ZONES * card_embed_dim * mult); mult=2 for
+        'mean_max' (per-zone [mean, max]), else 1.
+        """
+        neg_inf = torch.finfo(card_enc.dtype).min  # masked-max sentinel (mean_max)
+        zone_parts = []
+        for ctrl in (0, 1):
+            ctrl_mask = raw_ctrl == ctrl  # (B, 200)
+            for bit in _ZONE_LOC_BITS:
+                loc_mask = ((raw_loc & bit) != 0) & ctrl_mask  # (B, 200)
+                mask_f = loc_mask.float().unsqueeze(-1)  # (B, 200, 1)
+                zone_count = mask_f.sum(dim=1)  # (B, 1) cards in this zone
+                mean = (card_enc * mask_f).sum(dim=1) / zone_count.clamp(min=1.0)  # (B, D)
+                if self._pooling == "mean_max":
+                    masked = card_enc.masked_fill(~loc_mask.unsqueeze(-1), neg_inf)
+                    mx = masked.max(dim=1).values  # (B, D)
+                    mx = torch.where(zone_count > 0, mx, torch.zeros_like(mx))  # empty zone → 0
+                    zone_parts.append(torch.cat([mean, mx], dim=-1))  # (B, 2D)
+                else:
+                    zone_parts.append(mean)  # (B, D)
+        return torch.cat(zone_parts, dim=-1)
+
     def forward(
         self,
         obs_cards: torch.Tensor,
@@ -455,23 +492,9 @@ class YuGiOhNet(nn.Module):
         card_enc = self.card_encoder(card_input)  # (B, 200, card_embed_dim)
 
         # --- Zone pooling ---
-        # Extract raw location byte and controller byte for zone assignment
-        raw_loc = obs_cards[..., 4].long()  # (B, 200)
-        raw_ctrl = obs_cards[..., 7].long()  # (B, 200)
-
-        zone_parts = []
-        for ctrl in (0, 1):
-            ctrl_mask = raw_ctrl == ctrl  # (B, 200)
-            for bit in _ZONE_LOC_BITS:
-                # Cards in this zone for this controller
-                loc_mask = ((raw_loc & bit) != 0) & ctrl_mask  # (B, 200)
-                # Masked mean pooling
-                mask_f = loc_mask.float().unsqueeze(-1)  # (B, 200, 1)
-                masked_sum = (card_enc * mask_f).sum(dim=1)  # (B, card_embed_dim)
-                count = mask_f.sum(dim=1).clamp(min=1.0)  # (B, 1)
-                zone_parts.append(masked_sum / count)  # (B, card_embed_dim)
-
-        zone_flat = torch.cat(zone_parts, dim=-1)  # (B, 12*card_embed_dim)
+        raw_loc = obs_cards[..., 4].long()  # (B, 200) location bitmask
+        raw_ctrl = obs_cards[..., 7].long()  # (B, 200) controller
+        zone_flat = self._pool_zones(card_enc, raw_loc, raw_ctrl)
 
         # --- Global encoding ---
         global_enc = self.global_encoder(global_feats)  # (B, global_embed_dim)

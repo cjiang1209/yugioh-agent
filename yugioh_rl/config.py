@@ -8,6 +8,9 @@ from typing import Literal, get_args
 VecEnvType = Literal["subproc", "sync_actor_learner", "async_actor_learner"]
 VEC_ENV_TYPES: tuple[str, ...] = get_args(VecEnvType)
 
+Pooling = Literal["mean", "mean_max"]
+POOLING_CHOICES: tuple[str, ...] = get_args(Pooling)
+
 
 @dataclass
 class TrainingConfig:
@@ -50,6 +53,7 @@ class TrainingConfig:
     text_embed_dim: int = 64  # frozen text embedding projection dim (only when enabled)
     learned_embed_dim: int = 8  # trainable per-card embedding dim (Mode B only)
     desc_n_embed_dim: int = 8  # sysstring desc embedding dim (per-action effect string id)
+    pooling: Pooling = "mean"  # board zone-pool operator
 
     # Recurrent policy (default "none" = feed-forward, byte-identical to pre-RNN)
     rnn_type: Literal["none", "lstm", "gru"] = "none"
