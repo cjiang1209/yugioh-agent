@@ -29,7 +29,7 @@ def _make_trainer_stub(config, sinks):
     trainer.network = torch.nn.Linear(2, 2)
     trainer.optimizer = torch.optim.Adam(trainer.network.parameters())
     trainer._episode_rewards = []
-    trainer._episode_lengths = []
+    trainer._episode_steps = []
     trainer._episode_wins = []
     trainer._deck_wins = {}
     trainer._opponent_pool = None

@@ -244,7 +244,7 @@ class TrainingEnv:
             reward: shaped or terminal reward
             done: whether episode ended
             info: extra info — populated on done with ``terminal_reward``,
-                  ``episode_length``, and ``agent_deck_idx``
+                  ``steps``, and ``agent_deck_idx``
         """
         obs = self._env.step(YuGiOhAction(action_index=action_index))
         np_obs = _obs_to_numpy(obs)
@@ -255,7 +255,7 @@ class TrainingEnv:
 
         if done:
             info["terminal_reward"] = reward
-            info["episode_length"] = self._env._step_count
+            info["steps"] = self._env._step_count
             info["agent_deck_idx"] = self._last_agent_deck_idx
             if self._opponent_pool is not None and self._current_opp_slot is not None:
                 self._opponent_pool.report_result(
@@ -388,7 +388,7 @@ class EvalEnv:
         info: dict[str, Any] = {}
         if obs.done:
             info["terminal_reward"] = obs.reward
-            info["episode_length"] = self._env._step_count
+            info["steps"] = self._env._step_count
             info["agent_deck_idx"] = self._last_agent_deck_idx
             info["turn_count"] = self._env._duel.game_state.turn_count
             info["agent_player"] = self._last_agent_player

@@ -67,7 +67,7 @@ def _pack_rollout(
     emitted as the ``final_obs_*`` keys (single per-env arrays, not
     stacked). ``infos`` is the list of per-step info dicts from env.step()
     so the trainer can drive episode tracking the same way it does in
-    SubprocVecEnv (terminal_reward / episode_length / agent_deck_idx).
+    SubprocVecEnv (terminal_reward / steps / agent_deck_idx).
 
     ``final_hx`` is the post-rollout hidden state (after mask_hx on the last
     done). It is None for feed-forward configs, a single tensor of shape

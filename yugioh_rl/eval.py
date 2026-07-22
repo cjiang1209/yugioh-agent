@@ -284,7 +284,7 @@ def _play_one_episode(
         episode_idx=episode_idx,
         win=info.get("terminal_reward", 0) > 0,
         agent_deck_idx=int(info.get("agent_deck_idx", 0)),
-        steps=int(info.get("episode_length", 0)),
+        steps=int(info.get("steps", 0)),
         turns=int(info.get("turn_count", 0)),
         went_first=int(info.get("agent_player", 0)) == 0,
     )

@@ -27,7 +27,7 @@ def _make_checkpoint(
     update: int = 10,
     global_step: int = 1000,
     episode_rewards: list[float] | None = None,
-    episode_lengths: list[int] | None = None,
+    episode_steps: list[int] | None = None,
     episode_wins: list[float] | None = None,
     deck_wins: dict[int, list[float]] | None = None,
     omit_lists: bool = False,
@@ -59,7 +59,7 @@ def _make_checkpoint(
         "episode_rewards": episode_rewards or [0.5, -0.5, 1.0],
     }
     if not omit_lists:
-        data["episode_lengths"] = episode_lengths or [10, 20, 30]
+        data["episode_steps"] = episode_steps or [10, 20, 30]
         data["episode_wins"] = episode_wins or [1.0, 0.0, 1.0]
     if deck_wins is not None:
         data["deck_wins"] = deck_wins
@@ -159,7 +159,7 @@ def test_resume_restores_episode_tracking(tmp_path):
     _make_checkpoint(
         ckpt_path,
         episode_rewards=rewards,
-        episode_lengths=lengths,
+        episode_steps=lengths,
         episode_wins=wins,
     )
 
@@ -171,12 +171,12 @@ def test_resume_restores_episode_tracking(tmp_path):
     trainer = PPOTrainer(config)
 
     assert trainer._episode_rewards == rewards
-    assert trainer._episode_lengths == lengths
+    assert trainer._episode_steps == lengths
     assert trainer._episode_wins == wins
 
 
 def test_resume_backward_compat_missing_lists(tmp_path):
-    """Old checkpoints without episode_lengths/wins should resume with empty lists."""
+    """Old checkpoints without episode_steps/wins should resume with empty lists."""
     ckpt_path = str(tmp_path / "ckpt.pt")
     _make_checkpoint(ckpt_path, omit_lists=True)
 
@@ -188,7 +188,7 @@ def test_resume_backward_compat_missing_lists(tmp_path):
     trainer = PPOTrainer(config)
 
     assert trainer._episode_rewards == [0.5, -0.5, 1.0]  # present in checkpoint
-    assert trainer._episode_lengths == []  # missing → empty fallback
+    assert trainer._episode_steps == []  # missing → empty fallback
     assert trainer._episode_wins == []  # missing → empty fallback
 
 

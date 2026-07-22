@@ -82,7 +82,7 @@ def compute_update_metrics(
     fps: float,
     episode_reward_mean: float | None = None,
     episode_win_rate: float | None = None,
-    episode_length_mean: float | None = None,
+    episode_steps_mean: float | None = None,
     deck_win_rates: dict[str, float] | None = None,
     elo: dict | None = None,
     async_stats: dict | None = None,
@@ -100,7 +100,7 @@ def compute_update_metrics(
     if episode_reward_mean is not None:
         scalars["episode/reward"] = episode_reward_mean
         scalars["episode/win_rate"] = episode_win_rate
-        scalars["episode/length"] = episode_length_mean
+        scalars["episode/steps"] = episode_steps_mean
     if deck_win_rates:
         for stem, wr in deck_win_rates.items():
             scalars[f"episode/win_rate_deck_{stem}"] = wr

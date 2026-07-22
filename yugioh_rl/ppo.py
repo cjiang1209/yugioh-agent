@@ -357,7 +357,7 @@ class PPOTrainer:
         self._resume_update = 0
         self._resume_global_step = 0
         self._episode_rewards: list[float] = []
-        self._episode_lengths: list[int] = []
+        self._episode_steps: list[int] = []
         self._episode_wins: list[float] = []
         self._deck_wins: dict[int, list[float]] = {}
 
@@ -445,7 +445,7 @@ class PPOTrainer:
         # saving per-worker RNG state is impractical with the multi-process
         # architecture.
         self._episode_rewards = list(ckpt.get("episode_rewards", []))
-        self._episode_lengths = list(ckpt.get("episode_lengths", []))
+        self._episode_steps = list(ckpt.get("episode_steps", []))
         self._episode_wins = list(ckpt.get("episode_wins", []))
         self._deck_wins = {int(k): list(v) for k, v in ckpt.get("deck_wins", {}).items()}
 
@@ -773,12 +773,12 @@ class PPOTrainer:
                     if self._episode_rewards:
                         recent = self._episode_rewards[-100:]
                         recent_wins = self._episode_wins[-100:]
-                        recent_lens = self._episode_lengths[-100:]
+                        recent_steps = self._episode_steps[-100:]
                         log_parts.extend(
                             [
                                 f"ep_reward={np.mean(recent):.3f}",
                                 f"win_rate={np.mean(recent_wins):.3f}",
-                                f"ep_len={np.mean(recent_lens):.0f}",
+                                f"ep_len={np.mean(recent_steps):.0f}",
                                 f"episodes={len(self._episode_rewards)}",
                             ]
                         )
@@ -823,8 +823,8 @@ class PPOTrainer:
                             episode_win_rate=(
                                 float(np.mean(recent_wins)) if have_episodes else None
                             ),
-                            episode_length_mean=(
-                                float(np.mean(recent_lens)) if have_episodes else None
+                            episode_steps_mean=(
+                                float(np.mean(recent_steps)) if have_episodes else None
                             ),
                             deck_win_rates=deck_win_rates,
                             elo=elo,
@@ -860,7 +860,7 @@ class PPOTrainer:
         if "terminal_reward" not in info:
             return
         self._episode_rewards.append(info["terminal_reward"])
-        self._episode_lengths.append(info.get("episode_length", 0))
+        self._episode_steps.append(info.get("steps", 0))
         win = 1.0 if info["terminal_reward"] > 0 else 0.0
         self._episode_wins.append(win)
         if "agent_deck_idx" in info:
@@ -1105,7 +1105,7 @@ class PPOTrainer:
                 "optimizer_state_dict": self.optimizer.state_dict(),
                 "config": self.config,
                 "episode_rewards": self._episode_rewards[-1000:],
-                "episode_lengths": self._episode_lengths[-1000:],
+                "episode_steps": self._episode_steps[-1000:],
                 "episode_wins": self._episode_wins[-1000:],
                 "deck_wins": {k: v[-1000:] for k, v in self._deck_wins.items()},
             },

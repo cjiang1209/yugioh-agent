@@ -185,7 +185,7 @@ class _ScriptedEnv:
         if done:
             info["terminal_reward"] = outcome.get("reward", 0.0)
             info["agent_deck_idx"] = outcome.get("agent_deck_idx", 0)
-            info["episode_length"] = outcome.get("episode_length", 0)
+            info["steps"] = outcome.get("steps", 0)
             info["turn_count"] = outcome.get("turn_count", 0)
             info["agent_player"] = outcome.get("agent_player", 0)
             # No auto-advance — caller is responsible for the next reset.
@@ -231,7 +231,7 @@ class TestRunMatch:
                         "done": True,
                         "reward": 1.0,
                         "agent_deck_idx": 0,
-                        "episode_length": 3,
+                        "steps": 3,
                         "turn_count": 2,
                         "agent_player": 0,
                     }
@@ -241,7 +241,7 @@ class TestRunMatch:
                         "done": True,
                         "reward": -1.0,
                         "agent_deck_idx": 0,
-                        "episode_length": 5,
+                        "steps": 5,
                         "turn_count": 3,
                         "agent_player": 1,
                     }
@@ -251,7 +251,7 @@ class TestRunMatch:
                         "done": True,
                         "reward": 1.0,
                         "agent_deck_idx": 1,
-                        "episode_length": 4,
+                        "steps": 4,
                         "turn_count": 2,
                         "agent_player": 0,
                     }
@@ -261,7 +261,7 @@ class TestRunMatch:
                         "done": True,
                         "reward": 1.0,
                         "agent_deck_idx": 1,
-                        "episode_length": 6,
+                        "steps": 6,
                         "turn_count": 4,
                         "agent_player": 1,
                     }
@@ -676,7 +676,7 @@ def test_evalenv_terminal_info_has_turn_and_player() -> None:
             _obs, _reward, done, info = env.step(0)
         assert info["agent_player"] == 0
         assert isinstance(info["turn_count"], int) and info["turn_count"] >= 1
-        assert "episode_length" in info
+        assert "steps" in info
     finally:
         env.close()
 

@@ -38,7 +38,7 @@ def test_eval_env_deck_idx_in_terminal_info():
         _, _, done, info = env.step(0)
         assert done is True
         assert info["terminal_reward"] == 1.0
-        assert info["episode_length"] == 7
+        assert info["steps"] == 7
         assert info["agent_deck_idx"] == 0
 
 

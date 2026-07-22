@@ -95,7 +95,7 @@ def test_compute_update_metrics_optional_blocks():
         fps=1.0,
         episode_reward_mean=0.5,
         episode_win_rate=0.6,
-        episode_length_mean=12.0,
+        episode_steps_mean=12.0,
         deck_win_rates={"blue_eyes": 0.7},
         elo={
             "agent": 1500.0,
@@ -109,7 +109,7 @@ def test_compute_update_metrics_optional_blocks():
     s = m.scalars
     assert s["episode/reward"] == 0.5
     assert s["episode/win_rate"] == 0.6
-    assert s["episode/length"] == 12.0
+    assert s["episode/steps"] == 12.0
     assert s["episode/win_rate_deck_blue_eyes"] == 0.7
     assert s["selfplay/elo_agent"] == 1500.0
     assert s["selfplay/elo_pool_mean"] == 1400.0
