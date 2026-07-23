@@ -114,6 +114,7 @@ class TrainingEnv:
         opponent_pool_temperature: float = 1.0,
         opponent_pool_sampling: Sampling = "uniform",
         opponent_pool_config: TrainingConfig | None = None,
+        max_steps: int = 2000,
     ) -> None:
         if not deck_pool:
             raise ValueError("deck_pool must not be empty")
@@ -127,6 +128,7 @@ class TrainingEnv:
             "opponent": opponent,
             "agent_player": self._agent_player_setting,
             "collapse_forced": True,
+            "max_steps": max_steps,
         }
         # Absent key lets YUGIOH_OPPONENT_DEVICE win; see _resolve_opponent_device.
         if opponent_device is not None:
@@ -257,6 +259,8 @@ class TrainingEnv:
             info["terminal_reward"] = reward
             info["steps"] = self._env._step_count
             info["agent_deck_idx"] = self._last_agent_deck_idx
+            info["timeout"] = self._env._timed_out
+            info["opponent_steps"] = self._env._opp_step_count
             if self._opponent_pool is not None and self._current_opp_slot is not None:
                 self._opponent_pool.report_result(
                     slot=self._current_opp_slot,
@@ -331,6 +335,7 @@ class EvalEnv:
         opponent_device: str | None = None,
         deck_allocation: str = "random",
         mirror_decks: bool = False,
+        max_steps: int = 2000,
     ) -> None:
         if not deck_pool:
             raise ValueError("deck_pool must not be empty")
@@ -344,6 +349,7 @@ class EvalEnv:
             "opponent": opponent,
             "agent_player": self._agent_player_setting,
             "collapse_forced": True,
+            "max_steps": max_steps,
         }
         if opponent_device is not None:
             env_config["opponent_device"] = opponent_device
@@ -392,6 +398,8 @@ class EvalEnv:
             info["agent_deck_idx"] = self._last_agent_deck_idx
             info["turn_count"] = self._env._duel.game_state.turn_count
             info["agent_player"] = self._last_agent_player
+            info["timeout"] = self._env._timed_out
+            info["opponent_steps"] = self._env._opp_step_count
         return np_obs, obs.reward, obs.done, info
 
     @property
@@ -470,6 +478,7 @@ class SubprocVecEnv:
         opponent_pool_temperature: float = 1.0,
         opponent_pool_sampling: Sampling = "uniform",
         opponent_pool_config: TrainingConfig | None = None,
+        max_steps: int = 2000,
     ) -> None:
         self.num_envs = num_envs
         self.rollout_steps = rollout_steps
@@ -500,6 +509,7 @@ class SubprocVecEnv:
                 "opponent_pool_temperature": opponent_pool_temperature,
                 "opponent_pool_sampling": opponent_pool_sampling,
                 "opponent_pool_config": opponent_pool_config,
+                "max_steps": max_steps,
             }
             p = ctx.Process(target=_worker, args=(child_conn, env_kwargs), daemon=True)
             p.start()

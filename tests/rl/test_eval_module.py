@@ -606,9 +606,9 @@ class TestAggregateOne:
     def test_computes_all_metrics(self):
         recs = [
             _EpisodeRecord(1, True, 0, 10, 4, True),
-            _EpisodeRecord(2, False, 0, 20, 6, False),
+            _EpisodeRecord(2, False, 0, 20, 6, False, timeout=True),
             _EpisodeRecord(3, True, 1, 30, 8, True),
-            _EpisodeRecord(4, True, 1, 40, 10, False),
+            _EpisodeRecord(4, True, 1, 40, 10, False, timeout=True),
         ]
         r = _aggregate_one(recs, "opp")
         assert (r.episodes, r.wins, r.win_rate) == (4, 3, 0.75)
@@ -617,6 +617,7 @@ class TestAggregateOne:
         assert (r.wins_first, r.episodes_first) == (2, 2)
         assert (r.wins_second, r.episodes_second) == (1, 2)
         assert r.per_deck_wins == {0: [1.0, 0.0], 1: [1.0, 1.0]}
+        assert r.timeouts == 2
 
     def test_empty_and_singleton(self):
         assert _aggregate_one([], "opp").episodes == 0
@@ -648,12 +649,14 @@ class TestEvalResultToRow:
             episodes_first=2,
             wins_second=1,
             episodes_second=2,
+            timeouts=1,
         )
         row = eval_result_to_row(r, ["blue_eyes"])
         assert row["steps"] == {"mean": 25.0, "std": 1.0, "median": 25.0, "max": 40}
         # play_first_rate is derived from the order-split counts (2 of 4 episodes first).
         assert row["turns"]["mean"] == 7.0 and row["play_first_rate"] == 0.5
         assert row["episodes_first"] == 2 and row["wins_first"] == 2
+        assert row["timeouts"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -705,3 +708,20 @@ def test_parallel_matches_sequential_new_fields() -> None:
         "episodes_second",
     ):
         assert getattr(r1, f) == getattr(r2, f), f
+
+
+@requires_engine
+def test_evaluate_counts_timeouts() -> None:
+    from yugioh_rl.eval import evaluate
+
+    # max_steps=5 forces both short episodes to time out (draw) before any
+    # natural end, so the per-checkpoint timeout count is deterministic.
+    results = evaluate(
+        "random",
+        deck_pool=_deck_pool_or_skip(),
+        opponent_specs=["random"],
+        num_episodes=2,
+        seed=42,
+        max_steps=5,
+    )
+    assert results[0].timeouts == 2

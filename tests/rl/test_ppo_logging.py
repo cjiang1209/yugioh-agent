@@ -32,6 +32,7 @@ def _make_trainer_stub(config, sinks):
     trainer._episode_steps = []
     trainer._episode_wins = []
     trainer._deck_wins = {}
+    trainer._timeout_count = 0
     trainer._opponent_pool = None
     trainer._sinks = sinks
     return trainer

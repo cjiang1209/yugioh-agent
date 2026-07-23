@@ -30,6 +30,9 @@ class TrainingConfig:
     reward_shaping: bool = True
     shaping_lp_weight: float = 0.01
     shaping_card_weight: float = 0.005
+    # Per-player per-episode step cap. Force-terminates a non-terminating
+    # duel as a draw. Default 2000; <= 0 disables.
+    max_steps: int = 2000
 
     # PPO
     total_timesteps: int = 1_000_000

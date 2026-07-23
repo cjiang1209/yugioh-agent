@@ -28,6 +28,7 @@ def _make_checkpoint(
     global_step: int = 1000,
     episode_rewards: list[float] | None = None,
     episode_steps: list[int] | None = None,
+    timeout_count: int | None = None,
     episode_wins: list[float] | None = None,
     deck_wins: dict[int, list[float]] | None = None,
     omit_lists: bool = False,
@@ -63,6 +64,8 @@ def _make_checkpoint(
         data["episode_wins"] = episode_wins or [1.0, 0.0, 1.0]
     if deck_wins is not None:
         data["deck_wins"] = deck_wins
+    if timeout_count is not None:
+        data["timeout_count"] = timeout_count
 
     torch.save(data, path)
     return net
@@ -161,6 +164,7 @@ def test_resume_restores_episode_tracking(tmp_path):
         episode_rewards=rewards,
         episode_steps=lengths,
         episode_wins=wins,
+        timeout_count=7,
     )
 
     config = TrainingConfig(
@@ -173,6 +177,7 @@ def test_resume_restores_episode_tracking(tmp_path):
     assert trainer._episode_rewards == rewards
     assert trainer._episode_steps == lengths
     assert trainer._episode_wins == wins
+    assert trainer._timeout_count == 7
 
 
 def test_resume_backward_compat_missing_lists(tmp_path):
@@ -190,6 +195,7 @@ def test_resume_backward_compat_missing_lists(tmp_path):
     assert trainer._episode_rewards == [0.5, -0.5, 1.0]  # present in checkpoint
     assert trainer._episode_steps == []  # missing → empty fallback
     assert trainer._episode_wins == []  # missing → empty fallback
+    assert trainer._timeout_count == 0  # missing → default 0
 
 
 def test_resume_deck_paths_mismatch_rejected(tmp_path):

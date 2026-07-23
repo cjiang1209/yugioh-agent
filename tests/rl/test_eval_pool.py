@@ -125,6 +125,7 @@ def test_eval_worker_signature_stable():
         "opponent_device",
         "deck_allocation",
         "mirror_decks",
+        "max_steps",
     }
     assert set(params) == expected, (
         f"_eval_worker signature drifted: got {set(params)}, expected {expected}. "

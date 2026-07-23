@@ -335,6 +335,7 @@ class _BaseActorLearnerVecEnv:
         opponent_pool_temperature: float = 1.0,
         opponent_pool_sampling: Sampling = "uniform",
         opponent_pool_config: TrainingConfig | None = None,
+        max_steps: int = 2000,
         worker_timeout_s: float = 300.0,
     ) -> None:
         import multiprocessing as mp
@@ -368,6 +369,7 @@ class _BaseActorLearnerVecEnv:
             "opponent_pool_temperature": opponent_pool_temperature,
             "opponent_pool_sampling": opponent_pool_sampling,
             "opponent_pool_config": opponent_pool_config,
+            "max_steps": max_steps,
         }
 
         ctx = mp.get_context("spawn")

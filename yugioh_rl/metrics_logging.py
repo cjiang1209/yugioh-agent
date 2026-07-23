@@ -86,6 +86,7 @@ def compute_update_metrics(
     deck_win_rates: dict[str, float] | None = None,
     elo: dict | None = None,
     async_stats: dict | None = None,
+    episode_timeout_count: int | None = None,
 ) -> ScalarMetrics:
     """Build the per-update training ScalarMetrics. Pure; no I/O.
 
@@ -115,6 +116,8 @@ def compute_update_metrics(
         scalars["async/rollouts_discarded"] = async_stats["rollouts_discarded"]
         if "queue_depth" in async_stats:
             scalars["async/queue_depth"] = async_stats["queue_depth"]
+    if episode_timeout_count is not None:
+        scalars["episode/timeouts"] = episode_timeout_count
     return ScalarMetrics(scalars=scalars, global_step=global_step)
 
 
@@ -142,6 +145,8 @@ def flatten_eval(row: dict, label: str) -> dict[str, float]:
         out[f"win_rate/{label}/play_first"] = row["wins_first"] / row["episodes_first"]
     if row.get("episodes_second"):
         out[f"win_rate/{label}/play_second"] = row["wins_second"] / row["episodes_second"]
+    if "timeouts" in row:
+        out[f"timeouts/{label}"] = row["timeouts"]
     return out
 
 

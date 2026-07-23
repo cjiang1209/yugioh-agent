@@ -105,11 +105,13 @@ def test_compute_update_metrics_optional_blocks():
             "occupied": 3,
         },
         async_stats={"version_lag_mean": 1.5, "rollouts_discarded": 2, "queue_depth": 4},
+        episode_timeout_count=4,
     )
     s = m.scalars
     assert s["episode/reward"] == 0.5
     assert s["episode/win_rate"] == 0.6
     assert s["episode/steps"] == 12.0
+    assert s["episode/timeouts"] == 4
     assert s["episode/win_rate_deck_blue_eyes"] == 0.7
     assert s["selfplay/elo_agent"] == 1500.0
     assert s["selfplay/elo_pool_mean"] == 1400.0
@@ -159,6 +161,7 @@ def test_flatten_eval_new_scheme():
         "episodes_first": 2,
         "wins_second": 1,
         "episodes_second": 2,
+        "timeouts": 1,
     }
     out = flatten_eval(row, "opp")
     assert out["win_rate/opp/overall"] == 0.75
@@ -166,6 +169,7 @@ def test_flatten_eval_new_scheme():
     assert out["steps/opp/mean"] == 25.0 and out["steps/opp/max"] == 40
     assert out["turns/opp/median"] == 7.0 and out["play_first_rate/opp"] == 0.5
     assert out["win_rate/opp/play_first"] == 1.0 and out["win_rate/opp/play_second"] == 0.5
+    assert out["timeouts/opp"] == 1
 
 
 def test_in_training_eval_scalars_prefixed_new_scheme():
@@ -214,6 +218,9 @@ def test_flatten_eval_omits_empty_split():
     }
     out = flatten_eval(row, "opp")
     assert "win_rate/opp/play_first" in out and "win_rate/opp/play_second" not in out
+    # This row predates the timeouts field; flatten must not emit the scalar
+    # (backward-compat for old manifests).
+    assert "timeouts/opp" not in out
 
 
 class _FakeWriter:

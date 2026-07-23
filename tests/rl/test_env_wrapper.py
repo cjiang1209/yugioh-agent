@@ -30,6 +30,21 @@ def _make_deck_pool() -> list[dict[str, list[int]]]:
 
 
 @requires_engine
+def test_training_env_max_steps_default_and_forwarding() -> None:
+    """TrainingConfig defaults max_steps to 2000 and TrainingEnv forwards it to
+    the underlying engine env."""
+    from yugioh_rl.config import TrainingConfig
+    from yugioh_rl.env_wrapper import TrainingEnv
+
+    assert TrainingConfig().max_steps == 2000
+    env = TrainingEnv(_make_deck_pool(), opponent="random", seed=42, max_steps=777)
+    try:
+        assert env._env._max_steps == 777
+    finally:
+        env.close()
+
+
+@requires_engine
 def test_step_no_auto_reset_on_done() -> None:
     """``step()`` on done returns terminal obs and leaves ``_episode_count`` unchanged."""
     from yugioh_rl.env_wrapper import TrainingEnv

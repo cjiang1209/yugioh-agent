@@ -78,6 +78,7 @@ class EvalResult:
     episodes_first: int = 0
     wins_second: int = 0
     episodes_second: int = 0
+    timeouts: int = 0
 
     @property
     def win_rate(self) -> float:
@@ -111,6 +112,7 @@ class _EpisodeRecord(NamedTuple):
     steps: int
     turns: int
     went_first: bool
+    timeout: bool = False
 
 
 class _PartialResult(NamedTuple):
@@ -121,6 +123,7 @@ class _PartialResult(NamedTuple):
     steps: int
     turns: int
     went_first: bool
+    timeout: bool = False
 
 
 class EvalWorkerError(RuntimeError):
@@ -191,6 +194,7 @@ def _aggregate_one(records, opponent_label: str) -> EvalResult:
         episodes_first=len(firsts),
         wins_second=sum(1 for r in seconds if r.win),
         episodes_second=len(seconds),
+        timeouts=sum(1 for r in records if r.timeout),
     )
 
 
@@ -287,6 +291,7 @@ def _play_one_episode(
         steps=int(info.get("steps", 0)),
         turns=int(info.get("turn_count", 0)),
         went_first=int(info.get("agent_player", 0)) == 0,
+        timeout=bool(info.get("timeout", False)),
     )
 
 
@@ -322,6 +327,7 @@ def _eval_worker(
     opponent_device: str | None,
     deck_allocation: str = "random",
     mirror_decks: bool = False,
+    max_steps: int = 2000,
 ) -> None:
     """Parallel-eval worker process: holds one ``EvalEnv`` cached by
     opponent_spec, plays one episode per ``("task", _EvalTask)`` message,
@@ -353,6 +359,7 @@ def _eval_worker(
                             opponent_device=opponent_device,
                             deck_allocation=deck_allocation,
                             mirror_decks=mirror_decks,
+                            max_steps=max_steps,
                         )
                     )
                     current_spec = task.opp_spec
@@ -374,6 +381,7 @@ def _eval_worker(
                             rec.steps,
                             rec.turns,
                             rec.went_first,
+                            rec.timeout,
                         ),
                     )
                 )
@@ -402,6 +410,7 @@ def _run_eval_pool(
     worker_timeout_s: float,
     deck_allocation: str = "random",
     mirror_decks: bool = False,
+    max_steps: int = 2000,
     worker_fn=None,
 ) -> list[EvalResult]:
     """Fan ``opponent_specs × num_episodes`` out across worker processes.
@@ -432,6 +441,7 @@ def _run_eval_pool(
                 "opponent_device": opponent_device,
                 "deck_allocation": deck_allocation,
                 "mirror_decks": mirror_decks,
+                "max_steps": max_steps,
             },
             daemon=True,
         )
@@ -526,6 +536,7 @@ def _make_eval_env_kwargs(
     opponent_device: str | None,
     deck_allocation: str = "random",
     mirror_decks: bool = False,
+    max_steps: int = 2000,
 ) -> dict[str, Any]:
     """Build the kwargs dict for an eval-side ``EvalEnv``.
 
@@ -539,6 +550,7 @@ def _make_eval_env_kwargs(
         "agent_player": agent_player,
         "deck_allocation": deck_allocation,
         "mirror_decks": mirror_decks,
+        "max_steps": max_steps,
     }
     if opponent_device is not None:
         kwargs["opponent_device"] = opponent_device
@@ -556,6 +568,7 @@ def _run_sequential_match_set(
     opponent_device: str | None,
     deck_allocation: str = "random",
     mirror_decks: bool = False,
+    max_steps: int = 2000,
 ) -> list[EvalResult]:
     """Sequential per-opponent loop shared by both public entry points."""
     results: list[EvalResult] = []
@@ -569,6 +582,7 @@ def _run_sequential_match_set(
                 opponent_device=opponent_device,
                 deck_allocation=deck_allocation,
                 mirror_decks=mirror_decks,
+                max_steps=max_steps,
             )
         )
         try:
@@ -593,6 +607,7 @@ def evaluate(
     worker_timeout_s: float = _DEFAULT_EVAL_WORKER_TIMEOUT_S,
     deck_allocation: str = "random",
     mirror_decks: bool = False,
+    max_steps: int = 2000,
 ) -> list[EvalResult]:
     """Run an agent (specified by string) against each opponent spec.
 
@@ -626,6 +641,7 @@ def evaluate(
             opponent_device=opponent_device,
             deck_allocation=deck_allocation,
             mirror_decks=mirror_decks,
+            max_steps=max_steps,
         )
     return _run_eval_pool(
         agent_spec=agent_spec,
@@ -640,6 +656,7 @@ def evaluate(
         worker_timeout_s=worker_timeout_s,
         deck_allocation=deck_allocation,
         mirror_decks=mirror_decks,
+        max_steps=max_steps,
     )
 
 
@@ -654,6 +671,7 @@ def evaluate_with_agent(
     opponent_device: str | None = None,
     deck_allocation: str = "random",
     mirror_decks: bool = False,
+    max_steps: int = 2000,
 ) -> list[EvalResult]:
     """Sequential eval with a pre-built :class:`Opponent` instance.
 
@@ -675,6 +693,7 @@ def evaluate_with_agent(
         opponent_device=opponent_device,
         deck_allocation=deck_allocation,
         mirror_decks=mirror_decks,
+        max_steps=max_steps,
     )
 
 
@@ -715,4 +734,5 @@ def eval_result_to_row(r: EvalResult, deck_stems: list[str]) -> dict:
         "episodes_first": r.episodes_first,
         "wins_second": r.wins_second,
         "episodes_second": r.episodes_second,
+        "timeouts": r.timeouts,
     }

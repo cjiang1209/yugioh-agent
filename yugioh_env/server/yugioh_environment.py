@@ -89,7 +89,13 @@ def _raw_pending_chain(events: list[dict], agent_player: int) -> list[dict]:
     resolved in it).
     """
     return [
-        _chain_entry(m["chain_link"], m.get("code", 0), m.get("desc", 0), m.get("controller", 0), agent_player)
+        _chain_entry(
+            m["chain_link"],
+            m.get("code", 0),
+            m.get("desc", 0),
+            m.get("controller", 0),
+            agent_player,
+        )
         for m in events
         if m.get("msg_type") == MSG_CHAINING
     ]
@@ -254,6 +260,8 @@ class YuGiOhEnvironment(Environment):
         self._current_msg: dict | None = None
         self._episode_count = 0
         self._step_count = 0
+        self._opp_step_count = 0
+        self._timed_out = False
         # Multi-step card selection accumulator (managed by environment)
         self._card_sel: list[int] = []
         # Persistent field tracker for event log card-code resolution
@@ -267,6 +275,8 @@ class YuGiOhEnvironment(Environment):
         self._open_cards: bool = False
         # When True, auto-play agent prompts with only one legal action
         self._collapse_forced: bool = config.get("collapse_forced", False)
+        # Per-player per-episode step cap. Default 2000; <= 0 disables.
+        self._max_steps: int = max(0, int(config.get("max_steps", 2000) or 0))
         self._loop_filter = ActionLoopFilter(self)
 
     def set_opponent(self, opponent: Opponent) -> None:
@@ -356,6 +366,8 @@ class YuGiOhEnvironment(Environment):
 
         self._episode_count += 1
         self._step_count = 0
+        self._opp_step_count = 0
+        self._timed_out = False
         self._field_tracker.reset()
         self._event_buffer.reset()
         self._loop_filter.reset()
@@ -539,6 +551,9 @@ class YuGiOhEnvironment(Environment):
         """Process the duel, auto-play opponent turns, until agent must decide."""
         self._last_frames = []
         while True:
+            if self._max_steps and max(self._step_count, self._opp_step_count) >= self._max_steps:
+                self._timed_out = True
+                return self._make_terminal_observation()
             msg, gs, events = self._duel.process_until_choice()
 
             # Capture frame from this chunk's events
@@ -619,6 +634,7 @@ class YuGiOhEnvironment(Environment):
                             opp_obs["action_mask"] = opp_mapper.get_action_mask()
                             self._opponent.set_observation(opp_obs)
                         opp_action = self._opponent.select_action(msg, opp_mapper.num_actions)
+                        self._opp_step_count += 1
                         opp_action = min(opp_action, opp_mapper.num_actions - 1)
                         if opp_selected_action is None:
                             opp_selected_action = opp_mapper.actions[opp_action]

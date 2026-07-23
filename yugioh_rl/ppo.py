@@ -360,6 +360,9 @@ class PPOTrainer:
         self._episode_steps: list[int] = []
         self._episode_wins: list[float] = []
         self._deck_wins: dict[int, list[float]] = {}
+        # Cumulative count of timed-out (force-terminated) rollout episodes
+        # across the whole run; persisted in the checkpoint.
+        self._timeout_count: int = 0
 
         if config.resume_checkpoint:
             self._resume_update, self._resume_global_step = self._load_resume_checkpoint()
@@ -448,6 +451,7 @@ class PPOTrainer:
         self._episode_steps = list(ckpt.get("episode_steps", []))
         self._episode_wins = list(ckpt.get("episode_wins", []))
         self._deck_wins = {int(k): list(v) for k, v in ckpt.get("deck_wins", {}).items()}
+        self._timeout_count = ckpt.get("timeout_count", 0)
 
         update = ckpt.get("update", 0)
         global_step = ckpt.get("global_step", 0)
@@ -601,6 +605,7 @@ class PPOTrainer:
                 opponent_pool_temperature=config.self_play_temperature,
                 opponent_pool_sampling=config.self_play_sampling,
                 opponent_pool_config=config,
+                max_steps=config.max_steps,
             )
         elif config.vec_env_type == "sync_actor_learner":
             from yugioh_rl.actor_learner import ActorLearnerVecEnv
@@ -624,6 +629,7 @@ class PPOTrainer:
                 opponent_pool_temperature=config.self_play_temperature,
                 opponent_pool_sampling=config.self_play_sampling,
                 opponent_pool_config=config,
+                max_steps=config.max_steps,
             )
         else:
             vec_env = SubprocVecEnv(
@@ -643,6 +649,7 @@ class PPOTrainer:
                 opponent_pool_temperature=config.self_play_temperature,
                 opponent_pool_sampling=config.self_play_sampling,
                 opponent_pool_config=config,
+                max_steps=config.max_steps,
             )
 
         try:
@@ -829,6 +836,7 @@ class PPOTrainer:
                             deck_win_rates=deck_win_rates,
                             elo=elo,
                             async_stats=async_stats,
+                            episode_timeout_count=self._timeout_count,
                         )
                     )
 
@@ -861,6 +869,8 @@ class PPOTrainer:
             return
         self._episode_rewards.append(info["terminal_reward"])
         self._episode_steps.append(info.get("steps", 0))
+        if info.get("timeout"):
+            self._timeout_count += 1
         win = 1.0 if info["terminal_reward"] > 0 else 0.0
         self._episode_wins.append(win)
         if "agent_deck_idx" in info:
@@ -1064,6 +1074,7 @@ class PPOTrainer:
                 num_episodes=num_episodes,
                 seed=self.config.seed + 999999,
                 agent_player=self.config.agent_player,
+                max_steps=self.config.max_steps,
             )
             for r in results:
                 logger.info(
@@ -1108,6 +1119,7 @@ class PPOTrainer:
                 "episode_steps": self._episode_steps[-1000:],
                 "episode_wins": self._episode_wins[-1000:],
                 "deck_wins": {k: v[-1000:] for k, v in self._deck_wins.items()},
+                "timeout_count": self._timeout_count,
             },
             path,
         )
