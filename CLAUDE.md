@@ -138,6 +138,16 @@ Messages that write `loc_info`: `MSG_MOVE`, `MSG_SET`, `MSG_SUMMONING`, `MSG_SPS
   `YUGIOH_OPPONENT`; suggests moves for the *human* player.
 - `YUGIOH_RECOMMENDER_DEVICE` — device for `model:` recommender inference:
   `cpu` or `cuda` (default: `cpu`).
+- `MLFLOW_TRACKING_URI` — mlflow tracking server, read by the mlflow sink when
+  `--log-to` includes `mlflow`. `scripts/train.sh` and `scripts/eval_sweep.sh`
+  default it to `http://127.0.0.1:5000/` (override by exporting before invoking).
+- `MLFLOW_EXPERIMENT_NAME` — mlflow-native env var selecting the experiment for
+  training/eval runs (default `yugioh`). Export it to group runs under a custom
+  experiment.
+
+**Port map** (avoid collisions): mlflow server `5000`, web UI (`scripts/start_web.sh`)
+`7000`, FastAPI backend (`scripts/start_server.sh`) `8000`, TensorBoard `6006`,
+ygo-agent bridge `3000`, MUD websocket `8080`.
 
 ## Test Skip Behavior
 

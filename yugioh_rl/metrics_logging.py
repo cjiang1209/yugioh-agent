@@ -239,6 +239,11 @@ class MLflowSink:
 EXPERIMENT_NAME = "yugioh"
 
 
+def _experiment_name() -> str:
+    # Honor mlflow's native MLFLOW_EXPERIMENT_NAME; default preserves prior behavior.
+    return os.environ.get("MLFLOW_EXPERIMENT_NAME") or EXPERIMENT_NAME
+
+
 def _import_mlflow():
     """Import mlflow, converting a missing dependency into an actionable error."""
     try:
@@ -273,7 +278,7 @@ def _open_experiment():
     module, ready for the caller to start its run."""
     mlflow = _import_mlflow()
     _require_tracking_uri(mlflow)
-    mlflow.set_experiment(EXPERIMENT_NAME)
+    mlflow.set_experiment(_experiment_name())
     mlflow.enable_system_metrics_logging()
     return mlflow
 

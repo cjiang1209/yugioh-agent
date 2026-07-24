@@ -30,8 +30,8 @@ case "$mode" in
         exec pnpm dev
         ;;
     *)
-        echo "Starting web UI (production) on port ${PORT:-5000} ..."
-        export PORT="${PORT:-5000}"
+        echo "Starting web UI (production) on port ${PORT:-7000} ..."
+        export PORT="${PORT:-7000}"
         exec pnpm start
         ;;
 esac

@@ -84,7 +84,7 @@ scripts/build_web.sh
 # 2. Start the Python env server (same as the play client uses)
 scripts/start_server.sh &
 
-# 3. Start the web server, then open http://localhost:5000
+# 3. Start the web server, then open http://localhost:7000
 scripts/start_web.sh
 ```
 
