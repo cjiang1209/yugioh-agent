@@ -1,16 +1,8 @@
-"""Build a human-readable board state dict from the live duel."""
+"""Render a captured raw board dict into the human-readable display board."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from yugioh_core.constants import (
-    LOCATION_BANISHED,
-    LOCATION_EXTRA,
-    LOCATION_GRAVE,
-    LOCATION_HAND,
-    LOCATION_MZONE,
-    LOCATION_SZONE,
     POS_ATTACK,
     POS_DEFENSE,
     POS_FACEDOWN,
@@ -25,9 +17,6 @@ from yugioh_core.constants import (
     TYPE_TRAP,
 )
 
-if TYPE_CHECKING:
-    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
-
 _POS_NAMES = {
     POS_FACEUP_ATTACK: "ATK",
     POS_FACEDOWN_ATTACK: "FACE_DOWN_ATK",
@@ -39,7 +28,7 @@ _POS_NAMES = {
     POS_DEFENSE: "DEF",
 }
 
-# ─── Board state builder ──────────────────────────────────────────────────
+# ─── Board rendering ──────────────────────────────────────────────────────
 
 
 def _card_type_str(type_val: int) -> str:
@@ -134,72 +123,50 @@ def _build_zone(
     return zone
 
 
-def build_board_state(env: YuGiOhEnvironment, *, open_cards: bool = False) -> dict:
-    """Build the full board state dict from a live environment.
-
-    Args:
-        open_cards: When True, the ``opponent`` dict includes full card data
-            (unhidden face-down cards, hand contents, extra deck contents)
-            for UI display.  Game logic never consumes this dict.
-    """
-    duel = env._duel
-    card_db = env._card_db
-    agent = env._agent_player
-    opp = 1 - agent
-
-    if duel is None:
-        return {"player": {}, "opponent": {}}
-
-    agent_hand = duel.query_location(agent, LOCATION_HAND)
-    agent_monsters = duel.query_location(agent, LOCATION_MZONE)
-    agent_st = duel.query_location(agent, LOCATION_SZONE)
-    agent_grave = duel.query_location(agent, LOCATION_GRAVE)
-    agent_banished = duel.query_location(agent, LOCATION_BANISHED)
-    agent_extra = duel.query_location(agent, LOCATION_EXTRA)
-
-    opp_monsters = duel.query_location(opp, LOCATION_MZONE)
-    opp_st = duel.query_location(opp, LOCATION_SZONE)
-    opp_grave = duel.query_location(opp, LOCATION_GRAVE)
-    opp_banished = duel.query_location(opp, LOCATION_BANISHED)
-
-    gs = duel.game_state
-
-    # Build agent side (full info)
-    agent_st_zone = _build_zone(agent_st, card_db, 6)
-    agent_monsters_full = _build_zone(agent_monsters, card_db, 7)
-    player = {
-        "hand": [_build_card_info(c, card_db) for c in agent_hand if c.get("code")],
-        "monsters": agent_monsters_full[:5],
-        "spells_traps": agent_st_zone[:5],
-        "field_zone": agent_st_zone[5],
-        "extra_monster_zone": [agent_monsters_full[5], agent_monsters_full[6]],
-        "graveyard": [_build_card(c, card_db) for c in agent_grave if c.get("code")],
-        "banished": [_build_card(c, card_db) for c in agent_banished if c.get("code")],
-        "extra_deck": [_build_card_info(c, card_db) for c in agent_extra if c.get("code")],
-        "deck_count": gs.deck_count[agent],
-        "lp": gs.lp[agent],
+def _render_agent(side: dict, card_db) -> dict:
+    st = _build_zone(side["spells_traps"], card_db, 6)
+    mon = _build_zone(side["monsters"], card_db, 7)
+    return {
+        "hand": [_build_card_info(c, card_db) for c in side["hand"] if c.get("code")],
+        "monsters": mon[:5],
+        "spells_traps": st[:5],
+        "field_zone": st[5],
+        "extra_monster_zone": [mon[5], mon[6]],
+        "graveyard": [_build_card(c, card_db) for c in side["grave"] if c.get("code")],
+        "banished": [_build_card(c, card_db) for c in side["banished"] if c.get("code")],
+        "extra_deck": [_build_card_info(c, card_db) for c in side["extra"] if c.get("code")],
+        "deck_count": side["deck_count"],
+        "lp": side["lp"],
     }
 
-    # Build opponent side
-    opp_st_zone = _build_zone(opp_st, card_db, 6, hidden=not open_cards)
-    opp_monsters_full = _build_zone(opp_monsters, card_db, 7, hidden=not open_cards)
-    opponent: dict = {
-        "hand_count": gs.hand_count[opp],
-        "monsters": opp_monsters_full[:5],
-        "spells_traps": opp_st_zone[:5],
-        "field_zone": opp_st_zone[5],
-        "extra_monster_zone": [opp_monsters_full[5], opp_monsters_full[6]],
-        "graveyard": [_build_card(c, card_db) for c in opp_grave if c.get("code")],
-        "banished": [_build_card(c, card_db) for c in opp_banished if c.get("code")],
-        "extra_deck_count": gs.extra_count[opp],
-        "deck_count": gs.deck_count[opp],
-        "lp": gs.lp[opp],
-    }
 
+def _render_opponent(side: dict, card_db, *, open_cards: bool) -> dict:
+    hidden = not open_cards
+    st = _build_zone(side["spells_traps"], card_db, 6, hidden=hidden)
+    mon = _build_zone(side["monsters"], card_db, 7, hidden=hidden)
+    opp: dict = {
+        "hand_count": side["hand_count"],
+        "monsters": mon[:5],
+        "spells_traps": st[:5],
+        "field_zone": st[5],
+        "extra_monster_zone": [mon[5], mon[6]],
+        "graveyard": [_build_card(c, card_db) for c in side["grave"] if c.get("code")],
+        "banished": [_build_card(c, card_db) for c in side["banished"] if c.get("code")],
+        "extra_deck_count": side["extra_count"],
+        "deck_count": side["deck_count"],
+        "lp": side["lp"],
+    }
     if open_cards:
-        opp_hand = duel.query_location(opp, LOCATION_HAND)
-        opp_extra = duel.query_location(opp, LOCATION_EXTRA)
-        opponent["hand"] = [_build_card_info(c, card_db) for c in opp_hand if c.get("code")]
-        opponent["extra_deck"] = [_build_card_info(c, card_db) for c in opp_extra if c.get("code")]
+        opp["hand"] = [_build_card_info(c, card_db) for c in side["hand"] if c.get("code")]
+        opp["extra_deck"] = [_build_card_info(c, card_db) for c in side["extra"] if c.get("code")]
+    return opp
 
-    return {"player": player, "opponent": opponent}
+
+def render_board(raw_board: dict, card_db, *, open_cards: bool = False) -> dict:
+    """Render a captured RawBoard into the display board dict (sole render impl)."""
+    if not raw_board.get("agent") and not raw_board.get("opponent"):
+        return {"player": {}, "opponent": {}}
+    return {
+        "player": _render_agent(raw_board["agent"], card_db),
+        "opponent": _render_opponent(raw_board["opponent"], card_db, open_cards=open_cards),
+    }

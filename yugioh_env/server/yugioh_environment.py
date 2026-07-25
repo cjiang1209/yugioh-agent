@@ -14,7 +14,6 @@ from openenv.core.env_server.interfaces import Environment
 from yugioh_core.card_database import CardDatabase
 from yugioh_core.constants import (
     MSG_ANNOUNCE_CARD,
-    MSG_CHAINING,
     MSG_NEW_TURN,
     MSG_SELECT_BATTLECMD,
     MSG_SELECT_CARD,
@@ -43,7 +42,7 @@ from yugioh_core.constants import (
 )
 from yugioh_core.encoding import MAX_ACTIONS
 from yugioh_env.action_loop_filter import ActionLoopFilter
-from yugioh_env.action_space import ActionMapper, _relativize_controller
+from yugioh_env.action_space import ActionMapper
 from yugioh_env.duel import Duel
 from yugioh_env.event_buffer import EventHistoryBuffer
 from yugioh_env.event_logger import FieldTracker, enrich_messages
@@ -51,12 +50,11 @@ from yugioh_env.lib_loader import load_library
 from yugioh_env.models import ActionMeta, YuGiOhAction, YuGiOhObservation, YuGiOhState
 from yugioh_env.observation import build_observation
 from yugioh_env.opponent import Opponent, make_opponent
-from yugioh_env.server.board_state import build_board_state
 
 logger = logging.getLogger(__name__)
 
 # Lowercase phase names for the HTTP API response
-_API_PHASE_NAMES = {
+API_PHASE_NAMES = {
     PHASE_DRAW: "draw",
     PHASE_STANDBY: "standby",
     PHASE_MAIN1: "main1",
@@ -70,37 +68,6 @@ _API_PHASE_NAMES = {
 }
 
 
-def _chain_entry(chain_link: int, code: int, desc: int, controller: int, agent_player: int) -> dict:
-    """One raw pending-chain entry with the controller relativized (0=agent,
-    1=opponent). Card name and effect text are resolved later by the consumer.
-    """
-    return {
-        "chain_link": chain_link,
-        "code": code,
-        "desc": desc,
-        "controller": _relativize_controller(controller, agent_player),
-    }
-
-
-def _raw_pending_chain(events: list[dict], agent_player: int) -> list[dict]:
-    """Raw pending-chain entries derived from a chunk's MSG_CHAINING messages.
-
-    Captures every link chained during the chunk (even if the chain also
-    resolved in it).
-    """
-    return [
-        _chain_entry(
-            m["chain_link"],
-            m.get("code", 0),
-            m.get("desc", 0),
-            m.get("controller", 0),
-            agent_player,
-        )
-        for m in events
-        if m.get("msg_type") == MSG_CHAINING
-    ]
-
-
 def _resolve_opponent_device(config: dict[str, Any]) -> str:
     """Resolve the device for a model opponent.
 
@@ -108,6 +75,16 @@ def _resolve_opponent_device(config: dict[str, Any]) -> str:
     Extracted so it can be unit-tested without booting the engine.
     """
     return config.get("opponent_device") or os.environ.get("YUGIOH_OPPONENT_DEVICE", "cpu")
+
+
+def agent_reward(winner: int | None, agent_player: int) -> float:
+    """Terminal reward for the agent from an engine winner id: +1 win / -1 loss /
+    0 draw (winner == 2) or undecided (winner is None)."""
+    if winner == agent_player:
+        return 1.0
+    if winner == 1 - agent_player:
+        return -1.0
+    return 0.0
 
 
 def _build_action_meta_list(actions: list[dict]) -> list[ActionMeta | None]:
@@ -269,10 +246,11 @@ class YuGiOhEnvironment(Environment):
         # Rolling event-history buffer (CNN event branch); populated from the
         # enriched stream in _capture_frame, reset per-episode.
         self._event_buffer = EventHistoryBuffer()
-        # Intermediate board snapshots captured during _process_to_agent_choice()
-        self._last_frames: list[dict] = []
-        # When True, board snapshots include unhidden opponent card data
-        self._open_cards: bool = False
+        # Serving-layer observer notified per processed message chunk (raw
+        # events + a DuelView); None when nothing is observing (e.g. training).
+        self._frame_observer = None
+        # This cycle's enriched events (obs.events source); reset per step/choice.
+        self._cycle_events: list[dict] = []
         # When True, auto-play agent prompts with only one legal action
         self._collapse_forced: bool = config.get("collapse_forced", False)
         # Per-player per-episode step cap. Default 2000; <= 0 disables.
@@ -283,10 +261,9 @@ class YuGiOhEnvironment(Environment):
         """Replace the opponent for subsequent episodes."""
         self._opponent = opponent
 
-    @property
-    def last_frames(self) -> list[dict]:
-        """Intermediate board snapshots captured during the last process cycle."""
-        return self._last_frames
+    def set_frame_observer(self, observer) -> None:
+        """Install (or clear with None) the serving-layer per-chunk observer."""
+        self._frame_observer = observer
 
     @property
     def current_msg(self) -> dict | None:
@@ -303,6 +280,32 @@ class YuGiOhEnvironment(Environment):
         if self._current_msg is None:
             return 0
         return self._mapper.num_actions
+
+    # --- read-only accessors: duel state + card_db (safe before reset / after destroy) ---
+    def query_location(self, player: int, location: int) -> list[dict]:
+        if self._duel is None:
+            return []
+        return self._duel.query_location(player, location)
+
+    @property
+    def game_state(self):
+        return self._duel.game_state if self._duel is not None else None
+
+    @property
+    def agent_player(self) -> int:
+        return self._agent_player
+
+    @property
+    def is_finished(self) -> bool:
+        return True if self._duel is None else self._duel.game_state.is_finished
+
+    @property
+    def winner(self) -> int | None:
+        return None if self._duel is None else self._duel.game_state.winner
+
+    @property
+    def card_db(self):
+        return self._card_db
 
     @staticmethod
     def _validate_deck(deck: dict, label: str) -> None:
@@ -333,7 +336,6 @@ class YuGiOhEnvironment(Environment):
         deck0: dict[str, list[int]] | None = None,
         deck1: dict[str, list[int]] | None = None,
         agent_player: int | str | None = None,
-        open_cards: bool = False,
         puzzle: dict | None = None,
         **kwargs: Any,
     ) -> YuGiOhObservation:
@@ -350,16 +352,10 @@ class YuGiOhEnvironment(Environment):
             agent_player: Override which player the agent controls for this episode.
                           0 = go first, 1 = go second, "random" = coin flip.
                           If None, uses the value from config.
-            open_cards: When True, board snapshots include full opponent card
-                        data (unhidden) in the ``opponent`` dict (UI-only,
-                        does not affect game logic).  Defaults to False.
             puzzle: When provided, create the duel from a puzzle state
                     specification instead of from decks. The puzzle dict
                     defines all card placements; deck0/deck1 are ignored.
         """
-        # Apply open_cards before processing so frames include the data
-        self._open_cards = open_cards
-
         # Clean up previous duel
         if self._duel is not None:
             self._duel.destroy()
@@ -417,7 +413,7 @@ class YuGiOhEnvironment(Environment):
         if self._duel is None or self._duel.is_finished:
             return self._make_terminal_observation()
 
-        self._last_frames = []
+        self._cycle_events = []
         self._step_count += 1
 
         if self._mapper.num_actions > 0 and action.action_index < len(self._mapper.actions):
@@ -481,7 +477,7 @@ class YuGiOhEnvironment(Environment):
             return YuGiOhState()
 
         gs = self._duel.game_state
-        phase_name = _API_PHASE_NAMES.get(gs.phase, "unknown")
+        phase_name = API_PHASE_NAMES.get(gs.phase, "unknown")
 
         return YuGiOhState(
             step_count=self._step_count,
@@ -493,63 +489,23 @@ class YuGiOhEnvironment(Environment):
             opp_hand_count=gs.hand_count[1 - self._agent_player],
         )
 
-    def _build_game_state_dict(self, pending_chain: list[dict] | None = None) -> dict:
-        """Build a game_state dict from the current duel state.
-
-        ``pending_chain`` overrides the chain derived from the live ``GameState``
-        — frame capture passes the chunk-derived chain instead, since the live
-        chain may already have cleared by the choice point.
-        """
-        gs = self._duel.game_state if self._duel else None
-        if gs is None:
-            return {
-                "turn": 0,
-                "phase": "unknown",
-                "is_my_turn": False,
-                "chain_count": 0,
-                "pending_chain": pending_chain or [],
-            }
-        if pending_chain is None:
-            pending_chain = [
-                _chain_entry(
-                    link.chain_link, link.code, link.desc, link.controller, self._agent_player
-                )
-                for link in gs.pending_chain
-            ]
-        return {
-            "turn": gs.turn_count,
-            "phase": _API_PHASE_NAMES.get(gs.phase, "unknown"),
-            "is_my_turn": gs.current_player == self._agent_player,
-            "chain_count": gs.chain_count,
-            "pending_chain": pending_chain,
-        }
-
     def _capture_frame(self, events: list[dict]) -> None:
-        """Enrich the chunk's messages and snapshot the board into a frame."""
+        """Enrich the chunk's messages, feed the event buffer, and notify the
+        observer with the raw (unrendered) chunk. Holds no presentation state."""
         if not events:
             return
         enriched = enrich_messages(events, self._field_tracker)
         gs = self._duel.game_state
         self._event_buffer.append_from_enriched(
-            enriched,
-            turn_count=gs.turn_count,
-            current_player=gs.current_player,
-            phase=gs.phase,
+            enriched, turn_count=gs.turn_count, current_player=gs.current_player, phase=gs.phase
         )
-        game_state = self._build_game_state_dict(
-            pending_chain=_raw_pending_chain(events, self._agent_player)
-        )
-        self._last_frames.append(
-            {
-                "events": enriched,
-                "board": build_board_state(self, open_cards=self._open_cards),
-                "game_state": game_state,
-            }
-        )
+        self._cycle_events.extend(enriched)  # obs.events source
+        if self._frame_observer is not None:
+            self._frame_observer.on_chunk(enriched, self)
 
     def _process_to_agent_choice(self) -> YuGiOhObservation:
         """Process the duel, auto-play opponent turns, until agent must decide."""
-        self._last_frames = []
+        self._cycle_events = []
         while True:
             if self._max_steps and max(self._step_count, self._opp_step_count) >= self._max_steps:
                 self._timed_out = True
@@ -707,7 +663,7 @@ class YuGiOhEnvironment(Environment):
             event_history=obs_data["event_history"].tolist(),
             action_meta=action_meta,
             prompt_meta=_build_prompt_meta(self._mapper),
-            events=[m for f in self._last_frames for m in f["events"]],
+            events=list(self._cycle_events),
             done=False,
             reward=0.0,
         )
@@ -720,12 +676,7 @@ class YuGiOhEnvironment(Environment):
 
         reward = 0.0
         if self._duel and self._duel.game_state.is_finished:
-            winner = self._duel.game_state.winner
-            if winner == self._agent_player:
-                reward = 1.0
-            elif winner == 1 - self._agent_player:
-                reward = -1.0
-            # winner == 2 or other = draw = 0.0
+            reward = agent_reward(self._duel.game_state.winner, self._agent_player)
 
         # Build a minimal observation
         obs_data = (
@@ -767,7 +718,7 @@ class YuGiOhEnvironment(Environment):
             event_history=event_history,
             action_meta=[],
             prompt_meta=None,
-            events=[m for f in self._last_frames for m in f["events"]],
+            events=list(self._cycle_events),
             done=True,
             reward=reward,
         )

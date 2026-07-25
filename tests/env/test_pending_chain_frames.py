@@ -1,5 +1,5 @@
 from yugioh_core.constants import MSG_CHAINING
-from yugioh_env.server.yugioh_environment import _raw_pending_chain
+from yugioh_env.server.serving_env import _raw_pending_chain
 
 
 def test_raw_pending_chain_from_chunk_messages():

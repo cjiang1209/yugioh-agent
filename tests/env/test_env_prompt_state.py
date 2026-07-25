@@ -65,7 +65,7 @@ def _bare_env() -> YuGiOhEnvironment:
     env._current_msg = None
     env._card_sel = []
     env._step_count = 0
-    env._last_frames = []
+    env._cycle_events = []
     env._agent_player = 0
     env._card_db = None
     env._collapse_forced = False

@@ -156,6 +156,13 @@ def test_state_does_not_return_stale_frames(web_client):
     assert state_data["frames"] == []
 
 
+def test_state_board_present_without_frames(web_client):
+    _reset(web_client, seed=7)
+    state = web_client.get("/api/web/state").json()
+    assert state["frames"] == []
+    assert state["board"]["player"]  # from capture_board fallback
+
+
 def test_action_descriptions_nonempty(web_client):
     """Every action should have a non-empty description string."""
     data = _reset(web_client)

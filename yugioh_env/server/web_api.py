@@ -13,9 +13,9 @@ from yugioh_env.action_describer import ActionDescriber
 from yugioh_env.deck_parser import parse_ydk
 from yugioh_env.event_logger import EventDescriber
 from yugioh_env.models import YuGiOhAction
-from yugioh_env.server.board_state import build_board_state
+from yugioh_env.server.board_state import render_board
 from yugioh_env.server.recommender import recommend_action_index
-from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+from yugioh_env.server.yugioh_environment import API_PHASE_NAMES, agent_reward
 
 web_router = APIRouter(prefix="/api/web")
 
@@ -58,15 +58,17 @@ def _resolve_pending_chain(raw: list[dict], text: CardTextResolver) -> list[dict
 
 
 def _resolve_game_state(game_state: dict, text: CardTextResolver) -> dict:
-    """Copy a raw game_state dict with its pending_chain resolved to display text."""
+    """Copy a raw game_state dict with phase named (raw ygopro-core int, or None
+    when no duel) and pending_chain resolved to display text."""
     return {
         **game_state,
+        "phase": API_PHASE_NAMES.get(game_state["phase"], "unknown"),
         "pending_chain": _resolve_pending_chain(game_state["pending_chain"], text),
     }
 
 
 def _build_response(
-    env: YuGiOhEnvironment,
+    serving,
     action_describer: ActionDescriber,
     event_describer: EventDescriber,
     card_text_resolver: CardTextResolver,
@@ -74,32 +76,38 @@ def _build_response(
     done: bool,
     reward: float,
     *,
-    include_frames: bool = False,
+    raw_frames: list[dict],
+    open_cards: bool,
     recommended_action_index: int | None = None,
 ) -> dict:
-    """Build the unified JSON response from current env state.
+    """Build the unified JSON response from ServingEnv state (the ONLY builder).
 
     Args:
-        include_frames: When True, attach env.last_frames (only set this after
-            reset/step calls that ran _process_to_agent_choice, so the frames
-            are fresh).  GET /state and multi-select steps must leave this
-            False to avoid returning stale frames from a prior action.
+        raw_frames: Raw per-chunk snapshots from `serving.reset()`/`serving.step()`.
+            GET /state passes `[]` (never advances the duel, so there is nothing
+            fresh to render).
+        open_cards: Per-duel display policy (set at /reset, persisted in app.state);
+            when True the opponent's hidden cards are revealed at render time.
     """
-    raw_frames = env.last_frames if include_frames else []
+    card_db = serving.card_db
     frames = [
         {
             "events": formatted,
-            "board": f["board"],
+            "board": render_board(f["board"], card_db, open_cards=open_cards),
             "game_state": _resolve_game_state(f["game_state"], card_text_resolver),
         }
         for f in raw_frames
         # Drop frames whose messages rendered to no strings (describe() can
         # return [] when a chunk holds only messages it does not materialize).
-        if (formatted := event_describer.describe(f["events"], env._agent_player))
+        if (formatted := event_describer.describe(f["events"], serving.agent_player))
     ]
 
     # Reuse the last frame's board if available (avoids redundant FFI call)
-    board = frames[-1]["board"] if frames else build_board_state(env, open_cards=env._open_cards)
+    board = (
+        frames[-1]["board"]
+        if frames
+        else render_board(serving.capture_board(), card_db, open_cards=open_cards)
+    )
 
     if obs is None or done:
         actions = []
@@ -108,7 +116,7 @@ def _build_response(
         actions = [d.to_dict() for d in action_describer.describe_all(obs)]
         prompt = action_describer.describe_prompt(obs)
 
-    top_gs = _resolve_game_state(env._build_game_state_dict(), card_text_resolver)
+    top_gs = _resolve_game_state(serving.capture_game_state(), card_text_resolver)
     return {
         "board": board,
         "game_state": top_gs,
@@ -121,7 +129,7 @@ def _build_response(
     }
 
 
-def _resolve_recommendation(request: Request, env: YuGiOhEnvironment, obs) -> int | None:
+def _resolve_recommendation(request: Request, serving, obs) -> int | None:
     """Best-effort recommended action index for the current prompt, or None.
 
     Returns None when AI-assist is disabled for this duel, no recommender is
@@ -135,33 +143,32 @@ def _resolve_recommendation(request: Request, env: YuGiOhEnvironment, obs) -> in
     if obs is None or obs.done or not obs.action_mask:
         return None
     try:
-        return recommend_action_index(recommender, env, obs)
+        return recommend_action_index(recommender, serving, obs)
     except Exception:
         logger.warning("Recommendation failed; returning no recommendation", exc_info=True)
         return None
 
 
-def create_web_env(config: dict | None = None) -> YuGiOhEnvironment:
-    """Create a YuGiOhEnvironment for the web UI."""
-    return YuGiOhEnvironment(config)
+def create_web_env(config: dict | None = None):
+    """Create a ServingEnv (core env + serving-session state) for the web UI."""
+    from yugioh_env.server.serving_env import ServingEnv
+
+    return ServingEnv(config)
 
 
-def create_action_describer(
-    env: YuGiOhEnvironment, strings_path: str | Path | None = None
-) -> ActionDescriber:
+def create_action_describer(env, strings_path: str | Path | None = None) -> ActionDescriber:
     """Construct the ActionDescriber the web UI shares across all requests.
 
-    Reuses the env's `cards.cdb` connection. Sysstring labels are loaded via
-    `load_sys_strings` (see it for path resolution); missing strings.conf falls
-    back to placeholder labels.
+    Reuses the env's `cards.cdb` connection (works for a `ServingEnv` or the
+    core `YuGiOhEnvironment` directly — both expose `.card_db`). Sysstring
+    labels are loaded via `load_sys_strings` (see it for path resolution);
+    missing strings.conf falls back to placeholder labels.
     """
     sys_strings = load_sys_strings(strings_path)
-    return ActionDescriber(env._card_db, sys_strings=sys_strings)
+    return ActionDescriber(env.card_db, sys_strings=sys_strings)
 
 
-def create_event_describer(
-    env: YuGiOhEnvironment, strings_path: str | Path | None = None
-) -> EventDescriber:
+def create_event_describer(env, strings_path: str | Path | None = None) -> EventDescriber:
     """Construct the EventDescriber the web UI uses to format frame events.
 
     Mirrors `create_action_describer`: reuses the env's `cards.cdb` and loads sysstring
@@ -169,12 +176,10 @@ def create_event_describer(
     placeholders).
     """
     sys_strings = load_sys_strings(strings_path)
-    return EventDescriber(env._card_db, sys_strings=sys_strings)
+    return EventDescriber(env.card_db, sys_strings=sys_strings)
 
 
-def create_card_text_resolver(
-    env: YuGiOhEnvironment, strings_path: str | Path | None = None
-) -> CardTextResolver:
+def create_card_text_resolver(env, strings_path: str | Path | None = None) -> CardTextResolver:
     """Construct the CardTextResolver the web UI uses to resolve chain entries.
 
     Reuses the env's `cards.cdb` connection. Sysstring labels are loaded via
@@ -182,7 +187,7 @@ def create_card_text_resolver(
     resolution).
     """
     sys_strings = load_sys_strings(strings_path)
-    return CardTextResolver(env._card_db, sys_strings=sys_strings)
+    return CardTextResolver(env.card_db, sys_strings=sys_strings)
 
 
 # ─── Endpoints ──────────────────────────────────────────────────────────────
@@ -191,16 +196,18 @@ def create_card_text_resolver(
 @web_router.post("/reset")
 def reset_duel(body: ResetRequest, request: Request) -> dict:
     """Reset (or create) a duel and return the initial state."""
-    env: YuGiOhEnvironment = request.app.state.web_env
+    serving = request.app.state.web_env
     action_describer: ActionDescriber = request.app.state.action_describer
     event_describer: EventDescriber = request.app.state.event_describer
     card_text_resolver: CardTextResolver = request.app.state.card_text_resolver
+    # Display policy lives in the HTTP layer (beside recommend_enabled), not in
+    # ServingEnv. Set before delegating so it reflects the request even on a 422.
+    request.app.state.open_cards = body.open_cards
     try:
-        obs = env.reset(
+        obs, raw_frames = serving.reset(
             seed=body.seed,
             deck0=body.deck0,
             deck1=body.deck1,
-            open_cards=body.open_cards,
             agent_player=body.agent_player,
             puzzle=body.puzzle,
         )
@@ -220,15 +227,16 @@ def reset_duel(body: ResetRequest, request: Request) -> dict:
             )
             request.app.state.recommend_enabled = False
     return _build_response(
-        env,
+        serving,
         action_describer,
         event_describer,
         card_text_resolver,
         obs,
         obs.done,
         obs.reward,
-        include_frames=True,
-        recommended_action_index=_resolve_recommendation(request, env, obs),
+        raw_frames=raw_frames,
+        open_cards=body.open_cards,
+        recommended_action_index=_resolve_recommendation(request, serving, obs),
     )
 
 
@@ -243,7 +251,7 @@ def get_config(request: Request) -> dict:
 def list_decks(request: Request) -> list[dict]:
     """List available .ydk decks from assets/decks/ with card names."""
     decks_dir = Path(__file__).resolve().parent.parent.parent / "assets" / "decks"
-    card_db = request.app.state.web_env._card_db
+    card_db = request.app.state.web_env.card_db
 
     # Parse all decks first to collect codes
     parsed = []
@@ -276,25 +284,22 @@ def list_decks(request: Request) -> list[dict]:
 @web_router.post("/step")
 def step_duel(body: StepRequest, request: Request) -> dict:
     """Submit an action and return the resulting state."""
-    env: YuGiOhEnvironment = request.app.state.web_env
+    serving = request.app.state.web_env
     action_describer: ActionDescriber = request.app.state.action_describer
     event_describer: EventDescriber = request.app.state.event_describer
     card_text_resolver: CardTextResolver = request.app.state.card_text_resolver
-    if env._duel is None:
-        return _build_response(
-            env, action_describer, event_describer, card_text_resolver, None, True, 0.0
-        )
-    obs = env.step(YuGiOhAction(action_index=body.action_index))
+    obs, raw_frames = serving.step(YuGiOhAction(action_index=body.action_index))
     return _build_response(
-        env,
+        serving,
         action_describer,
         event_describer,
         card_text_resolver,
         obs,
         obs.done,
         obs.reward,
-        include_frames=True,
-        recommended_action_index=_resolve_recommendation(request, env, obs),
+        raw_frames=raw_frames,
+        open_cards=getattr(request.app.state, "open_cards", False),
+        recommended_action_index=_resolve_recommendation(request, serving, obs),
     )
 
 
@@ -305,25 +310,22 @@ def get_state(request: Request) -> dict:
     Pure read-only: never builds a fresh observation (which would mutate
     state via _make_terminal_observation or trigger FFI queries via
     _make_observation). Both `actions` and `prompt` short-circuit to
-    empty when obs=None.
+    empty when obs=None. Never returns frames (nothing new was captured).
     """
-    env: YuGiOhEnvironment = request.app.state.web_env
+    serving = request.app.state.web_env
     action_describer: ActionDescriber = request.app.state.action_describer
     event_describer: EventDescriber = request.app.state.event_describer
     card_text_resolver: CardTextResolver = request.app.state.card_text_resolver
-    if env._duel is None:
-        return _build_response(
-            env, action_describer, event_describer, card_text_resolver, None, True, 0.0
-        )
-
-    done = env._duel.game_state.is_finished if env._duel else True
-    reward = 0.0
-    if done and env._duel:
-        winner = env._duel.game_state.winner
-        if winner == env._agent_player:
-            reward = 1.0
-        elif winner == 1 - env._agent_player:
-            reward = -1.0
+    done = serving.is_finished
+    reward = agent_reward(serving.winner, serving.agent_player) if done else 0.0
     return _build_response(
-        env, action_describer, event_describer, card_text_resolver, None, done, reward
+        serving,
+        action_describer,
+        event_describer,
+        card_text_resolver,
+        None,
+        done,
+        reward,
+        raw_frames=[],
+        open_cards=getattr(request.app.state, "open_cards", False),
     )
