@@ -90,6 +90,26 @@ const LOCATION_TO_ZONE: Record<number, string> = {
   0x40: "extra",
 };
 
+/**
+ * Floats a life-point HUD over the left margin of a hand row.
+ *
+ * Anchored to a wrapper around the hand row rather than the row itself: in
+ * pile mode the row is only PILE_W wide and centred, so its own left edge sits
+ * inside the pile rather than in the margin.
+ *
+ * A full hand is PILE_W wide and centred in the field column, so the margin
+ * beside it is (fieldWidth - PILE_W) / 2. This offset plus LifePoints' own max
+ * width has to stay under that, or the HUD starts covering cards — it never
+ * blocks a click either way, hence pointerEvents.
+ */
+const HUD_OVERLAY: React.CSSProperties = {
+  left: 12,
+  top: 0,
+  bottom: 0,
+  zIndex: 1100,
+  pointerEvents: "none",
+};
+
 function isExtraDeckType(cardType: string | undefined): boolean {
   return (
     !!cardType &&
@@ -349,6 +369,7 @@ export function DuelBoard({
   const ZONE_COL_WIDTH = 144; // 100px card + 44px gap
   const ZONE_CARD_HALF = 50; // half of 100px card width
   const ZONE_CARD_H = 140; // card height
+  const HAND_ROW_H = ZONE_CARD_H + 12; // + py-1.5; also the pile-mode height
 
   function zoneRect(
     rowRef: React.RefObject<HTMLDivElement | null>,
@@ -1477,63 +1498,66 @@ export function DuelBoard({
           className="flex flex-col flex-shrink-0"
           style={{ borderBottom: "1px solid rgba(255,45,120,0.35)" }}
         >
-          {/* Opponent info bar (LP only) */}
-          <div className="flex items-center px-3 py-1.5 flex-shrink-0">
-            <LifePoints
-              name={opponentPlayer.name}
-              lp={opponentPlayer.lifePoints}
-              isActive={!isMyTurn}
-              isOpponent
-              flash={lpFlash.opp}
-            />
-          </div>
-
-          {/* Opponent hand */}
-          {(() => {
-            const oppHand = opponentPlayer.hand;
-            const oppPile = oppHand.length >= 10;
-            const PILE_W = 932;
-            const CARD_W = 100;
-            const oppStep =
-              oppPile && oppHand.length > 1
-                ? Math.floor((PILE_W - CARD_W) / (oppHand.length - 1))
-                : CARD_W;
-            return (
-              <div
-                className="flex items-center justify-center px-2 py-1.5 flex-shrink-0"
-                style={
-                  oppPile
-                    ? {
-                        position: "relative",
-                        height: "152px",
-                        width: PILE_W,
-                        margin: "0 auto",
-                        overflow: "visible",
+          {/* Opponent hand, with the LP HUD floated over its left margin */}
+          <div
+            className="relative flex-shrink-0"
+            style={{ minHeight: HAND_ROW_H }}
+          >
+            <div className="absolute flex items-center" style={HUD_OVERLAY}>
+              <LifePoints
+                name={opponentPlayer.name}
+                lp={opponentPlayer.lifePoints}
+                isActive={!isMyTurn}
+                isOpponent
+                flash={lpFlash.opp}
+              />
+            </div>
+            {(() => {
+              const oppHand = opponentPlayer.hand;
+              const oppPile = oppHand.length >= 10;
+              const PILE_W = 932;
+              const CARD_W = 100;
+              const oppStep =
+                oppPile && oppHand.length > 1
+                  ? Math.floor((PILE_W - CARD_W) / (oppHand.length - 1))
+                  : CARD_W;
+              return (
+                <div
+                  className="flex items-center justify-center px-2 py-1.5"
+                  style={
+                    oppPile
+                      ? {
+                          position: "relative",
+                          height: HAND_ROW_H,
+                          width: PILE_W,
+                          margin: "0 auto",
+                          overflow: "visible",
+                        }
+                      : { gap: "4px" }
+                  }
+                >
+                  {oppHand.map((c, i) => (
+                    <HandCard
+                      key={i}
+                      card={c as GameCard}
+                      index={i}
+                      isOpponentCard
+                      pileMode={oppPile}
+                      pileOffset={oppPile ? i * oppStep : undefined}
+                      onClick={
+                        openCards && (c.id || 0) > 0
+                          ? () => {
+                              setSelectedCardDetail(c as GameCard);
+                              setSelectedLocator(null);
+                            }
+                          : undefined
                       }
-                    : { gap: "4px" }
-                }
-              >
-                {oppHand.map((c, i) => (
-                  <HandCard
-                    key={i}
-                    card={c as GameCard}
-                    index={i}
-                    isOpponentCard
-                    pileMode={oppPile}
-                    pileOffset={oppPile ? i * oppStep : undefined}
-                    onClick={
-                      openCards && (c.id || 0) > 0
-                        ? () => {
-                            setSelectedCardDetail(c as GameCard);
-                            setSelectedLocator(null);
-                          }
-                        : undefined
-                    }
-                  />
-                ))}
-              </div>
-            );
-          })()}
+                    />
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
 
           {/* Opponent zones — official mat layout (mirrored) */}
           <div
@@ -1740,80 +1764,82 @@ export function DuelBoard({
             </div>
           </div>
 
-          {/* My hand */}
-          {(() => {
-            const myHand = myPlayer.hand;
-            const myPile = myHand.length >= 10;
-            const PILE_W = 932;
-            const CARD_W = 100;
-            const myStep =
-              myPile && myHand.length > 1
-                ? Math.floor((PILE_W - CARD_W) / (myHand.length - 1))
-                : CARD_W;
-            return (
-              <div
-                className="flex items-center justify-center px-2 py-2 flex-shrink-0"
-                style={{
-                  borderTop: "1px solid rgba(0,245,255,0.2)",
-                  minHeight: "4.5rem",
-                  ...(myPile
-                    ? {
-                        position: "relative",
-                        height: "156px",
-                        width: PILE_W,
-                        margin: "0 auto",
-                        overflow: "visible",
+          {/* My hand, with the LP HUD floated over its left margin */}
+          <div
+            className="relative flex-shrink-0"
+            style={{ minHeight: HAND_ROW_H }}
+          >
+            <div className="absolute flex items-center" style={HUD_OVERLAY}>
+              <LifePoints
+                name={myPlayer.name}
+                lp={myPlayer.lifePoints}
+                isActive={isMyTurn}
+                flash={lpFlash.my}
+              />
+            </div>
+            {(() => {
+              const myHand = myPlayer.hand;
+              const myPile = myHand.length >= 10;
+              const PILE_W = 932;
+              const CARD_W = 100;
+              const myStep =
+                myPile && myHand.length > 1
+                  ? Math.floor((PILE_W - CARD_W) / (myHand.length - 1))
+                  : CARD_W;
+              return (
+                <div
+                  className="flex items-center justify-center px-2 py-1.5"
+                  style={{
+                    borderTop: "1px solid rgba(0,245,255,0.2)",
+                    ...(myPile
+                      ? {
+                          position: "relative",
+                          height: HAND_ROW_H,
+                          width: PILE_W,
+                          margin: "0 auto",
+                          overflow: "visible",
+                        }
+                      : { gap: "4px" }),
+                  }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  {myHand.map((card, i) => (
+                    <HandCard
+                      key={card.instanceId}
+                      card={card}
+                      index={i}
+                      isSelected={
+                        selection.type === "hand" && selection.index === i
                       }
-                    : { gap: "4px" }),
-                }}
-                onClick={e => e.stopPropagation()}
-              >
-                {myHand.map((card, i) => (
-                  <HandCard
-                    key={card.instanceId}
-                    card={card}
-                    index={i}
-                    isSelected={
-                      selection.type === "hand" && selection.index === i
-                    }
-                    isDetailSelected={isLocatorMatch(
-                      card.id,
-                      "mine",
-                      "hand",
-                      i
-                    )}
-                    isActionable={isActionable(card.id, "mine", "hand", i)}
-                    pileMode={myPile}
-                    pileOffset={myPile ? i * myStep : undefined}
-                    onClick={() => handleHandCardClick(i, card)}
-                    onContextMenu={e => handleHandCardContext(e, i, card)}
-                  />
-                ))}
-                {myHand.length === 0 && (
-                  <span
-                    className="text-[0.55rem]"
-                    style={{
-                      fontFamily: "'Orbitron', sans-serif",
-                      color: "var(--neon-cyan)",
-                      opacity: 0.5,
-                      letterSpacing: "0.1em",
-                    }}
-                  >
-                    NO CARDS IN HAND
-                  </span>
-                )}
-              </div>
-            );
-          })()}
-
-          {/* My info bar (LP only) */}
-          <div className="flex items-center px-3 py-1.5 flex-shrink-0">
-            <LifePoints
-              name={myPlayer.name}
-              lp={myPlayer.lifePoints}
-              isActive={isMyTurn}
-              flash={lpFlash.my}
-            />
+                      isDetailSelected={isLocatorMatch(
+                        card.id,
+                        "mine",
+                        "hand",
+                        i
+                      )}
+                      isActionable={isActionable(card.id, "mine", "hand", i)}
+                      pileMode={myPile}
+                      pileOffset={myPile ? i * myStep : undefined}
+                      onClick={() => handleHandCardClick(i, card)}
+                      onContextMenu={e => handleHandCardContext(e, i, card)}
+                    />
+                  ))}
+                  {myHand.length === 0 && (
+                    <span
+                      className="text-[0.55rem]"
+                      style={{
+                        fontFamily: "'Orbitron', sans-serif",
+                        color: "var(--neon-cyan)",
+                        opacity: 0.5,
+                        letterSpacing: "0.1em",
+                      }}
+                    >
+                      NO CARDS IN HAND
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         </div>
 
