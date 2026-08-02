@@ -1,11 +1,11 @@
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 
 interface DuelLogProps {
   logs: string[];
   isReplaying?: boolean;
 }
 
-export function DuelLog({ logs, isReplaying }: DuelLogProps) {
+function DuelLogInner({ logs, isReplaying }: DuelLogProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const prevLenRef = useRef(0);
   const animateFrom = prevLenRef.current;
@@ -44,3 +44,11 @@ export function DuelLog({ logs, isReplaying }: DuelLogProps) {
     </div>
   );
 }
+
+/**
+ * Memoised because this stays mounted for the whole duel and re-maps its
+ * entire (growing) entry list on every render. DuelBoard re-renders for plenty
+ * of reasons that leave the log untouched — selection, hover, context menu,
+ * animations — and those cost nothing here.
+ */
+export const DuelLog = memo(DuelLogInner);

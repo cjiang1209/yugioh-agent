@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { GameCard } from "../../../../shared/gameTypes";
+import { PANEL_WIDTH } from "../../lib/duelLayout";
 
 interface ZoneViewerProps {
   graveyard: GameCard[];
@@ -51,8 +52,8 @@ export function ZoneViewer({
       style={{
         top: 0,
         bottom: 0,
-        left: 0,
-        right: "clamp(180px, 20vw, 280px)",
+        left: PANEL_WIDTH,
+        right: PANEL_WIDTH,
         background: "rgba(0,0,0,0.85)",
         zIndex: 2000,
       }}
@@ -65,7 +66,7 @@ export function ZoneViewer({
           border: `1px solid rgba(${accentRgb},0.35)`,
           boxShadow: `0 0 40px rgba(0,0,0,0.8), 0 0 20px rgba(${accentRgb},0.12)`,
           maxWidth: "720px",
-          width: "92vw",
+          width: "92%",
           height: "min(85vh, 600px)",
         }}
         onClick={e => e.stopPropagation()}

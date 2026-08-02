@@ -20,6 +20,10 @@ import { PhaseIndicator } from "./PhaseIndicator";
 import { EnginePromptRouter } from "./EnginePromptRouter";
 import { ChainWidget } from "./ChainWidget";
 import { DuelResultOverlay } from "./DuelResultOverlay";
+import { CardDetail } from "./CardDetail";
+import { PanelPlaceholder } from "./PanelPlaceholder";
+import { PanelSection } from "./PanelSection";
+import { PANEL_WIDTH } from "../../lib/duelLayout";
 import type {
   EngineAction,
   EnginePrompt,
@@ -85,9 +89,6 @@ const LOCATION_TO_ZONE: Record<number, string> = {
   0x20: "banished",
   0x40: "extra",
 };
-
-// Module-level cache for card descriptions fetched from YGOProDeck API
-const descCache = new Map<number, string>();
 
 function isExtraDeckType(cardType: string | undefined): boolean {
   return (
@@ -209,9 +210,6 @@ export function DuelBoard({
 }: DuelBoardProps) {
   const [selection, setSelection] = useState<SelectionMode>({ type: "none" });
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-  const [bottomTab, setBottomTab] = useState<"actions" | "log">(
-    engineMode ? "actions" : "log"
-  );
   const [selectedCardDetail, setSelectedCardDetail] = useState<GameCard | null>(
     null
   );
@@ -292,32 +290,6 @@ export function DuelBoard({
   // inspectable; SHOW RESULT brings it back.
   const [resultDismissed, setResultDismissed] = useState(false);
 
-  // Fetch card description from YGOProDeck API when a card is selected
-  useEffect(() => {
-    if (
-      !selectedCardDetail ||
-      !selectedCardDetail.id ||
-      selectedCardDetail.desc
-    )
-      return;
-    const id = selectedCardDetail.id;
-    if (descCache.has(id)) {
-      setSelectedCardDetail(prev =>
-        prev?.id === id ? { ...prev, desc: descCache.get(id)! } : prev
-      );
-      return;
-    }
-    fetch(`https://db.ygoprodeck.com/api/v7/cardinfo.php?id=${id}`)
-      .then(r => r.json())
-      .then(data => {
-        const desc = data.data?.[0]?.desc ?? "";
-        descCache.set(id, desc);
-        setSelectedCardDetail(prev =>
-          prev?.id === id ? { ...prev, desc } : prev
-        );
-      })
-      .catch(() => {});
-  }, [selectedCardDetail?.id, selectedCardDetail?.desc]);
   const [attackAnim, setAttackAnim] = useState<{
     fromRect: DOMRect;
     toRect: DOMRect | null;
@@ -1468,6 +1440,28 @@ export function DuelBoard({
         if (selection.type !== "none") clearSelection();
       }}
     >
+      {/* ── Left panel: card detail ── */}
+      <div
+        className="flex-shrink-0 flex flex-col"
+        style={{
+          width: PANEL_WIDTH,
+          borderRight: "1px solid rgba(0,245,255,0.25)",
+          background: "rgba(0,0,0,0.4)",
+          zIndex: 60,
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        <PanelSection title="CARD DETAIL" style={{ flex: "1 1 0" }}>
+          <div className="h-full overflow-y-auto p-2">
+            {selectedCardDetail ? (
+              <CardDetail card={selectedCardDetail} />
+            ) : (
+              <PanelPlaceholder icon="🃏" label="SELECT A CARD" />
+            )}
+          </div>
+        </PanelSection>
+      </div>
+
       {/* ── Field ── */}
       <div
         className="flex-1 flex flex-col"
@@ -1827,215 +1821,46 @@ export function DuelBoard({
         <div className="flex-1" />
       </div>
 
-      {/* ── Right panel: card detail + log stacked ── */}
+      {/* ── Right panel: log over actions ── */}
       <div
         className="flex-shrink-0 flex flex-col"
         style={{
-          width: "clamp(180px, 20vw, 280px)",
+          width: PANEL_WIDTH,
           borderLeft: "1px solid rgba(0,245,255,0.25)",
           background: "rgba(0,0,0,0.4)",
           zIndex: 60,
         }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Card detail — top half */}
-        <div
-          className="flex flex-col"
+        <PanelSection
+          title="LOG"
           style={{
-            flex: "0 0 45%",
-            minHeight: 0,
-            borderBottom: "1px solid rgba(0,245,255,0.25)",
+            flex: engineMode ? "0 0 40%" : "1 1 0",
+            borderBottom: engineMode
+              ? "1px solid rgba(0,245,255,0.25)"
+              : undefined,
           }}
         >
-          {/* Header */}
-          <div
-            className="px-3 py-2 flex-shrink-0"
-            style={{
-              borderBottom: "1px solid rgba(0,245,255,0.15)",
-              fontFamily: "'Orbitron', sans-serif",
-              fontSize: "0.75rem",
-              letterSpacing: "0.1em",
-              color: "var(--neon-cyan)",
-            }}
+          <DuelLog logs={visibleLog ?? state.log} isReplaying={isReplaying} />
+        </PanelSection>
+
+        {engineMode && (
+          <PanelSection
+            title={`ACTIONS (${engineActions?.length ?? 0})`}
+            style={{ flex: "1 1 0" }}
           >
-            CARD DETAIL
-          </div>
-          {/* Content */}
-          <div className="overflow-y-auto p-2" style={{ flex: "1 1 0" }}>
-            {selectedCardDetail ? (
-              <div className="flex flex-col gap-2">
-                {/* Card image */}
-                <div
-                  className="w-full rounded overflow-hidden"
-                  style={{
-                    aspectRatio: "0.717",
-                    background: "rgba(255,255,255,0.04)",
-                  }}
-                >
-                  <img
-                    src={`https://images.ygoprodeck.com/images/cards/${selectedCardDetail.id}.jpg`}
-                    alt={selectedCardDetail.name}
-                    className="w-full h-full object-contain"
-                    onError={e => {
-                      (e.target as HTMLImageElement).src =
-                        "https://images.ygoprodeck.com/images/cards/back_high.jpg";
-                    }}
-                  />
-                </div>
-                {/* Card name */}
-                <div
-                  style={{
-                    fontFamily: "'Orbitron', sans-serif",
-                    fontSize: "0.75rem",
-                    fontWeight: 700,
-                    color: "#e8f4ff",
-                    lineHeight: 1.4,
-                    letterSpacing: "0.03em",
-                  }}
-                >
-                  {selectedCardDetail.name}
-                </div>
-                {/* Type + attribute */}
-                <div
-                  style={{
-                    fontFamily: "'Rajdhani', sans-serif",
-                    fontSize: "0.82rem",
-                    color: "#8aaec8",
-                    lineHeight: 1.5,
-                    fontWeight: 500,
-                  }}
-                >
-                  {selectedCardDetail.type}
-                  {selectedCardDetail.level
-                    ? ` · ★${selectedCardDetail.level}`
-                    : ""}
-                  {selectedCardDetail.attribute
-                    ? ` · ${selectedCardDetail.attribute}`
-                    : ""}
-                </div>
-                {/* ATK / DEF */}
-                {selectedCardDetail.type?.includes("Monster") && (
-                  <div className="flex gap-3">
-                    <span
-                      style={{
-                        fontFamily: "'Rajdhani', sans-serif",
-                        fontSize: "0.82rem",
-                        color: "var(--neon-cyan)",
-                        fontWeight: 700,
-                      }}
-                    >
-                      ATK/{selectedCardDetail.atk ?? "?"}
-                    </span>
-                    <span
-                      style={{
-                        fontFamily: "'Rajdhani', sans-serif",
-                        fontSize: "0.82rem",
-                        color: "var(--neon-yellow, #ffe066)",
-                        fontWeight: 700,
-                      }}
-                    >
-                      DEF/{selectedCardDetail.def ?? "?"}
-                    </span>
-                  </div>
-                )}
-                {/* Description */}
-                <p
-                  style={{
-                    fontFamily: "'Rajdhani', sans-serif",
-                    fontSize: "0.82rem",
-                    color: "#8aaec8",
-                    lineHeight: 1.6,
-                    fontWeight: 400,
-                  }}
-                >
-                  {selectedCardDetail.desc}
-                </p>
-              </div>
+            {engineActions && engineActions.length > 0 && onEngineAction ? (
+              <EnginePromptRouter
+                actions={engineActions}
+                prompt={enginePrompt ?? null}
+                onAction={onEngineAction}
+                recommendedIndex={recommendedActionIndex}
+              />
             ) : (
-              <div
-                className="h-full flex flex-col items-center justify-center gap-2 opacity-30"
-                style={{
-                  fontFamily: "'Orbitron', sans-serif",
-                  fontSize: "0.65rem",
-                  color: "var(--neon-cyan)",
-                  letterSpacing: "0.1em",
-                  textAlign: "center",
-                }}
-              >
-                <div style={{ fontSize: "1.5rem" }}>🃏</div>
-                <div>SELECT A CARD</div>
-              </div>
+              <PanelPlaceholder label="NO ACTIONS" />
             )}
-          </div>
-        </div>
-        {/* Bottom half: tabbed actions / log */}
-        <div className="flex-1 flex flex-col" style={{ minHeight: 0 }}>
-          {engineMode ? (
-            <>
-              {/* Tab bar */}
-              <div
-                className="flex flex-shrink-0"
-                style={{ borderBottom: "1px solid rgba(0,245,255,0.15)" }}
-              >
-                {(["actions", "log"] as const).map(tab => (
-                  <button
-                    key={tab}
-                    onClick={() => setBottomTab(tab)}
-                    className="flex-1 py-2 transition-all"
-                    style={{
-                      fontFamily: "'Orbitron', sans-serif",
-                      fontSize: "0.75rem",
-                      letterSpacing: "0.1em",
-                      color:
-                        bottomTab === tab
-                          ? "var(--neon-cyan)"
-                          : "var(--text-secondary)",
-                      background:
-                        bottomTab === tab
-                          ? "rgba(0,245,255,0.06)"
-                          : "transparent",
-                      borderBottom:
-                        bottomTab === tab
-                          ? "2px solid var(--neon-cyan)"
-                          : "2px solid transparent",
-                      opacity: bottomTab === tab ? 1 : 0.5,
-                      cursor: "pointer",
-                      border: "none",
-                      borderTop: "none",
-                      borderLeft: "none",
-                      borderRight: "none",
-                    }}
-                  >
-                    {tab === "actions"
-                      ? `ACTIONS (${engineActions?.length ?? 0})`
-                      : "LOG"}
-                  </button>
-                ))}
-              </div>
-              {/* Tab content */}
-              <div className="flex-1" style={{ minHeight: 0 }}>
-                {bottomTab === "actions" &&
-                engineActions &&
-                engineActions.length > 0 &&
-                onEngineAction ? (
-                  <EnginePromptRouter
-                    actions={engineActions}
-                    prompt={enginePrompt ?? null}
-                    onAction={onEngineAction}
-                    recommendedIndex={recommendedActionIndex}
-                  />
-                ) : (
-                  <DuelLog
-                    logs={visibleLog ?? state.log}
-                    isReplaying={isReplaying}
-                  />
-                )}
-              </div>
-            </>
-          ) : (
-            <DuelLog logs={visibleLog ?? state.log} isReplaying={isReplaying} />
-          )}
-        </div>
+          </PanelSection>
+        )}
       </div>
 
       {/* ── Overlays ── */}
