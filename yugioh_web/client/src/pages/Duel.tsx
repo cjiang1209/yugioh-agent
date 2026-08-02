@@ -65,6 +65,10 @@ export default function Duel() {
         openCards={openCards}
         agentPlayer={agentPlayer}
         recommend={recommend}
+        onChangeDecks={() => {
+          setMyDeck(null);
+          setOppDeck(null);
+        }}
         onRestartTurnOrder={() => {
           const { agentPlayer: ap, animateCoinFlip } =
             resolveTurnOrder(turnOrder);
@@ -85,6 +89,7 @@ function AIModeDuel({
   openCards,
   agentPlayer,
   recommend,
+  onChangeDecks,
   onRestartTurnOrder,
 }: {
   myDeck: DeckPayload;
@@ -92,10 +97,12 @@ function AIModeDuel({
   openCards: boolean;
   agentPlayer: 0 | 1;
   recommend: boolean;
+  onChangeDecks: () => void;
   onRestartTurnOrder: () => { agentPlayer: 0 | 1; willAnimate: boolean };
 }) {
   const {
     state,
+    outcome,
     engineActions,
     recommendedActionIndex,
     enginePrompt,
@@ -174,6 +181,8 @@ function AIModeDuel({
       recommendedActionIndex={recommendedActionIndex}
       enginePrompt={enginePrompt}
       onEngineAction={submitAction}
+      outcome={outcome}
+      onChangeDecks={onChangeDecks}
       onRestart={() => {
         const { agentPlayer: ap, willAnimate } = onRestartTurnOrder();
         if (!willAnimate) {

@@ -80,6 +80,9 @@ export const PHASE_LABELS: Record<Phase, string> = {
 
 export type PlayerSide = "player1" | "player2";
 
+/** Terminal result of a duel from the local player's perspective. */
+export type DuelOutcome = "win" | "loss" | "draw";
+
 export interface PlayerState {
   id: string;
   name: string;
@@ -104,7 +107,6 @@ export interface DuelState {
   activePlayer: PlayerSide;
   player1: PlayerState;
   player2: PlayerState;
-  winner: PlayerSide | null;
   battleStep: BattleStep | null;
   log: string[];
   pendingChain: PendingChainEntry[];

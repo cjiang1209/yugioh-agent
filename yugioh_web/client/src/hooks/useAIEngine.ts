@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
+  DuelOutcome,
   DuelState,
   GameCard,
   FieldCard,
@@ -28,6 +29,14 @@ export type AIEngineStatus = "idle" | "loading" | "dueling" | "ended" | "error";
 
 export interface UseAIEngineReturn {
   state: DuelState | null;
+  /**
+   * Terminal result, or null while the duel is still running.
+   *
+   * Assigned only once the event replay for the final step has finished, so the
+   * result screen never shows over a board that is still animating: `status`
+   * flips to "ended" as soon as the response arrives, well before that.
+   */
+  outcome: DuelOutcome | null;
   engineActions: EngineAction[];
   recommendedActionIndex: number | null;
   enginePrompt: EnginePrompt | null;
@@ -79,6 +88,12 @@ function engineCardToGameCard(
         ]
       : [],
   };
+}
+
+/** Terminal outcome for a step response, or null while the duel is running. */
+function duelOutcome(done: boolean, reward: number): DuelOutcome | null {
+  if (!done) return null;
+  return reward > 0 ? "win" : reward < 0 ? "loss" : "draw";
 }
 
 function mapCardType(t: string): string {
@@ -165,8 +180,6 @@ function makeFaceDownCard(
 function buildDuelState(
   board: EngineBoard,
   game_state: EngineGameState,
-  done: boolean,
-  reward: number,
   log: string[]
 ): DuelState {
   // Player (human, always player1 / bottom)
@@ -267,13 +280,6 @@ function buildDuelState(
     activePlayer: game_state.is_my_turn ? "player1" : "player2",
     player1: player,
     player2: opponent,
-    winner: done
-      ? reward > 0
-        ? "player1"
-        : reward < 0
-          ? "player2"
-          : null
-      : null,
     battleStep: null,
     log,
     pendingChain: game_state.pending_chain ?? [],
@@ -304,7 +310,6 @@ const INITIAL_DUEL_STATE: DuelState = {
   activePlayer: "player1",
   player1: { ...EMPTY_PLAYER },
   player2: { ...EMPTY_PLAYER, id: "player2", name: "Opponent" },
-  winner: null,
   battleStep: null,
   log: [],
   pendingChain: [],
@@ -318,6 +323,7 @@ export function useAIEngine(
   recommend: boolean = false
 ): UseAIEngineReturn {
   const [state, setState] = useState<DuelState | null>(null);
+  const [outcome, setOutcome] = useState<DuelOutcome | null>(null);
   const [engineActions, setEngineActions] = useState<EngineAction[]>([]);
   const [recommendedActionIndex, setRecommendedActionIndex] = useState<
     number | null
@@ -342,7 +348,7 @@ export function useAIEngine(
   // replayLog is intentionally excluded — log display uses visibleLog, not state.log.
   useEffect(() => {
     if (isReplaying && currentBoard && currentGameState) {
-      setState(buildDuelState(currentBoard, currentGameState, false, 0, []));
+      setState(buildDuelState(currentBoard, currentGameState, []));
     }
   }, [isReplaying, currentBoard, currentGameState]);
 
@@ -356,16 +362,12 @@ export function useAIEngine(
         const stepEvents = resp.frames.flatMap(f => f.events);
         const newLog = [...logRef.current, ...stepEvents];
         logRef.current = newLog;
-        setState(
-          buildDuelState(
-            resp.board,
-            resp.game_state,
-            resp.done,
-            resp.reward,
-            newLog
-          )
-        );
+        setState(buildDuelState(resp.board, resp.game_state, newLog));
         setEnginePrompt(resp.prompt ?? null);
+        // Only here, never beside setStatus above: the closing events are
+        // still replaying at that point and the result screen must not show
+        // until the board has caught up.
+        setOutcome(duelOutcome(resp.done, resp.reward));
 
         // Auto-pass or show actions
         if (
@@ -408,6 +410,7 @@ export function useAIEngine(
       resetReplay();
       logRef.current = [];
       setState(INITIAL_DUEL_STATE);
+      setOutcome(null);
       try {
         const body: Record<string, unknown> = {};
         if (seed !== undefined) body.seed = seed;
@@ -458,6 +461,7 @@ export function useAIEngine(
 
   return {
     state,
+    outcome,
     engineActions,
     recommendedActionIndex,
     enginePrompt,

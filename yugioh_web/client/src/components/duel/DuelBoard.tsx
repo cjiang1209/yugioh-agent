@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Ghost, Mountain, ScrollText, Skull, Star, Swords } from "lucide-react";
 import {
+  DuelOutcome,
   DuelState,
   FieldCard,
   GameAction,
@@ -18,12 +19,13 @@ import { SummonAnimation } from "./SummonAnimation";
 import { PhaseIndicator } from "./PhaseIndicator";
 import { EnginePromptRouter } from "./EnginePromptRouter";
 import { ChainWidget } from "./ChainWidget";
+import { DuelResultOverlay } from "./DuelResultOverlay";
 import type {
   EngineAction,
   EnginePrompt,
 } from "../../../../shared/engineTypes";
 
-interface DuelBoardProps {
+export interface DuelBoardProps {
   state: DuelState;
   mySide: PlayerSide;
   onAction: (action: GameAction) => void;
@@ -32,7 +34,10 @@ interface DuelBoardProps {
   recommendedActionIndex?: number | null;
   enginePrompt?: EnginePrompt | null;
   onEngineAction?: (actionIndex: number) => void;
+  /** Terminal result, or null while the duel is still running. */
+  outcome: DuelOutcome | null;
   onRestart?: () => void;
+  onChangeDecks?: () => void;
   visibleLog?: string[];
   isReplaying?: boolean;
   openCards?: boolean;
@@ -195,7 +200,9 @@ export function DuelBoard({
   recommendedActionIndex,
   enginePrompt,
   onEngineAction,
+  outcome,
   onRestart,
+  onChangeDecks,
   visibleLog,
   isReplaying,
   openCards,
@@ -281,6 +288,9 @@ export function DuelBoard({
     tab: "graveyard" | "banished" | "extra";
   } | null>(null);
   const [showRestartConfirm, setShowRestartConfirm] = useState(false);
+  // "VIEW BOARD" hides the result screen so the final field and log stay
+  // inspectable; SHOW RESULT brings it back.
+  const [resultDismissed, setResultDismissed] = useState(false);
 
   // Fetch card description from YGOProDeck API when a card is selected
   useEffect(() => {
@@ -337,8 +347,13 @@ export function DuelBoard({
   const isMyTurn = state.activePlayer === mySide;
   const phase = state.phase;
 
+  useEffect(() => {
+    if (outcome || !resultDismissed) return;
+    setResultDismissed(false);
+  }, [outcome, resultDismissed]);
+
   // In engine mode, disable all click-zone interactions — actions come from the panel
-  const canAct = !engineMode && isMyTurn && !state.winner;
+  const canAct = !engineMode && isMyTurn && !outcome;
   const canSummon =
     canAct &&
     (phase === "MAIN1" || phase === "MAIN2") &&
@@ -1425,39 +1440,18 @@ export function DuelBoard({
     );
   }
 
-  // ─── Win overlay ────────────────────────────────────────────────────────────
+  // ─── Result overlay ─────────────────────────────────────────────────────────
 
-  if (state.winner) {
-    const iWon = state.winner === mySide;
+  if (outcome && !resultDismissed) {
+    const log = visibleLog ?? state.log;
     return (
-      <div
-        className="fixed inset-0 z-50 flex items-center justify-center"
-        style={{ background: "rgba(0,0,0,0.9)" }}
-      >
-        <div className="text-center animate-slide-up">
-          <div
-            className="text-6xl font-black mb-4"
-            style={{
-              fontFamily: "'Orbitron', sans-serif",
-              color: iWon ? "var(--neon-cyan)" : "var(--neon-pink)",
-              textShadow: iWon
-                ? "0 0 20px var(--neon-cyan), 0 0 60px var(--neon-cyan)"
-                : "0 0 20px var(--neon-pink), 0 0 60px var(--neon-pink)",
-            }}
-          >
-            {iWon ? "VICTORY" : "DEFEAT"}
-          </div>
-          <div
-            className="text-lg opacity-60"
-            style={{ color: "var(--text-secondary)" }}
-          >
-            {(() => {
-              const log = visibleLog ?? state.log;
-              return log[log.length - 1];
-            })()}
-          </div>
-        </div>
-      </div>
+      <DuelResultOverlay
+        outcome={outcome}
+        lastLogLine={log[log.length - 1]}
+        onRestart={onRestart}
+        onChangeDecks={onChangeDecks}
+        onDismiss={() => setResultDismissed(true)}
+      />
     );
   }
 
@@ -1576,7 +1570,7 @@ export function DuelBoard({
           </div>
         </div>
 
-        {/* Center divider: phase indicator + EMZ slots + restart button — all in one row */}
+        {/* Center divider: phase indicator + EMZ slots + right-edge button — all in one row */}
         <div
           className="flex-shrink-0 relative"
           style={{
@@ -1588,8 +1582,8 @@ export function DuelBoard({
         >
           {/*
            * The EMZ slots (100×140px) define the row height.
-           * The phase card and restart button are absolutely positioned
-           * on the left and right edges, vertically centered.
+           * The phase card and the RESTART / SHOW RESULT button are absolutely
+           * positioned on the left and right edges, vertically centered.
            * The EMZ grid sits in the center using the same board-center-row
            * structure as the zone grids for pixel-perfect column alignment.
            */}
@@ -1681,25 +1675,45 @@ export function DuelBoard({
             </div>
           </div>
 
-          {/* Restart button — absolute right, vertically centered */}
-          {onRestart && (
-            <div className="absolute right-3 top-0 bottom-0 flex items-center">
-              <button
-                onClick={e => {
-                  e.stopPropagation();
-                  setShowRestartConfirm(true);
-                }}
-                className="px-2 py-0.5 text-[0.5rem] rounded opacity-70 hover:opacity-100 transition-opacity"
-                style={{
-                  border: "1px solid var(--neon-pink)",
-                  color: "var(--neon-pink)",
-                  fontFamily: "'Orbitron', sans-serif",
-                }}
-              >
-                RESTART
-              </button>
-            </div>
-          )}
+          {/* Absolute right, vertically centered: RESTART while the duel runs,
+              SHOW RESULT once it is over — restarting then lives in the result
+              overlay. */}
+          {(() => {
+            const pill = outcome
+              ? {
+                  label: "SHOW RESULT",
+                  color: "var(--neon-cyan)",
+                  border: "rgba(0,245,255,0.4)",
+                  onClick: () => setResultDismissed(false),
+                }
+              : onRestart
+                ? {
+                    label: "RESTART",
+                    color: "var(--neon-pink)",
+                    border: "var(--neon-pink)",
+                    onClick: () => setShowRestartConfirm(true),
+                  }
+                : null;
+            if (!pill) return null;
+            return (
+              <div className="absolute right-3 top-0 bottom-0 flex items-center">
+                <button
+                  onClick={e => {
+                    e.stopPropagation();
+                    pill.onClick();
+                  }}
+                  className="px-2 py-0.5 text-[0.5rem] rounded opacity-70 hover:opacity-100 transition-opacity"
+                  style={{
+                    border: `1px solid ${pill.border}`,
+                    color: pill.color,
+                    fontFamily: "'Orbitron', sans-serif",
+                  }}
+                >
+                  {pill.label}
+                </button>
+              </div>
+            );
+          })()}
         </div>
 
         {/* My area — compact, no stretching */}
