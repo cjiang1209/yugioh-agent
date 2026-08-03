@@ -13,6 +13,7 @@ from openenv.core.env_server.interfaces import Environment
 
 from yugioh_core.card_database import CardDatabase
 from yugioh_core.constants import (
+    MSG_ANNOUNCE_ATTRIB,
     MSG_ANNOUNCE_CARD,
     MSG_NEW_TURN,
     MSG_SELECT_BATTLECMD,
@@ -181,9 +182,27 @@ def _build_action_descriptors(actions: list[dict]) -> list[ActionDescriptor | No
     return out
 
 
-def _picked_cards(cards: Iterable[dict]) -> list[dict]:
-    """Minimal {code, location} dicts for the picked-cards prompt-meta field."""
-    return [{"code": c.get("code", 0), "location": c.get("location", 0)} for c in cards]
+def _picked_cards(cards: Iterable[dict], agent_player: int = 0) -> list[dict]:
+    """CardRef-shaped dicts for the picked-cards prompt-meta field.
+
+    Carries controller (relativized to the agent's perspective, matching
+    every other controller field the observation exposes), location,
+    sequence, and a best-effort ``param`` (release_param for tribute cards,
+    param for sum cards, 0 otherwise) -- everything a consumer needs to
+    reconstruct a full entry for a card that has already been picked.
+    """
+    result = []
+    for c in cards:
+        result.append(
+            {
+                "code": c.get("code", 0),
+                "controller": _relativize_controller(c.get("controller", 0), agent_player),
+                "location": c.get("location", 0),
+                "sequence": c.get("sequence", 0),
+                "param": int(c.get("release_param", c.get("param", 0))),
+            }
+        )
+    return result
 
 
 def _build_prompt_meta(mapper) -> dict | None:
@@ -220,7 +239,7 @@ def _build_prompt_meta(mapper) -> dict | None:
         result["max"] = msg.get("max", 1)
         result["cancelable"] = bool(msg.get("cancelable", 0))
         result["selected_count"] = len(selected)
-        result["picked_cards"] = _picked_cards(cards[i] for i in selected)
+        result["picked_cards"] = _picked_cards((cards[i] for i in selected), agent_player)
         result["selected"] = list(selected)
     elif msg_type == MSG_SELECT_TRIBUTE:
         selected = msg.get("_selected", [])
@@ -232,40 +251,37 @@ def _build_prompt_meta(mapper) -> dict | None:
             cards[i].get("release_param", 1) for i in selected if i < len(cards)
         )
         result["cards_selected"] = len(selected)
-        result["picked_cards"] = _picked_cards(cards[i] for i in selected)
+        result["picked_cards"] = _picked_cards((cards[i] for i in selected), agent_player)
         result["selected"] = list(selected)
     elif msg_type == MSG_SELECT_SUM:
+        optional_cards = msg.get("optional_cards", [])
+        sum_selected = list(msg.get("_selected", []))
         result["target_sum"] = msg.get("target_sum", 0)
         result["select_type"] = msg.get("select_type", 0)
         result["min"] = msg.get("min", 1)
         result["max"] = msg.get("max", 0)
-        result["selected"] = list(msg.get("_selected", []))
-        result["must_cards"] = [
-            {
-                "code": c.get("code", 0),
-                "controller": _relativize_controller(c.get("controller", 0), agent_player),
-                "location": c.get("location", 0),
-                "sequence": c.get("sequence", 0),
-                "param": int(c.get("param", 0)),
-            }
-            for c in msg.get("must_cards", [])
-        ]
+        result["selected"] = sum_selected
+        result["picked_cards"] = _picked_cards(
+            (optional_cards[i] for i in sum_selected if i < len(optional_cards)), agent_player
+        )
+        result["must_cards"] = _picked_cards(msg.get("must_cards", []), agent_player)
     elif msg_type == MSG_SELECT_UNSELECT_CARD:
         result["min"] = msg.get("min", 1)
         result["max"] = msg.get("max", 1)
         result["finishable"] = bool(msg.get("finishable", 0))
-        result["picked_cards"] = _picked_cards(msg.get("unselectable", []))
+        result["cancelable"] = bool(msg.get("cancelable", 0))
+        result["picked_cards"] = _picked_cards(msg.get("unselectable", []), agent_player)
     elif msg_type == MSG_SELECT_CHAIN:
         result["forced"] = bool(msg.get("forced", 0))
     elif msg_type == MSG_SELECT_POSITION:
         result["card_code"] = msg.get("code", 0)
-    elif msg_type in (MSG_SELECT_PLACE, MSG_SELECT_DISFIELD):
+    elif msg_type == MSG_ANNOUNCE_ATTRIB or msg_type in (MSG_SELECT_PLACE, MSG_SELECT_DISFIELD):
         result["count"] = msg.get("count", 1)
     elif msg_type in (MSG_SORT_CARD, MSG_SORT_CHAIN):
         cards = msg.get("cards", [])
         selected = msg.get("_selected", [])
         result["count"] = len(cards)
-        result["picked_cards"] = _picked_cards(cards[i] for i in selected)
+        result["picked_cards"] = _picked_cards((cards[i] for i in selected), agent_player)
     return result
 
 

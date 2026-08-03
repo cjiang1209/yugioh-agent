@@ -2,6 +2,13 @@
 
 Pure functions — no HTTP, no state, no ygo-agent imports. Builds
 JSON-serializable dicts conforming to ygo-agent's ``ygoinf`` server schema.
+
+Sourced off ``YuGiOhObservation.action_descriptors`` / ``prompt_meta``
+(structured, engine-agnostic) rather than the raw ygopro-core ``msg`` dict.
+"Tier 3" prompts (place_zone / choose_position / pick_bit) are *derived*,
+not read: the descriptor list itself IS the legal-options list, since the
+mapper that builds it already applied whatever engine-side filtering
+(field_mask, positions bitmask, etc.) would otherwise need re-deriving here.
 """
 
 from __future__ import annotations
@@ -11,8 +18,16 @@ import logging
 import numpy as np
 
 from yugioh_core.action_categories import (
+    BATTLE_ACTIVATE,
+    BATTLE_ATTACK,
     BATTLE_TO_EP,
     BATTLE_TO_M2,
+    IDLE_ACTIVATE,
+    IDLE_MSET,
+    IDLE_REPOSITION,
+    IDLE_SP_SUMMON,
+    IDLE_SSET,
+    IDLE_SUMMON,
     IDLE_TO_BP,
     IDLE_TO_EP,
 )
@@ -22,7 +37,6 @@ from yugioh_core.constants import (
     MSG_SELECT_BATTLECMD,
     MSG_SELECT_CARD,
     MSG_SELECT_CHAIN,
-    MSG_SELECT_DISFIELD,
     MSG_SELECT_EFFECTYN,
     MSG_SELECT_IDLECMD,
     MSG_SELECT_OPTION,
@@ -32,12 +46,25 @@ from yugioh_core.constants import (
     MSG_SELECT_TRIBUTE,
     MSG_SELECT_UNSELECT_CARD,
     MSG_SELECT_YESNO,
-    POS_FACEDOWN_ATTACK,
-    POS_FACEDOWN_DEFENSE,
-    POS_FACEUP_ATTACK,
-    POS_FACEUP_DEFENSE,
 )
 from yugioh_core.encoding import decode_u16, decode_u32
+from yugioh_env.models import (
+    ActivateEffect,
+    Attack,
+    CardCommand,
+    CardRef,
+    ChooseOption,
+    ChoosePosition,
+    Confirm,
+    FinishPick,
+    Pass,
+    PhaseChange,
+    PickBit,
+    PickCard,
+    PlaceZone,
+    YuGiOhObservation,
+)
+from yugioh_env.models import AnnounceNumber as AnnounceNumberDescriptor
 
 # ---------------------------------------------------------------------------
 # Mapping tables: our bitmask/int values → ygo-agent enum string names
@@ -297,360 +324,422 @@ def _convert_desc(desc: int) -> int:
     return desc >> 16
 
 
-def _card_info(card: dict) -> dict:
-    """Build a ygo-agent CardInfo dict from our msg card dict."""
+def _controller_str(controller: int) -> str:
+    return "me" if controller == 0 else "opponent"
+
+
+def _card_ref_info(card: CardRef) -> dict:
+    """Build a ygo-agent CardInfo dict from a descriptor's CardRef."""
     return {
-        "code": card.get("code", 0),
-        "controller": "me" if card.get("controller", 0) == 0 else "opponent",
-        "location": _decode_location(card.get("location", 0)),
-        "sequence": card.get("sequence", 0),
+        "code": card.code,
+        "controller": _controller_str(card.controller),
+        "location": _decode_location(card.location),
+        "sequence": card.sequence,
     }
 
 
-def _card_location(card: dict) -> dict:
-    """Build a ygo-agent CardLocation dict from our msg card dict.
+def _zone(controller: int, location: int, sequence: int) -> dict:
+    """Build a ygo-agent CardLocation dict.
 
-    ``overlay_sequence`` is always -1: the ``loc_info`` struct the engine
-    writes for selectable cards has no Xyz-overlay index (its 4th field, which
-    our parser stores as ``subsequence``, is actually the position bitmask).
-    Cards offered in select_card/chain/tribute/etc. are field/hand/deck cards,
-    never overlay materials, so -1 is correct. Emitting the position here
-    instead produced bogus specs like ``h1a11`` that failed to match the card
-    list, leaving the model unable to tell the cards apart.
+    ``overlay_sequence`` is always -1: nothing that reaches here refers to an
+    Xyz overlay material — these are field/hand/deck cards. A real overlay
+    index produces specs like ``h1a11`` that match no card in the list,
+    leaving the model unable to tell the cards apart.
     """
     return {
-        "controller": "me" if card.get("controller", 0) == 0 else "opponent",
-        "location": _decode_location(card.get("location", 0)),
-        "sequence": card.get("sequence", 0),
+        "controller": _controller_str(controller),
+        "location": _decode_location(location),
+        "sequence": sequence,
         "overlay_sequence": -1,
     }
 
 
-def _translate_idle_cmd(msg: dict) -> dict:
+def _card_ref_location(card: CardRef) -> dict:
+    return _zone(card.controller, card.location, card.sequence)
+
+
+_IDLE_CMD_NAMES: dict[int, str] = {
+    IDLE_SUMMON: "summon",
+    IDLE_SP_SUMMON: "sp_summon",
+    IDLE_REPOSITION: "reposition",
+    IDLE_MSET: "mset",
+    IDLE_SSET: "set",
+}
+
+
+def _translate_idle_cmd(descriptors: list, prompt_meta: dict) -> dict:
     """MSG_SELECT_IDLECMD → select_idlecmd."""
     cmds = []
-
-    for category, key, cmd_type in [
-        (0, "summonable", "summon"),
-        (1, "sp_summonable", "sp_summon"),
-        (2, "repositionable", "reposition"),
-        (3, "mset", "mset"),
-        (4, "sset", "set"),
-    ]:
-        for i, card in enumerate(msg.get(key, [])):
+    for d in descriptors:
+        if isinstance(d, CardCommand):
             cmds.append(
                 {
-                    "cmd_type": cmd_type,
+                    "cmd_type": _IDLE_CMD_NAMES[d.command],
                     "data": {
-                        "card_info": _card_info(card),
+                        "card_info": _card_ref_info(d.card),
                         "effect_description": 0,
-                        "response": (i << 16) | category,
+                        "response": (d.engine_index << 16) | d.command,
                     },
                 }
             )
-
-    for i, card in enumerate(msg.get("activatable", [])):
-        desc = card.get("desc", 0)
-        cmds.append(
-            {
-                "cmd_type": "activate",
-                "data": {
-                    "card_info": _card_info(card),
-                    "effect_description": _convert_desc(int(desc)),
-                    "response": (i << 16) | 5,
-                },
-            }
-        )
-
-    if msg.get("to_bp"):
-        cmds.append({"cmd_type": "to_bp", "data": None})
-    if msg.get("to_ep"):
-        cmds.append({"cmd_type": "to_ep", "data": None})
-
+        elif isinstance(d, ActivateEffect):
+            cmds.append(
+                {
+                    "cmd_type": "activate",
+                    "data": {
+                        "card_info": _card_ref_info(d.card),
+                        "effect_description": _convert_desc(d.desc),
+                        "response": (d.engine_index << 16) | IDLE_ACTIVATE,
+                    },
+                }
+            )
+        elif isinstance(d, PhaseChange):
+            cmds.append({"cmd_type": f"to_{d.to}", "data": None})
     return {"data": {"msg_type": "select_idlecmd", "idle_cmds": cmds}}
 
 
-def _translate_chain(msg: dict) -> dict:
+def _translate_chain(descriptors: list, prompt_meta: dict) -> dict:
     """MSG_SELECT_CHAIN → select_chain."""
-    chains = []
-    for i, chain in enumerate(msg.get("chains", [])):
-        chains.append(
-            {
-                "code": chain.get("code", 0),
-                "location": _card_location(chain),
-                "effect_description": _convert_desc(int(chain.get("desc", 0))),
-                "response": i,
-            }
-        )
+    chains = [
+        {
+            "code": d.card.code,
+            "location": _card_ref_location(d.card),
+            "effect_description": _convert_desc(d.desc),
+            "response": d.engine_index,
+        }
+        for d in descriptors
+        if isinstance(d, ActivateEffect)
+    ]
     return {
         "data": {
             "msg_type": "select_chain",
-            "forced": bool(msg.get("forced", 0)),
+            "forced": bool(prompt_meta["forced"]),
             "chains": chains,
         }
     }
 
 
-def _translate_battlecmd(msg: dict) -> dict:
+def _translate_battlecmd(descriptors: list, prompt_meta: dict) -> dict:
     """MSG_SELECT_BATTLECMD → select_battlecmd."""
     cmds = []
-    for i, card in enumerate(msg.get("activatable", [])):
-        desc = card.get("desc", 0)
-        cmds.append(
-            {
-                "cmd_type": "activate",
-                "data": {
-                    "card_info": _card_info(card),
-                    "effect_description": _convert_desc(int(desc)),
-                    "direct_attackable": False,
-                    "response": (i << 16) | 0,
-                },
-            }
-        )
-    for i, card in enumerate(msg.get("attackable", [])):
-        cmds.append(
-            {
-                "cmd_type": "attack",
-                "data": {
-                    "card_info": _card_info(card),
-                    "effect_description": 0,
-                    "direct_attackable": bool(card.get("direct_attackable", 0)),
-                    "response": (i << 16) | 1,
-                },
-            }
-        )
-    if msg.get("to_m2"):
-        cmds.append({"cmd_type": "to_m2", "data": None})
-    if msg.get("to_ep"):
-        cmds.append({"cmd_type": "to_ep", "data": None})
+    for d in descriptors:
+        if isinstance(d, ActivateEffect):
+            cmds.append(
+                {
+                    "cmd_type": "activate",
+                    "data": {
+                        "card_info": _card_ref_info(d.card),
+                        "effect_description": _convert_desc(d.desc),
+                        "direct_attackable": False,
+                        "response": (d.engine_index << 16) | BATTLE_ACTIVATE,
+                    },
+                }
+            )
+        elif isinstance(d, Attack):
+            cmds.append(
+                {
+                    "cmd_type": "attack",
+                    "data": {
+                        "card_info": _card_ref_info(d.card),
+                        "effect_description": 0,
+                        "direct_attackable": d.direct_attackable,
+                        "response": (d.engine_index << 16) | BATTLE_ATTACK,
+                    },
+                }
+            )
+        elif isinstance(d, PhaseChange):
+            cmds.append({"cmd_type": f"to_{d.to}", "data": None})
     return {"data": {"msg_type": "select_battlecmd", "battle_cmds": cmds}}
 
 
-def _translate_effectyn(msg: dict) -> dict:
-    """MSG_SELECT_EFFECTYN → select_effectyn."""
+def _translate_effectyn(descriptors: list, prompt_meta: dict) -> dict:
+    """MSG_SELECT_EFFECTYN → select_effectyn.
+
+    No descriptor carries the prompt's card (Confirm is fieldless besides
+    yes/desc), so the card ref is read entirely from prompt_meta.
+    """
     return {
         "data": {
             "msg_type": "select_effectyn",
-            "code": msg.get("code", 0),
-            "location": _card_location(msg),
-            "effect_description": _convert_desc(int(msg.get("desc", 0))),
+            "code": prompt_meta["card_code"],
+            "location": _zone(
+                prompt_meta["controller"], prompt_meta["location"], prompt_meta["sequence"]
+            ),
+            "effect_description": _convert_desc(int(prompt_meta["desc"])),
         }
     }
 
 
-def _translate_yesno(msg: dict) -> dict:
+def _translate_yesno(descriptors: list, prompt_meta: dict) -> dict:
     """MSG_SELECT_YESNO → select_yesno."""
     return {
         "data": {
             "msg_type": "select_yesno",
-            "effect_description": _convert_desc(int(msg.get("desc", 0))),
+            "effect_description": _convert_desc(int(prompt_meta["desc"])),
         }
     }
 
 
-def _translate_option(msg: dict) -> dict:
+def _translate_option(descriptors: list, prompt_meta: dict) -> dict:
     """MSG_SELECT_OPTION → select_option."""
     options = [
-        {"code": _convert_desc(int(o)), "response": i} for i, o in enumerate(msg.get("options", []))
+        {"code": _convert_desc(d.desc), "response": d.engine_index}
+        for d in descriptors
+        if isinstance(d, ChooseOption)
     ]
     return {"data": {"msg_type": "select_option", "options": options}}
 
 
-def _translate_card(msg: dict) -> dict:
+def _picked_card_location(c: dict) -> dict:
+    return _zone(c["controller"], c["location"], c["sequence"])
+
+
+def _reconstruct_pick_list(
+    descriptors: list, prompt_meta: dict, render_new, render_picked
+) -> tuple[list, list[int]]:
+    """Merge the (already-compacted) descriptor list with already-picked
+    cards from ``prompt_meta`` into one engine-index-ordered list, and report
+    where each picked card landed in it.
+
+    ``_extract_multi_step_actions`` filters already-picked entries out of the
+    descriptor list (to avoid re-offering them as choices) and, for
+    ``MSG_SELECT_SUM``, additionally prunes optional cards that the
+    ``reachable`` guard determined cannot participate in any valid
+    completion (see ``_extract_sum_actions`` in ``action_space.py``). Either
+    filter can leave gaps in the engine-index space, so the merged list is
+    NOT assumed contiguous: it is simply every remaining engine index in
+    ascending order.
+
+    The server reads each entry's own ``response`` as an engine index, but
+    reads the prompt's ``selected`` positionally, as indices into the list we
+    send. So ``response`` carries the true engine index while ``selected``
+    must be translated into positions — the second element returned here.
+    The two coincide whenever nothing is pruned or truncated, which is what
+    makes confusing them easy to miss.
+
+    Args:
+        render_new: ``(descriptor) -> dict``, renders a not-yet-picked entry.
+        render_picked: ``(picked_card_dict, engine_index) -> dict``, renders
+            an already-picked entry from ``prompt_meta["picked_cards"]``.
+
+    Returns:
+        ``(cards, selected_positions)`` — ``cards`` is the merged list
+        ordered by ascending engine index; ``selected_positions`` gives, for
+        each already-picked card (in ``prompt_meta["selected"]`` order), its
+        position within ``cards``.
+    """
+    selected = list(prompt_meta["selected"])
+    picked_cards = prompt_meta["picked_cards"]
+    by_index: dict[int, dict] = {}
+    for d in descriptors:
+        if isinstance(d, PickCard):
+            by_index[d.engine_index] = render_new(d)
+    # `selected` and `picked_cards` are built from the same iteration in
+    # _build_prompt_meta, so they pair up positionally. strict=True: a length
+    # mismatch means the producer changed and every pairing below is suspect.
+    for engine_index, card in zip(selected, picked_cards, strict=True):
+        by_index[engine_index] = render_picked(card, engine_index)
+    ordered_indices = sorted(by_index)
+    cards = [by_index[i] for i in ordered_indices]
+    position_of = {engine_index: pos for pos, engine_index in enumerate(ordered_indices)}
+    selected_positions = [position_of[engine_index] for engine_index in selected]
+    return cards, selected_positions
+
+
+def _translate_card(descriptors: list, prompt_meta: dict) -> dict:
     """MSG_SELECT_CARD → select_card."""
-    cards = []
-    for i, card in enumerate(msg.get("cards", [])):
-        cards.append(
-            {
-                "location": _card_location(card),
-                "response": i,
-            }
-        )
+    cards, selected_positions = _reconstruct_pick_list(
+        descriptors,
+        prompt_meta,
+        render_new=lambda d: {"location": _card_ref_location(d.card), "response": d.engine_index},
+        render_picked=lambda c, engine_index: {
+            "location": _picked_card_location(c),
+            "response": engine_index,
+        },
+    )
     return {
         "data": {
             "msg_type": "select_card",
-            "cancelable": bool(msg.get("cancelable", 0)),
-            "min": msg.get("min", 1),
-            "max": msg.get("max", 1),
+            "cancelable": bool(prompt_meta["cancelable"]),
+            "min": prompt_meta["min"],
+            "max": prompt_meta["max"],
             "cards": cards,
-            "selected": list(msg.get("_selected", [])),
+            "selected": selected_positions,
         }
     }
 
 
-def _translate_position(msg: dict) -> dict:
+def _translate_position(descriptors: list, prompt_meta: dict) -> dict:
     """MSG_SELECT_POSITION → select_position."""
-    positions_bitmask = msg.get("positions", 0)
-    positions = []
-    for pos_val, pos_name in [
-        (POS_FACEUP_ATTACK, "faceup_attack"),
-        (POS_FACEDOWN_ATTACK, "facedown_attack"),
-        (POS_FACEUP_DEFENSE, "faceup_defense"),
-        (POS_FACEDOWN_DEFENSE, "facedown_defense"),
-    ]:
-        if positions_bitmask & pos_val:
-            positions.append(pos_name)
+    positions = [_decode_position(d.position) for d in descriptors if isinstance(d, ChoosePosition)]
     return {
         "data": {
             "msg_type": "select_position",
-            "code": msg.get("code", 0),
+            "code": prompt_meta["card_code"],
             "positions": positions,
         }
     }
 
 
-def _translate_place(msg: dict, msg_type_name: str) -> dict:
-    """MSG_SELECT_PLACE / MSG_SELECT_DISFIELD → select_place / select_disfield."""
-    field_mask = msg.get("field_mask", 0)
-    places = []
-    for rel_player in range(2):
-        base_m = rel_player * 16
-        base_s = rel_player * 16 + 8
-        controller = "me" if rel_player == 0 else "opponent"
-        for seq in range(7):
-            bit = base_m + seq
-            if bit < 32 and not (field_mask & (1 << bit)):
-                places.append(
-                    {
-                        "controller": controller,
-                        "location": "mzone",
-                        "sequence": seq,
-                    }
-                )
-        for seq in range(6):
-            bit = base_s + seq
-            if bit < 32 and not (field_mask & (1 << bit)):
-                places.append(
-                    {
-                        "controller": controller,
-                        "location": "szone",
-                        "sequence": seq,
-                    }
-                )
+def _translate_place(descriptors: list, prompt_meta: dict) -> dict:
+    """MSG_SELECT_PLACE → select_place.
+
+    place_zone descriptors ARE the legal-zone list already (derived by the
+    mapper from the engine's field_mask) — no bitmask re-derivation needed
+    here. Places carry no explicit ``response`` field: the schema uses each
+    entry's ordinal position in this list as its response value.
+    """
+    places = [
+        {
+            "controller": _controller_str(d.controller),
+            "location": _decode_location(d.location),
+            "sequence": d.sequence,
+        }
+        for d in descriptors
+        if isinstance(d, PlaceZone)
+    ]
     return {
         "data": {
-            "msg_type": msg_type_name,
-            "count": msg.get("count", 1),
+            "msg_type": "select_place",
+            "count": prompt_meta["count"],
             "places": places,
         }
     }
 
 
-def _translate_tribute(msg: dict) -> dict:
+def _translate_tribute(descriptors: list, prompt_meta: dict) -> dict:
     """MSG_SELECT_TRIBUTE → select_tribute."""
-    cards = []
-    for i, card in enumerate(msg.get("cards", [])):
-        cards.append(
-            {
-                "location": _card_location(card),
-                "level": int(card.get("release_param", 1)),
-                "response": i,
-            }
-        )
+    cards, selected_positions = _reconstruct_pick_list(
+        descriptors,
+        prompt_meta,
+        render_new=lambda d: {
+            "location": _card_ref_location(d.card),
+            "level": d.param,
+            "response": d.engine_index,
+        },
+        render_picked=lambda c, engine_index: {
+            "location": _picked_card_location(c),
+            "level": c["param"],
+            "response": engine_index,
+        },
+    )
     return {
         "data": {
             "msg_type": "select_tribute",
-            "cancelable": bool(msg.get("cancelable", 0)),
-            "min": msg.get("min", 1),
-            "max": msg.get("max", 1),
+            "cancelable": bool(prompt_meta["cancelable"]),
+            "min": prompt_meta["min_release"],
+            "max": prompt_meta["max_cards"],
             "cards": cards,
-            "selected": list(msg.get("_selected", [])),
+            "selected": selected_positions,
         }
     }
 
 
-def _translate_sum(msg: dict) -> dict:
-    """MSG_SELECT_SUM → select_sum."""
-    must_cards = []
-    for card in msg.get("must_cards", []):
-        param = card.get("param", 0)
-        must_cards.append(
-            {
-                "location": _card_location(card),
-                "level1": param & 0xFFFF,
-                "level2": (param >> 16) & 0xFFFF,
-                "response": -1,
-            }
-        )
-    opt_cards = []
-    for i, card in enumerate(msg.get("optional_cards", [])):
-        param = card.get("param", 0)
-        opt_cards.append(
-            {
-                "location": _card_location(card),
-                "level1": param & 0xFFFF,
-                "level2": (param >> 16) & 0xFFFF,
-                "response": i,
-            }
-        )
+def _translate_sum(descriptors: list, prompt_meta: dict) -> dict:
+    """MSG_SELECT_SUM → select_sum.
+
+    ``must_cards`` have no descriptor of their own (the mapper never turns
+    them into actions — they're mandatory, not chosen) so they're read
+    entirely from prompt_meta's full must_cards dicts.
+
+    Deliberate divergence from the pre-refactor bridge: ``_extract_sum_actions``
+    (action_space.py) applies a ``reachable`` filter that prunes optional
+    cards which cannot participate in any valid completion of the sum. Those
+    pruned cards never get a ``PickCard`` descriptor and are not picked
+    either, so they are absent from ``opt_cards`` entirely — whereas the
+    pre-refactor bridge read ``msg["optional_cards"]`` directly and offered
+    every optional card, reachable or not. This means a pruned sum prompt's
+    body is NOT byte-equal to what the pre-refactor bridge would have sent.
+    That's intentional: we stop offering the model cards our own harness
+    would reject as an invalid pick. Do not re-add pruned cards to force
+    byte-equality.
+    """
+    must_cards = [
+        {
+            "location": _picked_card_location(c),
+            "level1": c["param"] & 0xFFFF,
+            "level2": (c["param"] >> 16) & 0xFFFF,
+            "response": -1,
+        }
+        for c in prompt_meta["must_cards"]
+    ]
+    opt_cards, selected_positions = _reconstruct_pick_list(
+        descriptors,
+        prompt_meta,
+        render_new=lambda d: {
+            "location": _card_ref_location(d.card),
+            "level1": d.param & 0xFFFF,
+            "level2": (d.param >> 16) & 0xFFFF,
+            "response": d.engine_index,
+        },
+        render_picked=lambda c, engine_index: {
+            "location": _picked_card_location(c),
+            "level1": c["param"] & 0xFFFF,
+            "level2": (c["param"] >> 16) & 0xFFFF,
+            "response": engine_index,
+        },
+    )
     return {
         "data": {
             "msg_type": "select_sum",
-            "overflow": bool(msg.get("select_type", 0)),
-            "level_sum": msg.get("target_sum", 0),
-            "min": msg.get("min", 1),
-            "max": msg.get("max", 0),
+            "overflow": bool(prompt_meta["select_type"]),
+            "level_sum": prompt_meta["target_sum"],
+            "min": prompt_meta["min"],
+            "max": prompt_meta["max"],
             "must_cards": must_cards,
             "cards": opt_cards,
-            "selected": list(msg.get("_selected", [])),
+            "selected": selected_positions,
         }
     }
 
 
-def _translate_unselect_card(msg: dict) -> dict:
+def _translate_unselect_card(descriptors: list, prompt_meta: dict) -> dict:
     """MSG_SELECT_UNSELECT_CARD → select_unselect_card."""
-    selectable = []
-    for i, card in enumerate(msg.get("selectable", [])):
-        selectable.append(
-            {
-                "location": _card_location(card),
-                "response": i,
-            }
-        )
+    selectable = [
+        {"location": _card_ref_location(d.card), "response": d.engine_index}
+        for d in descriptors
+        if isinstance(d, PickCard)
+    ]
     return {
         "data": {
             "msg_type": "select_unselect_card",
-            "finishable": bool(msg.get("finishable", 0)),
-            "cancelable": bool(msg.get("cancelable", 0)),
-            "min": msg.get("min", 1),
-            "max": msg.get("max", 1),
+            "finishable": bool(prompt_meta["finishable"]),
+            "cancelable": bool(prompt_meta["cancelable"]),
+            "min": prompt_meta["min"],
+            "max": prompt_meta["max"],
             "selected_cards": [],
             "selectable_cards": selectable,
         }
     }
 
 
-def _translate_announce_attrib(msg: dict) -> dict:
+def _translate_announce_attrib(descriptors: list, prompt_meta: dict) -> dict:
     """MSG_ANNOUNCE_ATTRIB → announce_attrib."""
-    available = msg.get("available", 0)
-    attribs = []
-    for bit in range(8):
-        mask = 1 << bit
-        if available & mask:
-            attribs.append(
-                {
-                    "attribute": _decode_attribute(mask),
-                    "response": mask,
-                }
-            )
+    attribs = [
+        {"attribute": _decode_attribute(d.value), "response": d.value}
+        for d in descriptors
+        if isinstance(d, PickBit)
+    ]
     return {
         "data": {
             "msg_type": "announce_attrib",
-            "count": msg.get("count", 1),
+            "count": prompt_meta["count"],
             "attributes": attribs,
         }
     }
 
 
-def _translate_announce_number(msg: dict) -> dict:
+def _translate_announce_number(descriptors: list, prompt_meta: dict) -> dict:
     """MSG_ANNOUNCE_NUMBER → announce_number."""
-    numbers = []
-    for i, num in enumerate(msg.get("numbers", [])):
-        numbers.append({"number": int(num), "response": i})
+    numbers = [
+        {"number": d.value, "response": d.engine_index}
+        for d in descriptors
+        if isinstance(d, AnnounceNumberDescriptor)
+    ]
     return {
         "data": {
             "msg_type": "announce_number",
-            "count": msg.get("count", 1),
+            "count": 1,  # how many numbers to announce; the server rejects anything else
             "numbers": numbers,
         }
     }
@@ -665,8 +754,7 @@ _ACTION_MSG_TRANSLATORS: dict[int, callable] = {
     MSG_SELECT_OPTION: _translate_option,
     MSG_SELECT_CARD: _translate_card,
     MSG_SELECT_POSITION: _translate_position,
-    MSG_SELECT_PLACE: lambda msg: _translate_place(msg, "select_place"),
-    MSG_SELECT_DISFIELD: lambda msg: _translate_place(msg, "select_disfield"),
+    MSG_SELECT_PLACE: _translate_place,
     MSG_SELECT_TRIBUTE: _translate_tribute,
     MSG_SELECT_SUM: _translate_sum,
     MSG_SELECT_UNSELECT_CARD: _translate_unselect_card,
@@ -675,17 +763,19 @@ _ACTION_MSG_TRANSLATORS: dict[int, callable] = {
 }
 
 
-def translate_action_msg(msg: dict) -> dict:
-    """Convert our msg dict to a ygo-agent ActionMsg JSON dict.
+def translate_action_msg(descriptors: list, prompt_meta: dict | None) -> dict:
+    """Convert action_descriptors/prompt_meta to a ygo-agent ActionMsg JSON dict.
 
     Returns a dict with a ``data`` key containing the msg-type-specific payload.
-    Raises ``ValueError`` for unsupported message types.
+    Raises ``ValueError`` for a missing prompt or an unsupported message type.
     """
-    msg_type = msg.get("msg_type", 0)
+    if not prompt_meta:
+        raise ValueError("No active prompt: prompt_meta is missing")
+    msg_type = prompt_meta.get("msg_type")
     translator = _ACTION_MSG_TRANSLATORS.get(msg_type)
     if translator is None:
         raise ValueError(f"Unsupported msg_type for ygo-agent bridge: {msg_type}")
-    return translator(msg)
+    return translator(descriptors, prompt_meta)
 
 
 # ---------------------------------------------------------------------------
@@ -722,32 +812,31 @@ _GLOBAL_OPP_DECK_IDX = 15
 
 
 def build_predict_input(
-    obs: dict[str, np.ndarray],
-    msg: dict,
+    obs: YuGiOhObservation,
     prev_action_idx: int,
     index: int = 0,
 ) -> dict:
     """Build the full DuelPredictRequest body for the ygo-agent server.
 
     Args:
-        obs: Observation dict with ``cards`` and ``global_state`` arrays.
-        msg: The current SELECT message dict.
+        obs: The current observation (cards/global_state arrays plus
+            action_descriptors/prompt_meta for the active prompt).
         prev_action_idx: Index of the previously selected action (0 for first).
         index: Duel session index (must match server state).
 
     Returns:
         JSON-serializable dict matching ``DuelPredictRequest`` schema.
     """
-    cards = translate_cards(obs["cards"])
-    global_state = translate_global(obs["global_state"])
-    action_msg = translate_action_msg(msg)
+    cards = translate_cards(obs.cards)
+    global_state = translate_global(obs.global_state)
+    action_msg = translate_action_msg(obs.action_descriptors, obs.prompt_meta)
 
     # Deck cards are hidden and never appear in the obs card array — only their
     # count lives in global_state. ygo-agent derives deck counts from the card
     # list, so without these placeholders the model sees an empty deck, which is
     # far off-distribution and collapses the policy toward uniform. Synthesize
     # one hidden card per deck slot to restore the true count.
-    obs_global = obs["global_state"]
+    obs_global = obs.global_state
     cards.extend(_hidden_deck_card("me") for _ in range(int(obs_global[_GLOBAL_AGENT_DECK_IDX])))
     cards.extend(
         _hidden_deck_card("opponent") for _ in range(int(obs_global[_GLOBAL_OPP_DECK_IDX]))
@@ -771,134 +860,144 @@ def build_predict_input(
 logger = logging.getLogger(__name__)
 
 
-def _match_cmd_response(
-    actions: list[dict],
-    response: int,
-    phase_a: int,
-    phase_b: int,
-) -> int:
-    """Match idle/battle cmd response. Phase responses use raw category values;
-    card responses use ``(index << 16) | category`` encoding."""
-    if response == phase_a:
-        for i, a in enumerate(actions):
-            if a.get("category") == phase_a:
-                return i
-    elif response == phase_b:
-        for i, a in enumerate(actions):
-            if a.get("category") == phase_b:
-                return i
-    else:
-        r_cat = response & 0xFFFF
-        r_idx = (response >> 16) & 0xFFFF
-        for i, a in enumerate(actions):
-            if a.get("category") == r_cat and a.get("index") == r_idx:
-                return i
+def _find(descriptors: list, pred) -> int:
+    """First absolute index whose descriptor is non-None and satisfies pred."""
+    for i, d in enumerate(descriptors):
+        if d is not None and pred(d):
+            return i
+    # No slot matched. Returning 0 is indistinguishable from a real match on
+    # slot 0, so say so -- a wrong-but-plausible action is otherwise invisible.
+    logger.warning("No descriptor matched the server response; falling back to slot 0")
     return 0
 
 
-def _match_idle_response(actions: list[dict], response: int) -> int:
-    return _match_cmd_response(actions, response, IDLE_TO_BP, IDLE_TO_EP)
+def _match_idle_response(descriptors: list, response: int) -> int:
+    """Match idle cmd response. Phase responses use raw category values;
+    card/activate responses use ``(engine_index << 16) | category`` encoding."""
+    if response == IDLE_TO_BP:
+        return _find(descriptors, lambda d: isinstance(d, PhaseChange) and d.to == "bp")
+    if response == IDLE_TO_EP:
+        return _find(descriptors, lambda d: isinstance(d, PhaseChange) and d.to == "ep")
+    r_cat = response & 0xFFFF
+    r_idx = (response >> 16) & 0xFFFF
+    if r_cat == IDLE_ACTIVATE:
+        return _find(
+            descriptors, lambda d: isinstance(d, ActivateEffect) and d.engine_index == r_idx
+        )
+    return _find(
+        descriptors,
+        lambda d: isinstance(d, CardCommand) and d.command == r_cat and d.engine_index == r_idx,
+    )
 
 
-def _match_battle_response(actions: list[dict], response: int) -> int:
-    return _match_cmd_response(actions, response, BATTLE_TO_M2, BATTLE_TO_EP)
+def _match_battle_response(descriptors: list, response: int) -> int:
+    """Match battle cmd response. Phase responses use raw category values;
+    activate/attack responses use ``(engine_index << 16) | category`` encoding."""
+    if response == BATTLE_TO_M2:
+        return _find(descriptors, lambda d: isinstance(d, PhaseChange) and d.to == "m2")
+    if response == BATTLE_TO_EP:
+        return _find(descriptors, lambda d: isinstance(d, PhaseChange) and d.to == "ep")
+    r_cat = response & 0xFFFF
+    r_idx = (response >> 16) & 0xFFFF
+    if r_cat == BATTLE_ATTACK:
+        return _find(descriptors, lambda d: isinstance(d, Attack) and d.engine_index == r_idx)
+    return _find(descriptors, lambda d: isinstance(d, ActivateEffect) and d.engine_index == r_idx)
 
 
-def _match_cancel_or_index(actions: list[dict], response: int) -> int:
-    """Match response = item index or -1 for cancel/finish."""
+def _match_chain_response(descriptors: list, response: int) -> int:
+    """Chain activate matches on the PLAIN engine_index (no tag); pass is -1."""
     if response == -1:
-        for i, a in enumerate(actions):
-            if a.get("category") == 1:
-                return i
-    else:
-        for i, a in enumerate(actions):
-            if a.get("category") == 0 and a.get("index") == response:
-                return i
-    return 0
+        return _find(descriptors, lambda d: isinstance(d, Pass))
+    return _find(
+        descriptors, lambda d: isinstance(d, ActivateEffect) and d.engine_index == response
+    )
 
 
-def _match_yesno_response(actions: list[dict], response: int) -> int:
-    """Match yes/no response. 1=yes(category 0), 0=no(category 1)."""
-    target_cat = 0 if response == 1 else 1
-    for i, a in enumerate(actions):
-        if a.get("category") == target_cat:
-            return i
-    return 0
+def _match_pick_or_finish(descriptors: list, response: int) -> int:
+    """Match card/tribute/sum response = engine_index, or -1 for finish."""
+    if response == -1:
+        return _find(descriptors, lambda d: isinstance(d, FinishPick))
+    return _find(descriptors, lambda d: isinstance(d, PickCard) and d.engine_index == response)
 
 
-def _match_position_response(actions: list[dict], response: int) -> int:
+def _match_unselect_response(descriptors: list, response: int) -> int:
+    """Match unselect response = engine_index, or -1 for pass (not finish)."""
+    if response == -1:
+        return _find(descriptors, lambda d: isinstance(d, Pass))
+    return _find(descriptors, lambda d: isinstance(d, PickCard) and d.engine_index == response)
+
+
+def _match_confirm_response(descriptors: list, response: int) -> int:
+    """Match yes/no response. 1=yes, 0=no."""
+    target_yes = response == 1
+    return _find(descriptors, lambda d: isinstance(d, Confirm) and d.yes == target_yes)
+
+
+def _match_position_response(descriptors: list, response: int) -> int:
     """Match position response. response = position bitmask."""
-    for i, a in enumerate(actions):
-        if a.get("index") == response:
-            return i
-    return 0
+    return _find(descriptors, lambda d: isinstance(d, ChoosePosition) and d.position == response)
 
 
-def _match_index_response(actions: list[dict], response: int) -> int:
-    """Match by action index (select_option, announce_number).
-
-    Pure index matcher with no finish action. Multi-select prompts that can
-    finish (select_card/tribute/sum) use ``_match_cancel_or_index`` instead,
-    which also handles the ``response == -1`` finish signal.
-    """
-    for i, a in enumerate(actions):
-        if a.get("category") == 0 and a.get("index") == response:
-            return i
-    return 0
+def _match_option_response(descriptors: list, response: int) -> int:
+    return _find(descriptors, lambda d: isinstance(d, ChooseOption) and d.engine_index == response)
 
 
-def _match_unselect_response(actions: list[dict], response: int) -> int:
-    return _match_cancel_or_index(actions, response)
+def _match_number_response(descriptors: list, response: int) -> int:
+    """Match announce_number response = engine_index (NOT the announced value)."""
+    return _find(
+        descriptors,
+        lambda d: isinstance(d, AnnounceNumberDescriptor) and d.engine_index == response,
+    )
 
 
-def _match_place_response(actions: list[dict], response: int) -> int:
-    """Match place/disfield response by index position."""
-    if 0 <= response < len(actions):
-        return response
-    return 0
+def _match_attrib_response(descriptors: list, response: int) -> int:
+    """Match announce_attrib response = value (the 1<<bit MASK), NOT engine_index (the bit)."""
+    return _find(descriptors, lambda d: isinstance(d, PickBit) and d.value == response)
 
 
-def _match_attrib_response(actions: list[dict], response: int) -> int:
-    """Match announce_attrib response. response = attribute bitmask."""
-    # Our actions have index = bit position; response = bitmask
-    for i, a in enumerate(actions):
-        if a.get("index") is not None and (1 << a["index"]) == response:
-            return i
+def _match_place_response(descriptors: list, response: int) -> int:
+    """Match place response = ordinal position among place_zone descriptors."""
+    ordinal = 0
+    for i, d in enumerate(descriptors):
+        if isinstance(d, PlaceZone):
+            if ordinal == response:
+                return i
+            ordinal += 1
     return 0
 
 
 _RESPONSE_MATCHERS: dict[int, callable] = {
     MSG_SELECT_IDLECMD: _match_idle_response,
     MSG_SELECT_BATTLECMD: _match_battle_response,
-    MSG_SELECT_CHAIN: _match_cancel_or_index,
-    MSG_SELECT_EFFECTYN: _match_yesno_response,
-    MSG_SELECT_YESNO: _match_yesno_response,
+    MSG_SELECT_CHAIN: _match_chain_response,
+    MSG_SELECT_EFFECTYN: _match_confirm_response,
+    MSG_SELECT_YESNO: _match_confirm_response,
     MSG_SELECT_POSITION: _match_position_response,
-    MSG_SELECT_CARD: _match_cancel_or_index,
-    MSG_SELECT_TRIBUTE: _match_cancel_or_index,
-    MSG_SELECT_SUM: _match_cancel_or_index,
-    MSG_SELECT_OPTION: _match_index_response,
+    MSG_SELECT_CARD: _match_pick_or_finish,
+    MSG_SELECT_TRIBUTE: _match_pick_or_finish,
+    MSG_SELECT_SUM: _match_pick_or_finish,
+    MSG_SELECT_OPTION: _match_option_response,
     MSG_SELECT_UNSELECT_CARD: _match_unselect_response,
     MSG_SELECT_PLACE: _match_place_response,
-    MSG_SELECT_DISFIELD: _match_place_response,
     MSG_ANNOUNCE_ATTRIB: _match_attrib_response,
-    MSG_ANNOUNCE_NUMBER: _match_index_response,
+    MSG_ANNOUNCE_NUMBER: _match_number_response,
 }
 
 
-def match_response(msg_type: int, actions: list[dict], response: int) -> int:
+def match_response(msg_type: int, descriptors: list, response: int) -> int:
     """Map a ygo-agent server response value to our action index.
 
     Args:
         msg_type: Our MSG_SELECT_* constant.
-        actions: Our ActionMapper.actions list.
+        descriptors: ``YuGiOhObservation.action_descriptors`` (may contain
+            ``None`` padding entries; skipped).
         response: The ``response`` field from ygo-agent's ``ActionPredict``.
 
     Returns:
-        Action index in ``[0, len(actions))``. Falls back to 0 on no match.
+        Action index in ``[0, len(descriptors))``. Falls back to 0 on no match.
     """
     matcher = _RESPONSE_MATCHERS.get(msg_type)
     if matcher is None:
         logger.warning("No response matcher for msg_type=%d, defaulting to action 0", msg_type)
         return 0
-    return matcher(actions, response)
+    return matcher(descriptors, response)

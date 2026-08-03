@@ -215,3 +215,87 @@ MINIMAL_MSGS: dict[int, dict] = {
         "cards": [{**_CARD, "counter_count": 3}],
     },
 }
+
+
+# Mid-selection prompts: a message plus the picks already made, which
+# MINIMAL_MSGS cannot express. Shared with the golden capture script so the
+# fixture it writes and the tests that read it cannot describe different
+# prompts.
+CARD_A = {"code": 111, "controller": 0, "location": LOCATION_MZONE, "sequence": 0}
+CARD_B = {"code": 222, "controller": 0, "location": LOCATION_MZONE, "sequence": 1}
+CARD_C = {"code": 333, "controller": 0, "location": LOCATION_MZONE, "sequence": 2}
+
+MULTI_STEP_CASES: dict[str, tuple[dict, list[int]]] = {
+    "card_mid_select": (
+        {
+            "msg_type": MSG_SELECT_CARD,
+            "player": 0,
+            "cancelable": 0,
+            "min": 1,
+            "max": 2,
+            "cards": [CARD_A, CARD_B, CARD_C],
+        },
+        [1],
+    ),
+    "tribute_mid_select": (
+        {
+            "msg_type": MSG_SELECT_TRIBUTE,
+            "player": 0,
+            "cancelable": 0,
+            "min": 2,
+            "max": 2,
+            "cards": [{**CARD_A, "release_param": 1}, {**CARD_B, "release_param": 1}],
+        },
+        [0],
+    ),
+    "sum_mid_select": (
+        {
+            "msg_type": MSG_SELECT_SUM,
+            "player": 0,
+            "select_type": 0,
+            "target_sum": 8,
+            "min": 1,
+            "max": 3,
+            "must_cards": [],
+            "optional_cards": [
+                {**CARD_A, "param": 4},
+                {**CARD_B, "param": 4},
+                {**CARD_C, "param": 4},
+            ],
+        },
+        [0],
+    ),
+    # With card 1 picked (running sum 1), card 0 can never reach target 3
+    # (1+1=2, 1+1+2=4), so it is pruned from the offered list while card 2
+    # stays. The pruned card sits BELOW a picked one, which is what makes a
+    # position differ from an engine index -- every other case has them
+    # equal, and emitting raw engine indices for `selected` passes those.
+    "sum_pruned_mid_select": (
+        {
+            "msg_type": MSG_SELECT_SUM,
+            "player": 0,
+            "select_type": 0,
+            "target_sum": 3,
+            "min": 1,
+            "max": 3,
+            "must_cards": [],
+            "optional_cards": [
+                {**CARD_A, "param": 1},
+                {**CARD_B, "param": 1},
+                {**CARD_C, "param": 2},
+            ],
+        },
+        [1],
+    ),
+    "card_two_picked": (
+        {
+            "msg_type": MSG_SELECT_CARD,
+            "player": 0,
+            "cancelable": 0,
+            "min": 1,
+            "max": 3,
+            "cards": [CARD_A, CARD_B, CARD_C],
+        },
+        [2, 0],
+    ),
+}

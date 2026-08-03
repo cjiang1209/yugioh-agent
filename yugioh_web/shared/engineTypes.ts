@@ -144,6 +144,9 @@ export type PromptType =
 export interface PickedCard {
   code: number;
   location: number;
+  controller: number;
+  sequence: number;
+  param: number;
 }
 
 /** Prompt metadata describing the current engine decision context. */

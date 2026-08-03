@@ -4,19 +4,16 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-import numpy as np
+import pytest
 
-from yugioh_core.constants import MSG_SELECT_YESNO
-from yugioh_core.encoding import (
-    ACTION_FEATURES,
-    CARD_FEATURES,
-    GLOBAL_FEATURES,
-    MAX_ACTIONS,
-    MAX_CARDS,
-    encode_u16,
+from tests.env.conftest import MINIMAL_MSGS, obs_from_msg
+from yugioh_core.constants import MSG_SELECT_YESNO, SELECT_MSGS
+from yugioh_env.ygo_agent.bridge import _ACTION_MSG_TRANSLATORS
+from yugioh_env.ygo_agent.opponent import (
+    _SERVER_UNSUPPORTED_MSGS,
+    DEFAULT_URL,
+    YGOAgentOpponent,
 )
-from yugioh_env.models import YuGiOhObservation
-from yugioh_env.ygo_agent.opponent import DEFAULT_URL, YGOAgentOpponent
 
 
 class TestYGOAgentOpponent:
@@ -63,26 +60,21 @@ class TestYGOAgentOpponent:
         opp = YGOAgentOpponent()
         opp._duel_id = "test-duel"
         opp._index = 0
-        global_state = np.zeros(GLOBAL_FEATURES, dtype=np.uint8)
-        global_state[4] = 1  # turn
-        global_state[5], global_state[6] = encode_u16(0x04)  # phase: main1
-        global_state[7] = 1  # is_my_turn
-        obs = YuGiOhObservation(
-            cards=np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8),
-            global_state=global_state,
-            actions=np.zeros((MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8),
-            action_mask=np.zeros(MAX_ACTIONS, dtype=np.int8),
-        )
-        opp.set_observation(obs)
 
         msg = {"msg_type": MSG_SELECT_YESNO, "player": 0, "desc": 30}
+        # select_yesno yields exactly two Confirm descriptors: yes=True at
+        # slot 0, yes=False at slot 1.
+        obs = obs_from_msg(msg)
+        opp.set_observation(obs)
+
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = {
             "predict_results": {
                 "action_preds": [
-                    {"prob": 0.8, "response": 1, "can_finish": False},
-                    {"prob": 0.2, "response": 0, "can_finish": False},
+                    # Best (highest prob) has response=0 → "no" → Confirm(yes=False).
+                    {"prob": 0.8, "response": 0, "can_finish": False},
+                    {"prob": 0.2, "response": 1, "can_finish": False},
                 ],
                 "win_rate": 0.6,
             },
@@ -91,10 +83,11 @@ class TestYGOAgentOpponent:
         mock_resp.raise_for_status = MagicMock()
         with patch("yugioh_env.ygo_agent.opponent.requests") as mock_req:
             mock_req.post.return_value = mock_resp
-            # yes/no: actions with category 0 (yes) and 1 (no)
             action = opp.select_action(msg, 2)
-        # Best action has response=1 (yes) → maps to category 0 → action index 0
-        assert action == 0
+        # response=0 ("no") matches the Confirm(yes=False) descriptor, which is
+        # slot 1 (slot 0 is always yes=True) — deliberately non-zero so this
+        # assertion can't be satisfied by match_response's slot-0 fallback.
+        assert action == 1
         assert opp._index == 1
 
     def test_select_action_no_duel_returns_zero(self):
@@ -103,24 +96,33 @@ class TestYGOAgentOpponent:
         msg = {"msg_type": MSG_SELECT_YESNO, "player": 0, "desc": 30}
         assert opp.select_action(msg, 2) == 0
 
-    def test_select_action_short_circuits_announce_card(self):
-        """announce_card is not supported by the ygo-agent server; the opponent
-        returns 0 without making an HTTP call."""
-        from yugioh_core.constants import MSG_ANNOUNCE_CARD
+    @pytest.mark.parametrize("msg_type", sorted(_SERVER_UNSUPPORTED_MSGS))
+    def test_select_action_short_circuits_unsupported(self, msg_type):
+        """The ygo-agent server has no schema for these prompts, so answer 0
+        without an HTTP call.
 
+        Parametrized over the table itself: a newly declared unsupported type
+        cannot slip in untested, and a type that belongs in neither this table
+        nor the translator table is caught by
+        test_every_agent_facing_prompt_is_translated_or_declared_unsupported.
+        """
         opp = YGOAgentOpponent()
         opp._duel_id = "test-duel"
-        opp.set_observation(
-            {
-                "cards": np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8),
-                "global_state": np.zeros(GLOBAL_FEATURES, dtype=np.uint8),
-            }
-        )
-        msg = {"msg_type": MSG_ANNOUNCE_CARD, "player": 0, "opcodes": []}
+        opp.set_observation(obs_from_msg({**MINIMAL_MSGS[msg_type], "msg_type": msg_type}))
+        msg = {**MINIMAL_MSGS[msg_type], "msg_type": msg_type}
         with patch("yugioh_env.ygo_agent.opponent.requests") as mock_req:
             result = opp.select_action(msg, num_actions=3)
         assert result == 0
         mock_req.post.assert_not_called()
+
+    def test_every_agent_facing_prompt_is_translated_or_declared_unsupported(self):
+        """A prompt in neither table reaches translate_action_msg and raises
+        ValueError mid-duel, which select_action does not catch."""
+        uncovered = set(SELECT_MSGS) - set(_ACTION_MSG_TRANSLATORS) - set(_SERVER_UNSUPPORTED_MSGS)
+        assert not uncovered, (
+            f"agent-facing prompts with no ygo-agent translator and no explicit "
+            f"unsupported declaration: {sorted(uncovered)}"
+        )
 
 
 class TestYGOAgentOpponentFactory:

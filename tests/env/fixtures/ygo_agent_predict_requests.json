@@ -1,0 +1,931 @@
+{
+  "10": {
+    "index": 0,
+    "input": {
+      "action_msg": {
+        "data": {
+          "battle_cmds": [
+            {
+              "cmd_type": "activate",
+              "data": {
+                "card_info": {
+                  "code": 1234,
+                  "controller": "me",
+                  "location": "mzone",
+                  "sequence": 0
+                },
+                "direct_attackable": false,
+                "effect_description": 153,
+                "response": 0
+              }
+            },
+            {
+              "cmd_type": "attack",
+              "data": {
+                "card_info": {
+                  "code": 1234,
+                  "controller": "me",
+                  "location": "mzone",
+                  "sequence": 0
+                },
+                "direct_attackable": false,
+                "effect_description": 0,
+                "response": 1
+              }
+            },
+            {
+              "cmd_type": "to_m2",
+              "data": null
+            },
+            {
+              "cmd_type": "to_ep",
+              "data": null
+            }
+          ],
+          "msg_type": "select_battlecmd"
+        }
+      },
+      "cards": [],
+      "global": {
+        "is_first": true,
+        "is_my_turn": false,
+        "my_lp": 0,
+        "op_lp": 0,
+        "phase": "main1",
+        "turn": 0
+      }
+    },
+    "prev_action_idx": 0
+  },
+  "11": {
+    "index": 0,
+    "input": {
+      "action_msg": {
+        "data": {
+          "idle_cmds": [
+            {
+              "cmd_type": "summon",
+              "data": {
+                "card_info": {
+                  "code": 1234,
+                  "controller": "me",
+                  "location": "mzone",
+                  "sequence": 0
+                },
+                "effect_description": 0,
+                "response": 0
+              }
+            },
+            {
+              "cmd_type": "sp_summon",
+              "data": {
+                "card_info": {
+                  "code": 1234,
+                  "controller": "me",
+                  "location": "mzone",
+                  "sequence": 0
+                },
+                "effect_description": 0,
+                "response": 1
+              }
+            },
+            {
+              "cmd_type": "reposition",
+              "data": {
+                "card_info": {
+                  "code": 1234,
+                  "controller": "me",
+                  "location": "mzone",
+                  "sequence": 0
+                },
+                "effect_description": 0,
+                "response": 2
+              }
+            },
+            {
+              "cmd_type": "mset",
+              "data": {
+                "card_info": {
+                  "code": 1234,
+                  "controller": "me",
+                  "location": "mzone",
+                  "sequence": 0
+                },
+                "effect_description": 0,
+                "response": 3
+              }
+            },
+            {
+              "cmd_type": "set",
+              "data": {
+                "card_info": {
+                  "code": 1234,
+                  "controller": "me",
+                  "location": "mzone",
+                  "sequence": 0
+                },
+                "effect_description": 0,
+                "response": 4
+              }
+            },
+            {
+              "cmd_type": "activate",
+              "data": {
+                "card_info": {
+                  "code": 1234,
+                  "controller": "me",
+                  "location": "mzone",
+                  "sequence": 0
+                },
+                "effect_description": 153,
+                "response": 5
+              }
+            },
+            {
+              "cmd_type": "to_bp",
+              "data": null
+            },
+            {
+              "cmd_type": "to_ep",
+              "data": null
+            }
+          ],
+          "msg_type": "select_idlecmd"
+        }
+      },
+      "cards": [],
+      "global": {
+        "is_first": true,
+        "is_my_turn": false,
+        "my_lp": 0,
+        "op_lp": 0,
+        "phase": "main1",
+        "turn": 0
+      }
+    },
+    "prev_action_idx": 0
+  },
+  "12": {
+    "index": 0,
+    "input": {
+      "action_msg": {
+        "data": {
+          "code": 1234,
+          "effect_description": 153,
+          "location": {
+            "controller": "me",
+            "location": "mzone",
+            "overlay_sequence": -1,
+            "sequence": 0
+          },
+          "msg_type": "select_effectyn"
+        }
+      },
+      "cards": [],
+      "global": {
+        "is_first": true,
+        "is_my_turn": false,
+        "my_lp": 0,
+        "op_lp": 0,
+        "phase": "main1",
+        "turn": 0
+      }
+    },
+    "prev_action_idx": 0
+  },
+  "13": {
+    "index": 0,
+    "input": {
+      "action_msg": {
+        "data": {
+          "effect_description": 153,
+          "msg_type": "select_yesno"
+        }
+      },
+      "cards": [],
+      "global": {
+        "is_first": true,
+        "is_my_turn": false,
+        "my_lp": 0,
+        "op_lp": 0,
+        "phase": "main1",
+        "turn": 0
+      }
+    },
+    "prev_action_idx": 0
+  },
+  "14": {
+    "index": 0,
+    "input": {
+      "action_msg": {
+        "data": {
+          "msg_type": "select_option",
+          "options": [
+            {
+              "code": 7,
+              "response": 0
+            }
+          ]
+        }
+      },
+      "cards": [],
+      "global": {
+        "is_first": true,
+        "is_my_turn": false,
+        "my_lp": 0,
+        "op_lp": 0,
+        "phase": "main1",
+        "turn": 0
+      }
+    },
+    "prev_action_idx": 0
+  },
+  "141": {
+    "index": 0,
+    "input": {
+      "action_msg": {
+        "data": {
+          "attributes": [
+            {
+              "attribute": "earth",
+              "response": 1
+            }
+          ],
+          "count": 1,
+          "msg_type": "announce_attrib"
+        }
+      },
+      "cards": [],
+      "global": {
+        "is_first": true,
+        "is_my_turn": false,
+        "my_lp": 0,
+        "op_lp": 0,
+        "phase": "main1",
+        "turn": 0
+      }
+    },
+    "prev_action_idx": 0
+  },
+  "143": {
+    "index": 0,
+    "input": {
+      "action_msg": {
+        "data": {
+          "count": 1,
+          "msg_type": "announce_number",
+          "numbers": [
+            {
+              "number": 4,
+              "response": 0
+            }
+          ]
+        }
+      },
+      "cards": [],
+      "global": {
+        "is_first": true,
+        "is_my_turn": false,
+        "my_lp": 0,
+        "op_lp": 0,
+        "phase": "main1",
+        "turn": 0
+      }
+    },
+    "prev_action_idx": 0
+  },
+  "15": {
+    "index": 0,
+    "input": {
+      "action_msg": {
+        "data": {
+          "cancelable": false,
+          "cards": [
+            {
+              "location": {
+                "controller": "me",
+                "location": "mzone",
+                "overlay_sequence": -1,
+                "sequence": 0
+              },
+              "response": 0
+            }
+          ],
+          "max": 1,
+          "min": 0,
+          "msg_type": "select_card",
+          "selected": []
+        }
+      },
+      "cards": [],
+      "global": {
+        "is_first": true,
+        "is_my_turn": false,
+        "my_lp": 0,
+        "op_lp": 0,
+        "phase": "main1",
+        "turn": 0
+      }
+    },
+    "prev_action_idx": 0
+  },
+  "16": {
+    "index": 0,
+    "input": {
+      "action_msg": {
+        "data": {
+          "chains": [
+            {
+              "code": 1234,
+              "effect_description": 153,
+              "location": {
+                "controller": "me",
+                "location": "mzone",
+                "overlay_sequence": -1,
+                "sequence": 0
+              },
+              "response": 0
+            }
+          ],
+          "forced": false,
+          "msg_type": "select_chain"
+        }
+      },
+      "cards": [],
+      "global": {
+        "is_first": true,
+        "is_my_turn": false,
+        "my_lp": 0,
+        "op_lp": 0,
+        "phase": "main1",
+        "turn": 0
+      }
+    },
+    "prev_action_idx": 0
+  },
+  "18": {
+    "index": 0,
+    "input": {
+      "action_msg": {
+        "data": {
+          "count": 1,
+          "msg_type": "select_place",
+          "places": [
+            {
+              "controller": "me",
+              "location": "mzone",
+              "sequence": 0
+            },
+            {
+              "controller": "me",
+              "location": "mzone",
+              "sequence": 1
+            },
+            {
+              "controller": "me",
+              "location": "mzone",
+              "sequence": 2
+            },
+            {
+              "controller": "me",
+              "location": "mzone",
+              "sequence": 3
+            },
+            {
+              "controller": "me",
+              "location": "mzone",
+              "sequence": 4
+            },
+            {
+              "controller": "me",
+              "location": "mzone",
+              "sequence": 5
+            },
+            {
+              "controller": "me",
+              "location": "mzone",
+              "sequence": 6
+            },
+            {
+              "controller": "me",
+              "location": "szone",
+              "sequence": 0
+            },
+            {
+              "controller": "me",
+              "location": "szone",
+              "sequence": 1
+            },
+            {
+              "controller": "me",
+              "location": "szone",
+              "sequence": 2
+            },
+            {
+              "controller": "me",
+              "location": "szone",
+              "sequence": 3
+            },
+            {
+              "controller": "me",
+              "location": "szone",
+              "sequence": 4
+            },
+            {
+              "controller": "me",
+              "location": "szone",
+              "sequence": 5
+            },
+            {
+              "controller": "opponent",
+              "location": "mzone",
+              "sequence": 0
+            },
+            {
+              "controller": "opponent",
+              "location": "mzone",
+              "sequence": 1
+            },
+            {
+              "controller": "opponent",
+              "location": "mzone",
+              "sequence": 2
+            },
+            {
+              "controller": "opponent",
+              "location": "mzone",
+              "sequence": 3
+            },
+            {
+              "controller": "opponent",
+              "location": "mzone",
+              "sequence": 4
+            },
+            {
+              "controller": "opponent",
+              "location": "mzone",
+              "sequence": 5
+            },
+            {
+              "controller": "opponent",
+              "location": "mzone",
+              "sequence": 6
+            },
+            {
+              "controller": "opponent",
+              "location": "szone",
+              "sequence": 0
+            },
+            {
+              "controller": "opponent",
+              "location": "szone",
+              "sequence": 1
+            },
+            {
+              "controller": "opponent",
+              "location": "szone",
+              "sequence": 2
+            },
+            {
+              "controller": "opponent",
+              "location": "szone",
+              "sequence": 3
+            },
+            {
+              "controller": "opponent",
+              "location": "szone",
+              "sequence": 4
+            },
+            {
+              "controller": "opponent",
+              "location": "szone",
+              "sequence": 5
+            }
+          ]
+        }
+      },
+      "cards": [],
+      "global": {
+        "is_first": true,
+        "is_my_turn": false,
+        "my_lp": 0,
+        "op_lp": 0,
+        "phase": "main1",
+        "turn": 0
+      }
+    },
+    "prev_action_idx": 0
+  },
+  "19": {
+    "index": 0,
+    "input": {
+      "action_msg": {
+        "data": {
+          "code": 1234,
+          "msg_type": "select_position",
+          "positions": [
+            "faceup_attack",
+            "facedown_attack",
+            "faceup_defense",
+            "facedown_defense"
+          ]
+        }
+      },
+      "cards": [],
+      "global": {
+        "is_first": true,
+        "is_my_turn": false,
+        "my_lp": 0,
+        "op_lp": 0,
+        "phase": "main1",
+        "turn": 0
+      }
+    },
+    "prev_action_idx": 0
+  },
+  "20": {
+    "index": 0,
+    "input": {
+      "action_msg": {
+        "data": {
+          "cancelable": false,
+          "cards": [
+            {
+              "level": 1,
+              "location": {
+                "controller": "me",
+                "location": "mzone",
+                "overlay_sequence": -1,
+                "sequence": 0
+              },
+              "response": 0
+            }
+          ],
+          "max": 1,
+          "min": 1,
+          "msg_type": "select_tribute",
+          "selected": []
+        }
+      },
+      "cards": [],
+      "global": {
+        "is_first": true,
+        "is_my_turn": false,
+        "my_lp": 0,
+        "op_lp": 0,
+        "phase": "main1",
+        "turn": 0
+      }
+    },
+    "prev_action_idx": 0
+  },
+  "23": {
+    "index": 0,
+    "input": {
+      "action_msg": {
+        "data": {
+          "cards": [
+            {
+              "level1": 4,
+              "level2": 0,
+              "location": {
+                "controller": "me",
+                "location": "mzone",
+                "overlay_sequence": -1,
+                "sequence": 0
+              },
+              "response": 0
+            }
+          ],
+          "level_sum": 4,
+          "max": 1,
+          "min": 1,
+          "msg_type": "select_sum",
+          "must_cards": [],
+          "overflow": false,
+          "selected": []
+        }
+      },
+      "cards": [],
+      "global": {
+        "is_first": true,
+        "is_my_turn": false,
+        "my_lp": 0,
+        "op_lp": 0,
+        "phase": "main1",
+        "turn": 0
+      }
+    },
+    "prev_action_idx": 0
+  },
+  "26": {
+    "index": 0,
+    "input": {
+      "action_msg": {
+        "data": {
+          "cancelable": false,
+          "finishable": true,
+          "max": 1,
+          "min": 0,
+          "msg_type": "select_unselect_card",
+          "selectable_cards": [
+            {
+              "location": {
+                "controller": "me",
+                "location": "mzone",
+                "overlay_sequence": -1,
+                "sequence": 0
+              },
+              "response": 0
+            }
+          ],
+          "selected_cards": []
+        }
+      },
+      "cards": [],
+      "global": {
+        "is_first": true,
+        "is_my_turn": false,
+        "my_lp": 0,
+        "op_lp": 0,
+        "phase": "main1",
+        "turn": 0
+      }
+    },
+    "prev_action_idx": 0
+  },
+  "card_mid_select": {
+    "index": 0,
+    "input": {
+      "action_msg": {
+        "data": {
+          "cancelable": false,
+          "cards": [
+            {
+              "location": {
+                "controller": "me",
+                "location": "mzone",
+                "overlay_sequence": -1,
+                "sequence": 0
+              },
+              "response": 0
+            },
+            {
+              "location": {
+                "controller": "me",
+                "location": "mzone",
+                "overlay_sequence": -1,
+                "sequence": 1
+              },
+              "response": 1
+            },
+            {
+              "location": {
+                "controller": "me",
+                "location": "mzone",
+                "overlay_sequence": -1,
+                "sequence": 2
+              },
+              "response": 2
+            }
+          ],
+          "max": 2,
+          "min": 1,
+          "msg_type": "select_card",
+          "selected": [
+            1
+          ]
+        }
+      },
+      "cards": [],
+      "global": {
+        "is_first": true,
+        "is_my_turn": false,
+        "my_lp": 0,
+        "op_lp": 0,
+        "phase": "main1",
+        "turn": 0
+      }
+    },
+    "prev_action_idx": 0
+  },
+  "card_two_picked": {
+    "index": 0,
+    "input": {
+      "action_msg": {
+        "data": {
+          "cancelable": false,
+          "cards": [
+            {
+              "location": {
+                "controller": "me",
+                "location": "mzone",
+                "overlay_sequence": -1,
+                "sequence": 0
+              },
+              "response": 0
+            },
+            {
+              "location": {
+                "controller": "me",
+                "location": "mzone",
+                "overlay_sequence": -1,
+                "sequence": 1
+              },
+              "response": 1
+            },
+            {
+              "location": {
+                "controller": "me",
+                "location": "mzone",
+                "overlay_sequence": -1,
+                "sequence": 2
+              },
+              "response": 2
+            }
+          ],
+          "max": 3,
+          "min": 1,
+          "msg_type": "select_card",
+          "selected": [
+            2,
+            0
+          ]
+        }
+      },
+      "cards": [],
+      "global": {
+        "is_first": true,
+        "is_my_turn": false,
+        "my_lp": 0,
+        "op_lp": 0,
+        "phase": "main1",
+        "turn": 0
+      }
+    },
+    "prev_action_idx": 0
+  },
+  "sum_mid_select": {
+    "index": 0,
+    "input": {
+      "action_msg": {
+        "data": {
+          "cards": [
+            {
+              "level1": 4,
+              "level2": 0,
+              "location": {
+                "controller": "me",
+                "location": "mzone",
+                "overlay_sequence": -1,
+                "sequence": 0
+              },
+              "response": 0
+            },
+            {
+              "level1": 4,
+              "level2": 0,
+              "location": {
+                "controller": "me",
+                "location": "mzone",
+                "overlay_sequence": -1,
+                "sequence": 1
+              },
+              "response": 1
+            },
+            {
+              "level1": 4,
+              "level2": 0,
+              "location": {
+                "controller": "me",
+                "location": "mzone",
+                "overlay_sequence": -1,
+                "sequence": 2
+              },
+              "response": 2
+            }
+          ],
+          "level_sum": 8,
+          "max": 3,
+          "min": 1,
+          "msg_type": "select_sum",
+          "must_cards": [],
+          "overflow": false,
+          "selected": [
+            0
+          ]
+        }
+      },
+      "cards": [],
+      "global": {
+        "is_first": true,
+        "is_my_turn": false,
+        "my_lp": 0,
+        "op_lp": 0,
+        "phase": "main1",
+        "turn": 0
+      }
+    },
+    "prev_action_idx": 0
+  },
+  "sum_pruned_mid_select": {
+    "index": 0,
+    "input": {
+      "action_msg": {
+        "data": {
+          "cards": [
+            {
+              "level1": 1,
+              "level2": 0,
+              "location": {
+                "controller": "me",
+                "location": "mzone",
+                "overlay_sequence": -1,
+                "sequence": 1
+              },
+              "response": 1
+            },
+            {
+              "level1": 2,
+              "level2": 0,
+              "location": {
+                "controller": "me",
+                "location": "mzone",
+                "overlay_sequence": -1,
+                "sequence": 2
+              },
+              "response": 2
+            }
+          ],
+          "level_sum": 3,
+          "max": 3,
+          "min": 1,
+          "msg_type": "select_sum",
+          "must_cards": [],
+          "overflow": false,
+          "selected": [
+            0
+          ]
+        }
+      },
+      "cards": [],
+      "global": {
+        "is_first": true,
+        "is_my_turn": false,
+        "my_lp": 0,
+        "op_lp": 0,
+        "phase": "main1",
+        "turn": 0
+      }
+    },
+    "prev_action_idx": 0
+  },
+  "tribute_mid_select": {
+    "index": 0,
+    "input": {
+      "action_msg": {
+        "data": {
+          "cancelable": false,
+          "cards": [
+            {
+              "level": 1,
+              "location": {
+                "controller": "me",
+                "location": "mzone",
+                "overlay_sequence": -1,
+                "sequence": 0
+              },
+              "response": 0
+            },
+            {
+              "level": 1,
+              "location": {
+                "controller": "me",
+                "location": "mzone",
+                "overlay_sequence": -1,
+                "sequence": 1
+              },
+              "response": 1
+            }
+          ],
+          "max": 2,
+          "min": 2,
+          "msg_type": "select_tribute",
+          "selected": [
+            0
+          ]
+        }
+      },
+      "cards": [],
+      "global": {
+        "is_first": true,
+        "is_my_turn": false,
+        "my_lp": 0,
+        "op_lp": 0,
+        "phase": "main1",
+        "turn": 0
+      }
+    },
+    "prev_action_idx": 0
+  }
+}

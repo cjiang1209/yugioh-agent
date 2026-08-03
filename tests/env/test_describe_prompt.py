@@ -607,7 +607,9 @@ def test_build_prompt_meta_sort_card_intermediate_step():
 
     meta = _build_prompt_meta(FakeMapper())
     assert meta["count"] == 3
-    assert meta["picked_cards"] == [{"code": 200, "location": 0x01}]
+    assert meta["picked_cards"] == [
+        {"code": 200, "controller": 0, "location": 0x01, "sequence": 1, "param": 0}
+    ]
 
 
 def test_build_prompt_meta_select_card_picked_cards():
@@ -629,8 +631,8 @@ def test_build_prompt_meta_select_card_picked_cards():
     meta = _build_prompt_meta(FakeMapper())
     assert meta["selected_count"] == 2
     assert meta["picked_cards"] == [
-        {"code": 300, "location": 0x01},
-        {"code": 100, "location": 0x01},
+        {"code": 300, "controller": 0, "location": 0x01, "sequence": 2, "param": 0},
+        {"code": 100, "controller": 0, "location": 0x01, "sequence": 0, "param": 0},
     ]
     assert meta["selected"] == [2, 0]
 
@@ -652,7 +654,9 @@ def test_build_prompt_meta_select_tribute_picked_cards():
 
     meta = _build_prompt_meta(FakeMapper())
     assert meta["cards_selected"] == 1
-    assert meta["picked_cards"] == [{"code": 200, "location": 0x04}]
+    assert meta["picked_cards"] == [
+        {"code": 200, "controller": 0, "location": 0x04, "sequence": 1, "param": 1}
+    ]
     assert meta["selected"] == [1]
 
 
@@ -677,8 +681,8 @@ def test_build_prompt_meta_select_unselect_picked_cards():
 
     meta = _build_prompt_meta(FakeMapper())
     assert meta["picked_cards"] == [
-        {"code": 100, "location": 0x01},
-        {"code": 200, "location": 0x01},
+        {"code": 100, "controller": 0, "location": 0x01, "sequence": 0, "param": 0},
+        {"code": 200, "controller": 0, "location": 0x01, "sequence": 1, "param": 0},
     ]
 
 
@@ -699,6 +703,36 @@ def test_effectyn_prompt_meta_has_relativized_controller() -> None:
 
     obs0 = _obs_from_msg(msg, agent_player=0)
     assert obs0.prompt_meta["controller"] == 1  # same card, other seat
+
+
+def test_picked_cards_relativizes_controller() -> None:
+    """A picked card's `controller` in `picked_cards` must be relativized to
+    the agent's seat, matching every other controller field the observation
+    exposes (see `_picked_cards` in yugioh_environment.py).
+
+    Every other `picked_cards` test in this module uses the default
+    `agent_player=0` with `controller: 0` cards, where relativization
+    (`0 if card_ctrl == agent_player else 1`) is an identity no-op and can't
+    distinguish real relativization from a widened
+    `int(c.get("controller", 0))` shortcut that just forwards the raw
+    absolute value. Here agent_player=1 and the picked card's absolute
+    controller is 0 (the opponent's seat from the agent's perspective), so
+    the two implementations disagree: relativized -> 1 (opponent), raw -> 0.
+    """
+    msg = {
+        "msg_type": MSG_SELECT_CARD,
+        "min": 1,
+        "max": 1,
+        "cancelable": 0,
+        "cards": [
+            {"code": 100, "controller": 0, "location": 0x04, "sequence": 0},
+        ],
+        "_selected": [0],
+    }
+    obs = _obs_from_msg(msg, agent_player=1)
+    assert obs.prompt_meta["picked_cards"] == [
+        {"code": 100, "controller": 1, "location": 0x04, "sequence": 0, "param": 0}
+    ]
 
 
 def test_sum_prompt_meta_branch_exists() -> None:

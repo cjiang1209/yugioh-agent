@@ -14,7 +14,9 @@ import requests
 from yugioh_core.constants import (
     MSG_ANNOUNCE_CARD,
     MSG_ANNOUNCE_RACE,
+    MSG_ROCK_PAPER_SCISSORS,
     MSG_SELECT_COUNTER,
+    MSG_SELECT_DISFIELD,
     MSG_SORT_CARD,
     MSG_SORT_CHAIN,
 )
@@ -29,6 +31,10 @@ DEFAULT_URL = "http://localhost:3000"
 # Message types the ygo-agent server can't handle: its C++ env resolves these
 # internally and never presents them to the model, so the JSON API has no branch
 # for them. We skip the server and pick action 0 (default/first option).
+#
+# MSG_SELECT_DISFIELD is the exception: the server does define the prompt, but
+# its handler assigns response = -1 to every legal zone, so whichever zone the
+# model picks is unrecoverable from the reply.
 _SERVER_UNSUPPORTED_MSGS = frozenset(
     {
         MSG_SORT_CARD,
@@ -36,6 +42,8 @@ _SERVER_UNSUPPORTED_MSGS = frozenset(
         MSG_SELECT_COUNTER,
         MSG_ANNOUNCE_RACE,
         MSG_ANNOUNCE_CARD,
+        MSG_SELECT_DISFIELD,
+        MSG_ROCK_PAPER_SCISSORS,
     }
 )
 
@@ -107,7 +115,7 @@ class YGOAgentOpponent(Opponent):
         if msg_type in _SERVER_UNSUPPORTED_MSGS:
             return 0
 
-        body = build_predict_input(self._obs.as_arrays(), msg, self._prev_action_idx, self._index)
+        body = build_predict_input(self._obs, self._prev_action_idx, self._index)
 
         try:
             resp = requests.post(
@@ -154,10 +162,5 @@ class YGOAgentOpponent(Opponent):
         self._prev_action_idx = preds.index(best)
 
         # Match the server's response to our action index
-        from yugioh_env.action_space import ActionMapper
-
-        mapper = ActionMapper()
-        mapper.update({**msg, "_agent_player": msg.get("player", 0)})
-
-        action_idx = match_response(msg.get("msg_type", 0), mapper.actions, best["response"])
+        action_idx = match_response(msg_type, self._obs.action_descriptors, best["response"])
         return min(action_idx, num_actions - 1)

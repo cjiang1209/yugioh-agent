@@ -119,6 +119,17 @@ Messages that write `loc_info`: `MSG_MOVE`, `MSG_SET`, `MSG_SUMMONING`, `MSG_SPS
 - **Deck order**: Deck cards are inserted in specification order (no shuffle). The engine stores decks bottom-to-top internally, so the first card in the spec's `deck` list is drawn first.
 - **`disabled` on field only**: The `disabled` flag is only valid on `monster_zone` and `spell_zone` entries. The schema validator rejects it on non-field zones.
 
+### ygo-agent Bridge (`yugioh_env/ygo_agent/`)
+
+- **`selected` is positions into the list sent; `response` is the engine
+  index.** They coincide unless sum pruning or `MAX_ACTIONS` truncation drops
+  a card.
+- **The request is golden-pinned** — regenerate
+  `tests/env/fixtures/ygo_agent_predict_requests.json` only via the capture
+  script beside it. Prompts with no server schema go in
+  `_SERVER_UNSUPPORTED_MSGS`; one in neither that nor the translator table
+  raises mid-duel.
+
 ### Deterministic Replay (`yugioh_env/replay.py`)
 
 - **Non-intrusive**: Recording and replay wrap `YuGiOhEnvironment` and the opponent without modifying either class.
