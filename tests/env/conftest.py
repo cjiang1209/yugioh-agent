@@ -7,22 +7,25 @@ from pathlib import Path
 import pytest
 
 
-def obs_from_msg(msg: dict, *, _selected: list[int] | None = None):
+def obs_from_msg(msg: dict, *, _selected: list[int] | None = None, agent_player: int = 0):
     """Build a YuGiOhObservation from a single SELECT message.
 
     Mirrors what the server's _make_observation produces for that message,
-    using _build_action_meta_list and _build_prompt_meta to populate the
-    parallel meta fields. The optional _selected list seeds the mapper's
-    multi-step selection state for tests that need it (e.g., tribute
-    finish actions).
+    using _build_action_meta_list, _build_action_descriptors, and
+    _build_prompt_meta to populate the parallel meta fields. The optional
+    _selected list seeds the mapper's multi-step selection state for tests
+    that need it (e.g., tribute finish actions). agent_player relativizes
+    seat-dependent fields (e.g. controller) the same way the live server does.
     """
     from yugioh_env.action_space import ActionMapper
     from yugioh_env.models import YuGiOhObservation
     from yugioh_env.server.yugioh_environment import (
+        _build_action_descriptors,
         _build_action_meta_list,
         _build_prompt_meta,
     )
 
+    msg = {**msg, "_agent_player": agent_player}
     mapper = ActionMapper()
     mapper.update(msg)
     if _selected is not None:
@@ -33,6 +36,7 @@ def obs_from_msg(msg: dict, *, _selected: list[int] | None = None):
         actions=mapper.get_action_features().tolist(),
         action_mask=mapper.get_action_mask().tolist(),
         action_meta=_build_action_meta_list(mapper.actions),
+        action_descriptors=_build_action_descriptors(mapper.actions),
         prompt_meta=_build_prompt_meta(mapper),
         events=[],
         done=False,
@@ -80,7 +84,9 @@ def duel(lib, card_db, script_dirs, deck_path):
 # extractor can produce, per the field shapes in message_parser.py's `_parse_*`
 # functions. Every list is load-bearing: the kind-coverage tests compare the
 # exact set of kinds an extractor emits, so trimming one fails them. The
-# comments below explain only non-obvious value choices.
+# comments below explain only non-obvious value choices. `desc` and option
+# values are deliberately non-zero so a hardcoded 0 in the descriptor builders
+# is caught rather than coinciding with a correct result.
 
 from yugioh_core.constants import (
     LOCATION_MZONE,
@@ -118,14 +124,14 @@ MINIMAL_MSGS: dict[int, dict] = {
         "repositionable": [_CARD],
         "mset": [_CARD],
         "sset": [_CARD],
-        "activatable": [{**_CARD, "desc": 0, "client_mode": 0}],
+        "activatable": [{**_CARD, "desc": 0x99, "client_mode": 0}],
         "to_bp": 1,
         "to_ep": 1,
         "shuffle_hand": 0,
     },
     MSG_SELECT_BATTLECMD: {
         "player": 0,
-        "activatable": [{**_CARD, "desc": 0, "client_mode": 0}],
+        "activatable": [{**_CARD, "desc": 0x99, "client_mode": 0}],
         "attackable": [{**_CARD, "direct_attackable": 0}],
         "to_m2": 1,
         "to_ep": 1,
@@ -136,11 +142,11 @@ MINIMAL_MSGS: dict[int, dict] = {
         "controller": 0,
         "location": LOCATION_MZONE,
         "sequence": 0,
-        "desc": 0,
+        "desc": 0x99,
     },
-    MSG_SELECT_YESNO: {"player": 0, "desc": 0},
+    MSG_SELECT_YESNO: {"player": 0, "desc": 0x99},
     # The option value itself becomes the action's `desc`.
-    MSG_SELECT_OPTION: {"player": 0, "options": [0]},
+    MSG_SELECT_OPTION: {"player": 0, "options": [7]},
     # min=0 < max=1 makes can_finish true immediately (selected=[]), so one
     # call yields both a pick and the harness finish action.
     MSG_SELECT_CARD: {
@@ -154,7 +160,7 @@ MINIMAL_MSGS: dict[int, dict] = {
     MSG_SELECT_CHAIN: {
         "player": 0,
         "forced": 0,
-        "chains": [{**_CARD, "desc": 0, "position": 0}],
+        "chains": [{**_CARD, "desc": 0x99, "position": 0}],
     },
     # Inverted mask: field_mask=0 leaves every zone OPEN, so both my zones and
     # the opponent's are offered.

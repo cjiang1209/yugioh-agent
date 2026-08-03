@@ -23,6 +23,7 @@ from yugioh_core.constants import (
     MSG_SELECT_IDLECMD,
     MSG_SELECT_PLACE,
     MSG_SELECT_POSITION,
+    MSG_SELECT_SUM,
     MSG_SELECT_TRIBUTE,
     MSG_SELECT_UNSELECT_CARD,
     MSG_SELECT_YESNO,
@@ -42,12 +43,35 @@ from yugioh_core.constants import (
 )
 from yugioh_core.encoding import MAX_ACTIONS
 from yugioh_env.action_loop_filter import ActionLoopFilter
-from yugioh_env.action_space import ActionMapper
+from yugioh_env.action_space import ActionMapper, _relativize_controller
 from yugioh_env.duel import Duel
 from yugioh_env.event_buffer import EventHistoryBuffer
 from yugioh_env.event_logger import FieldTracker, enrich_messages
 from yugioh_env.lib_loader import load_library
-from yugioh_env.models import ActionMeta, YuGiOhAction, YuGiOhObservation, YuGiOhState
+from yugioh_env.models import (
+    ActionDescriptor,
+    ActionMeta,
+    ActivateEffect,
+    AnnounceCard,
+    AnnounceNumber,
+    Attack,
+    CardCommand,
+    CardRef,
+    ChooseOption,
+    ChoosePosition,
+    ChooseRPS,
+    Confirm,
+    FinishPick,
+    Pass,
+    PhaseChange,
+    PickBit,
+    PickCard,
+    PlaceZone,
+    SelectCounter,
+    YuGiOhAction,
+    YuGiOhObservation,
+    YuGiOhState,
+)
 from yugioh_env.observation import build_observation
 from yugioh_env.opponent import Opponent, make_opponent
 
@@ -99,6 +123,79 @@ def _build_action_meta_list(actions: list[dict]) -> list[ActionMeta | None]:
     return out
 
 
+_DESCRIPTOR_BUILDERS = {
+    "pick_card": lambda a: PickCard(
+        engine_index=a["index"],
+        num_selected=a.get("num_selected", 1),
+        param=a.get("param"),
+        card=_card_ref(a),
+    ),
+    "pick_bit": lambda a: PickBit(
+        engine_index=a["index"],
+        num_selected=a.get("num_selected", 1),
+        value=a["meta"]["raw_value"],
+    ),
+    "finish_pick": lambda a: FinishPick(num_selected=a["num_selected"]),
+    "card_command": lambda a: CardCommand(
+        engine_index=a["index"], command=a["category"], card=_card_ref(a)
+    ),
+    "activate_effect": lambda a: ActivateEffect(
+        engine_index=a["index"], card=_card_ref(a), desc=a.get("desc", 0)
+    ),
+    "attack": lambda a: Attack(
+        engine_index=a["index"],
+        card=_card_ref(a),
+        direct_attackable=bool(a.get("direct_attackable", 0)),
+    ),
+    "phase_change": lambda a: PhaseChange(to=a["to"]),
+    "confirm": lambda a: Confirm(yes=a["yes"], desc=a.get("desc", 0)),
+    "choose_option": lambda a: ChooseOption(engine_index=a["index"], desc=a.get("desc", 0)),
+    "choose_position": lambda a: ChoosePosition(position=a["index"], card_code=a.get("code", 0)),
+    "place_zone": lambda a: PlaceZone(
+        controller=a["controller"], location=a["location"], sequence=a["sequence"]
+    ),
+    "announce_number": lambda a: AnnounceNumber(
+        engine_index=a["index"], value=a["meta"]["raw_value"]
+    ),
+    "announce_card": lambda a: AnnounceCard(card_code=a.get("code", 0)),
+    "choose_rps": lambda a: ChooseRPS(choice=a["index"]),
+    "select_counter": lambda a: SelectCounter(
+        engine_index=a["index"],
+        card=_card_ref(a),
+        counter_type=a["counter_type"],
+        counter_count=a["counter_count"],
+    ),
+    "pass": lambda a: Pass(),
+}
+
+
+def _card_ref(a: dict) -> CardRef:
+    return CardRef(
+        code=a.get("code", 0),
+        controller=a.get("controller", 0),
+        location=a["location"],
+        sequence=a["sequence"],
+    )
+
+
+def _build_action_descriptors(actions: list[dict]) -> list[ActionDescriptor | None]:
+    """Mechanical kind -> model projection, length MAX_ACTIONS.
+
+    Raises rather than defaulting: an unmapped shape must fail loudly, not
+    land in an ill-fitting variant.
+    """
+    out: list[ActionDescriptor | None] = [None] * MAX_ACTIONS
+    for i, action in enumerate(actions[:MAX_ACTIONS]):
+        kind = action.get("kind")
+        if kind is None:
+            raise ValueError(f"untagged action at slot {i}: {action!r}")
+        builder = _DESCRIPTOR_BUILDERS.get(kind)
+        if builder is None:
+            raise ValueError(f"unknown action kind {kind!r} at slot {i}")
+        out[i] = builder(action)
+    return out
+
+
 def _picked_cards(cards: Iterable[dict]) -> list[dict]:
     """Minimal {code, location} dicts for the picked-cards prompt-meta field."""
     return [{"code": c.get("code", 0), "location": c.get("location", 0)} for c in cards]
@@ -121,11 +218,14 @@ def _build_prompt_meta(mapper) -> dict | None:
     msg = mapper.msg
     if msg_type is None or not msg:
         return None
+    agent_player = msg.get("_agent_player", 0)
     result: dict = {"msg_type": msg_type}
     if msg_type == MSG_SELECT_EFFECTYN:
         result["card_code"] = msg.get("code", 0)
         result["location"] = msg.get("location", 0)
         result["desc"] = msg.get("desc", 0)
+        result["controller"] = _relativize_controller(msg.get("controller", 0), agent_player)
+        result["sequence"] = msg.get("sequence", 0)
     elif msg_type == MSG_SELECT_YESNO:
         result["desc"] = msg.get("desc", 0)
     elif msg_type == MSG_SELECT_CARD:
@@ -136,6 +236,7 @@ def _build_prompt_meta(mapper) -> dict | None:
         result["cancelable"] = bool(msg.get("cancelable", 0))
         result["selected_count"] = len(selected)
         result["picked_cards"] = _picked_cards(cards[i] for i in selected)
+        result["selected"] = list(selected)
     elif msg_type == MSG_SELECT_TRIBUTE:
         selected = msg.get("_selected", [])
         cards = msg.get("cards", [])
@@ -147,6 +248,23 @@ def _build_prompt_meta(mapper) -> dict | None:
         )
         result["cards_selected"] = len(selected)
         result["picked_cards"] = _picked_cards(cards[i] for i in selected)
+        result["selected"] = list(selected)
+    elif msg_type == MSG_SELECT_SUM:
+        result["target_sum"] = msg.get("target_sum", 0)
+        result["select_type"] = msg.get("select_type", 0)
+        result["min"] = msg.get("min", 1)
+        result["max"] = msg.get("max", 0)
+        result["selected"] = list(msg.get("_selected", []))
+        result["must_cards"] = [
+            {
+                "code": c.get("code", 0),
+                "controller": _relativize_controller(c.get("controller", 0), agent_player),
+                "location": c.get("location", 0),
+                "sequence": c.get("sequence", 0),
+                "param": int(c.get("param", 0)),
+            }
+            for c in msg.get("must_cards", [])
+        ]
     elif msg_type == MSG_SELECT_UNSELECT_CARD:
         result["min"] = msg.get("min", 1)
         result["max"] = msg.get("max", 1)
@@ -648,11 +766,7 @@ class YuGiOhEnvironment(Environment):
         action_mask = self._mapper.get_action_mask()
         action_features = self._mapper.get_action_features()
         action_meta = _build_action_meta_list(self._mapper.actions)
-
-        assert len(action_meta) == len(action_features) == len(action_mask), (
-            f"action_meta/features/mask length drift: "
-            f"{len(action_meta)}/{len(action_features)}/{len(action_mask)}"
-        )
+        action_descriptors = _build_action_descriptors(self._mapper.actions)
 
         return YuGiOhObservation(
             cards=obs_data["cards"].tolist(),
@@ -662,6 +776,7 @@ class YuGiOhEnvironment(Environment):
             pending_chain=obs_data["pending_chain"].tolist(),
             event_history=obs_data["event_history"].tolist(),
             action_meta=action_meta,
+            action_descriptors=action_descriptors,
             prompt_meta=_build_prompt_meta(self._mapper),
             events=list(self._cycle_events),
             done=False,
@@ -717,6 +832,7 @@ class YuGiOhEnvironment(Environment):
             pending_chain=pending_chain,
             event_history=event_history,
             action_meta=[],
+            action_descriptors=[],
             prompt_meta=None,
             events=list(self._cycle_events),
             done=True,

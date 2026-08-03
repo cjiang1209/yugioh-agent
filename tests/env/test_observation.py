@@ -13,7 +13,12 @@ def test_action_meta_length_matches_actions(lib, db_path, script_dirs):
 
     env = YuGiOhEnvironment({})
     obs = env.reset(seed=42)
-    assert len(obs.action_meta) == len(obs.actions) == len(obs.action_mask)
+    assert (
+        len(obs.action_meta)
+        == len(obs.action_descriptors)
+        == len(obs.actions)
+        == len(obs.action_mask)
+    )
     # Inactive slots are None; only the legal-action prefix may carry meta
     legal_count = sum(obs.action_mask)
     for i in range(legal_count, len(obs.action_mask)):
@@ -41,6 +46,7 @@ def test_terminal_observation_lists_empty(lib, db_path, script_dirs):
     assert obs.actions == []
     assert obs.action_mask == []
     assert obs.action_meta == []
+    assert obs.action_descriptors == []
 
 
 # ─── Board controller relativization invariants (Tests B1, B2) ────────────────

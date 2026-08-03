@@ -15,6 +15,7 @@ from yugioh_core.constants import (
     MSG_SELECT_OPTION,
     MSG_SELECT_PLACE,
     MSG_SELECT_POSITION,
+    MSG_SELECT_SUM,
     MSG_SELECT_TRIBUTE,
     MSG_SELECT_UNSELECT_CARD,
     MSG_SELECT_YESNO,
@@ -631,6 +632,7 @@ def test_build_prompt_meta_select_card_picked_cards():
         {"code": 300, "location": 0x01},
         {"code": 100, "location": 0x01},
     ]
+    assert meta["selected"] == [2, 0]
 
 
 def test_build_prompt_meta_select_tribute_picked_cards():
@@ -651,6 +653,7 @@ def test_build_prompt_meta_select_tribute_picked_cards():
     meta = _build_prompt_meta(FakeMapper())
     assert meta["cards_selected"] == 1
     assert meta["picked_cards"] == [{"code": 200, "location": 0x04}]
+    assert meta["selected"] == [1]
 
 
 def test_build_prompt_meta_select_unselect_picked_cards():
@@ -676,4 +679,81 @@ def test_build_prompt_meta_select_unselect_picked_cards():
     assert meta["picked_cards"] == [
         {"code": 100, "location": 0x01},
         {"code": 200, "location": 0x01},
+    ]
+
+
+def test_effectyn_prompt_meta_has_relativized_controller() -> None:
+    """Opponent's card, agent is player 1 -> controller must read 0 (mine)."""
+    msg = {
+        "msg_type": MSG_SELECT_EFFECTYN,
+        "code": 999,
+        "controller": 1,
+        "location": 0x04,
+        "sequence": 2,
+        "desc": 0,
+    }
+    obs = _obs_from_msg(msg, agent_player=1)
+    pm = obs.prompt_meta
+    assert pm["controller"] == 0  # absolute 1 == agent 1 -> "mine"
+    assert pm["sequence"] == 2
+
+    obs0 = _obs_from_msg(msg, agent_player=0)
+    assert obs0.prompt_meta["controller"] == 1  # same card, other seat
+
+
+def test_sum_prompt_meta_branch_exists() -> None:
+    # min=2 deliberately differs from _build_prompt_meta's own default (1),
+    # so a mutation that drops the assignment and falls through to the
+    # default cannot coincidentally pass.
+    msg = {
+        "msg_type": MSG_SELECT_SUM,
+        "select_type": 0,
+        "target_sum": 8,
+        "min": 2,
+        "max": 2,
+        "must_cards": [],
+        "optional_cards": [],
+    }
+    pm = _obs_from_msg(msg).prompt_meta
+    assert pm["target_sum"] == 8
+    assert pm["select_type"] == 0
+    assert pm["min"] == 2 and pm["max"] == 2
+    assert pm["must_cards"] == []
+
+
+def test_sum_prompt_meta_selected_and_must_cards_fields() -> None:
+    """`selected` (non-empty) and per-card `must_cards` fields (param != 0,
+    controller relativized) for MSG_SELECT_SUM. Checked at both seats so an
+    inverted `_relativize_controller` call cannot hide behind a player-0-only
+    assertion."""
+
+    def _meta(agent_player: int) -> dict:
+        class FakeMapper:
+            msg_type = MSG_SELECT_SUM
+            msg = {
+                "msg_type": MSG_SELECT_SUM,
+                "select_type": 0,
+                "target_sum": 8,
+                "min": 1,
+                "max": 2,
+                "_agent_player": agent_player,
+                "_selected": [0],
+                "must_cards": [
+                    {"code": 555, "controller": 1, "location": 0x04, "sequence": 3, "param": 7},
+                ],
+                "optional_cards": [],
+            }
+
+        return _build_prompt_meta(FakeMapper())
+
+    meta0 = _meta(0)
+    assert meta0["selected"] == [0]
+    assert meta0["must_cards"] == [
+        {"code": 555, "controller": 1, "location": 0x04, "sequence": 3, "param": 7}
+    ]
+
+    meta1 = _meta(1)
+    # Same absolute controller (1), but now == agent_player -> relativizes to 0.
+    assert meta1["must_cards"] == [
+        {"code": 555, "controller": 0, "location": 0x04, "sequence": 3, "param": 7}
     ]
