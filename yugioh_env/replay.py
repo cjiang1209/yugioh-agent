@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from yugioh_env.models import YuGiOhAction
+from yugioh_env.models import YuGiOhAction, YuGiOhObservation
 from yugioh_env.opponent import Opponent
 
 
@@ -162,7 +162,7 @@ class RecordingOpponent(Opponent):
     def needs_observation(self) -> bool:
         return self._inner.needs_observation
 
-    def set_observation(self, obs: dict) -> None:
+    def set_observation(self, obs: YuGiOhObservation) -> None:
         self._inner.set_observation(obs)
 
     def reseed(self, seed: int) -> None:

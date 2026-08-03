@@ -77,6 +77,11 @@ class ActionMapper:
         return self._msg
 
     @property
+    def agent_player(self) -> int:
+        """Seat this mapper was updated for; controllers are relativized to it."""
+        return self._msg.get("_agent_player", 0)
+
+    @property
     def actions(self) -> list[dict]:
         """The current list of legal action dicts (treat as read-only)."""
         return self._actions

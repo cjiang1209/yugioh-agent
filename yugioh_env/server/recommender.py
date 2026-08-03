@@ -10,8 +10,6 @@ from __future__ import annotations
 
 import os
 
-import numpy as np
-
 from yugioh_env.models import YuGiOhObservation
 from yugioh_env.opponent import Opponent, make_opponent
 
@@ -42,20 +40,12 @@ def recommender_device_from_env() -> str:
 def recommend_action_index(recommender: Opponent, env, obs: YuGiOhObservation) -> int:
     """Run the recommender on a live observation and return its chosen action index.
 
-    Only network recommenders (``needs_observation``) are handed the obs arrays;
+    Only network recommenders (``needs_observation``) are handed the observation;
     random/greedy/ygo-agent select purely from the current ``msg`` and
     ``num_actions``. The mask is dense (``mask[:num_actions] = 1``), so the
     returned index is a legal slot directly usable as an ``EngineAction.index``.
     The caller must ensure ``obs`` is non-terminal with at least one legal action.
     """
     if recommender.needs_observation:
-        obs_dict = {
-            "cards": np.asarray(obs.cards, dtype=np.uint8),
-            "global_state": np.asarray(obs.global_state, dtype=np.uint8),
-            "actions": np.asarray(obs.actions, dtype=np.uint8),
-            "action_mask": np.asarray(obs.action_mask, dtype=np.int8),
-            "pending_chain": np.asarray(obs.pending_chain, dtype=np.uint8),
-            "event_history": np.asarray(obs.event_history, dtype=np.uint8),
-        }
-        recommender.set_observation(obs_dict)
+        recommender.set_observation(obs)
     return recommender.select_action(env.current_msg or {}, env.num_actions)

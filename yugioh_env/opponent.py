@@ -15,12 +15,11 @@ from __future__ import annotations
 import random
 from abc import ABC, abstractmethod
 
-import numpy as np
-
 from yugioh_core.constants import (
     MSG_SELECT_BATTLECMD,
     MSG_SELECT_IDLECMD,
 )
+from yugioh_env.models import YuGiOhObservation
 
 
 class Opponent(ABC):
@@ -33,11 +32,11 @@ class Opponent(ABC):
 
     @property
     def needs_observation(self) -> bool:
-        """Whether this opponent requires full observation arrays to select actions."""
+        """Whether this opponent requires the full observation to select actions."""
         return False
 
-    def set_observation(self, obs: dict[str, np.ndarray]) -> None:  # noqa: B027
-        """Provide the current observation arrays before calling select_action.
+    def set_observation(self, obs: YuGiOhObservation) -> None:  # noqa: B027
+        """Provide the current observation before calling select_action.
 
         Only called when needs_observation returns True.
         """
@@ -149,7 +148,7 @@ class NetworkOpponent(Opponent):
         self._temperature = temperature
         if temperature <= 0:
             raise ValueError(f"temperature must be > 0, got {temperature!r}")
-        self._obs: dict[str, np.ndarray] | None = None
+        self._obs: YuGiOhObservation | None = None
         # Per-episode recurrent state.  reseed() — called per duel by both
         # the HTTP env and the eval loop — re-zeros it.
         self._hx = self._network.init_hx(1, self._device)
@@ -158,7 +157,7 @@ class NetworkOpponent(Opponent):
     def needs_observation(self) -> bool:
         return True
 
-    def set_observation(self, obs: dict[str, np.ndarray]) -> None:
+    def set_observation(self, obs: YuGiOhObservation) -> None:
         self._obs = obs
 
     @property
@@ -175,7 +174,7 @@ class NetworkOpponent(Opponent):
             return 0
 
         inputs = build_forward_inputs(
-            self._obs, device=self._device, add_batch_dim=True, guard_optional=True
+            self._obs.as_arrays(), device=self._device, add_batch_dim=True
         )
 
         with torch.no_grad():
@@ -218,7 +217,7 @@ class ModelOpponent(Opponent):
     def needs_observation(self) -> bool:
         return True
 
-    def set_observation(self, obs: dict[str, np.ndarray]) -> None:
+    def set_observation(self, obs: YuGiOhObservation) -> None:
         self._impl.set_observation(obs)
 
     def select_action(self, msg: dict, num_actions: int) -> int:

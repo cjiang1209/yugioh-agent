@@ -679,17 +679,7 @@ class YuGiOhEnvironment(Environment):
                                 )
                             continue
                         if self._opponent.needs_observation:
-                            opp_obs = build_observation(
-                                self._duel.game_state,
-                                msg,
-                                1 - self._agent_player,
-                                query_fn=self.query_location,
-                                event_history=self._event_buffer.to_tensor(
-                                    1 - self._agent_player,
-                                ),
-                            )
-                            opp_obs["actions"] = opp_mapper.get_action_features()
-                            opp_obs["action_mask"] = opp_mapper.get_action_mask()
+                            opp_obs = self._build_seat_observation(opp_mapper)
                             self._opponent.set_observation(opp_obs)
                         opp_action = self._opponent.select_action(msg, opp_mapper.num_actions)
                         self._opp_step_count += 1
@@ -717,13 +707,46 @@ class YuGiOhEnvironment(Environment):
                 # Unknown message, try continuing
                 return self._make_terminal_observation()
 
+    def _build_seat_observation(self, mapper: ActionMapper) -> YuGiOhObservation:
+        """One observation builder for both seats.
+
+        The seat comes from the mapper, so the perspective the controllers are
+        relativized against cannot disagree with the prompt being answered.
+        """
+        seat = mapper.agent_player
+        obs_data = build_observation(
+            self._duel.game_state,
+            mapper.msg,
+            seat,
+            query_fn=self.query_location,
+            event_history=self._event_buffer.to_tensor(seat),
+        )
+
+        action_mask = mapper.get_action_mask()
+        action_features = mapper.get_action_features()
+        action_descriptors = _build_action_descriptors(mapper.actions)
+
+        return YuGiOhObservation(
+            cards=obs_data["cards"],
+            global_state=obs_data["global_state"],
+            actions=action_features,
+            action_mask=action_mask,
+            pending_chain=obs_data["pending_chain"],
+            event_history=obs_data["event_history"],
+            action_descriptors=action_descriptors,
+            prompt_meta=_build_prompt_meta(mapper),
+            events=list(self._cycle_events),
+            done=False,
+            reward=0.0,
+        )
+
     def _make_observation(self) -> YuGiOhObservation:
         """Build observation from current state."""
         # Every path here is an agent-facing SELECT prompt, so the mapper must
         # offer at least one action; a zero-action prompt yields an all-zero
         # mask -> -inf logits -> NaN in Categorical. Fail loudly instead.
         if self._mapper.num_actions == 0:
-            msg_type = self._current_msg.get("msg_type")
+            msg_type = self._mapper.msg_type
             if msg_type == MSG_ANNOUNCE_CARD:
                 detail = (
                     "MSG_ANNOUNCE_CARD uses a general predicate filter that is "
@@ -736,31 +759,7 @@ class YuGiOhEnvironment(Environment):
                 f"msg_type={msg_type}: {detail}."
             )
 
-        obs_data = build_observation(
-            self._duel.game_state,
-            self._current_msg,
-            self._agent_player,
-            query_fn=self.query_location,
-            event_history=self._event_buffer.to_tensor(self._agent_player),
-        )
-
-        action_mask = self._mapper.get_action_mask()
-        action_features = self._mapper.get_action_features()
-        action_descriptors = _build_action_descriptors(self._mapper.actions)
-
-        return YuGiOhObservation(
-            cards=obs_data["cards"],
-            global_state=obs_data["global_state"],
-            actions=action_features,
-            action_mask=action_mask,
-            pending_chain=obs_data["pending_chain"],
-            event_history=obs_data["event_history"],
-            action_descriptors=action_descriptors,
-            prompt_meta=_build_prompt_meta(self._mapper),
-            events=list(self._cycle_events),
-            done=False,
-            reward=0.0,
-        )
+        return self._build_seat_observation(self._mapper)
 
     def _make_terminal_observation(self) -> YuGiOhObservation:
         """Build terminal observation with reward."""

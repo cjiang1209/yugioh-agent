@@ -20,10 +20,18 @@ from yugioh_core.encoding import (
     MAX_ACTIONS,
     MAX_CARDS,
 )
+from yugioh_env.models import YuGiOhObservation
 from yugioh_rl.config import TrainingConfig
 from yugioh_rl.network import YuGiOhNet
 
 _RNN_FIELDS = ("rnn_type", "rnn_hidden_dim", "rnn_num_layers", "bptt_chunk_len")
+
+
+def _dummy_model_opponent_obs() -> YuGiOhObservation:
+    """Full-shape observation with the first 3 actions legal."""
+    mask = np.zeros(MAX_ACTIONS, dtype=np.int8)
+    mask[:3] = 1
+    return YuGiOhObservation(action_mask=mask)
 
 
 def _save_minimal_checkpoint(path: str, config: TrainingConfig) -> None:
@@ -73,14 +81,7 @@ def test_legacy_checkpoint_inference_via_model_opponent(tmp_path):
 
     opp = ModelOpponent(ckpt_path, device="cpu")
 
-    obs = {
-        "cards": np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8),
-        "global_state": np.zeros(GLOBAL_FEATURES, dtype=np.uint8),
-        "actions": np.zeros((MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8),
-        "action_mask": np.zeros(32, dtype=np.int8),
-    }
-    obs["action_mask"][:3] = 1
-    opp.set_observation(obs)
+    opp.set_observation(_dummy_model_opponent_obs())
 
     msg = {"msg_type": MSG_SELECT_YESNO, "player": 1, "desc": 0}
     action = opp.select_action(msg, num_actions=3)
@@ -259,13 +260,7 @@ def test_model_opponent_hx_lifecycle(tmp_path):
 
     opp = ModelOpponent(ckpt_path, device="cpu")
 
-    obs = {
-        "cards": np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8),
-        "global_state": np.zeros(GLOBAL_FEATURES, dtype=np.uint8),
-        "actions": np.zeros((MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8),
-        "action_mask": np.zeros(32, dtype=np.int8),
-    }
-    obs["action_mask"][:3] = 1
+    obs = _dummy_model_opponent_obs()
 
     # Reseed initialises hx to zero.
     opp.reseed(0)
@@ -311,14 +306,7 @@ def test_model_opponent_feed_forward_hx_is_none(tmp_path):
     opp.reseed(0)
     assert opp._impl._hx is None
 
-    obs = {
-        "cards": np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8),
-        "global_state": np.zeros(GLOBAL_FEATURES, dtype=np.uint8),
-        "actions": np.zeros((MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8),
-        "action_mask": np.zeros(32, dtype=np.int8),
-    }
-    obs["action_mask"][:3] = 1
-    opp.set_observation(obs)
+    opp.set_observation(_dummy_model_opponent_obs())
     opp.select_action({"msg_type": MSG_SELECT_YESNO, "player": 1, "desc": 0}, num_actions=3)
     assert opp._impl._hx is None
 

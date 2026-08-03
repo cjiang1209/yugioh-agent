@@ -8,14 +8,13 @@ import pytest
 
 from yugioh_core.constants import MSG_SELECT_YESNO
 from yugioh_core.encoding import (
-    ACTION_FEATURES,
-    CARD_FEATURES,
-    GLOBAL_FEATURES,
     MAX_ACTIONS,
-    MAX_CARDS,
 )
 from yugioh_env.action_space import ActionMapper
-from yugioh_env.opponent import GreedyOpponent, RandomOpponent
+from yugioh_env.deck_parser import parse_ydk
+from yugioh_env.models import YuGiOhAction, YuGiOhObservation
+from yugioh_env.opponent import GreedyOpponent, Opponent, RandomOpponent
+from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
 
 
 def _make_yesno_mapper() -> ActionMapper:
@@ -109,7 +108,71 @@ def test_base_opponent_needs_observation_default():
 def test_base_opponent_set_observation_is_noop():
     """Base Opponent.set_observation does nothing and doesn't raise."""
     opp = GreedyOpponent()
-    opp.set_observation({"cards": np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8)})
+    opp.set_observation(YuGiOhObservation())
+
+
+# ---------------------------------------------------------------------------
+# Opponent receives the canonical YuGiOhObservation
+# ---------------------------------------------------------------------------
+
+
+def test_opponent_receives_full_observation(lib, db_path, script_dirs, deck_path) -> None:
+    """A single agent step does NOT reliably reach a multi-action opponent
+    prompt, so step until the spy fires (bounded), then assert."""
+    seen = {}
+
+    class Spy(Opponent):
+        needs_observation = True
+
+        def set_observation(self, obs):
+            seen["obs"] = obs
+            # Snapshot both players' hand counts at the moment the opponent
+            # is asked to observe, so we can check the observation was built
+            # from the OPPONENT's perspective, not the agent's.
+            seen["hand"] = list(env._duel.game_state.hand_count)
+
+        def select_action(self, msg, num_actions):
+            # Overwrite rather than keep the first: the opponent may be
+            # prompted several times, and only the pair matching the last
+            # recorded "obs" is the one asserted on.
+            seen["msg_type"] = msg.get("msg_type")
+            return 0
+
+        def reseed(self, seed):
+            pass
+
+    deck = parse_ydk(deck_path)  # parsed dict, not a path
+    env = YuGiOhEnvironment(
+        config={
+            "db_path": str(db_path),
+            "script_dirs": [str(d) for d in script_dirs],
+        }
+    )
+    try:
+        env.set_opponent(Spy())
+        obs = env.reset(seed=1, deck0=deck, deck1=deck, agent_player=0)
+        for _ in range(200):
+            if "obs" in seen or obs.done:
+                break
+            obs = env.step(YuGiOhAction(action_index=0))
+        assert "obs" in seen, "opponent never got a prompt; raise the bound"
+
+        opp_obs = seen["obs"]
+        assert isinstance(opp_obs, YuGiOhObservation)
+        assert opp_obs.prompt_meta is not None
+        assert any(d is not None for d in opp_obs.action_descriptors)
+
+        # The opponent's observation must be built from the OPPONENT's
+        # perspective, so "my hand" (global_state[11]) must equal the actual
+        # OPPONENT's hand count. Handing the builder the agent's mapper would
+        # silently read the agent's own hand count instead.
+        assert opp_obs.global_state[11] == seen["hand"][1 - env._agent_player]
+
+        # prompt_meta must describe the prompt the OPPONENT is answering;
+        # the agent's mapper would describe the agent's last prompt.
+        assert opp_obs.prompt_meta["msg_type"] == seen["msg_type"]
+    finally:
+        env.close()
 
 
 # ---------------------------------------------------------------------------
@@ -138,17 +201,11 @@ def _make_synthetic_checkpoint(path: str) -> None:
     )
 
 
-def _dummy_obs() -> dict[str, np.ndarray]:
-    """Create dummy observation arrays with valid shapes."""
-    obs = {
-        "cards": np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8),
-        "global_state": np.zeros(GLOBAL_FEATURES, dtype=np.uint8),
-        "actions": np.zeros((MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8),
-        "action_mask": np.zeros(32, dtype=np.int8),
-    }
-    # Mark first 3 actions as legal
-    obs["action_mask"][:3] = 1
-    return obs
+def _dummy_obs() -> YuGiOhObservation:
+    """Create a dummy observation with valid shapes; first 3 actions legal."""
+    mask = np.zeros(MAX_ACTIONS, dtype=np.int8)
+    mask[:3] = 1
+    return YuGiOhObservation(action_mask=mask)
 
 
 def test_model_opponent_construction():

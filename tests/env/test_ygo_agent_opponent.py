@@ -15,6 +15,7 @@ from yugioh_core.encoding import (
     MAX_CARDS,
     encode_u16,
 )
+from yugioh_env.models import YuGiOhObservation
 from yugioh_env.ygo_agent.opponent import DEFAULT_URL, YGOAgentOpponent
 
 
@@ -62,15 +63,16 @@ class TestYGOAgentOpponent:
         opp = YGOAgentOpponent()
         opp._duel_id = "test-duel"
         opp._index = 0
-        obs = {
-            "cards": np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8),
-            "global_state": np.zeros(GLOBAL_FEATURES, dtype=np.uint8),
-            "actions": np.zeros((MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8),
-            "action_mask": np.zeros(MAX_ACTIONS, dtype=np.int8),
-        }
-        obs["global_state"][4] = 1  # turn
-        obs["global_state"][5], obs["global_state"][6] = encode_u16(0x04)  # phase: main1
-        obs["global_state"][7] = 1  # is_my_turn
+        global_state = np.zeros(GLOBAL_FEATURES, dtype=np.uint8)
+        global_state[4] = 1  # turn
+        global_state[5], global_state[6] = encode_u16(0x04)  # phase: main1
+        global_state[7] = 1  # is_my_turn
+        obs = YuGiOhObservation(
+            cards=np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8),
+            global_state=global_state,
+            actions=np.zeros((MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8),
+            action_mask=np.zeros(MAX_ACTIONS, dtype=np.int8),
+        )
         opp.set_observation(obs)
 
         msg = {"msg_type": MSG_SELECT_YESNO, "player": 0, "desc": 30}

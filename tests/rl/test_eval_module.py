@@ -10,12 +10,9 @@ import pytest
 
 from tests.rl.conftest import requires_engine
 from yugioh_core.encoding import (
-    ACTION_FEATURES,
-    CARD_FEATURES,
-    GLOBAL_FEATURES,
     MAX_ACTIONS,
-    MAX_CARDS,
 )
+from yugioh_env.models import YuGiOhObservation
 from yugioh_env.opponent import (
     GreedyOpponent,
     Opponent,
@@ -192,13 +189,8 @@ class _ScriptedEnv:
         return _dummy_obs(), 0.0, done, info
 
 
-def _dummy_obs() -> dict[str, np.ndarray]:
-    return {
-        "cards": np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8),
-        "global_state": np.zeros(GLOBAL_FEATURES, dtype=np.uint8),
-        "actions": np.zeros((MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8),
-        "action_mask": np.ones(32, dtype=np.int8),
-    }
+def _dummy_obs() -> YuGiOhObservation:
+    return YuGiOhObservation(action_mask=np.ones(MAX_ACTIONS, dtype=np.int8))
 
 
 class TestRunMatch:
@@ -302,8 +294,7 @@ class TestRunMatch:
         env = _ScriptedEnv([[{"done": True, "reward": 1.0, "agent_deck_idx": 0}]])
         run_match(agent, env, num_episodes=1, base_seed=0)
         assert len(agent.set_observation_calls) == 1
-        # And the obs is the dict from env.reset() / env.step()
-        assert "cards" in agent.set_observation_calls[0]
+        assert isinstance(agent.set_observation_calls[0], YuGiOhObservation)
 
     def test_set_observation_skipped_when_not_needs_obs(self):
         agent = _RecordingAgent(needs_obs=False)
@@ -664,6 +655,23 @@ class TestEvalResultToRow:
 # the new per-episode metrics. Skip (via requires_engine) when libocgcore /
 # cards.cdb are absent.
 # ---------------------------------------------------------------------------
+
+
+@requires_engine
+def test_eval_env_returns_the_canonical_observation() -> None:
+    """EvalEnv feeds an Opponent-protocol agent, so reset/step hand over the
+    observation model itself -- unlike TrainingEnv, which returns the numpy
+    arrays the network consumes."""
+    from yugioh_rl.env_wrapper import EvalEnv
+
+    env = EvalEnv(deck_pool=_deck_pool_or_skip(), opponent="random", seed=0)
+    try:
+        obs = env.reset(episode_idx=0)
+        assert isinstance(obs, YuGiOhObservation)
+        nxt, _r, _d, _i = env.step(0)
+        assert isinstance(nxt, YuGiOhObservation)
+    finally:
+        env.close()
 
 
 @requires_engine

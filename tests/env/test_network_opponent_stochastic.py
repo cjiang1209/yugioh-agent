@@ -9,15 +9,23 @@ torch = pytest.importorskip("torch")
 import numpy as np
 import torch.nn as nn
 
+from yugioh_core.encoding import MAX_ACTIONS
+from yugioh_env.models import YuGiOhObservation
 from yugioh_env.opponent import NetworkOpponent
 
 
 class _FakeNet(nn.Module):
-    """Minimal stand-in: ignores inputs, returns canned logits + dummy value + hx."""
+    """Minimal stand-in: ignores inputs, returns canned logits + dummy value + hx.
+
+    ``logits`` covers only the legal actions under test; padded out to
+    ``MAX_ACTIONS`` with filler values that ``_make_obs``'s mask marks
+    illegal, so they're masked to -inf regardless of the filler.
+    """
 
     def __init__(self, logits: list[float]) -> None:
         super().__init__()
-        self._logits = torch.tensor([logits], dtype=torch.float32)
+        padded = list(logits) + [0.0] * (MAX_ACTIONS - len(logits))
+        self._logits = torch.tensor([padded], dtype=torch.float32)
 
     def init_hx(self, batch_size: int, device):
         return None
@@ -35,13 +43,11 @@ class _FakeNet(nn.Module):
         return self._logits, torch.zeros(1, 1), hx
 
 
-def _make_obs(n_actions: int) -> dict:
-    return {
-        "cards": np.zeros((1, 1), dtype=np.uint8),
-        "global_state": np.zeros((1,), dtype=np.uint8),
-        "actions": np.zeros((1, 1), dtype=np.uint8),
-        "action_mask": np.ones((n_actions,), dtype=np.int8),
-    }
+def _make_obs(n_actions: int) -> YuGiOhObservation:
+    """First `n_actions` slots legal, the rest (padding to MAX_ACTIONS) illegal."""
+    mask = np.zeros(MAX_ACTIONS, dtype=np.int8)
+    mask[:n_actions] = 1
+    return YuGiOhObservation(action_mask=mask)
 
 
 def test_stochastic_false_is_argmax() -> None:
@@ -90,8 +96,10 @@ def test_stochastic_negative_temperature_raises() -> None:
 def test_stochastic_respects_action_mask() -> None:
     # Highest logit at action 0, but mask it out — sample must fall on 1 or 2.
     net = _FakeNet([10.0, 0.0, 0.0])
-    obs = _make_obs(3)
-    obs["action_mask"] = np.array([0, 1, 1], dtype=np.int8)
+    mask = np.zeros(MAX_ACTIONS, dtype=np.int8)
+    mask[1] = 1
+    mask[2] = 1
+    obs = YuGiOhObservation(action_mask=mask)
     for seed in range(50):
         torch.manual_seed(seed)
         opp = NetworkOpponent(net, stochastic=True, temperature=1.0)

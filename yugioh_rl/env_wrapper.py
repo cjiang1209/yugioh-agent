@@ -21,7 +21,7 @@ from yugioh_core.encoding import (
     MAX_PENDING_CHAIN,
     decode_u16,
 )
-from yugioh_env.models import YuGiOhAction
+from yugioh_env.models import YuGiOhAction, YuGiOhObservation
 from yugioh_rl.policy_inputs import build_forward_inputs
 
 if TYPE_CHECKING:
@@ -326,7 +326,7 @@ class EvalEnv:
         self._last_agent_deck_idx = -1
         self._last_agent_player = -1
 
-    def reset(self, *, episode_idx: int) -> dict[str, np.ndarray]:
+    def reset(self, *, episode_idx: int) -> YuGiOhObservation:
         episode_seed = self._seed + episode_idx
         if self._agent_player_setting == "random":
             self._player_rng.seed(episode_seed)
@@ -348,11 +348,10 @@ class EvalEnv:
         obs = self._env.reset(
             seed=episode_seed, deck0=deck0, deck1=deck1, agent_player=resolved_player
         )
-        return obs.as_arrays()
+        return obs
 
-    def step(self, action_index: int) -> tuple[dict[str, np.ndarray], float, bool, dict[str, Any]]:
+    def step(self, action_index: int) -> tuple[YuGiOhObservation, float, bool, dict[str, Any]]:
         obs = self._env.step(YuGiOhAction(action_index=action_index))
-        np_obs = obs.as_arrays()
         info: dict[str, Any] = {}
         if obs.done:
             info["terminal_reward"] = obs.reward
@@ -362,7 +361,7 @@ class EvalEnv:
             info["agent_player"] = self._last_agent_player
             info["timeout"] = self._env._timed_out
             info["opponent_steps"] = self._env._opp_step_count
-        return np_obs, obs.reward, obs.done, info
+        return obs, obs.reward, obs.done, info
 
     @property
     def current_msg(self) -> dict | None:

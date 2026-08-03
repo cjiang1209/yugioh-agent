@@ -9,7 +9,6 @@ from __future__ import annotations
 import contextlib
 import logging
 
-import numpy as np
 import requests
 
 from yugioh_core.constants import (
@@ -19,6 +18,7 @@ from yugioh_core.constants import (
     MSG_SORT_CARD,
     MSG_SORT_CHAIN,
 )
+from yugioh_env.models import YuGiOhObservation
 from yugioh_env.opponent import Opponent
 from yugioh_env.ygo_agent.bridge import build_predict_input, match_response
 
@@ -54,13 +54,13 @@ class YGOAgentOpponent(Opponent):
         self._duel_id: str | None = None
         self._index: int = 0
         self._prev_action_idx: int = 0
-        self._obs: dict[str, np.ndarray] | None = None
+        self._obs: YuGiOhObservation | None = None
 
     @property
     def needs_observation(self) -> bool:
         return True
 
-    def set_observation(self, obs: dict[str, np.ndarray]) -> None:
+    def set_observation(self, obs: YuGiOhObservation) -> None:
         self._obs = obs
 
     def _delete_session(self) -> None:
@@ -107,7 +107,7 @@ class YGOAgentOpponent(Opponent):
         if msg_type in _SERVER_UNSUPPORTED_MSGS:
             return 0
 
-        body = build_predict_input(self._obs, msg, self._prev_action_idx, self._index)
+        body = build_predict_input(self._obs.as_arrays(), msg, self._prev_action_idx, self._index)
 
         try:
             resp = requests.post(
