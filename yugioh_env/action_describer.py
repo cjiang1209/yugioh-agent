@@ -6,7 +6,7 @@ YuGiOhObservation directly — no in-process mapper dependency.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 
 from yugioh_core.action_categories import (
     BATTLE_ACTIVATE,
@@ -24,6 +24,7 @@ from yugioh_core.action_categories import (
 )
 from yugioh_core.card_database import CardDatabase
 from yugioh_core.constants import (
+    ATTRIBUTE_NAMES,
     LOCATION_BANISHED,
     LOCATION_DECK,
     LOCATION_EXTRA,
@@ -47,6 +48,7 @@ from yugioh_core.constants import (
     MSG_SELECT_OPTION,
     MSG_SELECT_PLACE,
     MSG_SELECT_POSITION,
+    MSG_SELECT_SUM,
     MSG_SELECT_TRIBUTE,
     MSG_SELECT_UNSELECT_CARD,
     MSG_SELECT_YESNO,
@@ -56,10 +58,29 @@ from yugioh_core.constants import (
     POS_FACEDOWN_DEFENSE,
     POS_FACEUP_ATTACK,
     POS_FACEUP_DEFENSE,
+    RACE_NAMES,
+    RPS_NAMES,
 )
-from yugioh_core.encoding import decode_u16, decode_u32
 from yugioh_core.string_resolver import CardTextResolver
-from yugioh_env.models import ActionMeta, YuGiOhObservation
+from yugioh_env.models import (
+    ActivateEffect,
+    AnnounceCard,
+    AnnounceNumber,
+    Attack,
+    CardCommand,
+    ChooseOption,
+    ChoosePosition,
+    ChooseRPS,
+    Confirm,
+    FinishPick,
+    Pass,
+    PhaseChange,
+    PickBit,
+    PickCard,
+    PlaceZone,
+    SelectCounter,
+    YuGiOhObservation,
+)
 
 _IDLE_DESCS = {
     IDLE_SUMMON: ("Normal Summon", "summon"),
@@ -166,23 +187,9 @@ class ActionDetails:
     controller: int
     location: int
     sequence: int
-    meta: ActionMeta | None
 
     def to_dict(self) -> dict:
-        """JSON-ready dict; `meta` is dumped via Pydantic to avoid the
-        deepcopy that `dataclasses.asdict` would otherwise apply to the
-        embedded BaseModel."""
-        return {
-            "index": self.index,
-            "description": self.description,
-            "category": self.category,
-            "card_code": self.card_code,
-            "card_name": self.card_name,
-            "controller": self.controller,
-            "location": self.location,
-            "sequence": self.sequence,
-            "meta": self.meta.model_dump() if self.meta is not None else None,
-        }
+        return asdict(self)
 
 
 class ActionDescriber:
@@ -214,15 +221,10 @@ class ActionDescriber:
         if obs.prompt_meta is None:
             return None
         meta = dict(obs.prompt_meta)
-        # Prefer msg_type carried in prompt_meta (set by the env's
-        # _build_prompt_meta from mapper.msg_type) — falls back to byte 0
-        # of the first action vector when the field is absent (legacy callers
-        # that hand-built obs).
+        # msg_type is carried in prompt_meta (set by the env's
+        # _build_prompt_meta from mapper.msg_type); it is a documented,
+        # always-present field of the prompt_meta wire contract.
         msg_type = meta.pop("msg_type", None)
-        if msg_type is None:
-            if not obs.actions:
-                return None
-            msg_type = obs.actions[0][0]
         prompt_type = _PROMPT_TYPE_MAP.get(msg_type, "unknown")
         result: dict = {"type": prompt_type, **meta}
         # card_name lookup happens here (the server-side _build_prompt_meta
@@ -252,172 +254,192 @@ class ActionDescriber:
     # ─── Internal dispatch ────────────────────────────────────────────────
 
     def _describe_one(self, obs: YuGiOhObservation, idx: int) -> ActionDetails:
-        bytes_ = obs.actions[idx]
-        msg_type = bytes_[0]
-        category_byte = bytes_[1]
-        code = decode_u32(bytes_, 2)
-        controller = bytes_[6]
-        location = bytes_[7]
-        sequence = decode_u16(bytes_, 8)
-        index_byte = bytes_[16]
-        num_selected = bytes_[17]
-        meta = obs.action_meta[idx] if idx < len(obs.action_meta) else None
-        card_name = self._text.card_name(code)
+        descriptors = obs.action_descriptors
+        d = descriptors[idx] if idx < len(descriptors) else None
+        if d is None:
+            raise IndexError(f"action slot {idx} has no descriptor")
+        msg_type = (obs.prompt_meta or {}).get("msg_type", 0)
 
-        description, category = self._dispatch(
-            msg_type=msg_type,
-            category_byte=category_byte,
-            code=code,
-            card_name=card_name,
-            index_byte=index_byte,
-            num_selected=num_selected,
-            location=location,
-            sequence=sequence,
-            meta=meta,
-        )
+        card_code = 0
+        controller = 0
+        location = 0
+        sequence = 0
+
+        # Only 5 of 16 variants carry a CardRef (PickCard, CardCommand,
+        # ActivateEffect, Attack, SelectCounter); pull coordinates from it
+        # when present.
+        card_ref = getattr(d, "card", None)
+        if card_ref is not None:
+            card_code = card_ref.code
+            controller = card_ref.controller
+            location = card_ref.location
+            sequence = card_ref.sequence
+        elif isinstance(d, PlaceZone):
+            controller = d.controller
+            location = d.location
+            sequence = d.sequence
+        elif isinstance(d, Confirm) and msg_type == MSG_SELECT_EFFECTYN:
+            # EFFECTYN is a re-sourcing, not a value change: Confirm carries
+            # no card fields of its own, so the four card fields come from
+            # prompt_meta (already relativized by _build_prompt_meta).
+            meta = obs.prompt_meta or {}
+            card_code = meta.get("card_code", 0)
+            controller = meta.get("controller", 0)
+            location = meta.get("location", 0)
+            sequence = meta.get("sequence", 0)
+        elif isinstance(d, AnnounceCard | ChoosePosition):
+            card_code = d.card_code
+
+        card_name = self._text.card_name(card_code)
+
+        description, category = self._dispatch(msg_type, d, idx, card_name)
 
         return ActionDetails(
             index=idx,
             description=description,
             category=category,
-            card_code=code,
+            card_code=card_code,
             card_name=card_name,
             controller=controller,
             location=location,
             sequence=sequence,
-            meta=meta,
         )
 
-    def _dispatch(
-        self,
-        *,
-        msg_type: int,
-        category_byte: int,
-        code: int,
-        card_name: str,
-        index_byte: int,
-        num_selected: int,
-        location: int,
-        sequence: int,
-        meta: ActionMeta | None,
-    ) -> tuple[str, str]:
-        cat = category_byte
+    def _dispatch(self, msg_type: int, d, idx: int, card_name: str) -> tuple[str, str]:
+        """Describe one action. Keyed on (msg_type, variant): variants are
+        deliberately shared across prompts, so the variant supplies the
+        *fields* and msg_type supplies the *wording*.
 
-        if msg_type == MSG_SELECT_IDLECMD:
-            label, cat_str = _IDLE_DESCS.get(cat, (f"Action {cat}", "unknown"))
-            if code and card_name:
-                base = f"{label} {card_name}"
-                resolved = self._resolve_effect(meta)
+        NOTE: bare uppercase names (e.g. ``MSG_SELECT_IDLECMD``) are NOT
+        value patterns in Python's `match` grammar -- an undotted identifier
+        in a case pattern is always a *capture* pattern (binds unconditionally,
+        matching any value) unless it is a dotted/attribute name or a literal.
+        Writing `case (MSG_SELECT_IDLECMD, CardCommand()):` would therefore
+        match on the variant type alone and ignore msg_type entirely --
+        exactly the shared-variant collapse this dispatch exists to avoid.
+        Every msg_type comparison below is done via an explicit `if` guard.
+        """
+        match (msg_type, d):
+            case (mt, CardCommand()) if mt == MSG_SELECT_IDLECMD:
+                label, cat_str = _IDLE_DESCS.get(d.command, (f"Action {d.command}", "unknown"))
+                return f"{label} {card_name}".rstrip(), cat_str
+
+            case (mt, ActivateEffect()) if mt == MSG_SELECT_IDLECMD:
+                label, cat_str = _IDLE_DESCS[IDLE_ACTIVATE]
+                base = f"{label} {card_name}".rstrip()
+                resolved = self._text.effect_text(d.desc)
                 return (f"{base}: {resolved}" if resolved else base), cat_str
-            return label, cat_str
 
-        if msg_type == MSG_SELECT_BATTLECMD:
-            label, cat_str = _BATTLE_DESCS.get(cat, (f"Action {cat}", "unknown"))
-            if code and card_name:
-                base = f"{label} {card_name}"
-                resolved = self._resolve_effect(meta)
+            case (mt, PhaseChange()) if mt == MSG_SELECT_IDLECMD:
+                cat = IDLE_TO_BP if d.to == "bp" else IDLE_TO_EP
+                label, cat_str = _IDLE_DESCS.get(cat, (f"Action {cat}", "unknown"))
+                return label, cat_str
+
+            case (mt, ActivateEffect()) if mt == MSG_SELECT_BATTLECMD:
+                label, cat_str = _BATTLE_DESCS[BATTLE_ACTIVATE]
+                base = f"{label} {card_name}".rstrip()
+                resolved = self._text.effect_text(d.desc)
                 return (f"{base}: {resolved}" if resolved else base), cat_str
-            return label, cat_str
 
-        if msg_type in (MSG_SELECT_EFFECTYN, MSG_SELECT_YESNO):
-            if cat == 0:
-                return "Yes", "yes"
-            return "No", "no"
+            case (mt, Attack()) if mt == MSG_SELECT_BATTLECMD:
+                label, cat_str = _BATTLE_DESCS[BATTLE_ATTACK]
+                return f"{label} {card_name}".rstrip(), cat_str
 
-        if msg_type == MSG_SELECT_OPTION:
-            if meta is not None:
-                resolved = (
-                    self._text.effect_text(meta.raw_value) if meta.raw_value is not None else None
-                )
-                return (resolved or meta.label), "option"
-            return f"Option {index_byte + 1}", "option"
+            case (mt, PhaseChange()) if mt == MSG_SELECT_BATTLECMD:
+                cat = BATTLE_TO_M2 if d.to == "m2" else BATTLE_TO_EP
+                label, cat_str = _BATTLE_DESCS.get(cat, (f"Action {cat}", "unknown"))
+                return label, cat_str
 
-        if msg_type == MSG_SELECT_CARD:
-            if cat == 1:
-                return (
-                    f"Finish selecting ({num_selected} card{'s' if num_selected != 1 else ''})",
-                    "finish",
-                )
-            label = f"Select {card_name}" if card_name else f"Select card #{index_byte}"
-            return label, "select_card"
+            case (mt, Confirm()) if mt in (MSG_SELECT_EFFECTYN, MSG_SELECT_YESNO):
+                return ("Yes", "yes") if d.yes else ("No", "no")
 
-        if msg_type == MSG_SELECT_CHAIN:
-            if cat == 1:
+            case (mt, ChooseOption()) if mt == MSG_SELECT_OPTION:
+                resolved = self._text.effect_text(d.desc)
+                return (resolved or f"effect 0x{d.desc:x}"), "option"
+
+            case (mt, FinishPick()) if mt == MSG_SELECT_CARD:
+                n = d.num_selected
+                return f"Finish selecting ({n} card{'s' if n != 1 else ''})", "finish"
+
+            case (mt, PickCard()) if mt in (MSG_SELECT_CARD, MSG_SELECT_UNSELECT_CARD):
+                label = f"Select {card_name}" if card_name else f"Select card #{d.engine_index}"
+                return label, "select_card"
+
+            case (mt, Pass()) if mt == MSG_SELECT_CHAIN:
                 return "Pass (no chain)", "pass"
-            target = card_name or f"#{index_byte}"
-            resolved = (
-                self._text.effect_text(meta.raw_value)
-                if (meta is not None and meta.raw_value is not None)
-                else None
-            )
-            if resolved and card_name:
-                return f"Chain {target}: {resolved}", "chain"
-            return f"Chain {target}", "chain"
 
-        if msg_type in (MSG_SELECT_PLACE, MSG_SELECT_DISFIELD):
-            zone = (
-                "Monster"
-                if location == LOCATION_MZONE
-                else "Spell/Trap"
-                if location == LOCATION_SZONE
-                else "Unknown"
-            )
-            return f"Place in {zone} Zone {sequence + 1}", "place"
+            case (mt, ActivateEffect()) if mt == MSG_SELECT_CHAIN:
+                target = card_name or f"#{d.engine_index}"
+                resolved = self._text.effect_text(d.desc)
+                if resolved and card_name:
+                    return f"Chain {target}: {resolved}", "chain"
+                return f"Chain {target}", "chain"
 
-        if msg_type == MSG_SELECT_POSITION:
-            pos_name = _POS_NAMES.get(index_byte, f"Position {index_byte}")
-            desc = f"{card_name}: {pos_name}" if card_name else pos_name
-            return desc, "position"
-
-        if msg_type == MSG_SELECT_TRIBUTE:
-            if cat == 1:
-                return (
-                    f"Finish tributing ({num_selected} card{'s' if num_selected != 1 else ''})",
-                    "finish",
+            case (mt, PlaceZone()) if mt in (MSG_SELECT_PLACE, MSG_SELECT_DISFIELD):
+                zone = (
+                    "Monster"
+                    if d.location == LOCATION_MZONE
+                    else "Spell/Trap"
+                    if d.location == LOCATION_SZONE
+                    else "Unknown"
                 )
-            label = f"Tribute {card_name}" if card_name else f"Tribute card #{index_byte}"
-            return label, "tribute"
+                return f"Place in {zone} Zone {d.sequence + 1}", "place"
 
-        if msg_type == MSG_SELECT_UNSELECT_CARD:
-            if cat == 1:
+            case (mt, ChoosePosition()) if mt == MSG_SELECT_POSITION:
+                pos_name = _POS_NAMES.get(d.position, f"Position {d.position}")
+                desc = f"{card_name}: {pos_name}" if card_name else pos_name
+                return desc, "position"
+
+            case (mt, FinishPick()) if mt == MSG_SELECT_TRIBUTE:
+                n = d.num_selected
+                return f"Finish tributing ({n} card{'s' if n != 1 else ''})", "finish"
+
+            case (mt, PickCard()) if mt == MSG_SELECT_TRIBUTE:
+                label = f"Tribute {card_name}" if card_name else f"Tribute card #{d.engine_index}"
+                return label, "tribute"
+
+            case (mt, Pass()) if mt == MSG_SELECT_UNSELECT_CARD:
                 return "Finish selection", "finish"
-            label = f"Select {card_name}" if card_name else f"Select card #{index_byte}"
-            return label, "select_card"
 
-        if msg_type == MSG_ANNOUNCE_CARD:
-            label = f"Declare {card_name}" if card_name else f"Declare card #{index_byte}"
-            return label, "announce_card"
+            case (mt, AnnounceCard()) if mt == MSG_ANNOUNCE_CARD:
+                label = f"Declare {card_name}" if card_name else f"Declare card #{idx}"
+                return label, "announce_card"
 
-        if msg_type == MSG_ANNOUNCE_NUMBER:
-            return (meta.label if meta else f"Announce #{index_byte}"), "number"
+            case (mt, AnnounceNumber()) if mt == MSG_ANNOUNCE_NUMBER:
+                return f"Announce {d.value}", "number"
 
-        if msg_type == MSG_ANNOUNCE_RACE:
-            return (meta.label if meta else f"Race #{index_byte}"), "race"
+            case (mt, PickBit()) if mt == MSG_ANNOUNCE_RACE:
+                return RACE_NAMES.get(d.value, f"Race(0x{d.value:x})"), "race"
 
-        if msg_type == MSG_ANNOUNCE_ATTRIB:
-            return (meta.label if meta else f"Attribute #{index_byte}"), "attribute"
+            case (mt, PickBit()) if mt == MSG_ANNOUNCE_ATTRIB:
+                return ATTRIBUTE_NAMES.get(d.value, f"Attr(0x{d.value:x})"), "attribute"
 
-        if msg_type == MSG_ROCK_PAPER_SCISSORS:
-            return (meta.label if meta else f"RPS #{index_byte}"), "rps"
+            case (mt, ChooseRPS()) if mt == MSG_ROCK_PAPER_SCISSORS:
+                return RPS_NAMES[d.choice], "rps"
 
-        if msg_type == MSG_SELECT_COUNTER:
-            count = meta.extras["counter_count"] if meta else 0
-            target = card_name or f"card #{index_byte}"
-            return f"Remove {count} from {target}", "counter"
+            case (mt, SelectCounter()) if mt == MSG_SELECT_COUNTER:
+                target = card_name or f"card #{d.engine_index}"
+                return f"Remove {d.counter_count} from {target}", "counter"
 
-        if msg_type in (MSG_SORT_CARD, MSG_SORT_CHAIN):
-            label = f"Place {card_name} next" if card_name else f"Place card #{index_byte} next"
-            return label, "sort"
+            case (mt, PickCard()) if mt in (MSG_SORT_CARD, MSG_SORT_CHAIN):
+                label = (
+                    f"Place {card_name} next" if card_name else f"Place card #{d.engine_index} next"
+                )
+                return label, "sort"
 
-        # Fallback for sum, sort, etc.
-        if card_name:
-            return f"Select {card_name}", "select_card"
-        return f"Action #{index_byte}", "unknown"
+            case (mt, PickCard()) if mt == MSG_SELECT_SUM:
+                # No dedicated wording was ever written for MSG_SELECT_SUM;
+                # it fell through to the generic fallback below. Preserved
+                # verbatim rather than "fixed" here (out of scope).
+                if card_name:
+                    return f"Select {card_name}", "select_card"
+                return f"Action #{d.engine_index}", "unknown"
 
-    def _resolve_effect(self, meta: ActionMeta | None) -> str | None:
-        """Return resolved effect text for a kind=effect meta, or None."""
-        if meta is None or meta.kind != "effect":
-            return None
-        if meta.raw_value is None:
-            return None
-        return self._text.effect_text(meta.raw_value)
+            case (mt, FinishPick()) if mt == MSG_SELECT_SUM:
+                # The harness's finish action always carries index=0.
+                return "Action #0", "unknown"
+
+            case _:
+                if card_name:
+                    return f"Select {card_name}", "select_card"
+                return f"Action #{idx}", "unknown"

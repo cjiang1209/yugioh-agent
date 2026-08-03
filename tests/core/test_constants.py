@@ -1,4 +1,4 @@
-"""Tests for the new ActionMeta lookup tables.
+"""Tests for the RACE_NAMES / ATTRIBUTE_NAMES / RPS_NAMES lookup tables.
 
 These tests assert structural invariants — properties that, if violated, would
 cause silent runtime bugs. Per-key label correctness is intentionally NOT tested:

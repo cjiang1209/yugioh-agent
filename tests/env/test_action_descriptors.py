@@ -82,7 +82,7 @@ _KIND_FIELD_CHECKS = {
         and d.card.location == a["location"]
         and d.card.sequence == a["sequence"]
     ),
-    "pick_bit": lambda d, a: d.engine_index == a["index"] and d.value == a["meta"]["raw_value"],
+    "pick_bit": lambda d, a: d.engine_index == a["index"] and d.value == a["value"],
     "finish_pick": lambda d, a: d.num_selected == a["num_selected"],
     "card_command": lambda d, a: (
         d.engine_index == a["index"]
@@ -110,9 +110,7 @@ _KIND_FIELD_CHECKS = {
         and d.location == a["location"]
         and d.sequence == a["sequence"]
     ),
-    "announce_number": lambda d, a: (
-        d.engine_index == a["index"] and d.value == a["meta"]["raw_value"]
-    ),
+    "announce_number": lambda d, a: d.engine_index == a["index"] and d.value == a["value"],
     "announce_card": lambda d, a: d.card_code == a.get("code", 0),
     "choose_rps": lambda d, a: d.choice == a["index"],
     "select_counter": lambda d, a: (

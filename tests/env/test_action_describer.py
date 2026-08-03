@@ -2,9 +2,18 @@
 
 import pytest
 
+from tests.env.conftest import MINIMAL_MSGS
 from tests.env.conftest import obs_from_msg as _obs_from_msg
 from yugioh_core.constants import (
+    LOCATION_MZONE,
+    MSG_SELECT_CARD,
+    MSG_SELECT_CHAIN,
+    MSG_SELECT_COUNTER,
+    MSG_SELECT_EFFECTYN,
+    MSG_SELECT_IDLECMD,
+    MSG_SELECT_PLACE,
     MSG_SELECT_TRIBUTE,
+    MSG_SELECT_UNSELECT_CARD,
     MSG_SELECT_YESNO,
     MSG_SORT_CARD,
 )
@@ -117,24 +126,6 @@ def test_describer_rewrites_counter_with_card_name():
     details = describer.describe_all(obs)
     assert details[0].description == "Remove 2 from Card999"
     assert details[0].category == "counter"
-
-
-def test_describer_meta_field_passes_through_as_none_when_absent():
-    """For prompts whose extractor doesn't emit meta (e.g. SELECT_PLACE), the
-    result row's meta field is None — no fabricated meta from the describer."""
-    from yugioh_core.constants import MSG_SELECT_PLACE
-
-    obs = _obs_from_msg(
-        {
-            "msg_type": MSG_SELECT_PLACE,
-            "player": 0,
-            "count": 1,
-            "field_mask": 0,  # all 32 zones unblocked → many actions
-        }
-    )
-    describer = ActionDescriber(_StubCardDB(), sys_strings=None)
-    details = describer.describe_all(obs)
-    assert details[0].meta is None
 
 
 class _StubResolver:
@@ -297,6 +288,30 @@ def test_describer_idle_activate_appends_resolved_effect_text():
     assert details[0].category == "activate"
 
 
+def test_idle_summon_zero_code_card_has_no_trailing_space():
+    """A zero-code summonable entry (card_name resolves to "") must not leave
+    a trailing space in the label. The old `_dispatch` guarded with
+    `if code and card_name:`; the new CardCommand case must preserve that."""
+    obs = _obs_from_msg(
+        {
+            "msg_type": MSG_SELECT_IDLECMD,
+            "player": 0,
+            "summonable": [{"code": 0, "controller": 0, "location": LOCATION_MZONE, "sequence": 0}],
+            "sp_summonable": [],
+            "repositionable": [],
+            "mset": [],
+            "sset": [],
+            "activatable": [],
+            "to_bp": 0,
+            "to_ep": 0,
+            "shuffle_hand": 0,
+        }
+    )
+    describer = ActionDescriber(_StubCardDB(), sys_strings=None)
+    details = describer.describe_all(obs)
+    assert details[0].description == "Normal Summon"
+
+
 def test_describer_effectyn_yes_is_plain_yes():
     """EFFECTYN action labels are plain Yes/No; card name and resolved
     effect text live on the prompt header, not on the action label."""
@@ -318,8 +333,6 @@ def test_describer_effectyn_yes_is_plain_yes():
     details = describer.describe_all(obs)
     assert details[0].description == "Yes"
     assert details[1].description == "No"
-    assert details[0].meta is None
-    assert details[1].meta is None
 
 
 def test_describer_yesno_yes_is_plain_yes():
@@ -337,8 +350,6 @@ def test_describer_yesno_yes_is_plain_yes():
     details = describer.describe_all(obs)
     assert details[0].description == "Yes"
     assert details[1].description == "No"
-    assert details[0].meta is None
-    assert details[1].meta is None
 
 
 def test_describe_all_returns_one_per_legal_action():
@@ -411,3 +422,224 @@ def test_describer_announce_card_uses_card_name():
     details = describer.describe_all(obs)
     assert details[0].description == "Declare Card777"
     assert details[0].category == "announce_card"
+
+
+def test_effectyn_details_equal_at_both_seats():
+    """Re-sourcing from prompt_meta must reproduce today's values exactly."""
+    msg = {
+        "msg_type": MSG_SELECT_EFFECTYN,
+        "player": 0,
+        "code": 999,
+        "controller": 1,
+        "location": 0x04,
+        "sequence": 2,
+        "desc": 0,
+    }
+    describer = ActionDescriber(_StubCardDB(), sys_strings=None)
+    for seat, expected_ctrl in ((0, 1), (1, 0)):
+        d = describer.describe(_obs_from_msg(msg, agent_player=seat), 0)
+        assert d.card_code == 999
+        assert d.controller == expected_ctrl
+        assert d.location == 0x04
+        assert d.sequence == 2
+
+
+def test_shared_variant_labels_differ_by_msg_type():
+    """PickCard under TRIBUTE vs CARD must not collapse to one wording.
+
+    This is the regression variant-only dispatch would cause.
+    """
+    describer = ActionDescriber(_StubCardDB(), sys_strings=None)
+    tribute = describer.describe(
+        _obs_from_msg({**MINIMAL_MSGS[MSG_SELECT_TRIBUTE], "msg_type": MSG_SELECT_TRIBUTE}), 0
+    ).description
+    select = describer.describe(
+        _obs_from_msg({**MINIMAL_MSGS[MSG_SELECT_CARD], "msg_type": MSG_SELECT_CARD}), 0
+    ).description
+    assert tribute.startswith("Tribute")
+    assert select.startswith("Select")
+
+    # The Pass variant is shared too: MSG_SELECT_CHAIN's "no chain" pass and
+    # MSG_SELECT_UNSELECT_CARD's "finish selection" pass must not collapse to
+    # the same wording (or swap categories) just because both are `Pass()`.
+    chain_pass = describer.describe(
+        _obs_from_msg({**MINIMAL_MSGS[MSG_SELECT_CHAIN], "msg_type": MSG_SELECT_CHAIN}), 1
+    )
+    assert chain_pass.description == "Pass (no chain)"
+    assert chain_pass.category == "pass"
+
+    unselect_finish = describer.describe(
+        _obs_from_msg(
+            {**MINIMAL_MSGS[MSG_SELECT_UNSELECT_CARD], "msg_type": MSG_SELECT_UNSELECT_CARD}
+        ),
+        1,
+    )
+    assert unselect_finish.description == "Finish selection"
+    assert unselect_finish.category == "finish"
+
+
+def test_place_details_report_the_real_seat():
+    """Value change #1: controller 0 -> real relativized seat."""
+    obs = _obs_from_msg({**MINIMAL_MSGS[MSG_SELECT_PLACE], "msg_type": MSG_SELECT_PLACE})
+    describer = ActionDescriber(_StubCardDB(), sys_strings=None)
+    seats = {describer.describe(obs, i).controller for i in range(int(sum(obs.action_mask)))}
+    assert seats == {0, 1}
+
+
+def test_sort_details_report_parsed_coordinates():
+    """Value change #2: location/sequence fabricated 0 -> parsed.
+
+    A second card at a non-zero sequence is included so the assertion can't
+    coincide with the harness's fabricated-zero default (MINIMAL_MSGS' lone
+    `_CARD` has sequence=0, which would make this vacuous on its own).
+    """
+    msg = {
+        **MINIMAL_MSGS[MSG_SORT_CARD],
+        "msg_type": MSG_SORT_CARD,
+        "cards": [
+            *MINIMAL_MSGS[MSG_SORT_CARD]["cards"],
+            {"code": 4321, "controller": 0, "location": LOCATION_MZONE, "sequence": 3},
+        ],
+    }
+    describer = ActionDescriber(_StubCardDB(), sys_strings=None)
+    details = describer.describe_all(_obs_from_msg(msg))
+    d = details[1]
+    assert d.location == LOCATION_MZONE
+    assert d.sequence == 3
+
+
+def test_counter_details_report_parsed_coordinates():
+    """Value change #3 — the one omitted from earlier drafts.
+
+    Also pins the CardRef -> ActionDetails wiring for `controller` and
+    `sequence` (the describer's main re-sourcing path): the card is given
+    controller=1 (relativized to 1 at agent_player=0) and a non-zero
+    sequence so neither field can coincide with a fabricated 0.
+    """
+    msg = {
+        **MINIMAL_MSGS[MSG_SELECT_COUNTER],
+        "msg_type": MSG_SELECT_COUNTER,
+        "cards": [
+            {
+                "code": 1234,
+                "controller": 1,
+                "location": LOCATION_MZONE,
+                "sequence": 5,
+                "counter_count": 3,
+            }
+        ],
+    }
+    describer = ActionDescriber(_StubCardDB(), sys_strings=None)
+    d = describer.describe(_obs_from_msg(msg, agent_player=0), 0)
+    assert d.controller == 1
+    assert d.location == LOCATION_MZONE
+    assert d.sequence == 5
+
+
+def test_action_details_to_dict_has_no_meta_key():
+    describer = ActionDescriber(_StubCardDB(), sys_strings=None)
+    d = describer.describe(
+        _obs_from_msg({**MINIMAL_MSGS[MSG_SELECT_IDLECMD], "msg_type": MSG_SELECT_IDLECMD}), 0
+    )
+    assert set(d.to_dict()) == {
+        "index",
+        "description",
+        "category",
+        "card_code",
+        "card_name",
+        "controller",
+        "location",
+        "sequence",
+    }
+
+
+def test_announce_race_falls_back_to_hex_for_unknown_race():
+    """An unmapped race bit must produce a hex placeholder rather than crash or
+    silently drop the action. Ygopro-core may add new races over time."""
+    from yugioh_core.constants import MSG_ANNOUNCE_RACE
+
+    # bit 50 — well outside any current RACE_NAMES entry
+    obs = _obs_from_msg({"msg_type": MSG_ANNOUNCE_RACE, "player": 0, "available": 1 << 50})
+    describer = ActionDescriber(_StubCardDB(), sys_strings=None)
+    details = describer.describe_all(obs)
+    assert len(details) == 1
+    assert details[0].description == f"Race(0x{1 << 50:x})"
+
+
+def test_idle_phase_change_labels():
+    """No existing test asserts the actual rendered phase-change labels; a
+    to_bp<->to_ep transposition in _IDLE_DESCS or the PhaseChange case's
+    `cat` lookup would ship a wrong label ("To End Phase" on the to_bp slot)
+    with the rest of the suite green.
+
+    Anchors each description to the descriptor's own `to` field (ground
+    truth from action_space.py, pinned separately in
+    test_idle_phase_change_to_values) rather than grouping by the
+    describer's OWN output category -- a bug that moves category and label
+    together (e.g. swapping which category constant a `to` value maps to)
+    would otherwise still produce internally-consistent (category,
+    description) pairs and slip through a category-keyed assertion.
+    """
+    from yugioh_env.models import PhaseChange
+
+    obs = _obs_from_msg(
+        {
+            "msg_type": MSG_SELECT_IDLECMD,
+            "player": 0,
+            "summonable": [],
+            "sp_summonable": [],
+            "repositionable": [],
+            "mset": [],
+            "sset": [],
+            "activatable": [],
+            "to_bp": 1,
+            "to_ep": 1,
+            "shuffle_hand": 0,
+        }
+    )
+    describer = ActionDescriber(_StubCardDB(), sys_strings=None)
+    details = describer.describe_all(obs)
+    bp_idx = next(
+        i
+        for i, d in enumerate(obs.action_descriptors)
+        if isinstance(d, PhaseChange) and d.to == "bp"
+    )
+    ep_idx = next(
+        i
+        for i, d in enumerate(obs.action_descriptors)
+        if isinstance(d, PhaseChange) and d.to == "ep"
+    )
+    assert details[bp_idx].description == "To Battle Phase"
+    assert details[ep_idx].description == "To End Phase"
+
+
+def test_battle_phase_change_labels():
+    """Battle-side sibling of test_idle_phase_change_labels: a to_m2<->to_ep
+    transposition would ship "To End Phase" on the to_m2 slot undetected."""
+    from yugioh_core.constants import MSG_SELECT_BATTLECMD
+    from yugioh_env.models import PhaseChange
+
+    obs = _obs_from_msg(
+        {
+            "msg_type": MSG_SELECT_BATTLECMD,
+            "player": 0,
+            "activatable": [],
+            "attackable": [],
+            "to_m2": 1,
+            "to_ep": 1,
+        }
+    )
+    describer = ActionDescriber(_StubCardDB(), sys_strings=None)
+    details = describer.describe_all(obs)
+    m2_idx = next(
+        i
+        for i, d in enumerate(obs.action_descriptors)
+        if isinstance(d, PhaseChange) and d.to == "m2"
+    )
+    ep_idx = next(
+        i
+        for i, d in enumerate(obs.action_descriptors)
+        if isinstance(d, PhaseChange) and d.to == "ep"
+    )
+    assert details[m2_idx].description == "To Main Phase 2"
+    assert details[ep_idx].description == "To End Phase"

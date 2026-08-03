@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Annotated, Literal
 
 from openenv.core.env_server.types import Action, Observation, State
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from yugioh_core.encoding import (
     ACTION_FEATURES,
@@ -26,41 +26,6 @@ class YuGiOhAction(Action):
         ge=0,
         le=MAX_ACTIONS - 1,
     )
-
-
-class ActionMeta(BaseModel):
-    """Per-action prompt-specific metadata, parallel to YuGiOhObservation.actions[].
-
-    Per-kind contract:
-      number:     raw_value=int (the announced number);                   extras={}
-      race:       raw_value=int (single-bit RACE_* mask);                 extras={}
-      attribute:  raw_value=int (single-bit ATTRIBUTE_* mask);            extras={}
-      rps:        raw_value=int (1=Rock, 2=Paper, 3=Scissors);            extras={}
-      counter:    raw_value=int (counter_type u16);                       extras={"counter_count": int, "card_code": int}
-      option:     raw_value=int (effect-desc u64);                        extras={}
-      chain_link: raw_value=int (effect-desc u64);                        extras={"card_code": int}
-      effect:     raw_value=int (effect-desc u64; 0 = no specific effect);  extras={"card_code": int}
-                  Emitted only for activate-this-effect actions in
-                  MSG_SELECT_IDLECMD / MSG_SELECT_BATTLECMD. Yes/no prompts
-                  (MSG_SELECT_YESNO, MSG_SELECT_EFFECTYN) emit no meta —
-                  see prompt_meta.desc / prompt_text instead.
-      announce_card: raw_value=int (declared card passcode);              extras={}
-    """
-
-    kind: Literal[
-        "number",
-        "race",
-        "attribute",
-        "rps",
-        "counter",
-        "option",
-        "chain_link",
-        "effect",
-        "announce_card",
-    ]
-    label: str
-    raw_value: int | None = None
-    extras: dict = Field(default_factory=dict)
 
 
 @dataclass(slots=True, kw_only=True)
@@ -243,11 +208,6 @@ class YuGiOhObservation(Observation):
     )
     event_history: list[list[int]] = Field(
         default_factory=list,
-    )
-    action_meta: list[ActionMeta | None] = Field(
-        default_factory=list,
-        description="Per-action prompt metadata, parallel to actions[]; "
-        "None for slots without structured meta.",
     )
     action_descriptors: list[ActionDescriptor | None] = Field(
         default_factory=list,

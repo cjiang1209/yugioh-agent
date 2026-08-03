@@ -11,17 +11,16 @@ def obs_from_msg(msg: dict, *, _selected: list[int] | None = None, agent_player:
     """Build a YuGiOhObservation from a single SELECT message.
 
     Mirrors what the server's _make_observation produces for that message,
-    using _build_action_meta_list, _build_action_descriptors, and
-    _build_prompt_meta to populate the parallel meta fields. The optional
-    _selected list seeds the mapper's multi-step selection state for tests
-    that need it (e.g., tribute finish actions). agent_player relativizes
-    seat-dependent fields (e.g. controller) the same way the live server does.
+    using _build_action_descriptors and _build_prompt_meta to populate the
+    parallel meta fields. The optional _selected list seeds the mapper's
+    multi-step selection state for tests that need it (e.g., tribute finish
+    actions). agent_player relativizes seat-dependent fields (e.g.
+    controller) the same way the live server does.
     """
     from yugioh_env.action_space import ActionMapper
     from yugioh_env.models import YuGiOhObservation
     from yugioh_env.server.yugioh_environment import (
         _build_action_descriptors,
-        _build_action_meta_list,
         _build_prompt_meta,
     )
 
@@ -35,7 +34,6 @@ def obs_from_msg(msg: dict, *, _selected: list[int] | None = None, agent_player:
         global_state=[],
         actions=mapper.get_action_features().tolist(),
         action_mask=mapper.get_action_mask().tolist(),
-        action_meta=_build_action_meta_list(mapper.actions),
         action_descriptors=_build_action_descriptors(mapper.actions),
         prompt_meta=_build_prompt_meta(mapper),
         events=[],

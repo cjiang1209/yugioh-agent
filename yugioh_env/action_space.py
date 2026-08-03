@@ -226,12 +226,6 @@ def _extract_idle_actions(msg: dict) -> list[dict]:
                 "sequence": card.get("sequence", 0),
                 "desc": int(desc),
                 "kind": "activate_effect",
-                "meta": {
-                    "kind": "effect",
-                    "label": f"effect 0x{desc:x}",
-                    "raw_value": int(desc),
-                    "extras": {"card_code": code},
-                },
                 "build_response": lambda cat=IDLE_ACTIVATE, idx=i: rb.build_select_idlecmd_response(
                     cat, idx
                 ),
@@ -287,12 +281,6 @@ def _extract_battle_actions(msg: dict) -> list[dict]:
                 "sequence": card.get("sequence", 0),
                 "desc": int(desc),
                 "kind": "activate_effect",
-                "meta": {
-                    "kind": "effect",
-                    "label": f"effect 0x{desc:x}",
-                    "raw_value": int(desc),
-                    "extras": {"card_code": code},
-                },
                 "build_response": lambda cat=BATTLE_ACTIVATE, idx=i: (
                     rb.build_select_battlecmd_response(cat, idx)
                 ),
@@ -419,7 +407,6 @@ def _extract_option_actions(msg: dict) -> list[dict]:
             "sequence": 0,
             "desc": int(desc),
             "kind": "choose_option",
-            "meta": {"kind": "option", "label": f"effect 0x{desc:x}", "raw_value": int(desc)},
             "build_response": lambda idx=i: rb.build_select_option_response(idx),
         }
         for i, desc in enumerate(options)
@@ -571,12 +558,6 @@ def _extract_chain_actions(msg: dict) -> list[dict]:
                 "position": int(chain.get("position", 0)),
                 "desc": int(desc),
                 "kind": "activate_effect",
-                "meta": {
-                    "kind": "chain_link",
-                    "label": f"chain card #{i}",
-                    "raw_value": int(desc),
-                    "extras": {"card_code": code},
-                },
                 "build_response": lambda idx=i: rb.build_select_chain_response(idx),
             }
         )
@@ -923,11 +904,7 @@ def _extract_announce_race_actions(msg: dict) -> list[dict]:
             "location": 0,
             "sequence": 0,
             "kind": "pick_bit",
-            "meta": {
-                "kind": "race",
-                "label": RACE_NAMES.get(item["mask"], f"Race(0x{item['mask']:x})"),
-                "raw_value": item["mask"],
-            },
+            "value": item["mask"],
         }
 
     return _extract_multi_step_actions(
@@ -953,11 +930,7 @@ def _extract_announce_attrib_actions(msg: dict) -> list[dict]:
             "location": 0,
             "sequence": 0,
             "kind": "pick_bit",
-            "meta": {
-                "kind": "attribute",
-                "label": ATTRIBUTE_NAMES.get(item["mask"], f"Attr(0x{item['mask']:x})"),
-                "raw_value": item["mask"],
-            },
+            "value": item["mask"],
         }
 
     return _extract_multi_step_actions(
@@ -982,7 +955,7 @@ def _extract_announce_number_actions(msg: dict) -> list[dict]:
             "location": 0,
             "sequence": 0,
             "kind": "announce_number",
-            "meta": {"kind": "number", "label": f"Announce {num}", "raw_value": int(num)},
+            "value": int(num),
             "build_response": lambda idx=i: rb.build_announce_number_response(idx),
         }
         for i, num in enumerate(numbers)
@@ -1030,7 +1003,6 @@ def _extract_announce_card_actions(msg: dict) -> list[dict]:
             "location": 0,
             "sequence": 0,
             "kind": "announce_card",
-            "meta": {"kind": "announce_card", "label": f"Declare {code}", "raw_value": code},
             "build_response": lambda c=code: rb.build_announce_card_response(c),
         }
         for i, code in enumerate(codes)
@@ -1046,7 +1018,6 @@ def _extract_rps_actions(msg: dict) -> list[dict]:
             "location": 0,
             "sequence": 0,
             "kind": "choose_rps",
-            "meta": {"kind": "rps", "label": RPS_NAMES[c], "raw_value": c},
             "build_response": lambda choice=c: rb.build_rock_paper_scissors_response(choice),
         }
         for c in [1, 2, 3]
@@ -1080,12 +1051,6 @@ def _extract_counter_actions(msg: dict) -> list[dict]:
                     "counter_type": counter_type,
                     "counter_count": n_remove,
                     "kind": "select_counter",
-                    "meta": {
-                        "kind": "counter",
-                        "label": f"Remove {n_remove} from card #{i}",
-                        "raw_value": counter_type,
-                        "extras": {"counter_count": n_remove, "card_code": code},
-                    },
                     "build_response": lambda c=counters: rb.build_select_counter_response(c),
                 }
             )

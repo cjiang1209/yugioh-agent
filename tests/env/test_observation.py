@@ -6,29 +6,24 @@ the decoder (e.g. query_fn integration, visibility rules).
 """
 
 
-def test_action_meta_length_matches_actions(lib, db_path, script_dirs):
-    """action_meta length must equal action_mask length (32 for active obs).
-    This is the §6 length-parity invariant from the spec."""
+def test_action_descriptors_length_matches_actions(lib, db_path, script_dirs):
+    """action_descriptors length must equal action_mask length (32 for active
+    obs). This is the §6 length-parity invariant from the spec."""
     from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
 
     env = YuGiOhEnvironment({})
     obs = env.reset(seed=42)
-    assert (
-        len(obs.action_meta)
-        == len(obs.action_descriptors)
-        == len(obs.actions)
-        == len(obs.action_mask)
-    )
-    # Inactive slots are None; only the legal-action prefix may carry meta
+    assert len(obs.action_descriptors) == len(obs.actions) == len(obs.action_mask)
+    # Inactive slots are None; only the legal-action prefix may carry a descriptor
     legal_count = sum(obs.action_mask)
     for i in range(legal_count, len(obs.action_mask)):
-        assert obs.action_meta[i] is None
+        assert obs.action_descriptors[i] is None
 
 
 def test_terminal_observation_lists_empty(lib, db_path, script_dirs):
-    """On done=True, actions, action_mask, and action_meta are all empty.
+    """On done=True, actions, action_mask, and action_descriptors are all empty.
     This is an intentional drift from the previous action_mask=[0]*32 behavior
-    (§3 of spec) — kept consistent so the three lists never differ in length."""
+    (§3 of spec) — kept consistent so the lists never differ in length."""
     import random
 
     from yugioh_env.models import YuGiOhAction
@@ -45,7 +40,6 @@ def test_terminal_observation_lists_empty(lib, db_path, script_dirs):
     assert obs.done
     assert obs.actions == []
     assert obs.action_mask == []
-    assert obs.action_meta == []
     assert obs.action_descriptors == []
 
 

@@ -390,8 +390,8 @@ def test_disfield_maps_to_place(card_db):
 
 
 def test_prompt_type_map_includes_announce_kinds():
-    """describe_prompt returns the new ActionMeta-aligned `type` strings for the
-    five prompts that previously fell through to 'unknown'."""
+    """describe_prompt returns the correct `type` strings for the five prompts
+    that previously fell through to 'unknown'."""
     from yugioh_core.constants import (
         MSG_ANNOUNCE_ATTRIB,
         MSG_ANNOUNCE_NUMBER,

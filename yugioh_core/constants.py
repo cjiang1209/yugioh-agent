@@ -104,7 +104,7 @@ RACE_GALAXY = 0x80000000
 RACE_YOKAI = 0x4000000000000000
 
 
-# ─── Display name lookups (for ActionMeta) ──────────────────────────────────
+# ─── Display name lookups (used by ActionDescriber) ─────────────────────────
 
 RACE_NAMES: dict[int, str] = {
     RACE_WARRIOR: "Warrior",

@@ -50,7 +50,6 @@ from yugioh_env.event_logger import FieldTracker, enrich_messages
 from yugioh_env.lib_loader import load_library
 from yugioh_env.models import (
     ActionDescriptor,
-    ActionMeta,
     ActivateEffect,
     AnnounceCard,
     AnnounceNumber,
@@ -111,18 +110,6 @@ def agent_reward(winner: int | None, agent_player: int) -> float:
     return 0.0
 
 
-def _build_action_meta_list(actions: list[dict]) -> list[ActionMeta | None]:
-    """Build a length-MAX_ACTIONS list parallel to actions[], None for slots without meta.
-
-    Validates each meta dict through Pydantic (raises ValidationError on bad kind)."""
-    out: list[ActionMeta | None] = [None] * MAX_ACTIONS
-    for i, action in enumerate(actions[:MAX_ACTIONS]):
-        meta = action.get("meta")
-        if meta is not None:
-            out[i] = ActionMeta(**meta)
-    return out
-
-
 _DESCRIPTOR_BUILDERS = {
     "pick_card": lambda a: PickCard(
         engine_index=a["index"],
@@ -133,7 +120,7 @@ _DESCRIPTOR_BUILDERS = {
     "pick_bit": lambda a: PickBit(
         engine_index=a["index"],
         num_selected=a.get("num_selected", 1),
-        value=a["meta"]["raw_value"],
+        value=a["value"],
     ),
     "finish_pick": lambda a: FinishPick(num_selected=a["num_selected"]),
     "card_command": lambda a: CardCommand(
@@ -154,9 +141,7 @@ _DESCRIPTOR_BUILDERS = {
     "place_zone": lambda a: PlaceZone(
         controller=a["controller"], location=a["location"], sequence=a["sequence"]
     ),
-    "announce_number": lambda a: AnnounceNumber(
-        engine_index=a["index"], value=a["meta"]["raw_value"]
-    ),
+    "announce_number": lambda a: AnnounceNumber(engine_index=a["index"], value=a["value"]),
     "announce_card": lambda a: AnnounceCard(card_code=a.get("code", 0)),
     "choose_rps": lambda a: ChooseRPS(choice=a["index"]),
     "select_counter": lambda a: SelectCounter(
@@ -765,7 +750,6 @@ class YuGiOhEnvironment(Environment):
 
         action_mask = self._mapper.get_action_mask()
         action_features = self._mapper.get_action_features()
-        action_meta = _build_action_meta_list(self._mapper.actions)
         action_descriptors = _build_action_descriptors(self._mapper.actions)
 
         return YuGiOhObservation(
@@ -775,7 +759,6 @@ class YuGiOhEnvironment(Environment):
             action_mask=action_mask.tolist(),
             pending_chain=obs_data["pending_chain"].tolist(),
             event_history=obs_data["event_history"].tolist(),
-            action_meta=action_meta,
             action_descriptors=action_descriptors,
             prompt_meta=_build_prompt_meta(self._mapper),
             events=list(self._cycle_events),
@@ -831,7 +814,6 @@ class YuGiOhEnvironment(Environment):
             action_mask=[],
             pending_chain=pending_chain,
             event_history=event_history,
-            action_meta=[],
             action_descriptors=[],
             prompt_meta=None,
             events=list(self._cycle_events),
