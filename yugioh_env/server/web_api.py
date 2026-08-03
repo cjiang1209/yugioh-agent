@@ -14,6 +14,7 @@ from yugioh_env.deck_parser import parse_ydk
 from yugioh_env.event_logger import EventDescriber
 from yugioh_env.models import YuGiOhAction
 from yugioh_env.server.board_state import render_board
+from yugioh_env.server.card_info import CardInfo, build_card_info
 from yugioh_env.server.recommender import recommend_action_index
 from yugioh_env.server.yugioh_environment import API_PHASE_NAMES, agent_reward
 
@@ -245,6 +246,18 @@ def get_config(request: Request) -> dict:
     """Return UI capability flags (whether AI-assist recommendation is available)."""
     recommender = getattr(request.app.state, "recommender", None)
     return {"recommend_available": recommender is not None}
+
+
+@web_router.get("/card/{code}")
+def get_card_info(code: int, request: Request) -> CardInfo:
+    """Return the printed card face for a passcode, read from cards.cdb.
+
+    Duel-independent: answers before any /reset and never touches engine state.
+    """
+    info = build_card_info(code, request.app.state.web_env.card_db)
+    if info is None:
+        raise HTTPException(status_code=404, detail=f"Unknown card code: {code}")
+    return info
 
 
 @web_router.get("/decks")

@@ -779,3 +779,43 @@ def test_failed_reset_does_not_arm_recommender(lib, db_path, script_dirs, deck_p
     ok = client.post("/api/web/reset", json={"seed": 42})
     assert ok.status_code == 200
     assert ok.json()["recommended_action_index"] is None
+
+
+def test_card_info_returns_printed_face(web_client):
+    """GET /card/{code} returns the printed face straight from cards.cdb.
+
+    No /reset here, deliberately: the endpoint is duel-independent and must
+    answer before a duel exists, without touching engine state. Do not add a
+    reset to these card tests — it would remove that coverage.
+    """
+    resp = web_client.get("/api/web/card/44508094")
+    assert resp.status_code == 200
+    card = resp.json()
+    assert card["name"] == "Stardust Dragon"
+    assert card["card_type"] == "monster"
+    assert card["typeline"] == ["Dragon", "Synchro", "Effect"]
+    assert card["attribute"] == "WIND"
+    assert card["race"] == "Dragon"
+    assert card["level"] == 8
+    assert card["level_kind"] == "level"
+    assert card["attack"] == 2500
+    assert card["defense"] == 2000
+    assert card["scales"] is None
+    assert card["link_arrows"] is None
+    # The text is upstream data, so assert that it arrived and that CRLF was
+    # normalized away — not the wording.
+    assert card["desc"]
+    assert "\r" not in card["desc"]
+
+
+def test_card_info_link_monster_has_arrows(web_client):
+    """Double Headed Anger Knuckle — arrows present, DEF suppressed."""
+    card = web_client.get("/api/web/card/146746").json()
+    assert card["level_kind"] == "link"
+    assert card["defense"] is None
+    assert set(card["link_arrows"]) == {"RIGHT", "BOTTOM"}
+
+
+def test_card_info_unknown_code_returns_404(web_client):
+    resp = web_client.get("/api/web/card/99999999")
+    assert resp.status_code == 404

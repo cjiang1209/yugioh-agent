@@ -1,5 +1,7 @@
 """Constants from ygopro-core common.h / ocgapi_constants.h."""
 
+from typing import Literal
+
 # ─── Locations ───────────────────────────────────────────────────────────────
 LOCATION_DECK = 0x01
 LOCATION_HAND = 0x02
@@ -150,6 +152,66 @@ ATTRIBUTE_NAMES: dict[int, str] = {
     ATTRIBUTE_DIVINE: "DIVINE",
 }
 
+# ─── Printed typeline labels ────────────────────────────────────────────────
+# The TYPE_* bitfield mixes printed typeline words with engine mechanics, and
+# only the printed words belong on a card face. These tables encode that split:
+# MONSTER_TYPE_LABELS / SPELL_TRAP_TYPE_LABELS hold printed words per card
+# class, IGNORED_TYPE_BITS holds known-but-unprinted bits.
+#
+# Both tables are ORDERED and the order IS the render order.
+#
+# Resolution is context-scoped: a monster's bits resolve only through
+# MONSTER_TYPE_LABELS, a spell/trap's only through SPELL_TRAP_TYPE_LABELS.
+# TYPE_RITUAL appears in both — "Ritual Monster" vs "Ritual Spell".
+
+MONSTER_TYPE_LABELS: list[tuple[int, str]] = [
+    # Summon mechanic
+    (TYPE_RITUAL, "Ritual"),
+    (TYPE_FUSION, "Fusion"),
+    (TYPE_SYNCHRO, "Synchro"),
+    (TYPE_XYZ, "Xyz"),
+    (TYPE_LINK, "Link"),
+    (TYPE_PENDULUM, "Pendulum"),
+    (TYPE_TOKEN, "Token"),
+    # Ability
+    (TYPE_SPIRIT, "Spirit"),
+    (TYPE_UNION, "Union"),
+    (TYPE_GEMINI, "Gemini"),
+    (TYPE_TOON, "Toon"),
+    (TYPE_FLIP, "Flip"),
+    (TYPE_TUNER, "Tuner"),
+    # Body — always last: "Dragon / Synchro / Tuner / Effect"
+    (TYPE_NORMAL, "Normal"),
+    (TYPE_EFFECT, "Effect"),
+]
+
+# No card in cards.cdb carries two of these bits, so a spell/trap gets exactly
+# one label and the order is immaterial; it is a list for symmetry above.
+SPELL_TRAP_TYPE_LABELS: list[tuple[int, str]] = [
+    (TYPE_QUICKPLAY, "Quick-Play"),
+    (TYPE_CONTINUOUS, "Continuous"),
+    (TYPE_EQUIP, "Equip"),
+    (TYPE_FIELD, "Field"),
+    (TYPE_COUNTER, "Counter"),
+    (TYPE_RITUAL, "Ritual"),
+]
+
+# Known bits that are deliberately NOT rendered. A guard test fails on any bit
+# in cards.cdb that is neither labelled above nor listed here, so a new database
+# cannot silently drop a typeline word.
+#   TYPE_SPSUMMON    — engine flag for nomi monsters ("Cannot be Normal
+#                      Summoned/Set"). Not printed: Lava Golem (102380) reads
+#                      "Fiend / Effect".
+#   TYPE_TRAPMONSTER — runtime-only type, never stored in datas.
+#   TYPE_MAXIMUM     — Rush Duel mechanic, absent from this database.
+IGNORED_TYPE_BITS: frozenset[int] = frozenset(
+    {
+        TYPE_SPSUMMON,
+        TYPE_TRAPMONSTER,
+        TYPE_MAXIMUM,
+    }
+)
+
 RPS_NAMES: dict[int, str] = {
     1: "Rock",
     2: "Paper",
@@ -192,6 +254,22 @@ def phase_to_index(phase: int) -> int:
 
 
 # ─── Utilities ───────────────────────────────────────────────────────────────
+
+CardTypeName = Literal["monster", "spell", "trap", "unknown"]
+
+
+def card_type_name(type_val: int) -> CardTypeName:
+    """Classify a ``TYPE_*`` bitfield as monster, spell or trap.
+
+    The three structural bits are mutually exclusive on real cards.
+    """
+    if type_val & TYPE_MONSTER:
+        return "monster"
+    if type_val & TYPE_SPELL:
+        return "spell"
+    if type_val & TYPE_TRAP:
+        return "trap"
+    return "unknown"
 
 
 def split_setcodes(packed: int) -> list[int]:
@@ -394,6 +472,18 @@ LINK_MARKER_RIGHT = 0o040  # 32
 LINK_MARKER_TOP_LEFT = 0o100  # 64
 LINK_MARKER_TOP = 0o200  # 128
 LINK_MARKER_TOP_RIGHT = 0o400  # 256
+
+# Reading order, so a consumer can lay the 8 arrows out as a 3x3 rosette.
+LINK_MARKER_NAMES: dict[int, str] = {
+    LINK_MARKER_TOP_LEFT: "TOP_LEFT",
+    LINK_MARKER_TOP: "TOP",
+    LINK_MARKER_TOP_RIGHT: "TOP_RIGHT",
+    LINK_MARKER_LEFT: "LEFT",
+    LINK_MARKER_RIGHT: "RIGHT",
+    LINK_MARKER_BOTTOM_LEFT: "BOTTOM_LEFT",
+    LINK_MARKER_BOTTOM: "BOTTOM",
+    LINK_MARKER_BOTTOM_RIGHT: "BOTTOM_RIGHT",
+}
 
 # ─── Duel Creation Status ────────────────────────────────────────────────────
 OCG_DUEL_CREATION_SUCCESS = 0

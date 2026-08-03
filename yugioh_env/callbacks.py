@@ -100,7 +100,8 @@ class DuelCallbacks:
         data.attribute = card.get("attribute", 0)
         data.race = card.get("race", 0)
         data.attack = card.get("attack", 0)
-        data.defense = card.get("defense", 0)
+        # OCG_CardData is a ctypes struct, so None (Link monsters) needs a number.
+        data.defense = card.get("defense") or 0
         data.lscale = card.get("lscale", 0)
         data.rscale = card.get("rscale", 0)
         data.link_marker = card.get("link_marker", 0)

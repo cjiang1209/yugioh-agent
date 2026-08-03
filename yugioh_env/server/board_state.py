@@ -13,8 +13,7 @@ from yugioh_core.constants import (
     POS_FACEUP_DEFENSE,
     TYPE_LINK,
     TYPE_MONSTER,
-    TYPE_SPELL,
-    TYPE_TRAP,
+    card_type_name,
 )
 
 _POS_NAMES = {
@@ -29,16 +28,6 @@ _POS_NAMES = {
 }
 
 # ─── Board rendering ──────────────────────────────────────────────────────
-
-
-def _card_type_str(type_val: int) -> str:
-    if type_val & TYPE_MONSTER:
-        return "monster"
-    if type_val & TYPE_SPELL:
-        return "spell"
-    if type_val & TYPE_TRAP:
-        return "trap"
-    return "unknown"
 
 
 def _build_card(card: dict, card_db, hidden: bool = False) -> dict:
@@ -66,7 +55,7 @@ def _build_card(card: dict, card_db, hidden: bool = False) -> dict:
     result: dict = {
         "code": code,
         "name": name,
-        "type": _card_type_str(type_val),
+        "type": card_type_name(type_val),
         "position": pos_str,
         "attack": card.get("attack"),
         "defense": card.get("defense"),
@@ -86,7 +75,7 @@ def _build_card_info(card: dict, card_db) -> dict:
     result: dict = {
         "code": code,
         "name": name,
-        "type": _card_type_str(type_val),
+        "type": card_type_name(type_val),
     }
     if type_val & TYPE_MONSTER:
         result["attack"] = (

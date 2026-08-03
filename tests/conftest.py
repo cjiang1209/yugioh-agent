@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -42,3 +43,22 @@ def card_db(db_path):
     db = CardDatabase(db_path)
     yield db
     db.close()
+
+
+@pytest.fixture
+def cdb_column(db_path):
+    """Run a single-column query against cards.cdb and return the values.
+
+    Use this to *discover* a card exhibiting the property under test rather than
+    hardcoding a passcode: cards.cdb is upstream data that gains, loses and
+    rewrites rows, so a pinned example is a scheduled failure.
+    """
+
+    def query(sql: str, params: tuple = ()) -> list:
+        conn = sqlite3.connect(db_path)
+        try:
+            return [value for (value,) in conn.execute(sql, params)]
+        finally:
+            conn.close()
+
+    return query

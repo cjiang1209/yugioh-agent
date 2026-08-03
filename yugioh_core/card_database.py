@@ -26,9 +26,20 @@ class CardDatabase:
         # N+1 SQLite roundtrips from describer hot paths.
         self._name_cache: dict[int, str] = {}
         self._cache: dict[int, dict | None] = {}
+        self._desc_cache: dict[int, str] = {}
 
     def get_card(self, code: int) -> dict | None:
-        """Get card data by passcode. Returns None if not found."""
+        """Get card data by passcode. Returns None if not found.
+
+        Reports what cards.cdb stores, which is what the engine needs — not what
+        the card prints. Spell/Trap rows can carry real `race` and `attribute`
+        values, for instance, because those cards become monsters at runtime;
+        display consumers decide for themselves what to show.
+
+        The one value normalized here is `defense`, which is None for Link
+        monsters: cards.cdb reuses that column for the arrow bitmask, so a Link
+        monster has no defense to report at all.
+        """
         if code in self._cache:
             return self._cache[code]
 
@@ -63,7 +74,7 @@ class CardDatabase:
 
         if card["type"] & TYPE_LINK:
             card["link_marker"] = row["def"]
-            card["defense"] = 0
+            card["defense"] = None
 
         self._cache[code] = card
         return card
@@ -106,6 +117,29 @@ class CardDatabase:
             return None
         value = row[column]
         return value if value else None
+
+    def get_card_desc(self, code: int) -> str | None:
+        """Look up the card's rules text (`texts.desc`), or None when absent.
+
+        cards.cdb stores CRLF line endings; they are normalized to "\\n" so a
+        single convention reaches the API, the DOM and test assertions. The
+        breaks themselves are meaningful — many descriptions are multi-line, and
+        Pendulum cards carry "[ Pendulum Effect ]" and "[ Monster Effect ]"
+        sections split by a divider — so nothing else about the text is altered.
+        """
+        cached = self._desc_cache.get(code)
+        if cached is not None:
+            return cached
+        cursor = self._conn.execute('SELECT "desc" FROM texts WHERE id=?', (code,))
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        raw = row["desc"]
+        if not raw:
+            return None
+        desc = raw.replace("\r\n", "\n").replace("\r", "\n")
+        self._desc_cache[code] = desc
+        return desc
 
     def close(self) -> None:
         self._conn.close()
