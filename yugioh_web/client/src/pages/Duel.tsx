@@ -13,8 +13,6 @@ const MODE_BUTTON_BASE = {
   backdropFilter: "blur(4px)",
 } as const;
 
-const ENGINE_API_URL = "http://localhost:8000";
-
 const randomSeed = () => Math.floor(Math.random() * 100000);
 
 // ─── Page ────────────────────────────────────────────────────────────────────
@@ -32,7 +30,6 @@ export default function Duel() {
   if (!myDeck || !oppDeck) {
     return (
       <DeckSelector
-        apiUrl={ENGINE_API_URL}
         onDeckSelected={(my, opp, oc, to, ap, animate, rec) => {
           setMyDeck(my);
           setOppDeck(opp);
@@ -112,7 +109,7 @@ function AIModeDuel({
     error,
     reset,
     submitAction,
-  } = useAIEngine(ENGINE_API_URL, openCards, recommend);
+  } = useAIEngine(openCards, recommend);
 
   const deck0 = agentPlayer === 0 ? myDeck : oppDeck;
   const deck1 = agentPlayer === 0 ? oppDeck : myDeck;

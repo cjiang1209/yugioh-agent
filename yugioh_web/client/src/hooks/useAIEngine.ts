@@ -23,6 +23,7 @@ import type {
   EngineResponse,
   PendingChainEntry,
 } from "../../../shared/engineTypes";
+import { API_BASE } from "../lib/apiBase";
 import { useEventReplay } from "./useEventReplay";
 
 export type AIEngineStatus = "idle" | "loading" | "dueling" | "ended" | "error";
@@ -318,7 +319,6 @@ const INITIAL_DUEL_STATE: DuelState = {
 // ─── Hook ────────────────────────────────────────────────────────────────────
 
 export function useAIEngine(
-  apiUrl: string = "http://localhost:8000",
   openCards: boolean = false,
   recommend: boolean = false
 ): UseAIEngineReturn {
@@ -419,7 +419,7 @@ export function useAIEngine(
         if (openCards) body.open_cards = true;
         if (agentPlayer !== undefined) body.agent_player = agentPlayer;
         if (recommend) body.recommend = true;
-        const res = await fetch(`${apiUrl}/api/web/reset`, {
+        const res = await fetch(`${API_BASE}/api/web/reset`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
@@ -432,14 +432,14 @@ export function useAIEngine(
         setStatus("error");
       }
     },
-    [apiUrl, applyResponse, resetReplay, openCards, recommend]
+    [applyResponse, resetReplay, openCards, recommend]
   );
 
   const submitAction = useCallback(
     async (actionIndex: number) => {
       setError(null);
       try {
-        const res = await fetch(`${apiUrl}/api/web/step`, {
+        const res = await fetch(`${API_BASE}/api/web/step`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action_index: actionIndex }),
@@ -452,7 +452,7 @@ export function useAIEngine(
         setStatus("error");
       }
     },
-    [apiUrl, applyResponse]
+    [applyResponse]
   );
 
   submitRef.current = submitAction;

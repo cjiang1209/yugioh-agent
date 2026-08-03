@@ -196,3 +196,33 @@ export interface EngineResponse {
    *  off / unavailable / terminal. Matches an EngineAction.index. */
   recommended_action_index: number | null;
 }
+
+// ─── Card info (GET /api/web/card/{code}) ────────────────────────────────────
+
+/** Pendulum scales; present only on Pendulum monsters. */
+export interface CardScales {
+  left: number;
+  right: number;
+}
+
+/** The printed face of one card, decoded server-side from assets/cards.cdb.
+ *  Optional fields arrive as explicit `null`s, never as omitted keys. */
+export interface CardInfo {
+  code: number;
+  name: string;
+  desc: string;
+  card_type: "monster" | "spell" | "trap" | "unknown";
+  /** Printed typeline words, already ordered: ["Dragon","Synchro","Effect"]. */
+  typeline: string[];
+  attribute: string | null;
+  race: string | null;
+  /** Level, Rank or Link rating — `level_kind` says which. */
+  level: number | null;
+  level_kind: "level" | "rank" | "link" | null;
+  /** -2 encodes "?" ATK/DEF. */
+  attack: number | null;
+  defense: number | null;
+  scales: CardScales | null;
+  /** e.g. ["TOP","BOTTOM_LEFT"]; null for non-Link cards. */
+  link_arrows: string[] | null;
+}

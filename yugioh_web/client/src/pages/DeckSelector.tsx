@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { DeckDefinition, DeckPayload } from "../../../shared/deckTypes";
+import { API_BASE } from "../lib/apiBase";
 import { resolveTurnOrder, type TurnOrder } from "./turnOrder";
 import {
   Select,
@@ -19,7 +20,6 @@ const TURN_ORDER_CAPTION: Record<TurnOrder, string> = {
 };
 
 interface DeckSelectorProps {
-  apiUrl?: string;
   onDeckSelected: (
     myDeck: DeckPayload,
     oppDeck: DeckPayload,
@@ -38,10 +38,7 @@ function toPayload(deck: DeckDefinition): DeckPayload {
   };
 }
 
-export function DeckSelector({
-  apiUrl = "http://localhost:8000",
-  onDeckSelected,
-}: DeckSelectorProps) {
+export function DeckSelector({ onDeckSelected }: DeckSelectorProps) {
   const [decks, setDecks] = useState<DeckDefinition[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +53,7 @@ export function DeckSelector({
   >("checking");
 
   useEffect(() => {
-    fetch(`${apiUrl}/api/web/decks`)
+    fetch(`${API_BASE}/api/web/decks`)
       .then(res => {
         if (!res.ok) throw new Error(`Failed to load decks: ${res.status}`);
         return res.json();
@@ -69,10 +66,10 @@ export function DeckSelector({
         setError(e instanceof Error ? e.message : "Failed to load decks");
         setLoading(false);
       });
-  }, [apiUrl]);
+  }, []);
 
   useEffect(() => {
-    fetch(`${apiUrl}/api/web/config`)
+    fetch(`${API_BASE}/api/web/config`)
       .then(res => (res.ok ? res.json() : { recommend_available: false }))
       .then((cfg: { recommend_available?: boolean }) =>
         setRecommendStatus(
@@ -80,7 +77,7 @@ export function DeckSelector({
         )
       )
       .catch(() => setRecommendStatus("unavailable"));
-  }, [apiUrl]);
+  }, []);
 
   if (loading) {
     return (

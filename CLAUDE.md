@@ -138,6 +138,9 @@ Messages that write `loc_info`: `MSG_MOVE`, `MSG_SET`, `MSG_SUMMONING`, `MSG_SPS
   `YUGIOH_OPPONENT`; suggests moves for the *human* player.
 - `YUGIOH_RECOMMENDER_DEVICE` — device for `model:` recommender inference:
   `cpu` or `cuda` (default: `cpu`).
+- `VITE_API_BASE` — backend base URL baked into the web bundle at build time
+  (default `http://localhost:8000`). Only needed when the FastAPI server runs
+  somewhere other than the local `scripts/start_server.sh`.
 - `MLFLOW_TRACKING_URI` — mlflow tracking server, read by the mlflow sink when
   `--log-to` includes `mlflow`. `scripts/train.sh` and `scripts/eval_sweep.sh`
   default it to `http://127.0.0.1:5000/` (override by exporting before invoking).
