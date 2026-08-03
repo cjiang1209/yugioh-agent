@@ -667,13 +667,8 @@ def _make_app_with_recommender(db_path, script_dirs, deck_path, recommender):
 class _FakeRec:
     """Non-network fake recommender: picks the last (dense) legal slot."""
 
-    needs_observation = False
-
-    def set_observation(self, obs_dict):
-        pass
-
-    def select_action(self, msg, num_actions):
-        return num_actions - 1
+    def select_action(self, obs):
+        return int(obs.action_mask.sum()) - 1
 
     def reseed(self, seed):
         pass
@@ -747,7 +742,7 @@ def test_reset_survives_reseed_failure(lib, db_path, script_dirs, deck_path):
 class _RaisingSelectRec(_FakeRec):
     """Fake recommender whose select_action raises mid-duel."""
 
-    def select_action(self, msg, num_actions):
+    def select_action(self, obs):
         raise RuntimeError("recommender server down")
 
 

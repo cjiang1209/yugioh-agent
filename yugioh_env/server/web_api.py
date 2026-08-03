@@ -130,7 +130,7 @@ def _build_response(
     }
 
 
-def _resolve_recommendation(request: Request, serving, obs) -> int | None:
+def _resolve_recommendation(request: Request, obs) -> int | None:
     """Best-effort recommended action index for the current prompt, or None.
 
     Returns None when AI-assist is disabled for this duel, no recommender is
@@ -144,7 +144,7 @@ def _resolve_recommendation(request: Request, serving, obs) -> int | None:
     if obs is None or obs.done or not obs.action_mask.any():
         return None
     try:
-        return recommend_action_index(recommender, serving, obs)
+        return recommend_action_index(recommender, obs)
     except Exception:
         logger.warning("Recommendation failed; returning no recommendation", exc_info=True)
         return None
@@ -237,7 +237,7 @@ def reset_duel(body: ResetRequest, request: Request) -> dict:
         obs.reward,
         raw_frames=raw_frames,
         open_cards=body.open_cards,
-        recommended_action_index=_resolve_recommendation(request, serving, obs),
+        recommended_action_index=_resolve_recommendation(request, obs),
     )
 
 
@@ -312,7 +312,7 @@ def step_duel(body: StepRequest, request: Request) -> dict:
         obs.reward,
         raw_frames=raw_frames,
         open_cards=getattr(request.app.state, "open_cards", False),
-        recommended_action_index=_resolve_recommendation(request, serving, obs),
+        recommended_action_index=_resolve_recommendation(request, obs),
     )
 
 

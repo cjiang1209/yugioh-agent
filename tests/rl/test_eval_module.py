@@ -124,24 +124,17 @@ class TestMakeEvalAgent:
 class _RecordingAgent(Opponent):
     """Records every call so tests can assert the driver contract."""
 
-    def __init__(self, *, needs_obs: bool = False):
-        self._needs_obs = needs_obs
-        self.reseed_calls: list[int] = []
-        self.set_observation_calls: list[dict] = []
-        self.select_action_calls: list[tuple[dict | None, int]] = []
+    needs_board_state = True
 
-    @property
-    def needs_observation(self) -> bool:
-        return self._needs_obs
+    def __init__(self):
+        self.reseed_calls: list[int] = []
+        self.select_action_calls: list[YuGiOhObservation] = []
 
     def reseed(self, seed: int) -> None:
         self.reseed_calls.append(seed)
 
-    def set_observation(self, obs):
-        self.set_observation_calls.append(obs)
-
-    def select_action(self, msg, num_actions):
-        self.select_action_calls.append((msg, num_actions))
+    def select_action(self, obs):
+        self.select_action_calls.append(obs)
         return 0
 
 
@@ -162,8 +155,7 @@ class _ScriptedEnv:
         self._ep = -1
         self._step = 0
         self.reset_calls = 0
-        self.current_msg = {"msg_type": 0}
-        self.num_actions = 4
+        self.last_reset_obs: YuGiOhObservation | None = None
 
     def reset(self, *, episode_idx: int | None = None):
         self.reset_calls += 1
@@ -172,7 +164,9 @@ class _ScriptedEnv:
         else:
             self._ep += 1
         self._step = 0
-        return _dummy_obs()
+        obs = _dummy_obs()
+        self.last_reset_obs = obs
+        return obs
 
     def step(self, action):
         outcome = self._scripts[self._ep][self._step]
@@ -281,26 +275,14 @@ class TestRunMatch:
         assert agent.reseed_calls == [101, 102, 103]
 
     def test_passes_env_state_to_agent(self):
-        """Each select_action call receives env.current_msg + env.num_actions."""
+        """Each select_action call receives the observation from env.reset()/step()."""
         agent = _RecordingAgent()
         env = _ScriptedEnv([[{"done": True, "reward": 1.0, "agent_deck_idx": 0}]])
-        env.current_msg = {"msg_type": 11, "test": "marker"}
-        env.num_actions = 7
         run_match(agent, env, num_episodes=1, base_seed=0)
-        assert agent.select_action_calls == [({"msg_type": 11, "test": "marker"}, 7)]
-
-    def test_set_observation_called_when_needs_obs(self):
-        agent = _RecordingAgent(needs_obs=True)
-        env = _ScriptedEnv([[{"done": True, "reward": 1.0, "agent_deck_idx": 0}]])
-        run_match(agent, env, num_episodes=1, base_seed=0)
-        assert len(agent.set_observation_calls) == 1
-        assert isinstance(agent.set_observation_calls[0], YuGiOhObservation)
-
-    def test_set_observation_skipped_when_not_needs_obs(self):
-        agent = _RecordingAgent(needs_obs=False)
-        env = _ScriptedEnv([[{"done": True, "reward": 1.0, "agent_deck_idx": 0}]])
-        run_match(agent, env, num_episodes=1, base_seed=0)
-        assert agent.set_observation_calls == []
+        assert len(agent.select_action_calls) == 1
+        # And the obs is the canonical model from env.reset(), not an ad-hoc dict.
+        assert isinstance(agent.select_action_calls[0], YuGiOhObservation)
+        assert agent.select_action_calls[0] is env.last_reset_obs
 
     def test_zero_episodes_skips_reset(self):
         """num_episodes == 0 must not call env.reset() — disabling eval should
@@ -350,8 +332,6 @@ def fake_training_env_factory():
             self.kwargs = kwargs
             self.closed = False
             self._step_count = 0
-            self.current_msg = {"msg_type": 0}
-            self.num_actions = 4
             instances.append(self)
 
         def reset(self, *, episode_idx: int | None = None):

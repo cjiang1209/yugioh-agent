@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+from tests.env.conftest import MINIMAL_MSGS, obs_from_msg
+from yugioh_core.constants import MSG_SELECT_BATTLECMD, MSG_SELECT_IDLECMD, MSG_SELECT_YESNO
 from yugioh_env.opponent import GreedyOpponent, RandomOpponent
 from yugioh_env.replay import (
     GameRecording,
@@ -80,35 +82,38 @@ class TestRecordingOpponent:
         """Wrapped opponent returns a valid action index."""
         inner = GreedyOpponent()
         rec = GameRecording(setup={})
-        wrapper = RecordingOpponent(inner, rec)
+        wrapper = RecordingOpponent(inner, rec, seat_fn=lambda: 1)
 
-        msg = {"msg_type": 1, "player": 1}
-        action = wrapper.select_action(msg, num_actions=3)
+        obs = obs_from_msg({**MINIMAL_MSGS[MSG_SELECT_IDLECMD], "msg_type": MSG_SELECT_IDLECMD})
+        num_actions = int(obs.action_mask.sum())
+        action = wrapper.select_action(obs)
         assert isinstance(action, int)
-        assert 0 <= action < 3
+        assert 0 <= action < num_actions
 
     def test_records_action(self):
         """Each select_action call appends an entry with correct player and msg_type."""
         inner = RandomOpponent(seed=42)
         rec = GameRecording(setup={})
-        wrapper = RecordingOpponent(inner, rec)
+        wrapper = RecordingOpponent(inner, rec, seat_fn=lambda: 1)
 
-        msg1 = {"msg_type": 10, "player": 1}
-        wrapper.select_action(msg1, num_actions=5)
-        msg2 = {"msg_type": 20, "player": 1}
-        wrapper.select_action(msg2, num_actions=3)
+        obs1 = obs_from_msg({**MINIMAL_MSGS[MSG_SELECT_IDLECMD], "msg_type": MSG_SELECT_IDLECMD})
+        wrapper.select_action(obs1)
+        obs2 = obs_from_msg(
+            {**MINIMAL_MSGS[MSG_SELECT_BATTLECMD], "msg_type": MSG_SELECT_BATTLECMD}
+        )
+        wrapper.select_action(obs2)
 
         assert len(rec.actions) == 2
         assert rec.actions[0]["player"] == 1
-        assert rec.actions[0]["msg_type"] == 10
+        assert rec.actions[0]["msg_type"] == MSG_SELECT_IDLECMD
         assert rec.actions[1]["player"] == 1
-        assert rec.actions[1]["msg_type"] == 20
+        assert rec.actions[1]["msg_type"] == MSG_SELECT_BATTLECMD
 
     def test_reseed_delegates(self):
         """reseed should not raise."""
         inner = RandomOpponent(seed=1)
         rec = GameRecording(setup={})
-        wrapper = RecordingOpponent(inner, rec)
+        wrapper = RecordingOpponent(inner, rec, seat_fn=lambda: 1)
         wrapper.reseed(99)  # should not raise
 
 
@@ -177,6 +182,24 @@ class TestRecordingEnvironment:
         rec_env = RecordingEnvironment(env=None, opponent=RandomOpponent(seed=1))
         with pytest.raises(RuntimeError, match="No active recording"):
             rec_env.get_recording()
+
+    def test_recording_stamps_correct_seat_when_agent_player_is_random(self, rec_env):
+        """Opponent may act during reset(), before the caller can read the seat."""
+        rec_env.reset(agent_player="random", seed=7)
+        resolved = rec_env._env._agent_player
+
+        # Recording entries are DICTS -- {"msg_type", "player", ...}
+        #
+        # Do NOT filter by `e["player"] != resolved` first: that discards
+        # exactly the entries a broken seat_fn mis-stamps as the agent, so
+        # the assertion would inspect only the already-correct ones. During
+        # reset() the agent has not acted, so EVERY recorded entry must be
+        # the opponent's.
+        entries = rec_env._recording.actions
+        assert entries, "opponent must have acted during reset"
+        assert all(e["player"] == 1 - resolved for e in entries), (
+            "every reset-time entry must carry the resolved opponent seat"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -258,37 +281,57 @@ class TestScriptedOpponent:
     def test_returns_recorded_actions(self):
         # Two opponent entries (player=1), agent_player=0
         actions = [
-            {"msg_type": 16, "player": 1, "action": 5, "num_actions": 8},
-            {"msg_type": 16, "player": 1, "action": 3, "num_actions": 4},
+            {"msg_type": MSG_SELECT_YESNO, "player": 1, "action": 1, "num_actions": 2},
+            {"msg_type": MSG_SELECT_YESNO, "player": 1, "action": 0, "num_actions": 2},
         ]
         cursor = ReplayCursor(actions, agent_player=0)
         opp = ScriptedOpponent(cursor)
 
-        a0 = opp.select_action({"msg_type": 16, "player": 1}, num_actions=8)
-        assert a0 == 5
-        a1 = opp.select_action({"msg_type": 16, "player": 1}, num_actions=4)
-        assert a1 == 3
+        obs = obs_from_msg({**MINIMAL_MSGS[MSG_SELECT_YESNO], "msg_type": MSG_SELECT_YESNO})
+        a0 = opp.select_action(obs)
+        assert a0 == 1
+        a1 = opp.select_action(obs)
+        assert a1 == 0
 
     def test_drift_on_wrong_msg_type(self):
         actions = [
-            {"msg_type": 16, "player": 1, "action": 0, "num_actions": 3},
+            {"msg_type": 999, "player": 1, "action": 0, "num_actions": 2},
         ]
         cursor = ReplayCursor(actions, agent_player=0)
         opp = ScriptedOpponent(cursor)
 
+        obs = obs_from_msg({**MINIMAL_MSGS[MSG_SELECT_YESNO], "msg_type": MSG_SELECT_YESNO})
         with pytest.raises(RuntimeError, match="drift"):
-            opp.select_action({"msg_type": 999, "player": 1}, num_actions=3)
+            opp.select_action(obs)
+
+    def test_drift_on_wrong_num_actions(self):
+        """Sibling of test_drift_on_wrong_msg_type: msg_type matches but the
+        recorded num_actions doesn't match the live observation's legal-action
+        count. ScriptedOpponent passes expected_num_actions on every call
+        (see select_action); a recording/replay desync in the action space
+        (e.g. a legal-action-count mismatch from a filter change) must not
+        pass silently."""
+        actions = [
+            {"msg_type": MSG_SELECT_YESNO, "player": 1, "action": 0, "num_actions": 999},
+        ]
+        cursor = ReplayCursor(actions, agent_player=0)
+        opp = ScriptedOpponent(cursor)
+
+        obs = obs_from_msg({**MINIMAL_MSGS[MSG_SELECT_YESNO], "msg_type": MSG_SELECT_YESNO})
+        with pytest.raises(RuntimeError, match="drift"):
+            opp.select_action(obs)
 
     def test_exhausted_raises(self):
         actions = [
-            {"msg_type": 16, "player": 1, "action": 0, "num_actions": 1},
+            {"msg_type": MSG_SELECT_YESNO, "player": 1, "action": 0, "num_actions": 2},
         ]
         cursor = ReplayCursor(actions, agent_player=0)
         opp = ScriptedOpponent(cursor)
-        opp.select_action({"msg_type": 16, "player": 1}, num_actions=1)
+        obs = obs_from_msg({**MINIMAL_MSGS[MSG_SELECT_YESNO], "msg_type": MSG_SELECT_YESNO})
+        opp.select_action(obs)
 
         with pytest.raises(RuntimeError, match="exhausted"):
-            opp.select_action({"msg_type": 16, "player": 1}, num_actions=1)
+            opp.select_action(obs)
 
 
 # ---------------------------------------------------------------------------

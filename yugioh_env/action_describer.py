@@ -258,7 +258,7 @@ class ActionDescriber:
         d = descriptors[idx] if idx < len(descriptors) else None
         if d is None:
             raise IndexError(f"action slot {idx} has no descriptor")
-        msg_type = (obs.prompt_meta or {}).get("msg_type", 0)
+        msg_type = obs.msg_type
 
         card_code = 0
         controller = 0

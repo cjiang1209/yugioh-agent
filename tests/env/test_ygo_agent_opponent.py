@@ -25,10 +25,6 @@ class TestYGOAgentOpponent:
         opp = YGOAgentOpponent("http://myhost:5000")
         assert opp._base_url == "http://myhost:5000"
 
-    def test_needs_observation_true(self):
-        opp = YGOAgentOpponent()
-        assert opp.needs_observation is True
-
     def test_reseed_creates_duel(self):
         opp = YGOAgentOpponent()
         mock_resp = MagicMock()
@@ -65,7 +61,6 @@ class TestYGOAgentOpponent:
         # select_yesno yields exactly two Confirm descriptors: yes=True at
         # slot 0, yes=False at slot 1.
         obs = obs_from_msg(msg)
-        opp.set_observation(obs)
 
         mock_resp = MagicMock()
         mock_resp.status_code = 200
@@ -83,7 +78,7 @@ class TestYGOAgentOpponent:
         mock_resp.raise_for_status = MagicMock()
         with patch("yugioh_env.ygo_agent.opponent.requests") as mock_req:
             mock_req.post.return_value = mock_resp
-            action = opp.select_action(msg, 2)
+            action = opp.select_action(obs)
         # response=0 ("no") matches the Confirm(yes=False) descriptor, which is
         # slot 1 (slot 0 is always yes=True) — deliberately non-zero so this
         # assertion can't be satisfied by match_response's slot-0 fallback.
@@ -94,7 +89,8 @@ class TestYGOAgentOpponent:
         opp = YGOAgentOpponent()
         opp._duel_id = None
         msg = {"msg_type": MSG_SELECT_YESNO, "player": 0, "desc": 30}
-        assert opp.select_action(msg, 2) == 0
+        obs = obs_from_msg(msg)
+        assert opp.select_action(obs) == 0
 
     @pytest.mark.parametrize("msg_type", sorted(_SERVER_UNSUPPORTED_MSGS))
     def test_select_action_short_circuits_unsupported(self, msg_type):
@@ -108,10 +104,9 @@ class TestYGOAgentOpponent:
         """
         opp = YGOAgentOpponent()
         opp._duel_id = "test-duel"
-        opp.set_observation(obs_from_msg({**MINIMAL_MSGS[msg_type], "msg_type": msg_type}))
-        msg = {**MINIMAL_MSGS[msg_type], "msg_type": msg_type}
+        obs = obs_from_msg({**MINIMAL_MSGS[msg_type], "msg_type": msg_type})
         with patch("yugioh_env.ygo_agent.opponent.requests") as mock_req:
-            result = opp.select_action(msg, num_actions=3)
+            result = opp.select_action(obs)
         assert result == 0
         mock_req.post.assert_not_called()
 

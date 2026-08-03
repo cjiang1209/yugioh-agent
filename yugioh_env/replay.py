@@ -8,6 +8,7 @@ decks, agent_player).
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -142,28 +143,36 @@ class GameRecording:
 
 
 class RecordingOpponent(Opponent):
-    """Wraps any ``Opponent`` and records each action into a ``GameRecording``."""
+    """Wraps any ``Opponent`` and records each action into a ``GameRecording``.
 
-    def __init__(self, inner: Opponent, recording: GameRecording) -> None:
+    ``seat_fn`` is a getter, not a fixed int: this wrapper is constructed
+    before the env resolves ``agent_player`` for the episode, so at
+    construction the attribute still holds the previous episode's seat (or the
+    config default). Under ``agent_player="random"`` a snapshot taken there is
+    wrong about half the time, and every recorded entry would carry the wrong
+    seat -- which silently corrupts the drift detection replay depends on.
+    """
+
+    def __init__(
+        self, inner: Opponent, recording: GameRecording, *, seat_fn: Callable[[], int]
+    ) -> None:
         self._inner = inner
         self._recording = recording
-
-    def select_action(self, msg: dict, num_actions: int) -> int:
-        action = self._inner.select_action(msg, num_actions)
-        self._recording.append(
-            msg_type=msg.get("msg_type", 0),
-            player=msg.get("player", 0),
-            action=action,
-            num_actions=num_actions,
-        )
-        return action
+        self._seat_fn = seat_fn
 
     @property
-    def needs_observation(self) -> bool:
-        return self._inner.needs_observation
+    def needs_board_state(self) -> bool:
+        return self._inner.needs_board_state
 
-    def set_observation(self, obs: YuGiOhObservation) -> None:
-        self._inner.set_observation(obs)
+    def select_action(self, obs: YuGiOhObservation) -> int:
+        action = self._inner.select_action(obs)
+        self._recording.append(
+            msg_type=obs.msg_type,
+            player=self._seat_fn(),
+            action=action,
+            num_actions=obs.num_actions,
+        )
+        return action
 
     def reseed(self, seed: int) -> None:
         self._inner.reseed(seed)
@@ -172,13 +181,17 @@ class RecordingOpponent(Opponent):
 class ScriptedOpponent(Opponent):
     """Plays actions from a ReplayCursor. Raises RuntimeError on drift."""
 
+    @property
+    def needs_board_state(self) -> bool:
+        return False  # replays recorded indices, never reads the board
+
     def __init__(self, cursor: ReplayCursor) -> None:
         self._cursor = cursor
 
-    def select_action(self, msg: dict, num_actions: int) -> int:
+    def select_action(self, obs: YuGiOhObservation) -> int:
         entry = self._cursor.next_opponent_entry(
-            expected_msg_type=msg.get("msg_type", 0),
-            expected_num_actions=num_actions,
+            expected_msg_type=obs.msg_type,
+            expected_num_actions=obs.num_actions,
         )
         return entry["action"]
 
@@ -210,7 +223,9 @@ class RecordingEnvironment:
         self._recording = GameRecording(setup)
         self._done = False
 
-        recording_opponent = RecordingOpponent(self._opponent, self._recording)
+        recording_opponent = RecordingOpponent(
+            self._opponent, self._recording, seat_fn=lambda: 1 - self._env._agent_player
+        )
         self._env.set_opponent(recording_opponent)
 
         obs = self._env.reset(**kwargs)

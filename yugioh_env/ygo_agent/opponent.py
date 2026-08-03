@@ -57,19 +57,15 @@ class YGOAgentOpponent(Opponent):
         make_opponent("ygo-agent:http://192.168.1.5:3000")  # custom endpoint
     """
 
+    @property
+    def needs_board_state(self) -> bool:
+        return True  # the request carries the full card list and global state
+
     def __init__(self, base_url: str = DEFAULT_URL) -> None:
         self._base_url = base_url.rstrip("/")
         self._duel_id: str | None = None
         self._index: int = 0
         self._prev_action_idx: int = 0
-        self._obs: YuGiOhObservation | None = None
-
-    @property
-    def needs_observation(self) -> bool:
-        return True
-
-    def set_observation(self, obs: YuGiOhObservation) -> None:
-        self._obs = obs
 
     def _delete_session(self) -> None:
         """Best-effort delete of the current duel session."""
@@ -91,7 +87,6 @@ class YGOAgentOpponent(Opponent):
         """Start a new duel session. Deletes the old one if any."""
         self._delete_session()
         self._create_session()
-        self._obs = None
 
     def _reset_session(self) -> None:
         """Create a fresh duel session, discarding the current one."""
@@ -103,19 +98,19 @@ class YGOAgentOpponent(Opponent):
             self._index = 0
             self._prev_action_idx = 0
 
-    def select_action(self, msg: dict, num_actions: int) -> int:
-        if self._duel_id is None or self._obs is None:
-            logger.warning("YGOAgentOpponent: no duel session or observation, returning 0")
+    def select_action(self, obs: YuGiOhObservation) -> int:
+        if self._duel_id is None:
+            logger.warning("YGOAgentOpponent: no duel session, returning 0")
             return 0
 
         # ygo-agent's C++ env handles these message types internally and
         # never presents them to the model.  We skip the server and pick
         # action 0 (default/first option).
-        msg_type = msg.get("msg_type", 0)
+        msg_type = obs.msg_type
         if msg_type in _SERVER_UNSUPPORTED_MSGS:
             return 0
 
-        body = build_predict_input(self._obs, self._prev_action_idx, self._index)
+        body = build_predict_input(obs, self._prev_action_idx, self._index)
 
         try:
             resp = requests.post(
@@ -134,7 +129,7 @@ class YGOAgentOpponent(Opponent):
             logger.warning(
                 "ygo-agent server error (HTTP %d) for msg_type=%s",
                 resp.status_code,
-                msg.get("msg_type"),
+                msg_type,
             )
             self._reset_session()
             return 0
@@ -162,5 +157,5 @@ class YGOAgentOpponent(Opponent):
         self._prev_action_idx = preds.index(best)
 
         # Match the server's response to our action index
-        action_idx = match_response(msg_type, self._obs.action_descriptors, best["response"])
-        return min(action_idx, num_actions - 1)
+        action_idx = match_response(msg_type, obs.action_descriptors, best["response"])
+        return min(action_idx, obs.num_actions - 1)

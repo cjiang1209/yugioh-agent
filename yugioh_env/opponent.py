@@ -5,9 +5,9 @@ Also exposes:
 - ``make_opponent(spec, seed, device)`` — factory used by both the HTTP server
   (``YuGiOhEnvironment.__init__``) and the eval module.
 
-The ``select_action`` ABC takes ``num_actions: int`` rather than the full
-``ActionMapper`` because every subclass only ever needs the count to clamp its
-chosen index — exposing more of the mapper was over-scoped.
+Every opponent consumes the canonical ``YuGiOhObservation`` — the same shape
+the agent sees. ``Opponent.needs_board_state`` gates how much of it gets
+built, not whether it is passed.
 """
 
 from __future__ import annotations
@@ -15,31 +15,33 @@ from __future__ import annotations
 import random
 from abc import ABC, abstractmethod
 
+from yugioh_core.action_categories import IDLE_SP_SUMMON, IDLE_SSET, IDLE_SUMMON
 from yugioh_core.constants import (
     MSG_SELECT_BATTLECMD,
     MSG_SELECT_IDLECMD,
 )
-from yugioh_env.models import YuGiOhObservation
+from yugioh_env.models import Attack, CardCommand, PhaseChange, YuGiOhObservation
 
 
 class Opponent(ABC):
     """Base class for opponent policies."""
 
-    @abstractmethod
-    def select_action(self, msg: dict, num_actions: int) -> int:
-        """Select an action index in ``[0, num_actions)`` given the current message."""
-        ...
-
     @property
-    def needs_observation(self) -> bool:
-        """Whether this opponent requires the full observation to select actions."""
-        return False
+    @abstractmethod
+    def needs_board_state(self) -> bool:
+        """Does ``select_action`` read the BOARD half of the observation
+        (``cards`` / ``global_state`` / ``pending_chain`` / ``event_history``)?
 
-    def set_observation(self, obs: YuGiOhObservation) -> None:  # noqa: B027
-        """Provide the current observation before calling select_action.
-
-        Only called when needs_observation returns True.
+        The environment builds the opponent-seat observation accordingly,
+        skipping the engine ``query_location`` calls that dominate its cost.
+        A ``YuGiOhObservation`` arrives either way; the skipped fields hold
+        shaped zeros rather than the real board.
         """
+
+    @abstractmethod
+    def select_action(self, obs: YuGiOhObservation) -> int:
+        """Select an action index given the current observation."""
+        ...
 
     def reseed(self, seed: int) -> None:  # noqa: B027
         """Re-seed the opponent's RNG. Override in stochastic subclasses."""
@@ -48,13 +50,18 @@ class Opponent(ABC):
 class RandomOpponent(Opponent):
     """Select uniformly random legal actions."""
 
+    @property
+    def needs_board_state(self) -> bool:
+        return False  # reads only obs.action_mask
+
     def __init__(self, seed: int | None = None):
         self._rng = random.Random(seed)
 
     def reseed(self, seed: int) -> None:
         self._rng = random.Random(seed)
 
-    def select_action(self, msg: dict, num_actions: int) -> int:
+    def select_action(self, obs: YuGiOhObservation) -> int:
+        num_actions = obs.num_actions
         if num_actions == 0:
             return 0
         return self._rng.randint(0, num_actions - 1)
@@ -63,62 +70,71 @@ class RandomOpponent(Opponent):
 class GreedyOpponent(Opponent):
     """Simple heuristic opponent.
 
-    Strategy:
-    - In idle cmd: summon strongest monster, set spells/traps, then enter battle
-    - In battle cmd: attack with strongest, then end
-    - For other messages: pick first valid option
+    Idle: summon > special summon > set S/T > battle phase > last slot.
+    Battle: attack > last slot. Any other prompt: slot 0.
+
+    Takes the FIRST descriptor matching each category, not the strongest --
+    ranking would need the board, which ``needs_board_state = False`` skips.
+    Scanning descriptors also means only actions the loop filter left are
+    considered.
     """
 
-    def select_action(self, msg: dict, num_actions: int) -> int:
-        if num_actions == 0:
-            return 0
-        if num_actions == 1:
+    @property
+    def needs_board_state(self) -> bool:
+        return False  # reads descriptors, mask, prompt_meta
+
+    def select_action(self, obs: YuGiOhObservation) -> int:
+        num_actions = obs.num_actions
+        if num_actions <= 1:
             return 0
 
-        msg_type = msg.get("msg_type")
+        msg_type = obs.msg_type
+        descriptors = obs.action_descriptors
 
         if msg_type == MSG_SELECT_IDLECMD:
-            return self._greedy_idle(msg, num_actions)
+            return self._greedy_idle(descriptors, num_actions)
         elif msg_type == MSG_SELECT_BATTLECMD:
-            return self._greedy_battle(msg, num_actions)
+            return self._greedy_battle(descriptors, num_actions)
         else:
             return 0
 
-    def _greedy_idle(self, msg: dict, num_actions: int) -> int:
-        """Greedy idle: summon > set S/T > go to BP > end."""
-        if msg.get("summonable"):
-            return 0
+    @staticmethod
+    def _first_command(descriptors: list, command: int) -> int | None:
+        for i, d in enumerate(descriptors):
+            if isinstance(d, CardCommand) and d.command == command:
+                return i
+        return None
 
-        if msg.get("sp_summonable"):
-            return len(msg.get("summonable", []))
+    @staticmethod
+    def _first_phase(descriptors: list, to: str) -> int | None:
+        for i, d in enumerate(descriptors):
+            if isinstance(d, PhaseChange) and d.to == to:
+                return i
+        return None
 
-        if msg.get("sset"):
-            offset = (
-                len(msg.get("summonable", []))
-                + len(msg.get("sp_summonable", []))
-                + len(msg.get("repositionable", []))
-                + len(msg.get("mset", []))
-            )
-            return min(offset, num_actions - 1)
+    @staticmethod
+    def _first_attack(descriptors: list) -> int | None:
+        for i, d in enumerate(descriptors):
+            if isinstance(d, Attack):
+                return i
+        return None
 
-        activatable_count = (
-            len(msg.get("summonable", []))
-            + len(msg.get("sp_summonable", []))
-            + len(msg.get("repositionable", []))
-            + len(msg.get("mset", []))
-            + len(msg.get("sset", []))
-            + len(msg.get("activatable", []))
-        )
-        if msg.get("to_bp"):
-            return min(activatable_count, num_actions - 1)
+    def _greedy_idle(self, descriptors: list, num_actions: int) -> int:
+        for command in (IDLE_SUMMON, IDLE_SP_SUMMON, IDLE_SSET):
+            idx = self._first_command(descriptors, command)
+            if idx is not None:
+                return idx
+
+        idx = self._first_phase(descriptors, "bp")
+        if idx is not None:
+            return idx
 
         return num_actions - 1
 
-    def _greedy_battle(self, msg: dict, num_actions: int) -> int:
-        """Greedy battle: attack if possible, then end."""
-        act_count = len(msg.get("activatable", []))
-        if msg.get("attackable"):
-            return act_count
+    def _greedy_battle(self, descriptors: list, num_actions: int) -> int:
+        idx = self._first_attack(descriptors)
+        if idx is not None:
+            return idx
         return num_actions - 1
 
 
@@ -131,6 +147,10 @@ class NetworkOpponent(Opponent):
 
     Requires torch and yugioh_rl to be installed (``pip install -e ".[train]"``).
     """
+
+    @property
+    def needs_board_state(self) -> bool:
+        return True  # the network reads every board field
 
     def __init__(
         self,
@@ -148,34 +168,21 @@ class NetworkOpponent(Opponent):
         self._temperature = temperature
         if temperature <= 0:
             raise ValueError(f"temperature must be > 0, got {temperature!r}")
-        self._obs: YuGiOhObservation | None = None
         # Per-episode recurrent state.  reseed() — called per duel by both
         # the HTTP env and the eval loop — re-zeros it.
         self._hx = self._network.init_hx(1, self._device)
-
-    @property
-    def needs_observation(self) -> bool:
-        return True
-
-    def set_observation(self, obs: YuGiOhObservation) -> None:
-        self._obs = obs
 
     @property
     def network(self):
         """The wrapped policy network."""
         return self._network
 
-    def select_action(self, msg: dict, num_actions: int) -> int:
+    def select_action(self, obs: YuGiOhObservation) -> int:
         import torch
 
         from yugioh_rl.policy_inputs import build_forward_inputs
 
-        if self._obs is None:
-            return 0
-
-        inputs = build_forward_inputs(
-            self._obs.as_arrays(), device=self._device, add_batch_dim=True
-        )
+        inputs = build_forward_inputs(obs.as_arrays(), device=self._device, add_batch_dim=True)
 
         with torch.no_grad():
             logits, _, self._hx = self._network(**inputs, hx=self._hx)
@@ -186,7 +193,7 @@ class NetworkOpponent(Opponent):
             else:
                 action = int(masked.argmax(dim=-1).item())
 
-        return min(action, num_actions - 1)
+        return action
 
     def reseed(self, seed: int) -> None:
         # Resets per-duel recurrent state. Stochastic-mode sampling uses
@@ -214,14 +221,11 @@ class ModelOpponent(Opponent):
         self._impl = NetworkOpponent(network, device=device)
 
     @property
-    def needs_observation(self) -> bool:
-        return True
+    def needs_board_state(self) -> bool:
+        return self._impl.needs_board_state
 
-    def set_observation(self, obs: YuGiOhObservation) -> None:
-        self._impl.set_observation(obs)
-
-    def select_action(self, msg: dict, num_actions: int) -> int:
-        return self._impl.select_action(msg, num_actions)
+    def select_action(self, obs: YuGiOhObservation) -> int:
+        return self._impl.select_action(obs)
 
     def reseed(self, seed: int) -> None:
         self._impl.reseed(seed)

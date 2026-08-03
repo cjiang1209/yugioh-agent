@@ -37,15 +37,13 @@ def recommender_device_from_env() -> str:
     return os.environ.get("YUGIOH_RECOMMENDER_DEVICE", "cpu")
 
 
-def recommend_action_index(recommender: Opponent, env, obs: YuGiOhObservation) -> int:
+def recommend_action_index(recommender: Opponent, obs: YuGiOhObservation) -> int:
     """Run the recommender on a live observation and return its chosen action index.
 
-    Only network recommenders (``needs_observation``) are handed the observation;
-    random/greedy/ygo-agent select purely from the current ``msg`` and
-    ``num_actions``. The mask is dense (``mask[:num_actions] = 1``), so the
-    returned index is a legal slot directly usable as an ``EngineAction.index``.
-    The caller must ensure ``obs`` is non-terminal with at least one legal action.
+    Every recommender now takes the full observation directly (there is no
+    longer a needs_observation split). The mask is dense
+    (``mask[:num_actions] = 1``), so the returned index is a legal slot
+    directly usable as an ``EngineAction.index``. The caller must ensure
+    ``obs`` is non-terminal with at least one legal action.
     """
-    if recommender.needs_observation:
-        recommender.set_observation(obs)
-    return recommender.select_action(env.current_msg or {}, env.num_actions)
+    return recommender.select_action(obs)

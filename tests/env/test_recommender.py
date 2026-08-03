@@ -48,67 +48,44 @@ def test_device_from_env_default(monkeypatch):
     assert recommender_device_from_env() == "cuda"
 
 
-class _FakeEnv:
-    def __init__(self, msg, num_actions):
-        self.current_msg = msg
-        self.num_actions = num_actions
-
-
-def test_recommend_action_index_network_gets_obs():
-    """A needs_observation recommender receives the observation model itself."""
+def test_recommend_action_index_passes_obs_through():
+    """The recommender receives the observation directly -- there is no
+    longer a needs_observation split -- and its choice flows straight
+    through as the returned action index."""
     from yugioh_core.encoding import MAX_ACTIONS
     from yugioh_env.models import YuGiOhObservation
 
-    class FakeNet:
-        needs_observation = True
-
+    class FakeRecommender:
         def __init__(self):
             self.seen = None
 
-        def set_observation(self, obs):
+        def select_action(self, obs):
             self.seen = obs
-
-        def select_action(self, msg, num_actions):
             return 2
 
     mask = [1, 1, 1] + [0] * (MAX_ACTIONS - 3)
     obs = YuGiOhObservation(action_mask=mask)
-    rec = FakeNet()
-    idx = recommend_action_index(rec, _FakeEnv({"msg_type": 11}, 3), obs)
+    rec = FakeRecommender()
+    idx = recommend_action_index(rec, obs)
 
     assert idx == 2
     assert obs.action_mask[idx] == 1
     assert rec.seen is obs
 
 
-def test_recommend_action_index_non_network_skips_obs():
-    """A recommender that doesn't need obs is never handed one, and gets the real msg."""
+def test_recommend_action_index_returns_recommenders_choice():
+    """recommend_action_index is a thin pass-through: whatever index the
+    recommender picks is returned unchanged, for any recommender kind."""
     from yugioh_core.encoding import MAX_ACTIONS
     from yugioh_env.models import YuGiOhObservation
 
     class FakeGreedy:
-        needs_observation = False
-
-        def __init__(self):
-            self.set_obs_called = False
-            self.msg_seen = None
-            self.num_seen = None
-
-        def set_observation(self, obs_dict):
-            self.set_obs_called = True
-
-        def select_action(self, msg, num_actions):
-            self.msg_seen = msg
-            self.num_seen = num_actions
-            return num_actions - 1
+        def select_action(self, obs):
+            return int(obs.action_mask.sum()) - 1
 
     obs = YuGiOhObservation(action_mask=[1, 1] + [0] * (MAX_ACTIONS - 2))
-    rec = FakeGreedy()
-    idx = recommend_action_index(rec, _FakeEnv({"msg_type": 22}, 2), obs)
+    idx = recommend_action_index(FakeGreedy(), obs)
 
-    assert rec.set_obs_called is False
-    assert rec.msg_seen == {"msg_type": 22}
-    assert rec.num_seen == 2
     assert idx == 1
 
 
@@ -137,5 +114,5 @@ def test_recommender_declines_on_all_zero_mask(monkeypatch) -> None:
     obs = YuGiOhObservation(done=False)  # mask zeros(32), size 32
     assert obs.action_mask.size == 32 and not obs.action_mask.any()
 
-    assert web_api._resolve_recommendation(request, serving=None, obs=obs) is None
+    assert web_api._resolve_recommendation(request, obs=obs) is None
     assert not called, "must decline BEFORE attempting inference"

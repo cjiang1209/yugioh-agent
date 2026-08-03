@@ -694,10 +694,10 @@ class YuGiOhEnvironment(Environment):
                                     }
                                 )
                             continue
-                        if self._opponent.needs_observation:
-                            opp_obs = self._build_seat_observation(opp_mapper)
-                            self._opponent.set_observation(opp_obs)
-                        opp_action = self._opponent.select_action(msg, opp_mapper.num_actions)
+                        opp_obs = self._build_seat_observation(
+                            opp_mapper, include_board=self._opponent.needs_board_state
+                        )
+                        opp_action = self._opponent.select_action(opp_obs)
                         self._opp_step_count += 1
                         opp_action = min(opp_action, opp_mapper.num_actions - 1)
                         if opp_selected_action is None:
@@ -723,37 +723,50 @@ class YuGiOhEnvironment(Environment):
                 # Unknown message, try continuing
                 return self._make_terminal_observation()
 
-    def _build_seat_observation(self, mapper: ActionMapper) -> YuGiOhObservation:
+    def _build_seat_observation(
+        self, mapper: ActionMapper, *, include_board: bool = True
+    ) -> YuGiOhObservation:
         """One observation builder for both seats.
 
         The seat comes from the mapper, so the perspective the controllers are
         relativized against cannot disagree with the prompt being answered.
-        """
-        seat = mapper.agent_player
-        obs_data = build_observation(
-            self._duel.game_state,
-            mapper.msg,
-            seat,
-            query_fn=self.query_location,
-            event_history=self._event_buffer.to_tensor(seat),
-        )
 
+        `include_board` False skips `build_observation` entirely -- the engine
+        `query_location` calls, the card encode and the event history, which
+        together dominate the cost of a build. Those fields then keep their
+        shaped-zero defaults. The prompt side (`actions`, `action_mask`,
+        `action_descriptors`, `prompt_meta`) is populated either way.
+        """
         action_mask = mapper.get_action_mask()
         action_features = mapper.get_action_features()
         action_descriptors = _build_action_descriptors(mapper.actions)
 
+        board_kwargs = {}
+        if include_board:
+            seat = mapper.agent_player
+            obs_data = build_observation(
+                self._duel.game_state,
+                mapper.msg,
+                seat,
+                query_fn=self.query_location,
+                event_history=self._event_buffer.to_tensor(seat),
+            )
+            board_kwargs = {
+                "cards": obs_data["cards"],
+                "global_state": obs_data["global_state"],
+                "pending_chain": obs_data["pending_chain"],
+                "event_history": obs_data["event_history"],
+            }
+
         return YuGiOhObservation(
-            cards=obs_data["cards"],
-            global_state=obs_data["global_state"],
             actions=action_features,
             action_mask=action_mask,
-            pending_chain=obs_data["pending_chain"],
-            event_history=obs_data["event_history"],
             action_descriptors=action_descriptors,
             prompt_meta=_build_prompt_meta(mapper),
             events=list(self._cycle_events),
             done=False,
             reward=0.0,
+            **board_kwargs,
         )
 
     def _make_observation(self) -> YuGiOhObservation:

@@ -8,9 +8,9 @@ Powers two callers:
 2. The standalone eval CLI (added in Phase 3) — compares any two agents
    without a training loop.
 
-The core loop drives an ``Opponent`` instance by reading ``env.current_msg`` /
-``env.num_actions`` after each ``env.step()``; agents that need observations
-also receive ``set_observation(obs)`` per step.
+The core loop drives an ``Opponent`` instance by calling
+``agent.select_action(obs)`` with the observation returned from each
+``env.step()``/``env.reset()``.
 
 Agent reseeding: ``run_match`` reseeds the agent per episode, mirroring the
 env-side reseed at ``yugioh_environment.py:reset()``. ``evaluate`` reseeds
@@ -280,9 +280,7 @@ def _play_one_episode(
     done = False
     info: dict[str, Any] = {}
     while not done:
-        if agent.needs_observation:
-            agent.set_observation(obs)
-        action = agent.select_action(env.current_msg, env.num_actions)
+        action = agent.select_action(obs)
         obs, _reward, done, info = env.step(action)
     return _EpisodeRecord(
         episode_idx=episode_idx,

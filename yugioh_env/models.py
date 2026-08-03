@@ -279,6 +279,19 @@ class YuGiOhObservation(Observation):
         description="Raw enriched engine messages since last action (consumers format them)",
     )
 
+    @property
+    def num_actions(self) -> int:
+        """Number of legal actions for the active prompt."""
+        return int(self.action_mask.sum())
+
+    @property
+    def msg_type(self) -> int:
+        """Engine message type of the active prompt, or 0 when there is none.
+
+        Spares readers the ``prompt_meta`` lookup and its None guard.
+        """
+        return self.prompt_meta.get("msg_type", 0) if self.prompt_meta else 0
+
     def as_arrays(self) -> dict[str, np.ndarray]:
         """Return the numpy-backed encoding fields, keyed by name.
 

@@ -73,7 +73,6 @@ def test_legacy_checkpoint_resume_backfills_rnn_fields(tmp_path, monkeypatch):
 def test_legacy_checkpoint_inference_via_model_opponent(tmp_path):
     """Plan test #8 (ModelOpponent half).  Legacy ckpt should load and run
     inference without AttributeError on the new RNN fields."""
-    from yugioh_core.constants import MSG_SELECT_YESNO
     from yugioh_env.opponent import ModelOpponent
 
     ckpt_path = str(tmp_path / "legacy.pt")
@@ -81,10 +80,7 @@ def test_legacy_checkpoint_inference_via_model_opponent(tmp_path):
 
     opp = ModelOpponent(ckpt_path, device="cpu")
 
-    opp.set_observation(_dummy_model_opponent_obs())
-
-    msg = {"msg_type": MSG_SELECT_YESNO, "player": 1, "desc": 0}
-    action = opp.select_action(msg, num_actions=3)
+    action = opp.select_action(_dummy_model_opponent_obs())
     assert 0 <= action < 3
 
 
@@ -252,7 +248,6 @@ def test_model_opponent_hx_lifecycle(tmp_path):
     """Plan test #6.  Instantiate ModelOpponent on an RNN ckpt, run a few
     select_action calls; assert _hx is non-None and changes between calls.
     """
-    from yugioh_core.constants import MSG_SELECT_YESNO
     from yugioh_env.opponent import ModelOpponent
 
     ckpt_path = str(tmp_path / "rnn.pt")
@@ -271,17 +266,14 @@ def test_model_opponent_hx_lifecycle(tmp_path):
     assert torch.equal(c0, torch.zeros_like(c0))
 
     # Call select_action; hx should advance away from zero.
-    msg = {"msg_type": MSG_SELECT_YESNO, "player": 1, "desc": 0}
-    opp.set_observation(obs)
-    opp.select_action(msg, num_actions=3)
+    opp.select_action(obs)
     h1, c1 = inner._hx
     assert not torch.equal(h1, h0) or not torch.equal(c1, c0), (
         "select_action must advance hx for an RNN-mode network"
     )
 
     # A second call should advance hx again.
-    opp.set_observation(obs)
-    opp.select_action(msg, num_actions=3)
+    opp.select_action(obs)
     h2, c2 = inner._hx
     assert not torch.equal(h2, h1) or not torch.equal(c2, c1), (
         "consecutive select_action calls must not produce identical hx"
@@ -296,7 +288,6 @@ def test_model_opponent_hx_lifecycle(tmp_path):
 
 def test_model_opponent_feed_forward_hx_is_none(tmp_path):
     """Default rnn_type='none' ckpt: _hx must remain None across calls."""
-    from yugioh_core.constants import MSG_SELECT_YESNO
     from yugioh_env.opponent import ModelOpponent
 
     ckpt_path = str(tmp_path / "ff.pt")
@@ -306,8 +297,7 @@ def test_model_opponent_feed_forward_hx_is_none(tmp_path):
     opp.reseed(0)
     assert opp._impl._hx is None
 
-    opp.set_observation(_dummy_model_opponent_obs())
-    opp.select_action({"msg_type": MSG_SELECT_YESNO, "player": 1, "desc": 0}, num_actions=3)
+    opp.select_action(_dummy_model_opponent_obs())
     assert opp._impl._hx is None
 
 
