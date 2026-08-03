@@ -5,10 +5,18 @@ import struct
 import numpy as np
 import pytest
 
+from tests.env.conftest import MINIMAL_MSGS
+from yugioh_core.action_categories import (
+    BATTLE_TO_EP,
+    BATTLE_TO_M2,
+    IDLE_TO_BP,
+    IDLE_TO_EP,
+)
 from yugioh_core.constants import (
     LOCATION_MZONE,
     LOCATION_SZONE,
     MSG_ANNOUNCE_ATTRIB,
+    MSG_ANNOUNCE_CARD,
     MSG_ANNOUNCE_NUMBER,
     MSG_ANNOUNCE_RACE,
     MSG_ROCK_PAPER_SCISSORS,
@@ -16,6 +24,8 @@ from yugioh_core.constants import (
     MSG_SELECT_CARD,
     MSG_SELECT_CHAIN,
     MSG_SELECT_COUNTER,
+    MSG_SELECT_DISFIELD,
+    MSG_SELECT_EFFECTYN,
     MSG_SELECT_IDLECMD,
     MSG_SELECT_OPTION,
     MSG_SELECT_PLACE,
@@ -1487,3 +1497,346 @@ def test_extract_announce_card_actions():
     assert mapper.actions[1]["code"] == 222
     assert mapper.action_to_response(0) == struct.pack("<I", 111)
     assert mapper.action_to_response(1) == struct.pack("<I", 222)
+
+
+# ─── Extractor coordinate and width fixes ───────────────────────────────────
+
+
+def test_place_actions_carry_controller() -> None:
+    """Opponent-zone placements must be distinguishable from own-zone ones."""
+    mapper = ActionMapper()
+    mapper.update(
+        {
+            "msg_type": MSG_SELECT_PLACE,
+            "player": 0,
+            "count": 1,
+            "field_mask": 0,
+            "_agent_player": 0,
+        }
+    )
+    controllers = {a["controller"] for a in mapper.actions}
+    assert controllers == {0, 1}, "place actions must span both seats"
+
+
+def test_sort_actions_preserve_parsed_coordinates() -> None:
+    mapper = ActionMapper()
+    mapper.update(
+        {
+            "msg_type": MSG_SORT_CARD,
+            "player": 0,
+            "_agent_player": 0,
+            "cards": [{"code": 1234, "controller": 0, "location": LOCATION_MZONE, "sequence": 3}],
+        }
+    )
+    a = mapper.actions[0]
+    assert a["location"] == LOCATION_MZONE
+    assert a["sequence"] == 3
+
+
+def test_counter_actions_preserve_coordinates_and_full_width() -> None:
+    """Both counter values are u16. counter_count must use a value ABOVE 255
+    or the `& 0xFF` truncation is undetectable."""
+    mapper = ActionMapper()
+    mapper.update(
+        {
+            "msg_type": MSG_SELECT_COUNTER,
+            "player": 0,
+            "_agent_player": 0,
+            "counter_type": 0x2001,  # COUNTER_NEED_ENABLE | 1
+            "count": 300,  # > 255
+            "cards": [
+                {
+                    "code": 55,
+                    "controller": 0,
+                    "location": LOCATION_MZONE,
+                    "sequence": 4,
+                    "counter_count": 300,
+                }
+            ],
+        }
+    )
+    a = mapper.actions[0]
+    assert a["location"] == LOCATION_MZONE
+    assert a["sequence"] == 4
+    assert a["counter_type"] == 0x2001, "u16 flag bits must survive"
+    assert a["counter_count"] == 300, "300 & 0xFF == 44; must not truncate"
+
+
+def test_sum_param_keeps_level2() -> None:
+    """param packs level1 (low 16) and level2 (high 16); & 0xFF destroys level2."""
+    param = (7 << 16) | 4
+    mapper = ActionMapper()
+    mapper.update(
+        {
+            "msg_type": MSG_SELECT_SUM,
+            "player": 0,
+            "_agent_player": 0,
+            "select_type": 0,
+            "target_sum": 4,
+            "min": 1,
+            "max": 1,
+            "must_cards": [],
+            "optional_cards": [
+                {
+                    "code": 9,
+                    "controller": 0,
+                    "location": LOCATION_MZONE,
+                    "sequence": 0,
+                    "param": param,
+                }
+            ],
+        }
+    )
+    assert mapper.actions[0]["param"] == param
+    assert "weight" not in mapper.actions[0], "renamed to param"
+
+
+def test_place_encodes_controller_byte() -> None:
+    mapper = ActionMapper()
+    mapper.update(
+        {"msg_type": MSG_SELECT_PLACE, "player": 0, "count": 1, "field_mask": 0, "_agent_player": 0}
+    )
+    feats = mapper.get_action_features()
+    n = mapper.num_actions
+    assert set(int(feats[i][6]) for i in range(n)) == {0, 1}, (
+        "feat[6] must now distinguish my/opponent zones"
+    )
+
+
+def test_sort_encodes_coordinates() -> None:
+    mapper = ActionMapper()
+    mapper.update(
+        {
+            "msg_type": MSG_SORT_CARD,
+            "player": 0,
+            "_agent_player": 0,
+            "cards": [{"code": 1234, "controller": 0, "location": LOCATION_MZONE, "sequence": 3}],
+        }
+    )
+    feats = mapper.get_action_features()
+    assert int(feats[0][7]) == LOCATION_MZONE  # location
+    assert int(feats[0][8]) == 3  # sequence low byte
+
+
+def test_counter_encodes_coordinates() -> None:
+    """The third prompt whose tensor moves — omitted from earlier drafts.
+
+    Uses sequence=300 (> 255) so feat[9] (the sequence high byte) is
+    non-zero and actually exercised, not just coincidentally 0.
+    """
+    mapper = ActionMapper()
+    mapper.update(
+        {
+            "msg_type": MSG_SELECT_COUNTER,
+            "player": 0,
+            "_agent_player": 0,
+            "counter_type": 0x2001,
+            "count": 1,
+            "cards": [
+                {
+                    "code": 55,
+                    "controller": 0,
+                    "location": LOCATION_MZONE,
+                    "sequence": 300,
+                    "counter_count": 1,
+                }
+            ],
+        }
+    )
+    feats = mapper.get_action_features()
+    assert int(feats[0][7]) == LOCATION_MZONE
+    assert decode_u16(feats[0], 8) == 300
+    assert int(feats[0][9]) == 300 >> 8
+
+
+# ─── Per-extractor `kind` tagging and action-mask invariants ────────────────
+
+
+@pytest.mark.parametrize("msg_type", sorted(_ACTION_EXTRACTORS))
+def test_every_action_carries_a_kind(msg_type: int) -> None:
+    msg = {**MINIMAL_MSGS[msg_type], "msg_type": msg_type, "_agent_player": 0}
+    actions = _ACTION_EXTRACTORS[msg_type](msg)
+    # Without this the loop below is vacuous for any fixture that yields
+    # nothing — which is exactly how a coverage test silently stops covering.
+    assert actions, f"msg_type={msg_type} fixture produced no actions"
+    for a in actions:
+        assert "kind" in a, f"msg_type={msg_type} emitted an untagged action"
+
+
+ALL_VARIANT_KINDS = [
+    "card_command",
+    "activate_effect",
+    "phase_change",
+    "attack",
+    "confirm",
+    "choose_option",
+    "pick_card",
+    "finish_pick",
+    "pass",
+    "place_zone",
+    "choose_position",
+    "pick_bit",
+    "announce_number",
+    "announce_card",
+    "choose_rps",
+    "select_counter",
+]
+
+EXPECTED_KINDS: dict[int, set[str]] = {
+    MSG_SELECT_IDLECMD: {"card_command", "activate_effect", "phase_change"},
+    MSG_SELECT_BATTLECMD: {"activate_effect", "attack", "phase_change"},
+    MSG_SELECT_EFFECTYN: {"confirm"},
+    MSG_SELECT_YESNO: {"confirm"},
+    MSG_SELECT_OPTION: {"choose_option"},
+    MSG_SELECT_CARD: {"pick_card", "finish_pick"},
+    MSG_SELECT_CHAIN: {"activate_effect", "pass"},
+    MSG_SELECT_PLACE: {"place_zone"},
+    MSG_SELECT_DISFIELD: {"place_zone"},
+    MSG_SELECT_POSITION: {"choose_position"},
+    MSG_SELECT_TRIBUTE: {"pick_card"},
+    MSG_SELECT_SUM: {"pick_card"},
+    MSG_SELECT_UNSELECT_CARD: {"pick_card", "pass"},
+    MSG_SORT_CARD: {"pick_card"},
+    MSG_SORT_CHAIN: {"pick_card"},
+    MSG_ANNOUNCE_RACE: {"pick_bit"},
+    MSG_ANNOUNCE_ATTRIB: {"pick_bit"},
+    MSG_ANNOUNCE_NUMBER: {"announce_number"},
+    MSG_ANNOUNCE_CARD: {"announce_card"},
+    MSG_ROCK_PAPER_SCISSORS: {"choose_rps"},
+    MSG_SELECT_COUNTER: {"select_counter"},
+}
+
+
+@pytest.mark.parametrize("msg_type", sorted(_ACTION_EXTRACTORS))
+def test_kinds_match_expected(msg_type: int) -> None:
+    """EQUALITY, not subset.
+
+    `got <= EXPECTED_KINDS[...]` passes when a branch is never exercised —
+    e.g. an idle fixture with no `activatable` never produces
+    `activate_effect`, and the test still goes green. Equality forces every
+    fixture to be BRANCH-COMPLETE for its extractor.
+    """
+    msg = {**MINIMAL_MSGS[msg_type], "msg_type": msg_type, "_agent_player": 0}
+    got = {a["kind"] for a in _ACTION_EXTRACTORS[msg_type](msg)}
+    assert got == EXPECTED_KINDS[msg_type]
+
+
+def test_every_variant_kind_is_reachable() -> None:
+    """Union-level completeness: all 16 variants must appear somewhere."""
+    seen = set()
+    for mt in _ACTION_EXTRACTORS:
+        msg = {**MINIMAL_MSGS[mt], "msg_type": mt, "_agent_player": 0}
+        seen |= {a["kind"] for a in _ACTION_EXTRACTORS[mt](msg)}
+    assert seen == set(ALL_VARIANT_KINDS)
+
+
+@pytest.mark.parametrize("msg_type", sorted(_ACTION_EXTRACTORS))
+def test_action_mask_is_a_contiguous_ones_prefix(msg_type: int) -> None:
+    """The load-bearing mask invariant, asserted at its SOLE producer
+    (`ActionMapper.get_action_mask`, action_space.py:88).
+
+    Everything downstream assumes it: `sum(mask) == num_actions` in
+    RandomOpponent and ForcedCollapseOpponent, the network's masked argmax,
+    and Part C's compaction. `descriptors[i] is None <=> mask[i] == 0` alone
+    does NOT imply contiguity — a scattered mask satisfies it too.
+    """
+    mapper = ActionMapper()
+    mapper.update({**MINIMAL_MSGS[msg_type], "msg_type": msg_type, "_agent_player": 0})
+    n = mapper.num_actions
+    # n <= MAX_ACTIONS can never fail (ActionMapper.update truncates); assert
+    # n > 0 instead so the equality below cannot pass trivially on an empty
+    # action list.
+    assert n > 0
+    assert np.array_equal(
+        mapper.get_action_mask(),
+        np.r_[np.ones(n, np.int8), np.zeros(MAX_ACTIONS - n, np.int8)],
+    )
+
+
+# ─── Discriminator fields on tagged actions: category, `to`, `yes` ──────────
+# The `kind` tagging alone doesn't guard against a typo'd sibling field (e.g.
+# `to="ep"` on the to_bp branch) — these fields feed a later task's
+# `kind -> model` projection and must be pinned directly.
+
+
+def test_idle_card_commands_carry_category_per_branch() -> None:
+    """Each idle card_command action must carry its own branch's IDLE_*
+    constant in `category` — a mismatch (e.g. IDLE_MSET on the sset branch)
+    would ship silently without this. `category` is the sole source: it is
+    both the engine's command tag `t` (sent via
+    build_select_idlecmd_response) and what CardCommand.command is built
+    from."""
+    from yugioh_core.action_categories import (
+        IDLE_MSET,
+        IDLE_REPOSITION,
+        IDLE_SP_SUMMON,
+        IDLE_SSET,
+        IDLE_SUMMON,
+    )
+
+    msg = {**MINIMAL_MSGS[MSG_SELECT_IDLECMD], "msg_type": MSG_SELECT_IDLECMD, "_agent_player": 0}
+    actions = _ACTION_EXTRACTORS[MSG_SELECT_IDLECMD](msg)
+    card_commands = [a for a in actions if a["kind"] == "card_command"]
+    # Positional, not a set: a set comparison passes a clean transposition
+    # (IDLE_MSET on the sset branch and vice versa) because both values still
+    # appear. `_extract_idle_actions` appends summonable, sp_summonable,
+    # repositionable, mset, sset in that order and MINIMAL_MSGS gives each
+    # list exactly one card, so the k-th action is the k-th branch.
+    assert [a["category"] for a in card_commands] == [
+        IDLE_SUMMON,
+        IDLE_SP_SUMMON,
+        IDLE_REPOSITION,
+        IDLE_MSET,
+        IDLE_SSET,
+    ]
+
+
+def test_battle_actions_carry_expected_category() -> None:
+    """`category` is the field downstream consumers key on for battle
+    activate/attack, same as for the idle branches."""
+    from yugioh_core.action_categories import BATTLE_ACTIVATE, BATTLE_ATTACK
+
+    msg = {
+        **MINIMAL_MSGS[MSG_SELECT_BATTLECMD],
+        "msg_type": MSG_SELECT_BATTLECMD,
+        "_agent_player": 0,
+    }
+    actions = _ACTION_EXTRACTORS[MSG_SELECT_BATTLECMD](msg)
+    activate = [a for a in actions if a["kind"] == "activate_effect"]
+    attack = [a for a in actions if a["kind"] == "attack"]
+    assert activate and {a["category"] for a in activate} == {BATTLE_ACTIVATE}
+    assert attack and {a["category"] for a in attack} == {BATTLE_ATTACK}
+
+
+@pytest.mark.parametrize(
+    "msg_type,expected",
+    [
+        (MSG_SELECT_IDLECMD, {IDLE_TO_BP: "bp", IDLE_TO_EP: "ep"}),
+        (MSG_SELECT_BATTLECMD, {BATTLE_TO_M2: "m2", BATTLE_TO_EP: "ep"}),
+    ],
+    ids=["idle", "battle"],
+)
+def test_phase_change_to_values(msg_type: int, expected: dict[int, str]) -> None:
+    """The to_bp/to_ep (and to_m2/to_ep) mappings are the ones most likely to
+    be transposed. A set-only check passes a clean swap — both values still
+    appear somewhere in the set — so pin each category's `to` value directly.
+    """
+    msg = {**MINIMAL_MSGS[msg_type], "msg_type": msg_type, "_agent_player": 0}
+    actions = _ACTION_EXTRACTORS[msg_type](msg)
+    phase_changes = [a for a in actions if a["kind"] == "phase_change"]
+    assert {a["to"] for a in phase_changes} == set(expected.values())
+    for category, to in expected.items():
+        action = next(a for a in phase_changes if a["category"] == category)
+        assert action["to"] == to
+
+
+@pytest.mark.parametrize(
+    "msg_type", [MSG_SELECT_YESNO, MSG_SELECT_EFFECTYN], ids=["yesno", "effectyn"]
+)
+def test_confirm_actions_carry_yes_flag(msg_type: int) -> None:
+    """EFFECTYN/YESNO always emit a Yes and a No slot, tagged with `yes`."""
+    mapper = ActionMapper()
+    mapper.update({**MINIMAL_MSGS[msg_type], "msg_type": msg_type})
+    assert {a["yes"] for a in mapper.actions} == {True, False}
+    assert mapper.actions[0]["yes"] is True
+    assert mapper.actions[1]["yes"] is False

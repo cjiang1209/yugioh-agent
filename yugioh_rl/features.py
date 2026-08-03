@@ -301,7 +301,7 @@ _NORM_MSG_TYPE = 255.0  # msg_type byte (heuristic upper bound)
 _NORM_CATEGORY = 10.0  # category index (heuristic max)
 _NORM_SEQUENCE = 60.0  # sequence (heuristic; deck/banished/GY can grow)
 _NORM_SUBSEQUENCE = 15.0  # Xyz overlay slot (heuristic; common stack depth)
-_NORM_WEIGHT = 12.0  # tribute release_param / sum.param (≈max monster level)
+_NORM_PARAM = 12.0  # tribute release_param / sum.param (≈max monster level)
 _NORM_COUNTER_TYPE = 50.0  # counter type id (heuristic; common counters cap)
 _NORM_COUNTER_COUNT = 15.0  # counters on one card (heuristic)
 _NORM_NUM_SELECTED = 5.0  # accumulated picks in a multi-step prompt (heuristic)
@@ -318,7 +318,7 @@ ACTION_FEAT_DIM = (
     + 1  # subsequence
     + 4  # position bits
     + 1  # direct_attackable (binary)
-    + 1  # weight
+    + 1  # param
     + 1  # counter_type
     + 1  # counter_count
     + 1  # index
@@ -371,7 +371,7 @@ def decode_actions(
         _extract_bits(raw[..., 11], _POS_BITS),
         # direct_attackable: binary 0/1
         raw[..., 12].float().unsqueeze(-1),
-        (raw[..., 13].float() / _NORM_WEIGHT).unsqueeze(-1),
+        (raw[..., 13].float() / _NORM_PARAM).unsqueeze(-1),
         (raw[..., 14].float() / _NORM_COUNTER_TYPE).unsqueeze(-1),
         (raw[..., 15].float() / _NORM_COUNTER_COUNT).unsqueeze(-1),
         # index: rigorous (MAX_ACTIONS = 32)

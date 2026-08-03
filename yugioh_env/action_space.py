@@ -142,6 +142,7 @@ def _extract_idle_actions(msg: dict) -> list[dict]:
                 "controller": _relativize_controller(card.get("controller", 0), agent_player),
                 "location": card.get("location", 0),
                 "sequence": card.get("sequence", 0),
+                "kind": "card_command",
                 "build_response": lambda cat=IDLE_SUMMON, idx=i: rb.build_select_idlecmd_response(
                     cat, idx
                 ),
@@ -157,6 +158,7 @@ def _extract_idle_actions(msg: dict) -> list[dict]:
                 "controller": _relativize_controller(card.get("controller", 0), agent_player),
                 "location": card.get("location", 0),
                 "sequence": card.get("sequence", 0),
+                "kind": "card_command",
                 "build_response": lambda cat=IDLE_SP_SUMMON, idx=i: (
                     rb.build_select_idlecmd_response(cat, idx)
                 ),
@@ -172,6 +174,7 @@ def _extract_idle_actions(msg: dict) -> list[dict]:
                 "controller": _relativize_controller(card.get("controller", 0), agent_player),
                 "location": card.get("location", 0),
                 "sequence": card.get("sequence", 0),
+                "kind": "card_command",
                 "build_response": lambda cat=IDLE_REPOSITION, idx=i: (
                     rb.build_select_idlecmd_response(cat, idx)
                 ),
@@ -187,6 +190,7 @@ def _extract_idle_actions(msg: dict) -> list[dict]:
                 "controller": _relativize_controller(card.get("controller", 0), agent_player),
                 "location": card.get("location", 0),
                 "sequence": card.get("sequence", 0),
+                "kind": "card_command",
                 "build_response": lambda cat=IDLE_MSET, idx=i: rb.build_select_idlecmd_response(
                     cat, idx
                 ),
@@ -202,6 +206,7 @@ def _extract_idle_actions(msg: dict) -> list[dict]:
                 "controller": _relativize_controller(card.get("controller", 0), agent_player),
                 "location": card.get("location", 0),
                 "sequence": card.get("sequence", 0),
+                "kind": "card_command",
                 "build_response": lambda cat=IDLE_SSET, idx=i: rb.build_select_idlecmd_response(
                     cat, idx
                 ),
@@ -220,6 +225,7 @@ def _extract_idle_actions(msg: dict) -> list[dict]:
                 "location": card.get("location", 0),
                 "sequence": card.get("sequence", 0),
                 "desc": int(desc),
+                "kind": "activate_effect",
                 "meta": {
                     "kind": "effect",
                     "label": f"effect 0x{desc:x}",
@@ -240,6 +246,8 @@ def _extract_idle_actions(msg: dict) -> list[dict]:
                 "code": 0,
                 "location": 0,
                 "sequence": 0,
+                "kind": "phase_change",
+                "to": "bp",
                 "build_response": lambda: rb.build_select_idlecmd_response(IDLE_TO_BP, 0),
             }
         )
@@ -252,6 +260,8 @@ def _extract_idle_actions(msg: dict) -> list[dict]:
                 "code": 0,
                 "location": 0,
                 "sequence": 0,
+                "kind": "phase_change",
+                "to": "ep",
                 "build_response": lambda: rb.build_select_idlecmd_response(IDLE_TO_EP, 0),
             }
         )
@@ -276,6 +286,7 @@ def _extract_battle_actions(msg: dict) -> list[dict]:
                 "location": card.get("location", 0),
                 "sequence": card.get("sequence", 0),
                 "desc": int(desc),
+                "kind": "activate_effect",
                 "meta": {
                     "kind": "effect",
                     "label": f"effect 0x{desc:x}",
@@ -298,6 +309,7 @@ def _extract_battle_actions(msg: dict) -> list[dict]:
                 "location": card.get("location", 0),
                 "sequence": card.get("sequence", 0),
                 "direct_attackable": int(card.get("direct_attackable", 0)),
+                "kind": "attack",
                 "build_response": lambda cat=BATTLE_ATTACK, idx=i: (
                     rb.build_select_battlecmd_response(cat, idx)
                 ),
@@ -312,6 +324,8 @@ def _extract_battle_actions(msg: dict) -> list[dict]:
                 "code": 0,
                 "location": 0,
                 "sequence": 0,
+                "kind": "phase_change",
+                "to": "m2",
                 "build_response": lambda: rb.build_select_battlecmd_response(BATTLE_TO_M2, 0),
             }
         )
@@ -324,6 +338,8 @@ def _extract_battle_actions(msg: dict) -> list[dict]:
                 "code": 0,
                 "location": 0,
                 "sequence": 0,
+                "kind": "phase_change",
+                "to": "ep",
                 "build_response": lambda: rb.build_select_battlecmd_response(BATTLE_TO_EP, 0),
             }
         )
@@ -345,6 +361,8 @@ def _extract_effectyn_actions(msg: dict) -> list[dict]:
             "location": msg.get("location", 0),
             "sequence": msg.get("sequence", 0),
             "desc": int(desc),
+            "kind": "confirm",
+            "yes": True,
             "build_response": lambda: rb.build_select_yesno_response(True),
         },
         {
@@ -355,6 +373,8 @@ def _extract_effectyn_actions(msg: dict) -> list[dict]:
             "location": msg.get("location", 0),
             "sequence": msg.get("sequence", 0),
             "desc": int(desc),
+            "kind": "confirm",
+            "yes": False,
             "build_response": lambda: rb.build_select_yesno_response(False),
         },
     ]
@@ -370,6 +390,8 @@ def _extract_yesno_actions(msg: dict) -> list[dict]:
             "location": 0,
             "sequence": 0,
             "desc": int(desc),
+            "kind": "confirm",
+            "yes": True,
             "build_response": lambda: rb.build_select_yesno_response(True),
         },
         {
@@ -379,6 +401,8 @@ def _extract_yesno_actions(msg: dict) -> list[dict]:
             "location": 0,
             "sequence": 0,
             "desc": int(desc),
+            "kind": "confirm",
+            "yes": False,
             "build_response": lambda: rb.build_select_yesno_response(False),
         },
     ]
@@ -394,6 +418,7 @@ def _extract_option_actions(msg: dict) -> list[dict]:
             "location": 0,
             "sequence": 0,
             "desc": int(desc),
+            "kind": "choose_option",
             "meta": {"kind": "option", "label": f"effect 0x{desc:x}", "raw_value": int(desc)},
             "build_response": lambda idx=i: rb.build_select_option_response(idx),
         }
@@ -480,6 +505,7 @@ def _extract_multi_step_actions(
                 "location": 0,
                 "sequence": 0,
                 "num_selected": len(selected),
+                "kind": "finish_pick",
                 "build_response": lambda ids=list(selected): build_response(ids),
             }
         )
@@ -507,6 +533,7 @@ def _extract_card_actions(msg: dict) -> list[dict]:
             "location": card.get("location", 0),
             "sequence": card.get("sequence", 0),
             "subsequence": int(card.get("subsequence", 0)),
+            "kind": "pick_card",
         }
 
     def _completes(items: list[dict], selected: list[int]) -> bool:
@@ -543,6 +570,7 @@ def _extract_chain_actions(msg: dict) -> list[dict]:
                 "sequence": chain.get("sequence", 0),
                 "position": int(chain.get("position", 0)),
                 "desc": int(desc),
+                "kind": "activate_effect",
                 "meta": {
                     "kind": "chain_link",
                     "label": f"chain card #{i}",
@@ -560,6 +588,7 @@ def _extract_chain_actions(msg: dict) -> list[dict]:
                 "code": 0,
                 "location": 0,
                 "sequence": 0,
+                "kind": "pass",
                 "build_response": lambda: rb.build_select_chain_response(-1),
             }
         )
@@ -589,8 +618,10 @@ def _extract_place_actions(msg: dict) -> list[dict]:
                         "category": 0,
                         "index": len(actions),
                         "code": 0,
+                        "controller": rel_player,  # 0 = mine, 1 = opponent (already relativized)
                         "location": LOCATION_MZONE,
                         "sequence": seq,
+                        "kind": "place_zone",
                         "build_response": lambda p=abs_player[rel_player], s=seq: (
                             rb.build_select_place_response(p, LOCATION_MZONE, s)
                         ),
@@ -604,8 +635,10 @@ def _extract_place_actions(msg: dict) -> list[dict]:
                         "category": 1,
                         "index": len(actions),
                         "code": 0,
+                        "controller": rel_player,  # 0 = mine, 1 = opponent (already relativized)
                         "location": LOCATION_SZONE,
                         "sequence": seq,
+                        "kind": "place_zone",
                         "build_response": lambda p=abs_player[rel_player], s=seq: (
                             rb.build_select_place_response(p, LOCATION_SZONE, s)
                         ),
@@ -631,6 +664,7 @@ def _extract_position_actions(msg: dict) -> list[dict]:
                     "code": msg.get("code", 0),
                     "location": 0,
                     "sequence": 0,
+                    "kind": "choose_position",
                     "build_response": lambda pv=pos_val: rb.build_select_position_response(pv),
                 }
             )
@@ -657,7 +691,8 @@ def _extract_tribute_actions(msg: dict) -> list[dict]:
             "controller": _relativize_controller(card.get("controller", 0), agent_player),
             "location": card.get("location", 0),
             "sequence": card.get("sequence", 0),
-            "weight": int(card.get("release_param", 0)),
+            "param": int(card.get("release_param", 0)),
+            "kind": "pick_card",
         }
 
     def _completes(items: list[dict], selected: list[int]) -> bool:
@@ -762,7 +797,8 @@ def _extract_sum_actions(msg: dict) -> list[dict]:
             "controller": _relativize_controller(card.get("controller", 0), agent_player),
             "location": card.get("location", 0),
             "sequence": card.get("sequence", 0),
-            "weight": int(card.get("param", 0)) & 0xFF,
+            "param": int(card.get("param", 0)),
+            "kind": "pick_card",
         }
 
     def _completes(items: list[dict], selected: list[int]) -> bool:
@@ -813,6 +849,7 @@ def _extract_unselect_actions(msg: dict) -> list[dict]:
                 "location": card.get("location", 0),
                 "sequence": card.get("sequence", 0),
                 "subsequence": int(card.get("subsequence", 0)),
+                "kind": "pick_card",
                 "build_response": lambda idx=i: rb.build_select_unselect_card_response(idx),
             }
         )
@@ -824,6 +861,7 @@ def _extract_unselect_actions(msg: dict) -> list[dict]:
                 "code": 0,
                 "location": 0,
                 "sequence": 0,
+                "kind": "pass",
                 "build_response": lambda: rb.build_select_unselect_card_response(-1),
             }
         )
@@ -841,8 +879,9 @@ def _extract_sort_actions(msg: dict) -> list[dict]:
             "index": i,
             "code": card.get("code", 0),
             "controller": _relativize_controller(card.get("controller", 0), agent_player),
-            "location": 0,
-            "sequence": 0,
+            "location": card.get("location", 0),
+            "sequence": card.get("sequence", 0),
+            "kind": "pick_card",
         }
 
     return _extract_multi_step_actions(
@@ -883,6 +922,7 @@ def _extract_announce_race_actions(msg: dict) -> list[dict]:
             "code": 0,
             "location": 0,
             "sequence": 0,
+            "kind": "pick_bit",
             "meta": {
                 "kind": "race",
                 "label": RACE_NAMES.get(item["mask"], f"Race(0x{item['mask']:x})"),
@@ -912,6 +952,7 @@ def _extract_announce_attrib_actions(msg: dict) -> list[dict]:
             "code": 0,
             "location": 0,
             "sequence": 0,
+            "kind": "pick_bit",
             "meta": {
                 "kind": "attribute",
                 "label": ATTRIBUTE_NAMES.get(item["mask"], f"Attr(0x{item['mask']:x})"),
@@ -940,6 +981,7 @@ def _extract_announce_number_actions(msg: dict) -> list[dict]:
             "code": 0,
             "location": 0,
             "sequence": 0,
+            "kind": "announce_number",
             "meta": {"kind": "number", "label": f"Announce {num}", "raw_value": int(num)},
             "build_response": lambda idx=i: rb.build_announce_number_response(idx),
         }
@@ -987,6 +1029,7 @@ def _extract_announce_card_actions(msg: dict) -> list[dict]:
             "code": code,
             "location": 0,
             "sequence": 0,
+            "kind": "announce_card",
             "meta": {"kind": "announce_card", "label": f"Declare {code}", "raw_value": code},
             "build_response": lambda c=code: rb.build_announce_card_response(c),
         }
@@ -1002,6 +1045,7 @@ def _extract_rps_actions(msg: dict) -> list[dict]:
             "code": 0,
             "location": 0,
             "sequence": 0,
+            "kind": "choose_rps",
             "meta": {"kind": "rps", "label": RPS_NAMES[c], "raw_value": c},
             "build_response": lambda choice=c: rb.build_rock_paper_scissors_response(choice),
         }
@@ -1031,10 +1075,11 @@ def _extract_counter_actions(msg: dict) -> list[dict]:
                     "index": i,
                     "code": code,
                     "controller": _relativize_controller(card.get("controller", 0), agent_player),
-                    "location": 0,
-                    "sequence": 0,
-                    "counter_type": counter_type & 0xFF,
-                    "counter_count": n_remove & 0xFF,
+                    "location": card.get("location", 0),
+                    "sequence": card.get("sequence", 0),
+                    "counter_type": counter_type,
+                    "counter_count": n_remove,
+                    "kind": "select_counter",
                     "meta": {
                         "kind": "counter",
                         "label": f"Remove {n_remove} from card #{i}",
@@ -1085,7 +1130,7 @@ def _encode_action(action: dict, msg_type: int) -> np.ndarray:
         [10]     subsequence        (uint8 - Xyz overlay slot)
         [11]     position           (uint8 bitmask)
         [12]     direct_attackable  (uint8 - 0/1)
-        [13]     weight             (uint8 - release_param OR sum.param, aliased)
+        [13]     param              (uint8 - release_param OR sum.param, aliased; narrowed here)
         [14]     counter_type       (uint8)
         [15]     counter_count      (uint8)
         [16]     index              (uint8)
@@ -1104,7 +1149,7 @@ def _encode_action(action: dict, msg_type: int) -> np.ndarray:
     feat[10] = action.get("subsequence", 0) & 0xFF
     feat[11] = action.get("position", 0) & 0xFF
     feat[12] = 1 if action.get("direct_attackable", 0) else 0
-    feat[13] = action.get("weight", 0) & 0xFF
+    feat[13] = action.get("param", 0) & 0xFF
     feat[14] = action.get("counter_type", 0) & 0xFF
     feat[15] = action.get("counter_count", 0) & 0xFF
     feat[16] = action.get("index", 0) & 0xFF

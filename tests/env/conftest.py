@@ -72,3 +72,142 @@ def duel(lib, card_db, script_dirs, deck_path):
     d = Duel(lib, card_db, script_dirs)
     yield d
     d.destroy()
+
+
+# ─── MINIMAL_MSGS: one branch-complete msg per registered extractor ─────────
+#
+# Each entry is the smallest legal msg that exercises every `kind` branch its
+# extractor can produce, per the field shapes in message_parser.py's `_parse_*`
+# functions. Every list is load-bearing: the kind-coverage tests compare the
+# exact set of kinds an extractor emits, so trimming one fails them. The
+# comments below explain only non-obvious value choices.
+
+from yugioh_core.constants import (
+    LOCATION_MZONE,
+    MSG_ANNOUNCE_ATTRIB,
+    MSG_ANNOUNCE_CARD,
+    MSG_ANNOUNCE_NUMBER,
+    MSG_ANNOUNCE_RACE,
+    MSG_ROCK_PAPER_SCISSORS,
+    MSG_SELECT_BATTLECMD,
+    MSG_SELECT_CARD,
+    MSG_SELECT_CHAIN,
+    MSG_SELECT_COUNTER,
+    MSG_SELECT_DISFIELD,
+    MSG_SELECT_EFFECTYN,
+    MSG_SELECT_IDLECMD,
+    MSG_SELECT_OPTION,
+    MSG_SELECT_PLACE,
+    MSG_SELECT_POSITION,
+    MSG_SELECT_SUM,
+    MSG_SELECT_TRIBUTE,
+    MSG_SELECT_UNSELECT_CARD,
+    MSG_SELECT_YESNO,
+    MSG_SORT_CARD,
+    MSG_SORT_CHAIN,
+    OPCODE_ISCODE,
+)
+
+_CARD = {"code": 1234, "controller": 0, "location": LOCATION_MZONE, "sequence": 0}
+
+MINIMAL_MSGS: dict[int, dict] = {
+    MSG_SELECT_IDLECMD: {
+        "player": 0,
+        "summonable": [_CARD],
+        "sp_summonable": [_CARD],
+        "repositionable": [_CARD],
+        "mset": [_CARD],
+        "sset": [_CARD],
+        "activatable": [{**_CARD, "desc": 0, "client_mode": 0}],
+        "to_bp": 1,
+        "to_ep": 1,
+        "shuffle_hand": 0,
+    },
+    MSG_SELECT_BATTLECMD: {
+        "player": 0,
+        "activatable": [{**_CARD, "desc": 0, "client_mode": 0}],
+        "attackable": [{**_CARD, "direct_attackable": 0}],
+        "to_m2": 1,
+        "to_ep": 1,
+    },
+    MSG_SELECT_EFFECTYN: {
+        "player": 0,
+        "code": 1234,
+        "controller": 0,
+        "location": LOCATION_MZONE,
+        "sequence": 0,
+        "desc": 0,
+    },
+    MSG_SELECT_YESNO: {"player": 0, "desc": 0},
+    # The option value itself becomes the action's `desc`.
+    MSG_SELECT_OPTION: {"player": 0, "options": [0]},
+    # min=0 < max=1 makes can_finish true immediately (selected=[]), so one
+    # call yields both a pick and the harness finish action.
+    MSG_SELECT_CARD: {
+        "player": 0,
+        "cancelable": 0,
+        "min": 0,
+        "max": 1,
+        "cards": [_CARD],
+    },
+    # forced=0, so the pass action is offered alongside the chain link.
+    MSG_SELECT_CHAIN: {
+        "player": 0,
+        "forced": 0,
+        "chains": [{**_CARD, "desc": 0, "position": 0}],
+    },
+    # Inverted mask: field_mask=0 leaves every zone OPEN, so both my zones and
+    # the opponent's are offered.
+    MSG_SELECT_PLACE: {"player": 0, "count": 1, "field_mask": 0},
+    MSG_SELECT_DISFIELD: {"player": 0, "count": 1, "field_mask": 0},
+    MSG_SELECT_POSITION: {"player": 0, "code": 1234, "positions": 0x0F},
+    # release_param=1 satisfies min on the first pick, but can_finish is
+    # evaluated against the *pre-pick* selected=[] (total 0 < min 1), so no
+    # finish action appears.
+    MSG_SELECT_TRIBUTE: {
+        "player": 0,
+        "cancelable": 0,
+        "min": 1,
+        "max": 1,
+        "cards": [{**_CARD, "release_param": 1}],
+    },
+    # param == target_sum satisfies completes() on the first pick, but
+    # can_finish requires min_sel <= 0, which min=1 rules out, so no finish
+    # action appears.
+    MSG_SELECT_SUM: {
+        "player": 0,
+        "select_type": 0,
+        "target_sum": 4,
+        "min": 1,
+        "max": 1,
+        "must_cards": [],
+        "optional_cards": [{**_CARD, "param": 4}],
+    },
+    # finishable=1 offers the custom-coded finish alongside the picks.
+    MSG_SELECT_UNSELECT_CARD: {
+        "player": 0,
+        "finishable": 1,
+        "cancelable": 0,
+        "min": 0,
+        "max": 1,
+        "selectable": [{**_CARD, "subsequence": 0}],
+        "unselectable": [],
+    },
+    # _extract_sort_actions never sets can_finish, so no finish action appears.
+    MSG_SORT_CARD: {"player": 0, "cards": [_CARD]},
+    MSG_SORT_CHAIN: {"player": 0, "cards": [_CARD]},
+    # can_finish is always False, so no finish action appears.
+    MSG_ANNOUNCE_RACE: {"player": 0, "count": 1, "available": 1},
+    MSG_ANNOUNCE_ATTRIB: {"player": 0, "count": 1, "available": 1},
+    MSG_ANNOUNCE_NUMBER: {"player": 0, "numbers": [4]},
+    # A literal ISCODE filter is what yields a declarable code.
+    MSG_ANNOUNCE_CARD: {"player": 0, "opcodes": [1234, OPCODE_ISCODE]},
+    # Payload is ignored; the extractor always returns rock/paper/scissors.
+    MSG_ROCK_PAPER_SCISSORS: {"player": 0},
+    MSG_SELECT_COUNTER: {
+        "player": 0,
+        "counter_type": 0x2001,
+        "count": 1,
+        "cards": [{**_CARD, "counter_count": 3}],
+    },
+}
