@@ -20,12 +20,12 @@ def test_action_descriptors_length_matches_actions(lib, db_path, script_dirs):
         assert obs.action_descriptors[i] is None
 
 
-def test_terminal_observation_lists_empty(lib, db_path, script_dirs):
-    """On done=True, actions, action_mask, and action_descriptors are all empty.
-    This is an intentional drift from the previous action_mask=[0]*32 behavior
-    (§3 of spec) — kept consistent so the lists never differ in length."""
+def test_terminal_observation_actions_zeroed(lib, db_path, script_dirs):
+    """On done=True there is no active prompt: actions/action_mask are shaped
+    all-zero arrays and action_descriptors is empty."""
     import random
 
+    from yugioh_core.encoding import ACTION_FEATURES, MAX_ACTIONS
     from yugioh_env.models import YuGiOhAction
     from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
 
@@ -38,9 +38,41 @@ def test_terminal_observation_lists_empty(lib, db_path, script_dirs):
             break
         obs = env.step(YuGiOhAction(action_index=rng.choice(legal)))
     assert obs.done
-    assert obs.actions == []
-    assert obs.action_mask == []
+    assert obs.actions.shape == (MAX_ACTIONS, ACTION_FEATURES) and not obs.actions.any()
+    assert obs.action_mask.shape == (MAX_ACTIONS,) and not obs.action_mask.any()
     assert obs.action_descriptors == []
+
+
+def test_terminal_obs_keeps_real_board_but_zeroes_actions(
+    lib, db_path, script_dirs, deck_path
+) -> None:
+    """Always picking slot 0 against a random opponent reaches a finished duel
+    well inside the engine's step cap.
+    """
+    import numpy as np
+
+    from yugioh_core.encoding import ACTION_FEATURES, MAX_ACTIONS
+    from yugioh_env.deck_parser import parse_ydk
+    from yugioh_env.models import YuGiOhAction
+    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+
+    deck = parse_ydk(deck_path)
+    env = YuGiOhEnvironment(
+        config={
+            "db_path": str(db_path),
+            "script_dirs": [str(d) for d in script_dirs],
+            "opponent": "random",
+        }
+    )
+    obs = env.reset(seed=1, deck0=deck, deck1=deck, agent_player=0)
+    while not obs.done:
+        obs = env.step(YuGiOhAction(action_index=0))
+
+    assert obs.actions.shape == (MAX_ACTIONS, ACTION_FEATURES)
+    assert not obs.actions.any()
+    assert obs.action_mask.shape == (MAX_ACTIONS,) and obs.action_mask.dtype == np.int8
+    assert obs.action_descriptors == []
+    assert obs.cards.any(), "final board must NOT be zeroed"
 
 
 # ─── Board controller relativization invariants (Tests B1, B2) ────────────────

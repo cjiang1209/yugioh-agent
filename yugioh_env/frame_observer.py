@@ -15,7 +15,7 @@ class DuelView(Protocol):
     def agent_player(self) -> int: ...
     @property
     def game_state(self): ...  # GameState | None (None when no duel)
-    def query_location(self, player: int, location: int) -> list[dict]: ...  # [] when no duel
+    def query_location(self, player: int, location: int) -> list[dict]: ...  # needs a live duel
 
 
 @runtime_checkable

@@ -18,6 +18,8 @@ usage, see `README.md`.
 
 6. **Seed handling**: Seeds are spread across 4 `uint64` slots (xoshiro256** RNG) via LCG mixing. Zero seeds are mapped to 1 (engine requires non-zero).
 
+7. **Terminal observations carry the real final board**: `_make_terminal_observation` (`yugioh_env/server/yugioh_environment.py`) passes `query_fn` into `build_observation` just as `_make_observation` does, so with a live duel `cards` holds the end-of-duel board; only `actions`/`action_mask` are zeroed, since a terminal step has no active prompt. Everything zeroes when there is no duel at all. Detect terminal from `done`, never from an empty or all-zero observation field.
+
 ## ygopro-core Wire Format Reference
 
 When adding or modifying message parsers (`message_parser.py`) or response builders (`response_builder.py`), **always verify field types and order against the C++ source** in `third_party/ygopro-core/`. Past bugs have all been mismatches between what C++ writes and what Python reads.

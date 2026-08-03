@@ -81,9 +81,6 @@ def test_pick_action_random_seeded():
 
     mask = [1, 1, 1, 1, 0, 0, 0, 0] + [0] * 24  # 4 legal actions
     obs = YuGiOhObservation(
-        cards=[],
-        global_state=[0] * 20,
-        actions=[[0] * 12] * 32,
         action_mask=mask,
         done=False,
         reward=0.0,

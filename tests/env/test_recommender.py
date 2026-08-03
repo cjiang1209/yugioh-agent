@@ -58,7 +58,7 @@ def test_recommend_action_index_network_gets_obs():
     """A needs_observation recommender receives numpy obs arrays; its index is returned."""
     import numpy as np
 
-    from yugioh_core.encoding import CHAIN_ENTRY_FEATURES, MAX_PENDING_CHAIN
+    from yugioh_core.encoding import CHAIN_ENTRY_FEATURES, MAX_ACTIONS, MAX_PENDING_CHAIN
     from yugioh_env.models import YuGiOhObservation
 
     class FakeNet:
@@ -73,27 +73,22 @@ def test_recommend_action_index_network_gets_obs():
         def select_action(self, msg, num_actions):
             return 2
 
-    obs = YuGiOhObservation(
-        cards=[[0, 0]],
-        global_state=[0, 0],
-        actions=[[0], [0], [0]],
-        action_mask=[1, 1, 1],
-        pending_chain=[[0] * CHAIN_ENTRY_FEATURES for _ in range(MAX_PENDING_CHAIN)],
-        event_history=[[0]],
-    )
+    mask = [1, 1, 1] + [0] * (MAX_ACTIONS - 3)
+    obs = YuGiOhObservation(action_mask=mask)
     rec = FakeNet()
     idx = recommend_action_index(rec, _FakeEnv({"msg_type": 11}, 3), obs)
 
     assert idx == 2
     assert obs.action_mask[idx] == 1
     assert isinstance(rec.seen["cards"], np.ndarray)
-    assert rec.seen["action_mask"].tolist() == [1, 1, 1]
+    assert rec.seen["action_mask"].tolist() == mask
     assert isinstance(rec.seen["pending_chain"], np.ndarray)
     assert rec.seen["pending_chain"].shape == (MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES)
 
 
 def test_recommend_action_index_non_network_skips_obs():
     """A recommender that doesn't need obs is never handed one, and gets the real msg."""
+    from yugioh_core.encoding import MAX_ACTIONS
     from yugioh_env.models import YuGiOhObservation
 
     class FakeGreedy:
@@ -112,13 +107,7 @@ def test_recommend_action_index_non_network_skips_obs():
             self.num_seen = num_actions
             return num_actions - 1
 
-    obs = YuGiOhObservation(
-        cards=[[0]],
-        global_state=[0],
-        actions=[[0], [0]],
-        action_mask=[1, 1],
-        event_history=[[0]],
-    )
+    obs = YuGiOhObservation(action_mask=[1, 1] + [0] * (MAX_ACTIONS - 2))
     rec = FakeGreedy()
     idx = recommend_action_index(rec, _FakeEnv({"msg_type": 22}, 2), obs)
 
@@ -126,3 +115,32 @@ def test_recommend_action_index_non_network_skips_obs():
     assert rec.msg_seen == {"msg_type": 22}
     assert rec.num_seen == 2
     assert idx == 1
+
+
+def test_recommender_declines_on_all_zero_mask(monkeypatch) -> None:
+    """`_resolve_recommendation` gates on `obs.done` before the mask, and ends
+    in a bare `except Exception: return None`. So `done=False` is required to
+    reach the mask predicate at all, and the assertion has to be that inference
+    was never attempted -- a wrong predicate would blow up on the dummy
+    recommender and still return None.
+    """
+    from types import SimpleNamespace
+
+    from yugioh_env.models import YuGiOhObservation
+    from yugioh_env.server import web_api
+
+    called = []
+    monkeypatch.setattr(
+        web_api,
+        "recommend_action_index",
+        lambda *a, **k: called.append(1) or 0,
+    )
+
+    request = SimpleNamespace(
+        app=SimpleNamespace(state=SimpleNamespace(recommender=object(), recommend_enabled=True))
+    )
+    obs = YuGiOhObservation(done=False)  # mask zeros(32), size 32
+    assert obs.action_mask.size == 32 and not obs.action_mask.any()
+
+    assert web_api._resolve_recommendation(request, serving=None, obs=obs) is None
+    assert not called, "must decline BEFORE attempting inference"

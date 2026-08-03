@@ -278,7 +278,8 @@ def test_make_observation_raises_on_zero_actions(env):
         env._make_observation()
 
 
-def test_duelview_delegates_no_duel():
+def test_duelview_no_duel():
+    """The properties still answer without a duel; query_location refuses."""
     from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
 
     env = YuGiOhEnvironment.__new__(YuGiOhEnvironment)  # no engine boot
@@ -287,7 +288,8 @@ def test_duelview_delegates_no_duel():
     sentinel = object()
     env._card_db = sentinel
     assert env.game_state is None
-    assert env.query_location(0, 1) == []
+    with pytest.raises(AssertionError):
+        env.query_location(0, 1)
     assert env.is_finished is True
     assert env.winner is None
     assert env.agent_player == 0

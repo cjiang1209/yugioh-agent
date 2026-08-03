@@ -19,6 +19,7 @@ from yugioh_core.encoding import (
     MAX_CARDS,
     MAX_EVENT_HISTORY,
     MAX_PENDING_CHAIN,
+    decode_u16,
 )
 from yugioh_env.models import YuGiOhAction
 from yugioh_rl.policy_inputs import build_forward_inputs
@@ -42,46 +43,6 @@ def parse_deck_pool(deck_paths: list[str]) -> list[DeckDict]:
     from yugioh_env.deck_parser import parse_ydk
 
     return [parse_ydk(p) for p in deck_paths]
-
-
-def _obs_to_numpy(obs) -> dict[str, np.ndarray]:
-    """Convert a YuGiOhObservation (with Python lists) back to numpy arrays."""
-    return {
-        "cards": (
-            np.array(obs.cards, dtype=np.uint8).reshape(MAX_CARDS, CARD_FEATURES)
-            if obs.cards
-            else np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8)
-        ),
-        "global_state": (
-            np.array(obs.global_state, dtype=np.uint8).reshape(GLOBAL_FEATURES)
-            if obs.global_state
-            else np.zeros(GLOBAL_FEATURES, dtype=np.uint8)
-        ),
-        "actions": (
-            np.array(obs.actions, dtype=np.uint8).reshape(MAX_ACTIONS, ACTION_FEATURES)
-            if obs.actions
-            else np.zeros((MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8)
-        ),
-        "action_mask": (
-            np.array(obs.action_mask, dtype=np.int8).reshape(MAX_ACTIONS)
-            if obs.action_mask
-            else np.zeros(MAX_ACTIONS, dtype=np.int8)
-        ),
-        "pending_chain": (
-            np.array(obs.pending_chain, dtype=np.uint8).reshape(
-                MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES
-            )
-            if obs.pending_chain
-            else np.zeros((MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES), dtype=np.uint8)
-        ),
-        "event_history": (
-            np.array(obs.event_history, dtype=np.uint8).reshape(
-                MAX_EVENT_HISTORY, EVENT_ENTRY_FEATURES
-            )
-            if obs.event_history
-            else np.zeros((MAX_EVENT_HISTORY, EVENT_ENTRY_FEATURES), dtype=np.uint8)
-        ),
-    }
 
 
 class TrainingEnv:
@@ -222,12 +183,12 @@ class TrainingEnv:
             deck1=deck1,
             agent_player=resolved_player,
         )
-        np_obs = _obs_to_numpy(obs)
+        np_obs = obs.as_arrays()
 
         # Initialize shaping state
         gs = np_obs["global_state"]
-        self._prev_my_lp = int(gs[0]) + int(gs[1]) * 256
-        self._prev_opp_lp = int(gs[2]) + int(gs[3]) * 256
+        self._prev_my_lp = decode_u16(gs, 0)
+        self._prev_opp_lp = decode_u16(gs, 2)
         self._prev_advantage = self._compute_advantage(gs)
 
         return np_obs
@@ -249,7 +210,7 @@ class TrainingEnv:
                   ``steps``, and ``agent_deck_idx``
         """
         obs = self._env.step(YuGiOhAction(action_index=action_index))
-        np_obs = _obs_to_numpy(obs)
+        np_obs = obs.as_arrays()
         info: dict[str, Any] = {}
 
         reward = obs.reward
@@ -287,8 +248,8 @@ class TrainingEnv:
 
     def _compute_shaping(self, gs: np.ndarray) -> float:
         """Compute reward shaping based on LP and card advantage deltas."""
-        my_lp = int(gs[0]) + int(gs[1]) * 256
-        opp_lp = int(gs[2]) + int(gs[3]) * 256
+        my_lp = decode_u16(gs, 0)
+        opp_lp = decode_u16(gs, 2)
         advantage = self._compute_advantage(gs)
 
         delta_my_lp = my_lp - self._prev_my_lp
@@ -387,11 +348,11 @@ class EvalEnv:
         obs = self._env.reset(
             seed=episode_seed, deck0=deck0, deck1=deck1, agent_player=resolved_player
         )
-        return _obs_to_numpy(obs)
+        return obs.as_arrays()
 
     def step(self, action_index: int) -> tuple[dict[str, np.ndarray], float, bool, dict[str, Any]]:
         obs = self._env.step(YuGiOhAction(action_index=action_index))
-        np_obs = _obs_to_numpy(obs)
+        np_obs = obs.as_arrays()
         info: dict[str, Any] = {}
         if obs.done:
             info["terminal_reward"] = obs.reward

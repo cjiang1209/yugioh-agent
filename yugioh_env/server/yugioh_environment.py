@@ -386,8 +386,7 @@ class YuGiOhEnvironment(Environment):
 
     # --- read-only accessors: duel state + card_db (safe before reset / after destroy) ---
     def query_location(self, player: int, location: int) -> list[dict]:
-        if self._duel is None:
-            return []
+        assert self._duel is not None
         return self._duel.query_location(player, location)
 
     @property
@@ -684,7 +683,7 @@ class YuGiOhEnvironment(Environment):
                                 self._duel.game_state,
                                 msg,
                                 1 - self._agent_player,
-                                query_fn=lambda p, loc: self._duel.query_location(p, loc),
+                                query_fn=self.query_location,
                                 event_history=self._event_buffer.to_tensor(
                                     1 - self._agent_player,
                                 ),
@@ -737,14 +736,11 @@ class YuGiOhEnvironment(Environment):
                 f"msg_type={msg_type}: {detail}."
             )
 
-        def query_fn(player: int, location: int) -> list[dict]:
-            return self._duel.query_location(player, location)
-
         obs_data = build_observation(
             self._duel.game_state,
             self._current_msg,
             self._agent_player,
-            query_fn=query_fn,
+            query_fn=self.query_location,
             event_history=self._event_buffer.to_tensor(self._agent_player),
         )
 
@@ -753,12 +749,12 @@ class YuGiOhEnvironment(Environment):
         action_descriptors = _build_action_descriptors(self._mapper.actions)
 
         return YuGiOhObservation(
-            cards=obs_data["cards"].tolist(),
-            global_state=obs_data["global_state"].tolist(),
-            actions=action_features.tolist(),
-            action_mask=action_mask.tolist(),
-            pending_chain=obs_data["pending_chain"].tolist(),
-            event_history=obs_data["event_history"].tolist(),
+            cards=obs_data["cards"],
+            global_state=obs_data["global_state"],
+            actions=action_features,
+            action_mask=action_mask,
+            pending_chain=obs_data["pending_chain"],
+            event_history=obs_data["event_history"],
             action_descriptors=action_descriptors,
             prompt_meta=_build_prompt_meta(self._mapper),
             events=list(self._cycle_events),
@@ -776,44 +772,25 @@ class YuGiOhEnvironment(Environment):
         if self._duel and self._duel.game_state.is_finished:
             reward = agent_reward(self._duel.game_state.winner, self._agent_player)
 
-        # Build a minimal observation
+        # With a live duel this carries the real final board; only
+        # actions/action_mask are zeroed below (no active prompt).
         obs_data = (
             build_observation(
-                self._duel.game_state if self._duel else None,
+                self._duel.game_state,
                 None,
                 self._agent_player,
+                query_fn=self.query_location,
                 event_history=self._event_buffer.to_tensor(self._agent_player),
             )
             if self._duel
-            else {"cards": [], "global_state": []}
-        )
-
-        cards = obs_data["cards"].tolist() if hasattr(obs_data.get("cards", None), "tolist") else []
-        global_state = (
-            obs_data["global_state"].tolist()
-            if hasattr(obs_data.get("global_state", None), "tolist")
-            else []
-        )
-
-        pending_chain = (
-            obs_data["pending_chain"].tolist()
-            if hasattr(obs_data.get("pending_chain", None), "tolist")
-            else []
-        )
-
-        event_history = (
-            obs_data["event_history"].tolist()
-            if hasattr(obs_data.get("event_history", None), "tolist")
-            else []
+            else {}
         )
 
         return YuGiOhObservation(
-            cards=cards,
-            global_state=global_state,
-            actions=[],
-            action_mask=[],
-            pending_chain=pending_chain,
-            event_history=event_history,
+            cards=obs_data.get("cards"),
+            global_state=obs_data.get("global_state"),
+            pending_chain=obs_data.get("pending_chain"),
+            event_history=obs_data.get("event_history"),
             action_descriptors=[],
             prompt_meta=None,
             events=list(self._cycle_events),

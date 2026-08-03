@@ -1,10 +1,18 @@
 """Tests for cli/play_client.py:parse_global_state.
 
-The global_state buffer is written by yugioh_env/observation.py. Its layout is
-positional and `phase` is two bytes wide, so an off-by-one in any single field
-silently shifts every field after it.
+Two things are pinned here. First, the buffer layout: global_state is written
+by yugioh_env/observation.py, is positional, and `phase` is two bytes wide, so
+an off-by-one in any single field silently shifts every field after it.
+
+Second, numpy widening: obs.global_state is delivered as np.uint8, and
+`hi << 8` on a numpy uint8 scalar wraps mod 256 rather than widening, silently
+truncating the high byte to 0 (e.g. LP=8000 renders as 64). parse_global_state
+gets this right by going through yugioh_core.encoding.decode_u16.
 """
 
+from __future__ import annotations
+
+import numpy as np
 from cli.play_client import parse_global_state
 
 from yugioh_core.encoding import GLOBAL_FEATURES, encode_u16
@@ -78,3 +86,16 @@ def test_parse_global_state_is_finished_reads_its_own_slot():
     gs[19] = 9  # opponent has extra-deck cards
     gs[20] = 0  # but the duel is NOT finished
     assert parse_global_state(gs)["is_finished"] is False
+
+
+def test_parse_global_state_lp_survives_numpy_uint8_global_state():
+    """obs.global_state as delivered is an np.uint8 array; LP fields must
+    decode correctly rather than truncating to the low byte."""
+    gs = np.zeros(GLOBAL_FEATURES, dtype=np.uint8)
+    gs[0], gs[1] = 0x40, 0x1F  # my_lp = 8000
+    gs[2], gs[3] = 0x40, 0x1F  # opp_lp = 8000
+
+    parsed = parse_global_state(gs)
+
+    assert parsed["my_lp"] == 8000
+    assert parsed["opp_lp"] == 8000
