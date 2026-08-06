@@ -42,6 +42,7 @@ include = ["yugioh_core*", "yugioh_env*", "yugioh_rl*", "yugioh_mud*", "yugioh_l
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "--timeout=240 --timeout-method=thread"
 
 [tool.ruff]
 line-length = 100

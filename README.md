@@ -14,7 +14,8 @@ environment.
 ```bash
 git clone --recursive https://github.com/cjiang1209/yugioh-agent.git
 cd yugioh-agent
-./setup.sh                          # venv + deps + libocgcore + cards.cdb + strings.conf
+make setup                          # venv + deps + libocgcore + cards.cdb + strings.conf + JS deps
+make help                           # what else is available
 
 # Start the server, then play a duel interactively
 scripts/start_server.sh &
@@ -23,6 +24,10 @@ scripts/play_client.sh
 
 Requires Python 3.10+, a C++17 compiler (`clang++` or `g++`), and `sqlite3` headers.
 See [Prerequisites](#prerequisites) for the full list.
+
+`make setup` installs the web UI's JS dependencies but does not compile the
+bundle — run `make build-web` before `scripts/start_web.sh` (see
+[Play in a browser](#play-in-a-browser)).
 
 ## What can I do with this?
 
@@ -78,8 +83,8 @@ Requires `node` + `pnpm` (install via [nvm](https://github.com/nvm-sh/nvm)
 and `npm install -g pnpm`).
 
 ```bash
-# 1. Build the web bundle (installs JS deps + compiles)
-scripts/build_web.sh
+# 1. Install JS deps and compile the web bundle
+make install-web build-web
 
 # 2. Start the Python env server (same as the play client uses)
 scripts/start_server.sh &
@@ -165,13 +170,13 @@ third-party MUD server that uses a different ygopro fork).
 - **Python** 3.10+
 - **C++ toolchain** — `clang++` or `g++` with C++17 support
 - **SQLite** development headers (for compiling the engine wrapper)
-- **Git submodules** — pulled by `setup.sh`:
+- **Git submodules** — pulled by `make setup`:
   - [edo9300/ygopro-core](https://github.com/edo9300/ygopro-core) — the duel engine
   - [ProjectIgnis/CardScripts](https://github.com/ProjectIgnis/CardScripts) — Lua card scripts
-- **Card database** — `assets/cards.cdb` (downloaded by `setup.sh` on first
-  run, or grab it manually from
+- **Card database** — `assets/cards.cdb` (downloaded by `make setup`, or
+  `make assets` on its own, or grab it manually from
   [ProjectIgnis/BabelCDB](https://github.com/ProjectIgnis/BabelCDB))
-- **String labels** — `assets/strings.conf` (downloaded by `setup.sh` from
+- **String labels** — `assets/strings.conf` (downloaded by `make setup` from
   [ProjectIgnis/Distribution](https://github.com/ProjectIgnis/Distribution);
   without it, effect labels fall back to placeholders)
 
@@ -191,9 +196,9 @@ Optional, depending on which subsystems you use:
 ## Testing
 
 ```bash
-make test                                    # full suite
-python -m pytest tests/rl/ -v                # one module's tests
-python -m pytest tests/env/test_duel.py -v   # one file
+make test                                    # both suites (Python + web)
+make test-py                                 # Python only
+make test-web                                # web only (skips loudly without node)
 ```
 
 Tests are organized by module under `tests/` (`core/`, `env/`, `rl/`,
@@ -201,3 +206,7 @@ Tests are organized by module under `tests/` (`core/`, `env/`, `rl/`,
 are missing — e.g., RL tests skip without `torch` installed, engine tests
 skip without `libocgcore` built or `cards.cdb` present. Pure unit tests
 (parsers, encoders, action space) run with no external dependencies.
+
+Committing runs pre-commit hooks (ruff on Python, prettier/eslint on web files).
+`make setup` installs what they need; run `make hooks` to register them before
+your first commit.

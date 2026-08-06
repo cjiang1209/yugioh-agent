@@ -11,13 +11,10 @@ if [ ! -d "$WEB_DIR/dist" ]; then
 fi
 
 # ─── Ensure nvm + node are available ─────────────────────────────────────────
-if ! command -v node &>/dev/null; then
-    if [ -s "$HOME/.nvm/nvm.sh" ]; then
-        source "$HOME/.nvm/nvm.sh"
-    else
-        echo "Error: node not found and nvm is not installed"
-        exit 1
-    fi
+source "$SCRIPT_DIR/lib/node_env.sh"
+if ! node_env_load; then
+    echo "Error: $WEB_SKIP_REASON" >&2
+    exit 1
 fi
 
 cd "$WEB_DIR"

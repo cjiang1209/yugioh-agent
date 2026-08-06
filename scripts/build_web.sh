@@ -1,41 +1,9 @@
 #!/usr/bin/env bash
+# Compile the web bundle. Assumes JS deps are installed (make install-web).
 set -euo pipefail
+cd "$(dirname "$0")/.."
+source scripts/lib/node_env.sh
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-WEB_DIR="$PROJECT_ROOT/yugioh_web"
-
-if [ ! -d "$WEB_DIR" ]; then
-    echo "Error: yugioh_web/ not found at $WEB_DIR"
-    exit 1
-fi
-
-# ─── Ensure nvm + node are available ─────────────────────────────────────────
-if ! command -v node &>/dev/null; then
-    if [ -s "$HOME/.nvm/nvm.sh" ]; then
-        source "$HOME/.nvm/nvm.sh"
-    else
-        echo "Error: node not found and nvm is not installed"
-        echo "Install nvm: https://github.com/nvm-sh/nvm"
-        exit 1
-    fi
-fi
-
-if ! command -v pnpm &>/dev/null; then
-    echo "Error: pnpm not found"
-    echo "Install: npm install -g pnpm"
-    exit 1
-fi
-
-echo "Using node $(node --version), pnpm $(pnpm --version)"
-
-# ─── Install dependencies ────────────────────────────────────────────────────
-echo "Installing dependencies ..."
-cd "$WEB_DIR"
-pnpm install
-
-# ─── Build ───────────────────────────────────────────────────────────────────
-echo "Building web UI ..."
-pnpm build
-
+node_env_load || { echo "error: $WEB_SKIP_REASON" >&2; exit 1; }
+cd yugioh_web && pnpm build
 echo "Done! Run scripts/start_web.sh to start the server."

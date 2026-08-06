@@ -156,6 +156,11 @@ ygo-agent bridge `3000`, MUD websocket `8080`.
 
 Tests are organized into subdirectories by module (`tests/core/`, `tests/env/`, `tests/mud/`, `tests/rl/`, `tests/cli/`, `tests/leaderboard/`). Run a single module's tests with e.g. `python -m pytest tests/mud/ -v`.
 
+The web suite (`yugioh_web/`, 16 vitest files) runs via `make test-web`, which
+`make test` includes. It **soft-skips** with a loud banner when node, pnpm or
+`node_modules` is missing, so a toolchain-free checkout still reports success;
+`STRICT_WEB=1 make test-web` turns that skip into a failure.
+
 Tests auto-skip when prerequisites are missing:
 - `lib` fixture (`tests/env/conftest.py`): skips if `libocgcore` not built (`make build`)
 - `db_path` fixture (`tests/conftest.py`): skips if `assets/cards.cdb` absent

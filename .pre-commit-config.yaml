@@ -1,28 +1,37 @@
 repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.10
+  # ruff runs from .venv so `make lint`, `make format` and this hook are the same
+  # binary at the same version. Pinning two installs to match would be the
+  # alternative; one install cannot drift.
+  - repo: local
     hooks:
       - id: ruff
-        args: [--fix]
-      - id: ruff-format
+        name: ruff (fix)
+        language: system
+        entry: .venv/bin/ruff check --fix
+        types_or: [python, pyi]
 
-  # Prettier and ESLint run via local hooks against yugioh_web/'s pinned
-  # devDependencies — keeps hook and project versions impossible to drift.
-  # `pnpm -C` avoids a subshell + `cd`; `pass_filenames: false` because the
-  # tools' own --cache flags already skip unchanged files, and pre-commit's
-  # filename pass would be repo-rooted (wrong cwd after -C).
+      - id: ruff-format
+        name: ruff format
+        language: system
+        entry: .venv/bin/ruff format
+        types_or: [python, pyi]
+
+  # Prettier and ESLint run against yugioh_web/'s pinned devDependencies (hook
+  # and project versions can't drift), via scripts/pnpm_web.sh (which puts
+  # node/pnpm on PATH). pass_filenames: false because the tools' own --cache
+  # handles change detection and pre-commit's paths would be repo-rooted.
   - repo: local
     hooks:
       - id: prettier
         name: prettier (yugioh_web)
         language: system
-        entry: pnpm -C yugioh_web exec prettier --write --cache .
+        entry: scripts/pnpm_web.sh exec prettier --write --cache .
         files: ^yugioh_web/.*\.(ts|tsx|js|jsx|json|css|md|html|ya?ml)$
         pass_filenames: false
 
       - id: eslint
         name: eslint (yugioh_web)
         language: system
-        entry: pnpm -C yugioh_web exec eslint --fix --cache .
+        entry: scripts/pnpm_web.sh exec eslint --fix --cache .
         files: ^yugioh_web/.*\.(ts|tsx|js|jsx)$
         pass_filenames: false

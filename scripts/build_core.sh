@@ -9,7 +9,7 @@ BUILD_DIR="$PROJECT_ROOT/build"
 
 if [ ! -d "$CORE_DIR" ]; then
     echo "Error: ygopro-core not found at $CORE_DIR"
-    echo "Run: git submodule add https://github.com/edo9300/ygopro-core.git third_party/ygopro-core"
+    echo "Run: make submodules"
     exit 1
 fi
 

@@ -112,7 +112,7 @@ def _load_sys_strings_cached(strings_path: str) -> dict[int, str] | None:
     if not path.is_file():
         logger.warning(
             "strings.conf not found at %s; sysstring labels will use placeholders. "
-            "Run scripts/setup.sh to download.",
+            "Run `make assets` to download.",
             path,
         )
         return None
