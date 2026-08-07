@@ -135,7 +135,7 @@ class MUDObservationBuilder:
         """Build observation dict matching RL training format.
 
         Returns:
-            Dict with keys: ``cards`` (200,42), ``global_state`` (20,),
+            Dict with keys: ``cards`` (200,42), ``global_state`` (21,),
             ``actions`` (32,12), ``action_mask`` (32,).
         """
         cards = self._build_cards(game_state)
@@ -283,9 +283,10 @@ class MUDObservationBuilder:
         # turn_count
         g[idx] = min(gs.turn, 255)
         idx += 1
-        # phase
-        g[idx] = PHASE_MAP.get(gs.phase.lower(), 0) & 0xFF
-        idx += 1
+        # phase (2 bytes, uint16 LE -- the bitmask reaches 0x200, so a single
+        # byte drops MAIN2/END and shifts every later field by one)
+        g[idx], g[idx + 1] = encode_u16(PHASE_MAP.get(gs.phase.lower(), 0))
+        idx += 2
         # is_my_turn
         g[idx] = 1 if gs.is_my_turn else 0
         idx += 1

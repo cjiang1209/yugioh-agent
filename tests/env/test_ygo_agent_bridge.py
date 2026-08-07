@@ -26,7 +26,13 @@ from yugioh_core.constants import (
     MSG_SELECT_UNSELECT_CARD,
     MSG_SELECT_YESNO,
 )
-from yugioh_core.encoding import CARD_FEATURES, MAX_CARDS, encode_card, encode_u16
+from yugioh_core.encoding import (
+    CARD_FEATURES,
+    GLOBAL_FEATURES,
+    MAX_CARDS,
+    encode_card,
+    encode_u16,
+)
 from yugioh_env.ygo_agent.bridge import (
     build_predict_input,
     match_response,
@@ -471,12 +477,12 @@ class TestBuildPredictInput:
     def test_assembles_all_parts(self):
         obs = {
             "cards": np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8),
-            "global_state": np.zeros(20, dtype=np.uint8),
+            "global_state": np.zeros(GLOBAL_FEATURES, dtype=np.uint8),
         }
         # Set minimal global: turn=1, phase=main1, is_my_turn
         obs["global_state"][4] = 1
-        obs["global_state"][5] = 0x04
-        obs["global_state"][6] = 1
+        obs["global_state"][5], obs["global_state"][6] = encode_u16(0x04)
+        obs["global_state"][7] = 1
         msg = {"msg_type": MSG_SELECT_YESNO, "player": 0, "desc": 30}
         result = build_predict_input(obs, msg, prev_action_idx=0)
         assert "input" in result
@@ -492,11 +498,11 @@ class TestBuildPredictInput:
         # the model sees an empty deck (off-distribution → uniform policy).
         obs = {
             "cards": np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8),
-            "global_state": np.zeros(20, dtype=np.uint8),
+            "global_state": np.zeros(GLOBAL_FEATURES, dtype=np.uint8),
         }
         obs["global_state"][4] = 1  # turn
-        obs["global_state"][5] = 0x04  # phase main1
-        obs["global_state"][6] = 1  # is_my_turn
+        obs["global_state"][5], obs["global_state"][6] = encode_u16(0x04)  # phase: main1
+        obs["global_state"][7] = 1  # is_my_turn
         obs["global_state"][10] = 33  # agent deck count
         obs["global_state"][15] = 36  # opponent deck count
         msg = {"msg_type": MSG_SELECT_YESNO, "player": 0, "desc": 30}

@@ -23,6 +23,7 @@ from yugioh_core.constants import (
     MSG_SELECT_IDLECMD,
     PHASE_DRAW,
     PHASE_MAIN1,
+    PHASE_MAIN2,
     POS_FACEDOWN_DEFENSE,
     POS_FACEUP_ATTACK,
 )
@@ -157,11 +158,26 @@ class TestMappings:
 
 
 class TestGlobalState:
-    def test_global_state_layout(self, builder, gs):
-        gs.my_lp = 7500
-        gs.opp_lp = 6000
+    def test_global_state_matches_the_engine_encoder(self, builder, gs):
+        """MUD's global_state must be byte-identical to the engine's.
+
+        The MUD observation is fed to a network trained on engine
+        observations, so the two encoders have to agree slot for slot.
+        Asserting against `build_observation` rather than re-walking the
+        builder's own field order is what makes this a contract test: a
+        layout change on either side shows up here instead of being mirrored
+        into the expectation.
+
+        `chain_count` and `is_finished` are excluded -- the MUD text parser
+        cannot observe them and always writes 0 -- so the engine state below
+        sets both to their zero value to keep the arrays comparable.
+        """
+        from yugioh_env.game_state import GameState
+        from yugioh_env.observation import build_observation
+
+        gs.my_lp, gs.opp_lp = 7500, 6000
         gs.turn = 3
-        gs.phase = "main1 phase"
+        gs.phase = "main2 phase"  # 0x100 -- unrepresentable in a single byte
         gs.is_my_turn = True
         gs.my_deck_count = 30
         gs.my_hand = [CardEntry(name="A", code=1)]
@@ -175,58 +191,31 @@ class TestGlobalState:
         gs.opp_extra = [CardEntry(name="F")]
 
         prompt = ParsedPrompt(prompt_type=PromptType.IDLE_CMD, options=["e"])
-        obs = builder.build(gs, prompt)
-        g = obs["global_state"]
+        mud_global = builder.build(gs, prompt)["global_state"]
 
-        assert g.shape == (GLOBAL_FEATURES,)
-        assert g.dtype == np.uint8
+        engine = GameState()
+        engine.lp = [7500, 6000]
+        engine.turn_count = 3
+        engine.phase = PHASE_MAIN2
+        engine.current_player = 0  # agent's turn
+        engine.chain_count = 0
+        engine.deck_count = [30, 28]
+        engine.hand_count = [1, 5]
+        engine.grave_count = [2, 1]
+        engine.banished_count = [1, 0]
+        engine.extra_count = [0, 1]
+        engine.is_finished = False
+        engine_global = build_observation(engine, {"msg_type": MSG_SELECT_IDLECMD}, agent_player=0)[
+            "global_state"
+        ]
 
-        idx = 0
-        # my_lp
-        assert _read_u16(g, idx) == 7500
-        idx += 2
-        # opp_lp
-        assert _read_u16(g, idx) == 6000
-        idx += 2
-        # turn_count
-        assert g[idx] == 3
-        idx += 1
-        # phase
-        assert g[idx] == PHASE_MAIN1
-        idx += 1
-        # is_my_turn
-        assert g[idx] == 1
-        idx += 1
-        # chain_count (TODO: always 0)
-        assert g[idx] == 0
-        idx += 1
-        # msg_type
-        assert g[idx] == MSG_SELECT_IDLECMD
-        idx += 1
-        # Agent counts: deck, hand, grave, banished, extra
-        assert g[idx] == 30  # deck
-        idx += 1
-        assert g[idx] == 1  # hand (len of my_hand)
-        idx += 1
-        assert g[idx] == 2  # grave
-        idx += 1
-        assert g[idx] == 1  # banished
-        idx += 1
-        assert g[idx] == 0  # extra
-        idx += 1
-        # Opponent counts
-        assert g[idx] == 28  # deck
-        idx += 1
-        assert g[idx] == 5  # hand
-        idx += 1
-        assert g[idx] == 1  # grave
-        idx += 1
-        assert g[idx] == 0  # banished
-        idx += 1
-        assert g[idx] == 1  # extra
-        idx += 1
-        # is_finished
-        assert g[idx] == 0
+        assert mud_global.shape == engine_global.shape == (GLOBAL_FEATURES,)
+        mismatches = [i for i in range(len(engine_global)) if mud_global[i] != engine_global[i]]
+        assert not mismatches, (
+            f"global_state differs from the engine at {mismatches}: "
+            f"mud={[int(mud_global[i]) for i in mismatches]} "
+            f"engine={[int(engine_global[i]) for i in mismatches]}"
+        )
 
 
 # ---------------------------------------------------------------------------

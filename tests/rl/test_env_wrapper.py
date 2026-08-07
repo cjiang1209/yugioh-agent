@@ -208,3 +208,29 @@ def test_deck_rng_reseeded_per_episode() -> None:
         )
     finally:
         env.close()
+
+
+def test_compute_advantage_reads_hand_counts_not_deck_counts() -> None:
+    """Card-advantage shaping must compare HANDS.
+
+    The global_state offsets are derived from the real encoder rather than
+    hardcoded, so a future change to the layout moves this test with it
+    instead of leaving it asserting stale slots. Deck and hand counts are
+    given distinct values in both directions, so reading a deck slot cannot
+    coincidentally produce the right answer.
+    """
+    from yugioh_env.game_state import GameState
+    from yugioh_env.observation import build_observation
+    from yugioh_rl.env_wrapper import TrainingEnv
+
+    gs = GameState()
+    gs.deck_count = [30, 20]
+    gs.hand_count = [5, 3]
+
+    packed = build_observation(gs, current_msg=None, agent_player=0)["global_state"]
+
+    advantage = TrainingEnv._compute_advantage(packed)
+    assert advantage == 5 - 3, (
+        f"expected the hand difference 2, got {advantage}; "
+        f"{30 - 20} would mean it read the deck counts"
+    )

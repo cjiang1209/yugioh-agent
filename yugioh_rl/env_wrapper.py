@@ -275,13 +275,14 @@ class TrainingEnv:
 
         return np_obs, reward, done, info
 
-    def _compute_advantage(self, gs: np.ndarray) -> int:
+    @staticmethod
+    def _compute_advantage(gs: np.ndarray) -> int:
         """Compute card advantage from global state zone counts."""
-        # Correct mapping from observation.py global state layout:
-        # 9=my_deck, 10=my_hand, 11=my_grave, 12=my_banished, 13=my_extra
-        # 14=opp_deck, 15=opp_hand, 16=opp_grave, 17=opp_banished, 18=opp_extra
-        my_hand = int(gs[10])
-        opp_hand = int(gs[15])
+        # observation.py packs five counts per player after the 2-byte phase:
+        # 10=my_deck, 11=my_hand, 12=my_grave, 13=my_banished, 14=my_extra
+        # 15=opp_deck, 16=opp_hand, 17=opp_grave, 18=opp_banished, 19=opp_extra
+        my_hand = int(gs[11])
+        opp_hand = int(gs[16])
         return my_hand - opp_hand
 
     def _compute_shaping(self, gs: np.ndarray) -> float:

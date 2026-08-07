@@ -13,6 +13,7 @@ from yugioh_core.encoding import (
     GLOBAL_FEATURES,
     MAX_ACTIONS,
     MAX_CARDS,
+    encode_u16,
 )
 from yugioh_env.ygo_agent.opponent import DEFAULT_URL, YGOAgentOpponent
 
@@ -68,8 +69,8 @@ class TestYGOAgentOpponent:
             "action_mask": np.zeros(MAX_ACTIONS, dtype=np.int8),
         }
         obs["global_state"][4] = 1  # turn
-        obs["global_state"][5] = 0x04  # main1
-        obs["global_state"][6] = 1  # is_my_turn
+        obs["global_state"][5], obs["global_state"][6] = encode_u16(0x04)  # phase: main1
+        obs["global_state"][7] = 1  # is_my_turn
         opp.set_observation(obs)
 
         msg = {"msg_type": MSG_SELECT_YESNO, "player": 0, "desc": 30}

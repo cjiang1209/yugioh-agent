@@ -52,7 +52,7 @@ def _card_tensor(card_array: np.ndarray) -> torch.Tensor:
 
 
 def _global_tensor(gs: GameState, msg=None, agent_player=0) -> torch.Tensor:
-    """Build observation and return global_state as (1, 20) tensor."""
+    """Build observation and return global_state as a (1, GLOBAL_FEATURES) tensor."""
     obs = build_observation(gs, msg, agent_player=agent_player)
     return torch.from_numpy(obs["global_state"]).unsqueeze(0)
 

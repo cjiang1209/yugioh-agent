@@ -233,7 +233,7 @@ def translate_cards(obs_cards: np.ndarray) -> list[dict]:
 
 
 def translate_global(obs_global: np.ndarray) -> dict:
-    """Convert obs global_state array (20 uint8) to ygo-agent Global dict."""
+    """Convert obs global_state array (GLOBAL_FEATURES uint8) to ygo-agent Global dict."""
     my_lp = decode_u16(obs_global, 0)
     opp_lp = decode_u16(obs_global, 2)
     turn = int(obs_global[4])

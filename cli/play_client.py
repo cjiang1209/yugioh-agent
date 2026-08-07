@@ -24,6 +24,7 @@ from pathlib import Path
 
 from yugioh_core.card_database import CardDatabase
 from yugioh_core.constants import PHASE_NAMES
+from yugioh_core.encoding import decode_u16
 from yugioh_core.string_resolver import load_sys_strings
 from yugioh_env.action_describer import ActionDescriber
 from yugioh_env.client import YuGiOhEnv
@@ -32,32 +33,29 @@ from yugioh_env.event_logger import EventDescriber
 from yugioh_env.models import YuGiOhAction, YuGiOhObservation
 
 
-def decode_u16_le(lo: int, hi: int) -> int:
-    """Decode two uint8 bytes (little-endian) into a uint16."""
-    return lo | (hi << 8)
-
-
 def parse_global_state(gs: list[int]) -> dict:
     """Parse global_state vector into human-readable dict."""
     return {
-        "my_lp": decode_u16_le(gs[0], gs[1]),
-        "opp_lp": decode_u16_le(gs[2], gs[3]),
+        "my_lp": decode_u16(gs, 0),
+        "opp_lp": decode_u16(gs, 2),
         "turn": gs[4],
-        "phase": gs[5],
-        "is_my_turn": bool(gs[6]),
-        "chain_count": gs[7],
-        "msg_type": gs[8],
-        "my_deck": gs[9],
-        "my_hand": gs[10],
-        "my_grave": gs[11],
-        "my_banished": gs[12],
-        "my_extra": gs[13],
-        "opp_deck": gs[14],
-        "opp_hand": gs[15],
-        "opp_grave": gs[16],
-        "opp_banished": gs[17],
-        "opp_extra": gs[18],
-        "is_finished": bool(gs[19]),
+        # phase occupies TWO bytes (5-6): it is a bitmask reaching 0x200, so a
+        # single-byte read drops MAIN2/END and shifts every later field by one.
+        "phase": decode_u16(gs, 5),
+        "is_my_turn": bool(gs[7]),
+        "chain_count": gs[8],
+        "msg_type": gs[9],
+        "my_deck": gs[10],
+        "my_hand": gs[11],
+        "my_grave": gs[12],
+        "my_banished": gs[13],
+        "my_extra": gs[14],
+        "opp_deck": gs[15],
+        "opp_hand": gs[16],
+        "opp_grave": gs[17],
+        "opp_banished": gs[18],
+        "opp_extra": gs[19],
+        "is_finished": bool(gs[20]),
     }
 
 
