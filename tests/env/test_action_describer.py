@@ -61,7 +61,7 @@ def test_tribute_describe_finish():
     obs = _obs_from_msg(msg, _selected=[0])
 
     # Now we have 1 card pick + 1 finish
-    assert sum(obs.action_mask) == 2
+    assert obs.num_actions == 2
 
     describer = ActionDescriber(_StubCardDB(), sys_strings=None)
     details = describer.describe_all(obs)
@@ -368,7 +368,7 @@ def test_describer_yesno_yes_is_plain_yes():
 
 
 def test_describe_all_returns_one_per_legal_action():
-    """describe_all returns N descriptors when N action_mask bits are set."""
+    """describe_all returns one ActionDetails per legal action."""
     obs = _obs_from_msg(
         {
             "msg_type": MSG_SELECT_YESNO,
@@ -380,7 +380,7 @@ def test_describe_all_returns_one_per_legal_action():
     describer = ActionDescriber(_StubCardDB(), sys_strings=None)
     details = describer.describe_all(obs)
     assert len(details) == 2
-    assert sum(obs.action_mask) == 2  # sanity: matches the mask
+    assert obs.num_actions == 2  # sanity: matches the action count
 
 
 def test_describe_action_sort_card():
@@ -404,8 +404,9 @@ def test_describe_action_sort_card():
         assert d.description.startswith("Place ")
 
 
-def test_describe_raises_on_inactive_slot():
-    """describe(idx) raises IndexError when the slot is inactive."""
+def test_describe_raises_past_the_last_legal_action():
+    """With one descriptor per legal action there are no inactive slots to ask
+    about, only indices past the end."""
     obs = _obs_from_msg(
         {
             "msg_type": MSG_SELECT_YESNO,
@@ -414,12 +415,14 @@ def test_describe_raises_on_inactive_slot():
         }
     )
     describer = ActionDescriber(_StubCardDB(), sys_strings=None)
-    # Slot 5 is inactive (only slots 0 and 1 are legal for YESNO).
-    with pytest.raises(IndexError, match="inactive"):
-        describer.describe(obs, 5)
-    # Out-of-range slot also raises.
+    # YESNO offers exactly two actions, so 2 is already past the end.
+    assert obs.num_actions == 2
+    with pytest.raises(IndexError, match="out of range"):
+        describer.describe(obs, 2)
     with pytest.raises(IndexError, match="out of range"):
         describer.describe(obs, MAX_ACTIONS + 10)
+    with pytest.raises(IndexError, match="out of range"):
+        describer.describe(obs, -1)
 
 
 def test_describer_announce_card_uses_card_name():
@@ -497,7 +500,7 @@ def test_place_details_report_the_real_seat():
     """Value change #1: controller 0 -> real relativized seat."""
     obs = _obs_from_msg({**MINIMAL_MSGS[MSG_SELECT_PLACE], "msg_type": MSG_SELECT_PLACE})
     describer = ActionDescriber(_StubCardDB(), sys_strings=None)
-    seats = {describer.describe(obs, i).controller for i in range(int(sum(obs.action_mask)))}
+    seats = {describer.describe(obs, i).controller for i in range(obs.num_actions)}
     assert seats == {0, 1}
 
 

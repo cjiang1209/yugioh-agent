@@ -169,13 +169,15 @@ def _card_ref(a: dict) -> CardRef:
     )
 
 
-def _build_action_descriptors(actions: list[dict]) -> list[ActionDescriptor | None]:
-    """Mechanical kind -> model projection, length MAX_ACTIONS.
+def _build_action_descriptors(actions: list[dict]) -> list[ActionDescriptor]:
+    """Mechanical kind -> model projection, one descriptor per legal action.
 
     Raises rather than defaulting: an unmapped shape must fail loudly, not
-    land in an ill-fitting variant.
+    land in an ill-fitting variant. That is also what lets the list be dense --
+    every legal action is guaranteed a descriptor, so the list's length is the
+    number of legal actions.
     """
-    out: list[ActionDescriptor | None] = [None] * MAX_ACTIONS
+    out: list[ActionDescriptor] = []
     for i, action in enumerate(actions[:MAX_ACTIONS]):
         kind = action.get("kind")
         if kind is None:
@@ -183,7 +185,7 @@ def _build_action_descriptors(actions: list[dict]) -> list[ActionDescriptor | No
         builder = _DESCRIPTOR_BUILDERS.get(kind)
         if builder is None:
             raise ValueError(f"unknown action kind {kind!r} at slot {i}")
-        out[i] = builder(action)
+        out.append(builder(action))
     return out
 
 
@@ -737,15 +739,11 @@ class YuGiOhEnvironment(Environment):
         relativized against cannot disagree with the prompt being answered.
 
         `include_board` False skips `build_observation` entirely -- the engine
-        `query_location` calls, the card encode and the event history, which
-        together dominate the cost of a build. Those fields then keep their
-        shaped-zero defaults. The prompt side (`actions`, `action_mask`,
-        `action_descriptors`, `prompt_meta`) is populated either way.
+        `query_location` calls and the event history, which together dominate
+        the cost of a build. Those fields then keep their empty/shaped-zero
+        defaults. The prompt side (`action_descriptors`, `prompt_meta`) is
+        populated either way.
         """
-        action_mask = mapper.get_action_mask()
-        action_features = mapper.get_action_features()
-        action_descriptors = _build_action_descriptors(mapper.actions)
-
         board_kwargs = {}
         if include_board:
             seat = mapper.agent_player
@@ -761,14 +759,10 @@ class YuGiOhEnvironment(Environment):
                 "global_state": obs_data["global_state"],
                 "pending_chain": obs_data["pending_chain"],
                 "event_history": obs_data["event_history"],
-                "card_states": obs_data["card_states"],
-                "global_": obs_data["global"],
             }
 
         return YuGiOhObservation(
-            actions=action_features,
-            action_mask=action_mask,
-            action_descriptors=action_descriptors,
+            action_descriptors=_build_action_descriptors(mapper.actions),
             prompt_meta=_build_prompt_meta(mapper),
             events=list(self._cycle_events),
             done=False,
@@ -779,8 +773,8 @@ class YuGiOhEnvironment(Environment):
     def _make_observation(self) -> YuGiOhObservation:
         """Build observation from current state."""
         # Every path here is an agent-facing SELECT prompt, so the mapper must
-        # offer at least one action; a zero-action prompt yields an all-zero
-        # mask -> -inf logits -> NaN in Categorical. Fail loudly instead.
+        # offer at least one action; a zero-action prompt encodes to an
+        # all-zero mask -> -inf logits -> NaN in Categorical. Fail loudly instead.
         if self._mapper.num_actions == 0:
             msg_type = self._mapper.msg_type
             if msg_type == MSG_ANNOUNCE_CARD:
@@ -791,15 +785,15 @@ class YuGiOhEnvironment(Environment):
             else:
                 detail = "no legal actions were extracted"
             raise RuntimeError(
-                f"Cannot build a valid action mask for agent-facing prompt "
-                f"msg_type={msg_type}: {detail}."
+                f"No legal actions for agent-facing prompt msg_type={msg_type}: {detail}."
             )
 
         return self._build_seat_observation(self._mapper)
 
     def _make_terminal_observation(self) -> YuGiOhObservation:
         """Build terminal observation with reward."""
-        # No active prompt past this point; keeps current_msg/num_actions in sync with action_mask=0.
+        # No active prompt past this point; keeps current_msg/num_actions in
+        # sync with the empty descriptor list.
         self._current_msg = None
         self._card_sel.clear()
 
@@ -807,8 +801,8 @@ class YuGiOhEnvironment(Environment):
         if self._duel and self._duel.game_state.is_finished:
             reward = agent_reward(self._duel.game_state.winner, self._agent_player)
 
-        # With a live duel this carries the real final board; only
-        # actions/action_mask are zeroed below (no active prompt).
+        # With a live duel this carries the real final board; only the
+        # descriptors are left empty below (no active prompt).
         obs_data = (
             build_observation(
                 self._duel.game_state,
@@ -822,12 +816,10 @@ class YuGiOhEnvironment(Environment):
         )
 
         return YuGiOhObservation(
-            cards=obs_data.get("cards"),
-            global_state=obs_data.get("global_state"),
+            cards=obs_data.get("cards", []),
+            global_state=obs_data.get("global_state", GlobalState()),
             pending_chain=obs_data.get("pending_chain"),
             event_history=obs_data.get("event_history"),
-            card_states=obs_data.get("card_states", []),
-            global_=obs_data.get("global", GlobalState()),
             action_descriptors=[],
             prompt_meta=None,
             events=list(self._cycle_events),

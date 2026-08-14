@@ -27,12 +27,12 @@ class _OneStepEnv:
     def reset(self, **kwargs) -> _Result:
         obs = YuGiOhObservation(
             action_descriptors=[Pass()],
-            global_=GlobalState(my_lp=8000, opp_lp=7000),
+            global_state=GlobalState(my_lp=8000, opp_lp=7000),
         )
         return _Result(observation=obs, done=False, reward=0.0)
 
     def step(self, action) -> _Result:
-        obs = YuGiOhObservation(global_=GlobalState(my_lp=8000, opp_lp=0), done=True)
+        obs = YuGiOhObservation(global_state=GlobalState(my_lp=8000, opp_lp=0), done=True)
         return _Result(observation=obs, done=True, reward=1.0)
 
 

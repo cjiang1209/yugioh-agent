@@ -1,6 +1,6 @@
 """Tests for cli/play_client.py:display_state's global-state rendering.
 
-YuGiOhObservation carries a structured obs.global_ (a GlobalState), and
+YuGiOhObservation carries a structured obs.global_state (a GlobalState), and
 display_state reads its fields directly -- there is no buffer layout to get
 wrong. What's worth pinning is that display_state reads the RIGHT field under
 the right name (a copy-paste could easily print my_hand where opp_hand
@@ -24,7 +24,7 @@ _DESCRIBER = ActionDescriber(None, sys_strings=None)
 def _render(capsys, **fields) -> str:
     """Render an observation carrying only the GlobalState under test: no
     active prompt and no legal actions."""
-    obs = YuGiOhObservation(global_=GlobalState(**fields))
+    obs = YuGiOhObservation(global_state=GlobalState(**fields))
     display_state(obs, step_num=0, action_describer=_DESCRIBER)
     return capsys.readouterr().out
 

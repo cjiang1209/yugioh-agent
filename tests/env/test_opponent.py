@@ -3,14 +3,10 @@
 import random
 import tempfile
 
-import numpy as np
 import pytest
 
 from tests.env.conftest import MINIMAL_MSGS, obs_from_msg
 from yugioh_core.constants import MSG_SELECT_BATTLECMD, MSG_SELECT_IDLECMD, MSG_SELECT_YESNO
-from yugioh_core.encoding import (
-    MAX_ACTIONS,
-)
 from yugioh_env.deck_parser import parse_ydk
 from yugioh_env.models import CardCommand, Pass, YuGiOhAction, YuGiOhObservation
 from yugioh_env.opponent import GreedyOpponent, Opponent, RandomOpponent
@@ -63,8 +59,8 @@ def test_random_opponent_different_seeds_differ():
 
 
 def test_random_opponent_zero_actions_returns_zero():
-    """An observation with no legal actions (all-zero mask) returns 0."""
-    obs = YuGiOhObservation(action_mask=np.zeros(MAX_ACTIONS, dtype=np.int8))
+    """An observation with no legal actions returns 0."""
+    obs = YuGiOhObservation(action_descriptors=[])
     opp = RandomOpponent(seed=0)
     action, _ = opp.select_action(obs)
     assert action == 0
@@ -75,9 +71,8 @@ def test_pick_action_random_seeded():
     # Import here to avoid polluting module-level random state
     from cli.play_client import pick_action_random
 
-    mask = [1, 1, 1, 1, 0, 0, 0, 0] + [0] * 24  # 4 legal actions
     obs = YuGiOhObservation(
-        action_mask=mask,
+        action_descriptors=[Pass() for _ in range(4)],
         done=False,
         reward=0.0,
     )
@@ -166,7 +161,7 @@ def test_greedy_opponent_idle_falls_back_to_last_action():
     """With no summon/sp_summon/sset/to_bp, falls back to the final action."""
     opp = GreedyOpponent()
     obs = obs_from_msg(_idle_msg(summonable=[], sp_summonable=[], sset=[], to_bp=0))
-    num_actions = int(obs.action_mask.sum())
+    num_actions = obs.num_actions
     action, _ = opp.select_action(obs)
     assert action == num_actions - 1
 
@@ -184,7 +179,7 @@ def test_greedy_opponent_battle_falls_back_to_last_action():
     """With no attackable actions, falls back to the final action."""
     opp = GreedyOpponent()
     obs = obs_from_msg(_battle_msg(attackable=[]))
-    num_actions = int(obs.action_mask.sum())
+    num_actions = obs.num_actions
     action, _ = opp.select_action(obs)
     assert action == num_actions - 1
 
@@ -200,16 +195,16 @@ def test_greedy_opponent_other_prompts_pick_first_option():
 def test_greedy_opponent_single_legal_action_short_circuits():
     """num_actions <= 1 always returns 0 without inspecting descriptors."""
     opp = GreedyOpponent()
-    mask = np.zeros(MAX_ACTIONS, dtype=np.int8)
-    mask[0] = 1
-    obs = YuGiOhObservation(action_mask=mask, prompt_meta={"msg_type": MSG_SELECT_IDLECMD})
+    obs = YuGiOhObservation(
+        action_descriptors=[Pass()], prompt_meta={"msg_type": MSG_SELECT_IDLECMD}
+    )
     action, _ = opp.select_action(obs)
     assert action == 0
 
 
 def test_greedy_opponent_zero_legal_actions_returns_zero():
     opp = GreedyOpponent()
-    obs = YuGiOhObservation(action_mask=np.zeros(MAX_ACTIONS, dtype=np.int8))
+    obs = YuGiOhObservation(action_descriptors=[])
     action, _ = opp.select_action(obs)
     assert action == 0
 
@@ -280,13 +275,13 @@ def test_opponent_receives_full_observation(lib, db_path, script_dirs, deck_path
         opp_obs = seen["obs"]
         assert isinstance(opp_obs, YuGiOhObservation)
         assert opp_obs.prompt_meta is not None
-        assert any(d is not None for d in opp_obs.action_descriptors)
+        assert opp_obs.action_descriptors
 
         # The opponent's observation must be built from the OPPONENT's
-        # perspective, so "my hand" (global_state[11]) must equal the actual
-        # OPPONENT's hand count. Handing the builder the agent's mapper would
-        # silently read the agent's own hand count instead.
-        assert opp_obs.global_state[11] == seen["hand"][1 - env._agent_player]
+        # perspective, so `my_hand` must equal the actual OPPONENT's hand
+        # count. Handing the builder the agent's mapper would silently read
+        # the agent's own hand count instead.
+        assert opp_obs.global_state.my_hand == seen["hand"][1 - env._agent_player]
 
         # prompt_meta must describe the prompt the OPPONENT is answering.
         # Each mapper carries the seat it was updated for, so recording it
@@ -329,14 +324,8 @@ def _make_synthetic_checkpoint(path: str) -> None:
 
 
 def _dummy_obs() -> YuGiOhObservation:
-    """Create a dummy observation with 3 legal actions.
-
-    Both representations, because consumers differ here: `num_actions` sums
-    the mask, while an encoded mask counts the descriptors.
-    """
-    mask = np.zeros(MAX_ACTIONS, dtype=np.int8)
-    mask[:3] = 1
-    return YuGiOhObservation(action_mask=mask, action_descriptors=[Pass() for _ in range(3)])
+    """Create a dummy observation with 3 legal actions."""
+    return YuGiOhObservation(action_descriptors=[Pass() for _ in range(3)])
 
 
 def test_model_opponent_construction():
@@ -359,7 +348,7 @@ def test_model_opponent_select_action():
 
         obs = _dummy_obs()
         action, _ = opp.select_action(obs)
-        assert 0 <= action < int(obs.action_mask.sum())
+        assert 0 <= action < obs.num_actions
 
 
 def test_model_opponent_deterministic():
@@ -426,7 +415,7 @@ def test_model_opponent_semantic_checkpoint():
     # Verify select_action works
     obs = _dummy_obs()
     action, _ = opp.select_action(obs)
-    assert 0 <= action < int(obs.action_mask.sum())
+    assert 0 <= action < obs.num_actions
 
     import os
 

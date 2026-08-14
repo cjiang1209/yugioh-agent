@@ -26,12 +26,11 @@ def test_action_descriptor_rejects_bad_kind():
 
 
 def test_action_descriptors_round_trip_through_pydantic_serialization():
-    """The HTTP transport contract: dump -> restore preserves None entries
-    and nested variant structure."""
+    """The HTTP transport contract: dump -> restore preserves the nested
+    variant structure."""
     obs = YuGiOhObservation(
         action_descriptors=[
             AnnounceNumber(engine_index=0, value=3),
-            None,
             SelectCounter(
                 engine_index=0,
                 card=CardRef(code=999, controller=0, location=LOCATION_MZONE, sequence=0),
@@ -41,9 +40,7 @@ def test_action_descriptors_round_trip_through_pydantic_serialization():
         ]
     )
     dumped = obs.model_dump()
-    assert dumped["action_descriptors"][1] is None  # None survives serialization
     restored = YuGiOhObservation.model_validate(dumped)
     assert restored.action_descriptors[0].kind == "announce_number"
     assert restored.action_descriptors[0].value == 3
-    assert restored.action_descriptors[1] is None
-    assert restored.action_descriptors[2].card.code == 999  # nested CardRef preserved
+    assert restored.action_descriptors[1].card.code == 999  # nested CardRef preserved

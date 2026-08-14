@@ -12,7 +12,7 @@ from yugioh_core.constants import (
     MSG_SELECT_CHAIN,
     MSG_SELECT_IDLECMD,
 )
-from yugioh_env.action_space import _ACTION_EXTRACTORS
+from yugioh_env.action_space import _ACTION_EXTRACTORS, ActionMapper
 from yugioh_env.models import ActionDescriptor, ActivateEffect, CardRef, Pass, PickCard
 from yugioh_env.server.yugioh_environment import _build_action_descriptors
 
@@ -47,9 +47,7 @@ def test_pass_is_distinct_from_finish_pick() -> None:
 def test_producer_covers_every_extractor(msg_type: int) -> None:
     msg = {**MINIMAL_MSGS[msg_type], "msg_type": msg_type, "_agent_player": 0}
     actions = _ACTION_EXTRACTORS[msg_type](msg)
-    out = _build_action_descriptors(actions)
-    for i in range(len(actions)):
-        assert out[i] is not None
+    assert len(_build_action_descriptors(actions)) == len(actions)
 
 
 def test_producer_raises_on_unknown_kind() -> None:
@@ -67,7 +65,7 @@ def test_no_cardref_built_from_filler(msg_type: int) -> None:
     """location == 0 is not a valid bitmask; no variant may emit it."""
     msg = {**MINIMAL_MSGS[msg_type], "msg_type": msg_type, "_agent_player": 0}
     for d in _build_action_descriptors(_ACTION_EXTRACTORS[msg_type](msg)):
-        if d is not None and getattr(d, "card", None) is not None:
+        if getattr(d, "card", None) is not None:
             assert d.card.location != 0, f"{msg_type}: fabricated CardRef"
 
 
@@ -230,7 +228,7 @@ def test_activate_effect_descriptor_carries_position() -> None:
     assert effects[0].position == 0x5
 
 
-def test_descriptor_none_iff_mask_zero() -> None:
+def test_one_descriptor_per_legal_action() -> None:
     from tests.env.conftest import obs_from_msg
 
     obs = obs_from_msg(
@@ -250,6 +248,28 @@ def test_descriptor_none_iff_mask_zero() -> None:
             "shuffle_hand": 0,
         }
     )
-    assert any(m for m in obs.action_mask)  # sanity: at least one legal action
-    for i, m in enumerate(obs.action_mask):
-        assert (obs.action_descriptors[i] is None) == (m == 0)
+    assert obs.action_descriptors  # sanity: at least one legal action
+    assert obs.num_actions == len(obs.action_descriptors)
+
+
+def test_descriptors_are_dense() -> None:
+    """The list is dense, so its length is the action count -- there is no
+    second representation of that number to disagree with it."""
+    mapper = ActionMapper()
+    mapper.update(
+        {
+            **MINIMAL_MSGS[MSG_SELECT_IDLECMD],
+            "msg_type": MSG_SELECT_IDLECMD,
+            "_agent_player": 0,
+        }
+    )
+    descriptors = _build_action_descriptors(mapper.actions)
+    assert len(descriptors) == mapper.num_actions
+
+
+def test_observation_has_no_action_mask() -> None:
+    """Legality is the descriptor list's length; a second representation of
+    the same count could disagree with it."""
+    from yugioh_env.models import YuGiOhObservation
+
+    assert "action_mask" not in YuGiOhObservation.model_fields

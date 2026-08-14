@@ -215,7 +215,7 @@ def test_compute_advantage_reads_hand_counts_not_deck_counts() -> None:
     gs.deck_count = [30, 20]
     gs.hand_count = [5, 3]
 
-    global_state = build_observation(gs, current_msg=None, agent_player=0)["global"]
+    global_state = build_observation(gs, current_msg=None, agent_player=0)["global_state"]
 
     advantage = TrainingEnv._compute_advantage(global_state)
     assert advantage == 5 - 3, (

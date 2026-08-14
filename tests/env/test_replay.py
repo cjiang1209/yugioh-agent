@@ -91,7 +91,7 @@ class TestRecordingOpponent:
         wrapper = RecordingOpponent(inner, rec, seat_fn=lambda: 1)
 
         obs = obs_from_msg({**MINIMAL_MSGS[MSG_SELECT_IDLECMD], "msg_type": MSG_SELECT_IDLECMD})
-        num_actions = int(obs.action_mask.sum())
+        num_actions = obs.num_actions
         action, inference = wrapper.select_action(obs)
         assert isinstance(action, int)
         assert 0 <= action < num_actions

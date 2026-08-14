@@ -1,19 +1,13 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-from yugioh_core.encoding import GLOBAL_FEATURES
+from tests.rl.conftest import make_fake_obs
 
 
 def _obs(done=False, reward=0.0):
-    o = MagicMock()
-    o.cards = [0] * (200 * 42)
-    o.global_state = [0] * GLOBAL_FEATURES
-    o.actions = [0] * (32 * 28)
-    o.action_mask = [0] * 32
-    o.pending_chain = []
-    o.event_history = []
-    o.reward = reward
-    o.done = done
-    return o
+    obs = make_fake_obs()
+    obs.done = done
+    obs.reward = reward
+    return obs
 
 
 POOL = [{"main": list(range(1, 41)), "extra": []} for _ in range(31)]

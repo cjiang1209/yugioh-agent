@@ -1,6 +1,8 @@
-"""The structured fields must describe exactly the board the packed arrays
-encode, and must carry everything packing needs. While both representations
-exist, they can be compared row by row.
+"""The structured fields must describe the board the engine reports, and must
+carry everything packing needs.
+
+The engine is the oracle for the board: `GameState` and `query_location` for
+the values, and the interleaving rule for the ordering.
 """
 
 from __future__ import annotations
@@ -8,10 +10,9 @@ from __future__ import annotations
 import dataclasses
 import inspect
 
-import numpy as np
 import pytest
 
-from yugioh_core.encoding import decode_u16, decode_u32, encode_card
+from yugioh_core.encoding import encode_card
 from yugioh_env.models import CardState
 
 
@@ -24,49 +25,65 @@ def test_card_state_can_feed_encode_card() -> None:
 
 
 @pytest.fixture
-def obs(lib, db_path, script_dirs, deck_path):
-    """A freshly dealt duel's first observation."""
-    from yugioh_env.deck_parser import parse_ydk
+def env(lib, db_path, script_dirs):
     from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
 
-    env = YuGiOhEnvironment({})
-    deck = parse_ydk(deck_path)
+    environment = YuGiOhEnvironment({})
     try:
-        yield env.reset(seed=7, deck0=deck, deck1=deck, agent_player=0)
+        yield environment
     finally:
-        env.close()
+        environment.close()
 
 
-def test_card_states_match_the_packed_rows(obs) -> None:
-    packed = np.asarray(obs.cards)
-    assert obs.card_states, "no structured cards produced"
-    for i, card in enumerate(obs.card_states):
-        row = packed[i]
-        assert decode_u32(row, 0) == card.code, f"row {i} code"
-        assert int(row[4]) == card.location, f"row {i} location"
-        assert int(row[5]) == card.sequence, f"row {i} sequence"
-        assert int(row[7]) == card.controller, f"row {i} controller"
-        assert decode_u16(row, 19) == card.attack, f"row {i} attack"
+@pytest.fixture
+def obs(env, deck_path):
+    """The opening observation of a freshly dealt duel."""
+    from yugioh_env.deck_parser import parse_ydk
+
+    deck = parse_ydk(deck_path)
+    return env.reset(seed=7, deck0=deck, deck1=deck, agent_player=0)
 
 
-def test_global_matches_the_packed_scalars(obs) -> None:
-    gs = np.asarray(obs.global_state)
-    s = obs.global_
-    assert s.my_lp == decode_u16(gs, 0)
-    assert s.opp_lp == decode_u16(gs, 2)
-    assert s.turn == int(gs[4])
-    assert s.phase == decode_u16(gs, 5)
-    assert s.is_my_turn == bool(gs[7])
-    assert s.my_hand == int(gs[11])
-    assert s.opp_hand == int(gs[16])
+def test_cards_carry_the_engine_coordinates(env, obs) -> None:
+    """Every entry names a real zone, and the codes the engine reports for the
+    agent's own hand all appear."""
+    from yugioh_core.constants import LOCATION_HAND
+
+    assert obs.cards, "no structured cards produced"
+    # location == 0 is not a valid zone bitmask and renders as "deck".
+    assert all(c.location != 0 for c in obs.cards)
+
+    engine_hand = sorted(c["code"] for c in env.query_location(0, LOCATION_HAND))
+    obs_hand = sorted(
+        c.code for c in obs.cards if c.location == LOCATION_HAND and c.controller == 0
+    )
+    assert obs_hand == engine_hand
+
+
+def test_global_matches_the_game_state(env, obs) -> None:
+    engine = env._duel.game_state
+    s = obs.global_state
+    assert s.my_lp == engine.lp[0]
+    assert s.opp_lp == engine.lp[1]
+    assert s.turn == engine.turn_count
+    assert s.phase == engine.phase
+    assert s.is_my_turn == (engine.current_player == 0)
+    assert s.my_hand == engine.hand_count[0]
+    assert s.opp_hand == engine.hand_count[1]
 
 
 def test_hidden_cards_are_kept_in_place(obs) -> None:
-    """Hidden cards occupy rows like any other card, so the structured list
-    and the packed rows hold the same number of them.
+    """Hidden cards occupy a row like any other card: present, placed, and
+    interleaved with the known ones.
     """
-    packed = np.asarray(obs.cards)
-    live = [r for r in packed if int(r[4]) != 0]
-    assert len(obs.card_states) == len(live), "structured list dropped or added rows"
-    hidden = [c for c in obs.card_states if c.code == 0]
+    hidden = [c for c in obs.cards if c.code == 0]
     assert hidden, "no hidden cards in a freshly dealt duel -- check the fixture"
+    # A hidden card still names its zone and seat; only its identity is
+    # withheld. Dropping them would shift every later row.
+    assert all(c.location != 0 and not c.is_public for c in hidden)
+    # They are interleaved, not appended: at least one known card follows
+    # a hidden one.
+    codes = [c.code for c in obs.cards]
+    assert any(codes[i] == 0 and any(c != 0 for c in codes[i + 1 :]) for i in range(len(codes))), (
+        "hidden cards all sort last -- the list was filtered or reordered"
+    )

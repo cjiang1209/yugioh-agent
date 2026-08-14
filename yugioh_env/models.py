@@ -11,13 +11,9 @@ from openenv.core.env_server.types import Action, Observation, State
 from pydantic import BeforeValidator, ConfigDict, Field, PlainSerializer, WithJsonSchema
 
 from yugioh_core.encoding import (
-    ACTION_FEATURES,
-    CARD_FEATURES,
     CHAIN_ENTRY_FEATURES,
     EVENT_ENTRY_FEATURES,
-    GLOBAL_FEATURES,
     MAX_ACTIONS,
-    MAX_CARDS,
     MAX_EVENT_HISTORY,
     MAX_PENDING_CHAIN,
 )
@@ -314,40 +310,27 @@ class GlobalState:
 class YuGiOhObservation(Observation):
     """Observation returned to the agent."""
 
-    model_config = ConfigDict(arbitrary_types_allowed=True, populate_by_name=True)
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    cards: NDArrayField((MAX_CARDS, CARD_FEATURES)) = Field(
-        description=f"Card features ({MAX_CARDS} x {CARD_FEATURES}) uint8 encoded",
-    )
-    global_state: NDArrayField((GLOBAL_FEATURES,)) = Field(
-        description=f"Global state features ({GLOBAL_FEATURES},) uint8 encoded",
-    )
-    actions: NDArrayField((MAX_ACTIONS, ACTION_FEATURES)) = Field(
-        description=f"Action features ({MAX_ACTIONS} x {ACTION_FEATURES}) uint8 encoded",
-    )
-    action_mask: NDArrayField((MAX_ACTIONS,), np.int8) = Field(
-        description=f"Binary action mask ({MAX_ACTIONS},): 1 = legal, 0 = illegal",
-    )
     pending_chain: NDArrayField((MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES)) = Field(
         description=f"Pending chain features ({MAX_PENDING_CHAIN} x {CHAIN_ENTRY_FEATURES}) uint8 encoded",
     )
     event_history: NDArrayField((MAX_EVENT_HISTORY, EVENT_ENTRY_FEATURES)) = Field(
         description=f"Event history features ({MAX_EVENT_HISTORY} x {EVENT_ENTRY_FEATURES}) uint8 encoded",
     )
-    action_descriptors: list[ActionDescriptor | None] = Field(
+    action_descriptors: list[ActionDescriptor] = Field(
         default_factory=list,
-        description="Per-action structured descriptor, parallel to actions[]; "
-        "None for padding slots. Empty on terminal observations.",
+        description="One structured descriptor per legal action, in engine "
+        "order. Empty on terminal observations.",
     )
-    card_states: list[CardState] = Field(
+    cards: list[CardState] = Field(
         default_factory=list,
-        description="Structured board cards, raw engine values, in packed-row order. "
+        description="Structured board cards, raw engine values, in engine query order. "
         "Hidden and known cards interleave, and the network's row ordering follows "
         "this order, so consumers must not filter or reorder it.",
     )
-    global_: GlobalState = Field(
+    global_state: GlobalState = Field(
         default_factory=GlobalState,
-        alias="global",
         description="Structured duel scalars, raw engine values",
     )
     prompt_meta: dict | None = Field(
@@ -363,7 +346,7 @@ class YuGiOhObservation(Observation):
     @property
     def num_actions(self) -> int:
         """Number of legal actions for the active prompt."""
-        return int(self.action_mask.sum())
+        return len(self.action_descriptors)
 
     @property
     def msg_type(self) -> int:
@@ -372,20 +355,6 @@ class YuGiOhObservation(Observation):
         Spares readers the ``prompt_meta`` lookup and its None guard.
         """
         return self.prompt_meta.get("msg_type", 0) if self.prompt_meta else 0
-
-    def as_arrays(self) -> dict[str, np.ndarray]:
-        """Return the numpy-backed encoding fields, keyed by name.
-
-        No defensive copy: these may alias the producer's buffers (`_to_array`).
-        """
-        return {
-            "cards": self.cards,
-            "global_state": self.global_state,
-            "actions": self.actions,
-            "action_mask": self.action_mask,
-            "pending_chain": self.pending_chain,
-            "event_history": self.event_history,
-        }
 
 
 class YuGiOhState(State):

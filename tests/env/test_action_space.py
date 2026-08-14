@@ -5,7 +5,7 @@ import struct
 import numpy as np
 import pytest
 
-from tests.env.conftest import MINIMAL_MSGS
+from tests.env.conftest import MINIMAL_MSGS, action_features
 from yugioh_core.action_categories import (
     BATTLE_TO_EP,
     BATTLE_TO_M2,
@@ -45,9 +45,9 @@ from yugioh_core.constants import (
     POS_FACEUP_DEFENSE,
     RACE_WARRIOR,
 )
-from yugioh_core.encoding import decode_u16, decode_u32
+from yugioh_core.encoding import ACTION_FEATURES, MAX_ACTIONS, decode_u16, decode_u32
 from yugioh_env import response_builder as rb
-from yugioh_env.action_space import _ACTION_EXTRACTORS, ACTION_FEATURES, MAX_ACTIONS, ActionMapper
+from yugioh_env.action_space import _ACTION_EXTRACTORS, ActionMapper
 from yugioh_env.server.yugioh_environment import _build_action_descriptors
 
 
@@ -56,12 +56,6 @@ def test_yesno_actions():
     mapper = ActionMapper()
     mapper.update({"msg_type": MSG_SELECT_YESNO, "player": 0, "desc": 0})
     assert mapper.num_actions == 2
-
-    mask = mapper.get_action_mask()
-    assert mask.shape == (MAX_ACTIONS,)
-    assert mask[0] == 1
-    assert mask[1] == 1
-    assert mask[2] == 0
 
 
 def test_yesno_responses():
@@ -134,7 +128,7 @@ def test_action_features_shape():
     """Action features should have correct shape."""
     mapper = ActionMapper()
     mapper.update({"msg_type": MSG_SELECT_YESNO, "player": 0, "desc": 0})
-    features = mapper.get_action_features()
+    features = action_features(mapper)
     assert features.shape == (MAX_ACTIONS, ACTION_FEATURES)
     assert features.dtype == np.uint8
 
@@ -154,7 +148,7 @@ def test_action_features_card_code_encoding():
             ],
         }
     )
-    features = mapper.get_action_features()
+    features = action_features(mapper)
     feat = features[0]
     # feat[0] = msg_type
     assert feat[0] == MSG_SELECT_CARD
@@ -563,7 +557,7 @@ def test_select_card_min_max_multi_step():
     # Step 1: 4 individual cards, no finish yet (0 < min=1)
     assert mapper.num_actions == 4
 
-    features = mapper.get_action_features()
+    features = action_features(mapper)
     # Each card action has num_selected = 1 (will be 1 after pick)
     for i in range(4):
         assert features[i][17] == 1
@@ -577,7 +571,7 @@ def test_select_card_min_max_multi_step():
     mapper.update({**msg, "_selected": [0]})
     # 3 remaining cards + 1 finish option (1 >= min=1)
     assert mapper.num_actions == 4  # 3 cards + 1 finish
-    features2 = mapper.get_action_features()
+    features2 = action_features(mapper)
     # Last action is "finish" (category=1)
     assert features2[3][1] == 1  # category = 1
     assert features2[3][17] == 1  # num_selected = 1 (accumulated so far)
@@ -819,14 +813,14 @@ def test_tribute_num_selected_feature():
         ],
     }
     mapper.update(msg)
-    features = mapper.get_action_features()
+    features = action_features(mapper)
     # Step 1: each card action has num_selected = 1 (will be 1 after pick)
     for i in range(3):
         assert features[i][17] == 1
 
     # Step 2: after picking card 0
     mapper.update({**msg, "_selected": [0]})
-    features2 = mapper.get_action_features()
+    features2 = action_features(mapper)
     # Remaining card actions have num_selected = 2 (will be 2 after pick)
     for i in range(2):
         assert features2[i][17] == 2
@@ -1028,7 +1022,7 @@ def test_action_descriptor_card_code_consistency(setup):
     msg, expected_kind, has_card_code = setup
     mapper = ActionMapper()
     mapper.update(msg)
-    feats = mapper.get_action_features()
+    feats = action_features(mapper)
     assert mapper.num_actions >= 1, f"Expected at least one action for {expected_kind}"
 
     descriptors = _build_action_descriptors(mapper.actions)
@@ -1185,7 +1179,7 @@ def test_action_controller_relativizes_per_agent_player(agent_player):
             ],
         }
     )
-    features = mapper.get_action_features()
+    features = action_features(mapper)
     # New 28-byte layout: byte 6 = controller (relativized: 0=agent, 1=opp)
     ctrl_p0 = int(features[0][6])  # chain on engine player 0
     ctrl_p1 = int(features[1][6])  # chain on engine player 1
@@ -1376,7 +1370,7 @@ def test_extractor_single_byte_field_roundtrip(case_name, msg_factory, byte_idx,
     """Each wire field shows up in the right byte of the encoded action."""
     mapper = ActionMapper()
     mapper.update(msg_factory())
-    features = mapper.get_action_features()
+    features = action_features(mapper)
     assert features[0][byte_idx] == expected, (
         f"case {case_name}: feats[0][{byte_idx}]={int(features[0][byte_idx])}, expected {expected}"
     )
@@ -1397,7 +1391,7 @@ def test_extractor_desc_packs_into_bytes_20_27():
     }
     mapper = ActionMapper()
     mapper.update(msg)
-    feat = mapper.get_action_features()[0]
+    feat = action_features(mapper)[0]
     decoded = 0
     for i in range(8):
         decoded |= int(feat[20 + i]) << (8 * i)
@@ -1415,7 +1409,7 @@ def test_extractor_sequence_widens_to_u16():
     msg = _card_msg(sequence=300)
     mapper = ActionMapper()
     mapper.update(msg)
-    feat = mapper.get_action_features()[0]
+    feat = action_features(mapper)[0]
     assert decode_u16(feat, 8) == 300
 
 
@@ -1664,7 +1658,7 @@ def test_place_encodes_controller_byte() -> None:
     mapper.update(
         {"msg_type": MSG_SELECT_PLACE, "player": 0, "count": 1, "field_mask": 0, "_agent_player": 0}
     )
-    feats = mapper.get_action_features()
+    feats = action_features(mapper)
     n = mapper.num_actions
     assert set(int(feats[i][6]) for i in range(n)) == {0, 1}, (
         "feat[6] must now distinguish my/opponent zones"
@@ -1681,7 +1675,7 @@ def test_sort_encodes_coordinates() -> None:
             "cards": [{"code": 1234, "controller": 0, "location": LOCATION_MZONE, "sequence": 3}],
         }
     )
-    feats = mapper.get_action_features()
+    feats = action_features(mapper)
     assert int(feats[0][7]) == LOCATION_MZONE  # location
     assert int(feats[0][8]) == 3  # sequence low byte
 
@@ -1711,7 +1705,7 @@ def test_counter_encodes_coordinates() -> None:
             ],
         }
     )
-    feats = mapper.get_action_features()
+    feats = action_features(mapper)
     assert int(feats[0][7]) == LOCATION_MZONE
     assert decode_u16(feats[0], 8) == 300
     assert int(feats[0][9]) == 300 >> 8
@@ -1796,29 +1790,6 @@ def test_every_variant_kind_is_reachable() -> None:
         msg = {**MINIMAL_MSGS[mt], "msg_type": mt, "_agent_player": 0}
         seen |= {a["kind"] for a in _ACTION_EXTRACTORS[mt](msg)}
     assert seen == set(ALL_VARIANT_KINDS)
-
-
-@pytest.mark.parametrize("msg_type", sorted(_ACTION_EXTRACTORS))
-def test_action_mask_is_a_contiguous_ones_prefix(msg_type: int) -> None:
-    """The load-bearing mask invariant, asserted at its SOLE producer
-    (`ActionMapper.get_action_mask`, action_space.py:88).
-
-    Everything downstream assumes it: `sum(mask) == num_actions` in
-    RandomOpponent and ForcedCollapseOpponent, the network's masked argmax,
-    and Part C's compaction. `descriptors[i] is None <=> mask[i] == 0` alone
-    does NOT imply contiguity — a scattered mask satisfies it too.
-    """
-    mapper = ActionMapper()
-    mapper.update({**MINIMAL_MSGS[msg_type], "msg_type": msg_type, "_agent_player": 0})
-    n = mapper.num_actions
-    # n <= MAX_ACTIONS can never fail (ActionMapper.update truncates); assert
-    # n > 0 instead so the equality below cannot pass trivially on an empty
-    # action list.
-    assert n > 0
-    assert np.array_equal(
-        mapper.get_action_mask(),
-        np.r_[np.ones(n, np.int8), np.zeros(MAX_ACTIONS - n, np.int8)],
-    )
 
 
 # ─── Discriminator fields on tagged actions: category, `to`, `yes` ──────────

@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 import torch
 
+from tests.env.conftest import action_features
 from yugioh_core.constants import (
     ATTRIBUTE_DARK,
     LOCATION_HAND,
@@ -29,6 +30,7 @@ from yugioh_core.encoding import (
 )
 from yugioh_env.action_space import ActionMapper
 from yugioh_env.game_state import GameState
+from yugioh_env.models import YuGiOhObservation
 from yugioh_env.observation import build_observation
 from yugioh_rl.features import (
     _ATTR_BITS,
@@ -44,6 +46,7 @@ from yugioh_rl.features import (
     decode_cards,
     decode_global,
 )
+from yugioh_rl.obs_encoder import encode_observation
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -58,9 +61,11 @@ def _card_tensor(card_array: np.ndarray) -> torch.Tensor:
 
 
 def _global_tensor(gs: GameState, msg=None, agent_player=0) -> torch.Tensor:
-    """Build observation and return global_state as a (1, GLOBAL_FEATURES) tensor."""
-    obs = build_observation(gs, msg, agent_player=agent_player)
-    return torch.from_numpy(obs["global_state"]).unsqueeze(0)
+    """Build an observation and return its packed global row as a
+    (1, GLOBAL_FEATURES) tensor."""
+    obs_data = build_observation(gs, msg, agent_player=agent_player)
+    obs = YuGiOhObservation(global_state=obs_data["global_state"])
+    return torch.from_numpy(encode_observation(obs)["global_state"]).unsqueeze(0)
 
 
 def _bit_index(bits: list[int], value: int) -> list[int]:
@@ -649,11 +654,10 @@ class TestGlobalRoundtrip:
 
 
 class TestActionRoundtrip:
-    """_encode_action → decode_actions roundtrips."""
+    """encode_observation's action rows → decode_actions roundtrips."""
 
     def _action_tensor(self, mapper: ActionMapper) -> torch.Tensor:
-        features = mapper.get_action_features()
-        return torch.from_numpy(features).unsqueeze(0)
+        return torch.from_numpy(action_features(mapper)).unsqueeze(0)
 
     def test_output_shape(self):
         mapper = ActionMapper()
@@ -801,8 +805,7 @@ class TestDecodeActionsContract:
     forward-pass contract; pin it here."""
 
     def _action_tensor(self, mapper: ActionMapper) -> torch.Tensor:
-        features = mapper.get_action_features()
-        return torch.from_numpy(features).unsqueeze(0)
+        return torch.from_numpy(action_features(mapper)).unsqueeze(0)
 
     def _yesno_tensor(self, desc: int) -> torch.Tensor:
         """Build an action tensor for SELECT_YESNO with a custom desc."""

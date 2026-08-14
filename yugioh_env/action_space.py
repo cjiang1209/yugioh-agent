@@ -1,12 +1,10 @@
-"""Action masking and action-to-response mapping."""
+"""Action extraction and action-to-response mapping."""
 
 from __future__ import annotations
 
 import logging
 from collections.abc import Callable
 from itertools import combinations
-
-import numpy as np
 
 from yugioh_core.action_categories import (
     BATTLE_ACTIVATE,
@@ -23,7 +21,7 @@ from yugioh_core.action_categories import (
     IDLE_TO_EP,
 )
 from yugioh_core.constants import *  # noqa: F401,F403
-from yugioh_core.encoding import ACTION_FEATURES, MAX_ACTIONS, encode_u16, encode_u32, encode_u64
+from yugioh_core.encoding import MAX_ACTIONS
 from yugioh_env import response_builder as rb
 
 logger = logging.getLogger(__name__)
@@ -32,8 +30,8 @@ logger = logging.getLogger(__name__)
 class ActionMapper:
     """Maps parsed SELECT messages to a fixed-size action space.
 
-    Extracts available actions from a SELECT message, provides action masks
-    and feature vectors, and converts action indices to binary responses.
+    Extracts the legal actions from a SELECT message and converts an action
+    index back into the binary response the engine expects.
 
     Stateless: all multi-step orchestration (e.g. accumulating card picks)
     is handled by the caller.  ``action_to_response`` returns ``None`` for
@@ -89,19 +87,6 @@ class ActionMapper:
     @property
     def num_actions(self) -> int:
         return len(self._actions)
-
-    def get_action_mask(self) -> np.ndarray:
-        """Return binary mask: 1 for legal actions, 0 otherwise."""
-        mask = np.zeros(MAX_ACTIONS, dtype=np.int8)
-        mask[: len(self._actions)] = 1
-        return mask
-
-    def get_action_features(self) -> np.ndarray:
-        """Return feature vectors for each action slot."""
-        features = np.zeros((MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8)
-        for i, action in enumerate(self._actions):
-            features[i] = _encode_action(action, self._msg_type)
-        return features
 
     def get_action_index(self, idx: int) -> int:
         """Return the card/item index for action *idx*."""
@@ -1085,53 +1070,3 @@ _ACTION_EXTRACTORS = {
     MSG_ROCK_PAPER_SCISSORS: _extract_rps_actions,
     MSG_SELECT_COUNTER: _extract_counter_actions,
 }
-
-
-def _encode_action(action: dict, msg_type: int) -> np.ndarray:
-    """Encode a single action as a feature vector.
-
-    Layout (28 bytes):
-        [0]      msg_type           (uint8)
-        [1]      category           (uint8)
-        [2:6]    code               (uint32 LE - card passcode)
-        [6]      controller         (uint8 - relativized: 0=agent, 1=opp)
-        [7]      location           (uint8)
-        [8:10]   sequence           (uint16 LE)
-        [10]     subsequence        (uint8 - Xyz overlay slot)
-        [11]     position           (uint8 bitmask)
-        [12]     direct_attackable  (uint8 - 0/1)
-        [13]     param              (uint8 - release_param OR sum.param, aliased; narrowed here)
-        [14]     counter_type       (uint8 - LOW BYTE of the counter id. The
-                 wire field is a u16: COUNTER_* flag bits above 0xFF are
-                 dropped, and so are id bits 8-11, which several real
-                 counters use. `counter_type` on the action dict keeps the
-                 full u16, so the response path is unaffected.)
-        [15]     counter_count      (uint8)
-        [16]     index              (uint8)
-        [17]     num_selected       (uint8 - number of cards in combo, default 1)
-        [18]     extra_idx_0        (uint8 - index of 2nd selected card)
-        [19]     extra_idx_1        (uint8 - index of 3rd selected card)
-        [20:28]  desc               (uint64 LE - engine effect string ID)
-    """
-    feat = np.zeros(ACTION_FEATURES, dtype=np.uint8)
-    feat[0] = msg_type & 0xFF
-    feat[1] = action.get("category", 0)
-    feat[2:6] = encode_u32(action.get("code", 0) & 0xFFFFFFFF)
-    feat[6] = action.get("controller", 0) & 0xFF
-    feat[7] = action.get("location", 0) & 0xFF
-    feat[8:10] = encode_u16(min(action.get("sequence", 0), 65535))
-    feat[10] = action.get("subsequence", 0) & 0xFF
-    feat[11] = action.get("position", 0) & 0xFF
-    feat[12] = 1 if action.get("direct_attackable", 0) else 0
-    feat[13] = action.get("param", 0) & 0xFF
-    feat[14] = action.get("counter_type", 0) & 0xFF
-    feat[15] = action.get("counter_count", 0) & 0xFF
-    feat[16] = action.get("index", 0) & 0xFF
-    feat[17] = action.get("num_selected", 1)
-    extra = action.get("extra_indices", [])
-    if len(extra) >= 1:
-        feat[18] = extra[0] & 0xFF
-    if len(extra) >= 2:
-        feat[19] = extra[1] & 0xFF
-    feat[20:28] = encode_u64(action.get("desc", 0) & 0xFFFFFFFFFFFFFFFF)
-    return feat

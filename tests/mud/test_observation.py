@@ -42,6 +42,7 @@ from yugioh_core.encoding import (
     MAX_ACTIONS,
     MAX_CARDS,
 )
+from yugioh_env.models import YuGiOhObservation
 from yugioh_mud.cmd_handler import StructuredAction
 from yugioh_mud.game_state import CardEntry, MUDGameState
 from yugioh_mud.observation import (
@@ -51,6 +52,7 @@ from yugioh_mud.observation import (
     MUDObservationBuilder,
 )
 from yugioh_mud.text_parser import ParsedPrompt, PromptType
+from yugioh_rl.obs_encoder import encode_observation
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -190,9 +192,12 @@ class TestGlobalState:
         engine.banished_count = [1, 0]
         engine.extra_count = [0, 1]
         engine.is_finished = False
-        engine_global = build_observation(engine, {"msg_type": MSG_SELECT_IDLECMD}, agent_player=0)[
-            "global_state"
-        ]
+        engine_obs = YuGiOhObservation(
+            global_state=build_observation(
+                engine, {"msg_type": MSG_SELECT_IDLECMD}, agent_player=0
+            )["global_state"]
+        )
+        engine_global = encode_observation(engine_obs)["global_state"]
 
         assert mud_global.shape == engine_global.shape == (GLOBAL_FEATURES,)
         mismatches = [i for i in range(len(engine_global)) if mud_global[i] != engine_global[i]]

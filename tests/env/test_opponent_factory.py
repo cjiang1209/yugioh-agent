@@ -4,11 +4,9 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-import numpy as np
 import pytest
 
-from yugioh_core.encoding import MAX_ACTIONS
-from yugioh_env.models import YuGiOhObservation
+from yugioh_env.models import Pass, YuGiOhObservation
 from yugioh_env.opponent import (
     GreedyOpponent,
     RandomOpponent,
@@ -58,9 +56,7 @@ class TestMakeOpponent:
 
     def test_random_deterministic_with_seed(self):
         """Same seed produces identical RandomOpponent behavior."""
-        mask = np.zeros(MAX_ACTIONS, dtype=np.int8)
-        mask[:4] = 1
-        obs = YuGiOhObservation(action_mask=mask)
+        obs = YuGiOhObservation(action_descriptors=[Pass() for _ in range(4)])
         opp_a = make_opponent("random", seed=123)
         opp_b = make_opponent("random", seed=123)
         # num_actions=4 so select_action returns randint(0, 3)

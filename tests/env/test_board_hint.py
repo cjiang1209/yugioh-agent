@@ -18,15 +18,12 @@ import random
 import pytest
 
 from yugioh_core.encoding import (
-    CARD_FEATURES,
     CHAIN_ENTRY_FEATURES,
     EVENT_ENTRY_FEATURES,
-    GLOBAL_FEATURES,
-    MAX_CARDS,
     MAX_EVENT_HISTORY,
     MAX_PENDING_CHAIN,
 )
-from yugioh_env.models import YuGiOhAction
+from yugioh_env.models import GlobalState, YuGiOhAction
 from yugioh_env.opponent import Inference, ModelOpponent, Opponent, RandomOpponent
 from yugioh_env.replay import GameRecording, RecordingOpponent
 
@@ -44,23 +41,20 @@ def test_include_board_false_zeros_board_but_fully_populates_prompt(
     try:
         obs_full = env.reset(seed=42)
         # Sanity: the real board is non-empty right after reset (decks/hands
-        # dealt), so a False cards.any() below is a genuine signal, not a
+        # dealt), so an empty card list below is a genuine signal, not a
         # fluke of an empty board.
-        assert obs_full.cards.any()
-        assert obs_full.global_state.any()
+        assert obs_full.cards
+        assert obs_full.global_state != GlobalState()
 
         obs_no_board = env._build_seat_observation(env._mapper, include_board=False)
 
-        # Board fields fall back to shaped zeros.
-        assert obs_no_board.cards.shape == (MAX_CARDS, CARD_FEATURES)
-        assert not obs_no_board.cards.any()
-        assert obs_no_board.global_state.shape == (GLOBAL_FEATURES,)
-        assert not obs_no_board.global_state.any()
+        # Board fields fall back to their empty defaults.
+        assert obs_no_board.cards == []
+        assert obs_no_board.global_state == GlobalState()
         assert obs_no_board.pending_chain.shape == (MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES)
         assert obs_no_board.event_history.shape == (MAX_EVENT_HISTORY, EVENT_ENTRY_FEATURES)
 
         # Prompt side is fully populated and identical to the full build.
-        assert obs_no_board.action_mask.tolist() == obs_full.action_mask.tolist()
         assert obs_no_board.action_descriptors == obs_full.action_descriptors
         assert obs_no_board.prompt_meta == obs_full.prompt_meta
     finally:
@@ -106,10 +100,9 @@ def _play_until_done_or(env, max_steps: int = 60) -> None:
     rng = random.Random(1)
     steps = 0
     while not obs.done and steps < max_steps:
-        legal = [i for i, m in enumerate(obs.action_mask) if m == 1]
-        if not legal:
+        if obs.num_actions == 0:
             break
-        obs = env.step(YuGiOhAction(action_index=rng.choice(legal)))
+        obs = env.step(YuGiOhAction(action_index=rng.randrange(obs.num_actions)))
         steps += 1
 
 

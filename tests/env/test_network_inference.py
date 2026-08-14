@@ -5,7 +5,7 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from tests.env.conftest import obs_from_mask
+from tests.env.conftest import obs_from_action_count
 from yugioh_core.encoding import MAX_ACTIONS  # noqa: E402
 from yugioh_env.opponent import Inference, NetworkOpponent  # noqa: E402
 
@@ -32,7 +32,7 @@ class FakeNet:
 
 def test_reports_value_and_probabilities():
     opp = NetworkOpponent(FakeNet(value=0.375))
-    action, inference = opp.select_action(obs_from_mask(num_legal=3))
+    action, inference = opp.select_action(obs_from_action_count(num_legal=3))
 
     assert action == 1
     assert isinstance(inference, Inference)
@@ -52,8 +52,8 @@ def test_reported_probabilities_are_the_ones_sampled_from():
     greedy = NetworkOpponent(FakeNet())
     hot = NetworkOpponent(FakeNet(), stochastic=True, temperature=5.0)
 
-    _, from_greedy = greedy.select_action(obs_from_mask())
-    _, from_hot = hot.select_action(obs_from_mask())
+    _, from_greedy = greedy.select_action(obs_from_action_count())
+    _, from_hot = hot.select_action(obs_from_action_count())
 
     assert sum(from_hot.action_probs) == pytest.approx(1.0)
     # T > 1 pulls mass off the favoured slot, toward uniform.
@@ -67,8 +67,8 @@ def test_temperature_one_reports_the_plain_policy():
     greedy = NetworkOpponent(FakeNet())
     neutral = NetworkOpponent(FakeNet(), stochastic=True, temperature=1.0)
 
-    _, from_greedy = greedy.select_action(obs_from_mask())
-    _, from_neutral = neutral.select_action(obs_from_mask())
+    _, from_greedy = greedy.select_action(obs_from_action_count())
+    _, from_neutral = neutral.select_action(obs_from_action_count())
 
     assert from_neutral.action_probs == pytest.approx(from_greedy.action_probs)
 
@@ -77,5 +77,5 @@ def test_illegal_slots_are_excluded_not_zeroed():
     """action_probs is index-aligned with the caller's actions[] list, which
     only ever holds the legal slots."""
     opp = NetworkOpponent(FakeNet())
-    _, inference = opp.select_action(obs_from_mask(num_legal=2))
+    _, inference = opp.select_action(obs_from_action_count(num_legal=2))
     assert len(inference.action_probs) == 2

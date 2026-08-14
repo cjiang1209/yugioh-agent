@@ -8,7 +8,7 @@ torch = pytest.importorskip("torch")
 
 import torch.nn as nn
 
-from tests.env.conftest import obs_from_mask
+from tests.env.conftest import obs_from_action_count
 from yugioh_core.encoding import MAX_ACTIONS
 from yugioh_env.opponent import NetworkOpponent
 
@@ -17,7 +17,7 @@ class _FakeNet(nn.Module):
     """Minimal stand-in: ignores inputs, returns canned logits + dummy value + hx.
 
     ``logits`` covers only the legal actions under test; padded out to
-    ``MAX_ACTIONS`` with filler values that ``obs_from_mask``'s mask marks
+    ``MAX_ACTIONS`` with filler values for slots the encoded mask marks
     illegal, so they're masked to -inf regardless of the filler.
     """
 
@@ -45,7 +45,7 @@ class _FakeNet(nn.Module):
 def test_stochastic_false_is_argmax() -> None:
     net = _FakeNet([3.0, 1.0, 0.5])
     opp = NetworkOpponent(net, stochastic=False)
-    action, _ = opp.select_action(obs_from_mask(3))
+    action, _ = opp.select_action(obs_from_action_count(3))
     assert action == 0
 
 
@@ -53,7 +53,7 @@ def test_stochastic_true_samples_distribution() -> None:
     # Logits where action 2 is much more likely; with temperature 1 we
     # should see it dominate over many samples.
     net = _FakeNet([0.0, 0.0, 5.0])
-    obs = obs_from_mask(3)
+    obs = obs_from_action_count(3)
     counts = [0, 0, 0]
     for seed in range(200):
         torch.manual_seed(seed)
@@ -70,7 +70,7 @@ def test_stochastic_low_temperature_approaches_argmax() -> None:
     net = _FakeNet([3.0, 1.0, 0.5])
     torch.manual_seed(0)
     opp = NetworkOpponent(net, stochastic=True, temperature=0.01)
-    action, _ = opp.select_action(obs_from_mask(3))
+    action, _ = opp.select_action(obs_from_action_count(3))
     assert action == 0
 
 
@@ -92,7 +92,7 @@ def test_stochastic_respects_action_mask() -> None:
     # count, so only a prefix is expressible: an illegal slot *between* legal
     # ones -- which would also catch an index-clamping bug -- cannot be built.
     net = _FakeNet([0.0, 0.0, 10.0])
-    obs = obs_from_mask(2)
+    obs = obs_from_action_count(2)
     for seed in range(50):
         torch.manual_seed(seed)
         opp = NetworkOpponent(net, stochastic=True, temperature=1.0)

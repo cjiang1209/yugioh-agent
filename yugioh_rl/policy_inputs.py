@@ -32,7 +32,7 @@ def build_forward_inputs(
         guard_optional: read ``event_history`` / ``pending_chain`` via ``.get()``
             and yield ``None`` when absent (serving obs dicts are built by varied
             producers); ``False`` indexes directly (collection, where
-            ``TrainingEnv``/``as_arrays`` always populates the key).
+            ``TrainingEnv``/``encode_observation`` always populates the key).
 
     Returns:
         A dict of ``forward`` kwargs: ``obs_cards``, ``obs_global``,

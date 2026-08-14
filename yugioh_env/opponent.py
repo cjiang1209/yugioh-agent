@@ -72,7 +72,7 @@ class RandomOpponent(Opponent):
 
     @property
     def needs_board_state(self) -> bool:
-        return False  # reads only obs.action_mask
+        return False  # reads only the action count
 
     def __init__(self, seed: int | None = None):
         self._rng = random.Random(seed)
@@ -101,7 +101,7 @@ class GreedyOpponent(Opponent):
 
     @property
     def needs_board_state(self) -> bool:
-        return False  # reads descriptors, mask, prompt_meta
+        return False  # reads descriptors and prompt_meta
 
     def select_action(self, obs: YuGiOhObservation) -> tuple[int, Inference | None]:
         num_actions = obs.num_actions
@@ -112,9 +112,9 @@ class GreedyOpponent(Opponent):
         descriptors = obs.action_descriptors
 
         if msg_type == MSG_SELECT_IDLECMD:
-            return self._greedy_idle(descriptors, num_actions), None
+            return self._greedy_idle(descriptors), None
         elif msg_type == MSG_SELECT_BATTLECMD:
-            return self._greedy_battle(descriptors, num_actions), None
+            return self._greedy_battle(descriptors), None
         else:
             return 0, None
 
@@ -139,7 +139,7 @@ class GreedyOpponent(Opponent):
                 return i
         return None
 
-    def _greedy_idle(self, descriptors: list, num_actions: int) -> int:
+    def _greedy_idle(self, descriptors: list) -> int:
         for command in (IDLE_SUMMON, IDLE_SP_SUMMON, IDLE_SSET):
             idx = self._first_command(descriptors, command)
             if idx is not None:
@@ -149,13 +149,13 @@ class GreedyOpponent(Opponent):
         if idx is not None:
             return idx
 
-        return num_actions - 1
+        return len(descriptors) - 1
 
-    def _greedy_battle(self, descriptors: list, num_actions: int) -> int:
+    def _greedy_battle(self, descriptors: list) -> int:
         idx = self._first_attack(descriptors)
         if idx is not None:
             return idx
-        return num_actions - 1
+        return len(descriptors) - 1
 
 
 class NetworkOpponent(Opponent):
@@ -224,8 +224,8 @@ class NetworkOpponent(Opponent):
                 action = int(masked.argmax(dim=-1).item())
             inference = Inference(
                 value=float(values[0].item()),
-                # A contiguous prefix slice is only correct because
-                # get_action_mask() (action_space.py) fills mask[:n] densely.
+                # A contiguous prefix slice is only correct because the mask
+                # is a dense prefix: it is built from the descriptor count.
                 action_probs=probs[0, : obs.num_actions].tolist(),
             )
 

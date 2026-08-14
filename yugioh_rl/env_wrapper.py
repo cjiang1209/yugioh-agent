@@ -184,7 +184,7 @@ class TrainingEnv:
             agent_player=resolved_player,
         )
         np_obs = encode_observation(obs)
-        self._snapshot_shaping_state(obs.global_)
+        self._snapshot_shaping_state(obs.global_state)
 
         return np_obs
 
@@ -227,7 +227,7 @@ class TrainingEnv:
             # (vec-env workers do it eagerly to preserve wire behavior;
             # eval workers reset to a specific episode_idx for the next task).
         elif self._reward_shaping:
-            reward += self._compute_shaping(obs.global_)
+            reward += self._compute_shaping(obs.global_state)
 
         return np_obs, reward, done, info
 

@@ -5,23 +5,15 @@ import pytest
 from pydantic import ValidationError
 
 from yugioh_core.encoding import (
-    ACTION_FEATURES,
-    CARD_FEATURES,
     CHAIN_ENTRY_FEATURES,
     EVENT_ENTRY_FEATURES,
-    GLOBAL_FEATURES,
-    MAX_ACTIONS,
-    MAX_CARDS,
     MAX_EVENT_HISTORY,
     MAX_PENDING_CHAIN,
 )
 from yugioh_env.models import YuGiOhObservation
 
+# The observation's only packed buffers; every other field is structured.
 FIELDS = {
-    "cards": ((MAX_CARDS, CARD_FEATURES), np.uint8),
-    "global_state": ((GLOBAL_FEATURES,), np.uint8),
-    "actions": ((MAX_ACTIONS, ACTION_FEATURES), np.uint8),
-    "action_mask": ((MAX_ACTIONS,), np.int8),
     "pending_chain": ((MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES), np.uint8),
     "event_history": ((MAX_EVENT_HISTORY, EVENT_ENTRY_FEATURES), np.uint8),
 }
@@ -62,15 +54,14 @@ def test_wrong_sized_input_raises(name, spec) -> None:
 
 
 def test_transposed_same_size_2d_input_raises() -> None:
-    """A right-SIZE, wrong-SHAPE 2-D input (e.g. cards transposed) has the
-    same element count as the field shape, so a naive `reshape` would accept
-    it silently and scramble the data instead of raising. This is the single
-    contract-enforcement point for the whole observation -- it must be a
-    loud failure, not a transpose."""
-    shape, dtype = FIELDS["cards"]
+    """A right-SIZE, wrong-SHAPE 2-D input has the same element count as the
+    field shape, so a naive `reshape` would accept it silently and scramble
+    the data instead of raising. This is the single contract-enforcement point
+    for the whole observation -- it must be a loud failure, not a transpose."""
+    shape, dtype = FIELDS["pending_chain"]
     transposed = np.ones(shape[::-1], dtype=dtype)
     with pytest.raises(ValidationError):
-        YuGiOhObservation(cards=transposed)
+        YuGiOhObservation(pending_chain=transposed)
 
 
 @pytest.mark.parametrize("name,spec", FIELDS.items())
@@ -87,6 +78,6 @@ def test_json_schema_nesting_depth_matches_shape(name, spec) -> None:
 def test_json_wire_round_trip() -> None:
     obs = YuGiOhObservation()
     payload = obs.model_dump()
-    assert isinstance(payload["actions"], list)  # python mode -> lists
+    assert isinstance(payload["pending_chain"], list)  # python mode -> lists
     back = YuGiOhObservation(**payload)
-    assert np.array_equal(back.as_arrays()["actions"], obs.as_arrays()["actions"])
+    assert np.array_equal(back.pending_chain, obs.pending_chain)

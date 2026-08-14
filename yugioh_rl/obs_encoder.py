@@ -4,8 +4,9 @@ Feature encoding is network-specific, so it lives here rather than on the
 observation, which stays a data carrier. Called by ``TrainingEnv`` for
 collection and ``NetworkOpponent`` for inference.
 
-Every clamp and mask in this module exists to fit a uint8 array. The structured
-models hold raw engine values; narrowing happens here and nowhere else.
+Every clamp and mask in this module exists to fit a uint8 array: the structured
+models hold raw engine values, and the fields packed here are narrowed here.
+``pending_chain`` and ``event_history`` arrive already packed and pass through.
 """
 
 from __future__ import annotations
@@ -62,7 +63,7 @@ from yugioh_env.models import (
 
 def _encode_cards(obs: YuGiOhObservation) -> np.ndarray:
     cards = np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8)
-    for i, c in enumerate(obs.card_states[:MAX_CARDS]):
+    for i, c in enumerate(obs.cards[:MAX_CARDS]):
         cards[i] = encode_card(
             code=c.code,
             location=c.location,
@@ -88,7 +89,7 @@ def _encode_cards(obs: YuGiOhObservation) -> np.ndarray:
 
 def _encode_global(obs: YuGiOhObservation) -> np.ndarray:
     g = np.zeros(GLOBAL_FEATURES, dtype=np.uint8)
-    s = obs.global_
+    s = obs.global_state
     idx = 0
     g[idx], g[idx + 1] = encode_u16(min(s.my_lp, 65535))
     idx += 2
@@ -122,20 +123,9 @@ def _encode_global(obs: YuGiOhObservation) -> np.ndarray:
     return g
 
 
-def _num_actions(obs: YuGiOhObservation) -> int:
-    """Number of legal actions.
-
-    ``action_descriptors`` is padded with ``None`` up to ``MAX_ACTIONS``.
-    Count the real entries rather than the list length, or every slot reads
-    as legal. The padding is a contiguous suffix, so this count is also the
-    prefix length.
-    """
-    return sum(1 for d in obs.action_descriptors[:MAX_ACTIONS] if d is not None)
-
-
 def _encode_action_mask(obs: YuGiOhObservation) -> np.ndarray:
     mask = np.zeros(MAX_ACTIONS, dtype=np.int8)
-    mask[: _num_actions(obs)] = 1
+    mask[: len(obs.action_descriptors)] = 1
     return mask
 
 
@@ -184,9 +174,9 @@ def _confirm_card_fields(obs: YuGiOhObservation) -> tuple[int, int, int, int]:
 
 
 def _row_fields(d, i: int, msg_type: int, obs: YuGiOhObservation) -> dict:
-    """Reconstruct the raw values `_encode_action`'s byte layout needs, one
-    branch per descriptor kind. Defaults mirror `action.get(key, 0)` --
-    num_selected defaults to 1, everything else to 0.
+    """Reconstruct the raw values `_encode_action_row`'s byte layout needs,
+    one branch per descriptor kind. A kind that carries no value for a field
+    leaves the default below, which the frozen goldens hold it to.
     """
     f = {
         "category": 0,
@@ -277,6 +267,32 @@ def _row_fields(d, i: int, msg_type: int, obs: YuGiOhObservation) -> dict:
 
 
 def _encode_action_row(d, i: int, msg_type: int, obs: YuGiOhObservation) -> np.ndarray:
+    """Encode a single action as a feature vector.
+
+    Layout (28 bytes):
+        [0]      msg_type           (uint8)
+        [1]      category           (uint8)
+        [2:6]    code               (uint32 LE - card passcode)
+        [6]      controller         (uint8 - relativized: 0=agent, 1=opp)
+        [7]      location           (uint8)
+        [8:10]   sequence           (uint16 LE)
+        [10]     subsequence        (uint8 - Xyz overlay slot)
+        [11]     position           (uint8 bitmask)
+        [12]     direct_attackable  (uint8 - 0/1)
+        [13]     param              (uint8 - release_param OR sum.param, aliased; narrowed here)
+        [14]     counter_type       (uint8 - LOW BYTE of the counter id.
+                 `SelectCounter.counter_type` is a u16: COUNTER_* flag bits
+                 above 0xFF are dropped here, and so are id bits 8-11, which
+                 several real counters use. The engine response carries
+                 per-card counts and no counter id, so only what the network
+                 sees is narrowed.)
+        [15]     counter_count      (uint8)
+        [16]     index              (uint8)
+        [17]     num_selected       (uint8 - number of cards in combo, default 1)
+        [18]     extra_idx_0        (uint8 - no producer, left zero)
+        [19]     extra_idx_1        (uint8 - no producer, left zero)
+        [20:28]  desc               (uint64 LE - engine effect string ID)
+    """
     f = _row_fields(d, i, msg_type, obs)
     feat = np.zeros(ACTION_FEATURES, dtype=np.uint8)
     feat[0] = msg_type & 0xFF
@@ -293,7 +309,6 @@ def _encode_action_row(d, i: int, msg_type: int, obs: YuGiOhObservation) -> np.n
     feat[15] = f["counter_count"] & 0xFF
     feat[16] = f["index"] & 0xFF
     feat[17] = f["num_selected"]
-    # feat[18:20] (extra_idx) have no producer -- left zero.
     feat[20:28] = encode_u64(f["desc"] & 0xFFFFFFFFFFFFFFFF)
     return feat
 
@@ -301,9 +316,9 @@ def _encode_action_row(d, i: int, msg_type: int, obs: YuGiOhObservation) -> np.n
 def _encode_actions(obs: YuGiOhObservation) -> np.ndarray:
     feats = np.zeros((MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8)
     msg_type = obs.msg_type
+    # Both arrays hold MAX_ACTIONS rows, so both stop there: the mask's slice
+    # clamps and this bound matches it.
     for i, d in enumerate(obs.action_descriptors[:MAX_ACTIONS]):
-        if d is None:
-            continue
         feats[i] = _encode_action_row(d, i, msg_type, obs)
     return feats
 

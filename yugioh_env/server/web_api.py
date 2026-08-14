@@ -146,7 +146,7 @@ def _resolve_recommendation(request: Request, obs) -> Recommendation | None:
     recommender = getattr(request.app.state, "recommender", None)
     if not getattr(request.app.state, "recommend_enabled", False) or recommender is None:
         return None
-    if obs is None or obs.done or not obs.action_mask.any():
+    if obs is None or obs.done or not obs.action_descriptors:
         return None
     try:
         return recommend(recommender, obs)

@@ -203,17 +203,16 @@ class ActionDescriber:
         self._text = CardTextResolver(card_db, sys_strings=sys_strings)
 
     def describe(self, obs: YuGiOhObservation, action_idx: int) -> ActionDetails:
-        """Describe a single legal action by slot index. Raises IndexError
-        for out-of-range or inactive slots."""
-        if action_idx < 0 or action_idx >= len(obs.action_mask):
-            raise IndexError(f"action_idx {action_idx} out of range (len={len(obs.action_mask)})")
-        if obs.action_mask[action_idx] != 1:
-            raise IndexError(f"action slot {action_idx} is inactive (action_mask=0)")
+        """Describe a single legal action by index. Raises IndexError when the
+        index is out of range."""
+        n = len(obs.action_descriptors)
+        if action_idx < 0 or action_idx >= n:
+            raise IndexError(f"action_idx {action_idx} out of range (len={n})")
         return self._describe_one(obs, action_idx)
 
     def describe_all(self, obs: YuGiOhObservation) -> list[ActionDetails]:
-        """One ActionDetails per legal action (where action_mask[i] == 1)."""
-        return [self._describe_one(obs, i) for i, m in enumerate(obs.action_mask) if m == 1]
+        """One ActionDetails per legal action."""
+        return [self._describe_one(obs, i) for i in range(len(obs.action_descriptors))]
 
     def describe_prompt(self, obs: YuGiOhObservation) -> dict | None:
         """Build the prompt-level metadata dict for the current observation,
@@ -254,10 +253,7 @@ class ActionDescriber:
     # ─── Internal dispatch ────────────────────────────────────────────────
 
     def _describe_one(self, obs: YuGiOhObservation, idx: int) -> ActionDetails:
-        descriptors = obs.action_descriptors
-        d = descriptors[idx] if idx < len(descriptors) else None
-        if d is None:
-            raise IndexError(f"action slot {idx} has no descriptor")
+        d = obs.action_descriptors[idx]
         msg_type = obs.msg_type
 
         card_code = 0

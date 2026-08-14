@@ -1,4 +1,4 @@
-"""Encode game state as numpy arrays for RL observation."""
+"""Project engine state into the structured observation the agent receives."""
 
 from __future__ import annotations
 
@@ -17,17 +17,13 @@ from yugioh_core.constants import (
     STATUS_DISABLED,
 )
 from yugioh_core.encoding import (
-    CARD_FEATURES,
     CHAIN_ENTRY_FEATURES,
     EVENT_ENTRY_FEATURES,
-    GLOBAL_FEATURES,
     MAX_CARDS,
     MAX_EVENT_HISTORY,
     MAX_PENDING_CHAIN,
     ZONE_SLOTS,
-    encode_card,
     encode_chain_entry,
-    encode_u16,
 )
 from yugioh_env.game_state import GameState
 from yugioh_env.models import CardState, GlobalState
@@ -40,7 +36,7 @@ def build_observation(
     query_fn=None,
     event_history: np.ndarray | None = None,
 ) -> dict[str, Any]:
-    """Build the complete observation arrays.
+    """Build the agent's observation from engine state.
 
     Args:
         game_state: Current GameState
@@ -49,18 +45,15 @@ def build_observation(
         query_fn: Optional callable(player, location) -> list[dict] for querying cards
 
     Returns:
-        Dict with the structured 'card_states' (list[CardState]) and 'global'
-        (GlobalState) holding raw engine values, plus the 'cards' and
-        'global_state' numpy arrays packed from them.
+        Dict with the structured 'cards' (list[CardState]) and 'global_state'
+        (GlobalState) carrying raw, unclamped engine values, plus the
+        'pending_chain' and 'event_history' arrays.
     """
-    cards = np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8)
-    global_state = np.zeros(GLOBAL_FEATURES, dtype=np.uint8)
-
     opp_player = 1 - agent_player
 
-    # Raw engine values. The packing below is the only place that clamps or
-    # masks, since those exist to fit the byte array.
-    global_ = GlobalState(
+    # Raw engine values throughout: clamping and masking belong to the encoder
+    # that packs these into bytes, not here.
+    global_state = GlobalState(
         my_lp=game_state.lp[agent_player],
         opp_lp=game_state.lp[opp_player],
         turn=game_state.turn_count,
@@ -81,54 +74,10 @@ def build_observation(
         is_finished=game_state.is_finished,
     )
 
-    # Fill global state
-    idx = 0
-    # my_lp (2 bytes)
-    global_state[idx], global_state[idx + 1] = encode_u16(min(global_.my_lp, 65535))
-    idx += 2
-    # opp_lp (2 bytes)
-    global_state[idx], global_state[idx + 1] = encode_u16(min(global_.opp_lp, 65535))
-    idx += 2
-    # turn_count
-    global_state[idx] = min(global_.turn, 255)
-    idx += 1
-    # phase (2 bytes, uint16 LE — bitmask values up to 0x200)
-    global_state[idx], global_state[idx + 1] = encode_u16(global_.phase)
-    idx += 2
-    # is_my_turn
-    global_state[idx] = 1 if global_.is_my_turn else 0
-    idx += 1
-    # chain_count
-    global_state[idx] = min(global_.chain_count, 255)
-    idx += 1
-    # msg_type
-    global_state[idx] = global_.msg_type & 0xFF
-    idx += 1
-    # deck/hand/gy/banished/extra counts per player
-    for count in (
-        global_.my_deck,
-        global_.my_hand,
-        global_.my_grave,
-        global_.my_banished,
-        global_.my_extra,
-        global_.opp_deck,
-        global_.opp_hand,
-        global_.opp_grave,
-        global_.opp_banished,
-        global_.opp_extra,
-    ):
-        global_state[idx] = min(count, 255)
-        idx += 1
-    # is_finished
-    global_state[idx] = 1 if global_.is_finished else 0
-    idx += 1
-
-    card_states: list[CardState] = []
+    cards: list[CardState] = []
 
     # Fill card zones from query function if available
     if query_fn is not None:
-        card_idx = 0
-
         for player in [agent_player, opp_player]:
             is_agent = player == agent_player
             for loc, slot_name in [
@@ -142,7 +91,9 @@ def build_observation(
                 max_slots = ZONE_SLOTS[slot_name]
                 queried = query_fn(player, loc)
                 for i, cdata in enumerate(queried[:max_slots]):
-                    if card_idx >= MAX_CARDS:
+                    # Filling stops silently once full, and every later zone
+                    # then stops on its first card.
+                    if len(cards) >= MAX_CARDS:
                         break
 
                     is_public = bool(cdata.get("is_public", 0))
@@ -156,59 +107,39 @@ def build_observation(
                         visible = False
 
                     if visible:
-                        state = CardState(
-                            code=cdata.get("code", 0),
-                            location=loc,
-                            sequence=cdata.get("sequence", i),
-                            position=position,
-                            controller=0 if is_agent else 1,
-                            is_public=is_public or faceup,
-                            card_type=cdata.get("type", 0),
-                            level=cdata.get("level", 0) or cdata.get("rank", 0),
-                            attribute=cdata.get("attribute", 0),
-                            race=cdata.get("race", 0),
-                            attack=cdata.get("attack", 0),
-                            defense=cdata.get("defense", 0),
-                            lscale=cdata.get("lscale", 0),
-                            rscale=cdata.get("rscale", 0),
-                            link_marker=cdata.get("link_marker", 0),
-                            counter_count=len(cdata.get("counters", [])),
-                            negated=bool(cdata.get("status", 0) & STATUS_DISABLED),
+                        cards.append(
+                            CardState(
+                                code=cdata.get("code", 0),
+                                location=loc,
+                                sequence=cdata.get("sequence", i),
+                                position=position,
+                                controller=0 if is_agent else 1,
+                                is_public=is_public or faceup,
+                                card_type=cdata.get("type", 0),
+                                level=cdata.get("level", 0) or cdata.get("rank", 0),
+                                attribute=cdata.get("attribute", 0),
+                                race=cdata.get("race", 0),
+                                attack=cdata.get("attack", 0),
+                                defense=cdata.get("defense", 0),
+                                lscale=cdata.get("lscale", 0),
+                                rscale=cdata.get("rscale", 0),
+                                link_marker=cdata.get("link_marker", 0),
+                                counter_count=len(cdata.get("counters", [])),
+                                negated=bool(cdata.get("status", 0) & STATUS_DISABLED),
+                            )
                         )
                     else:
                         # Hidden card: only location/controller visible
-                        state = CardState(
-                            code=0,
-                            location=loc,
-                            sequence=cdata.get("sequence", i),
-                            position=0,
-                            controller=0 if is_agent else 1,
-                            is_public=False,
+                        cards.append(
+                            CardState(
+                                code=0,
+                                location=loc,
+                                sequence=cdata.get("sequence", i),
+                                position=0,
+                                controller=0 if is_agent else 1,
+                                is_public=False,
+                            )
                         )
-                    card_states.append(state)
-                    # Packing reads the structured card, so the two cannot
-                    # describe different boards.
-                    cards[card_idx] = encode_card(
-                        code=state.code,
-                        location=state.location,
-                        sequence=state.sequence,
-                        position=state.position,
-                        controller=state.controller,
-                        is_public=state.is_public,
-                        card_type=state.card_type,
-                        level=state.level,
-                        attribute=state.attribute,
-                        race=state.race,
-                        attack=state.attack,
-                        defense=state.defense,
-                        lscale=state.lscale,
-                        rscale=state.rscale,
-                        link_marker=state.link_marker,
-                        counter_count=state.counter_count,
-                        negated=state.negated,
-                        is_overlay=state.is_overlay,
-                    )
-                    card_idx += 1
 
     # Pending chain → (MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES) uint8 tensor.
     # Relativize controller (raw engine → 0=agent / 1=opponent) BEFORE encoding.
@@ -232,6 +163,4 @@ def build_observation(
         "global_state": global_state,
         "pending_chain": pending_chain,
         "event_history": event_history,
-        "card_states": card_states,
-        "global": global_,
     }

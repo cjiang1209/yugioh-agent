@@ -6,41 +6,41 @@ the decoder (e.g. query_fn integration, visibility rules).
 """
 
 
-def test_action_descriptors_length_matches_actions(lib, db_path, script_dirs):
-    """action_descriptors length must equal action_mask length (32 for active
-    obs). This is the §6 length-parity invariant from the spec."""
+def test_action_descriptors_cover_exactly_the_legal_actions(lib, db_path, script_dirs):
+    """One descriptor per legal action and nothing else, on a live prompt."""
     from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+    from yugioh_rl.obs_encoder import encode_observation
 
     env = YuGiOhEnvironment({})
     obs = env.reset(seed=42)
-    assert len(obs.action_descriptors) == len(obs.actions) == len(obs.action_mask)
-    # Inactive slots are None; only the legal-action prefix may carry a descriptor
-    legal_count = sum(obs.action_mask)
-    for i in range(legal_count, len(obs.action_mask)):
-        assert obs.action_descriptors[i] is None
+    assert obs.action_descriptors
+    assert obs.num_actions == len(obs.action_descriptors)
+    assert int(encode_observation(obs)["action_mask"].sum()) == obs.num_actions
 
 
 def test_terminal_observation_actions_zeroed(lib, db_path, script_dirs):
-    """On done=True there is no active prompt: actions/action_mask are shaped
-    all-zero arrays and action_descriptors is empty."""
+    """On done=True there is no active prompt: action_descriptors is empty and
+    the arrays the network reads encode to shaped zeros."""
     import random
 
     from yugioh_core.encoding import ACTION_FEATURES, MAX_ACTIONS
     from yugioh_env.models import YuGiOhAction
     from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+    from yugioh_rl.obs_encoder import encode_observation
 
     env = YuGiOhEnvironment({})
     obs = env.reset(seed=42)
     rng = random.Random(0)
     while not obs.done:
-        legal = [i for i, m in enumerate(obs.action_mask) if m == 1]
-        if not legal:
+        if obs.num_actions == 0:
             break
-        obs = env.step(YuGiOhAction(action_index=rng.choice(legal)))
+        obs = env.step(YuGiOhAction(action_index=rng.randrange(obs.num_actions)))
     assert obs.done
-    assert obs.actions.shape == (MAX_ACTIONS, ACTION_FEATURES) and not obs.actions.any()
-    assert obs.action_mask.shape == (MAX_ACTIONS,) and not obs.action_mask.any()
     assert obs.action_descriptors == []
+    encoded = encode_observation(obs)
+    assert encoded["actions"].shape == (MAX_ACTIONS, ACTION_FEATURES)
+    assert not encoded["actions"].any()
+    assert encoded["action_mask"].shape == (MAX_ACTIONS,) and not encoded["action_mask"].any()
 
 
 def test_terminal_obs_keeps_real_board_but_zeroes_actions(
@@ -55,6 +55,7 @@ def test_terminal_obs_keeps_real_board_but_zeroes_actions(
     from yugioh_env.deck_parser import parse_ydk
     from yugioh_env.models import YuGiOhAction
     from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+    from yugioh_rl.obs_encoder import encode_observation
 
     deck = parse_ydk(deck_path)
     env = YuGiOhEnvironment(
@@ -68,11 +69,14 @@ def test_terminal_obs_keeps_real_board_but_zeroes_actions(
     while not obs.done:
         obs = env.step(YuGiOhAction(action_index=0))
 
-    assert obs.actions.shape == (MAX_ACTIONS, ACTION_FEATURES)
-    assert not obs.actions.any()
-    assert obs.action_mask.shape == (MAX_ACTIONS,) and obs.action_mask.dtype == np.int8
     assert obs.action_descriptors == []
-    assert obs.cards.any(), "final board must NOT be zeroed"
+    encoded = encode_observation(obs)
+    assert encoded["actions"].shape == (MAX_ACTIONS, ACTION_FEATURES)
+    assert not encoded["actions"].any()
+    assert encoded["action_mask"].shape == (MAX_ACTIONS,)
+    assert encoded["action_mask"].dtype == np.int8
+    assert obs.cards, "final board must NOT be empty"
+    assert encoded["cards"].any(), "final board must NOT be zeroed"
 
 
 # ─── Board controller relativization invariants (Tests B1, B2) ────────────────
@@ -80,7 +84,7 @@ def test_terminal_obs_keeps_real_board_but_zeroes_actions(
 
 def _build_obs_with_card_on_engine_player_1(agent_player: int):
     """Synthesize an observation with one face-up monster on engine player 1's
-    field, using a fake query_fn. Returns the cards array."""
+    field, using a fake query_fn. Returns the structured card list."""
     from yugioh_env.game_state import GameState
     from yugioh_env.observation import build_observation
 
@@ -103,36 +107,24 @@ def _build_obs_with_card_on_engine_player_1(agent_player: int):
     return obs["cards"]
 
 
+def _find_test_card(cards):
+    found = [c for c in cards if c.code == 46986414]
+    assert found, "test card not found on the board"
+    return found[0]
+
+
 def test_board_controller_relativizes_when_agent_player_is_0():
     """B1: with agent_player=0, a card on engine player 1's MZONE shows
-    controller=1 (opponent) in the board encoding."""
-    from yugioh_core.encoding import decode_u32
-
-    cards = _build_obs_with_card_on_engine_player_1(agent_player=0)
-    found = None
-    for i in range(cards.shape[0]):
-        if decode_u32(cards[i], 0) == 46986414:
-            found = i
-            break
-    assert found is not None, "test card not found in board encoding"
-    # encode_card layout: byte 7 = controller (after code[0-3], location[4],
-    # sequence[5], position[6])
-    assert int(cards[found, 7]) == 1, "engine player 1's card → relative=1 when agent=0"
+    controller=1 (opponent) on the board."""
+    card = _find_test_card(_build_obs_with_card_on_engine_player_1(agent_player=0))
+    assert card.controller == 1, "engine player 1's card → relative=1 when agent=0"
 
 
 def test_board_controller_relativizes_when_agent_player_is_1():
     """B2: with agent_player=1, the same engine-player-1 card now shows
-    controller=0 (agent's own) in the board encoding."""
-    from yugioh_core.encoding import decode_u32
-
-    cards = _build_obs_with_card_on_engine_player_1(agent_player=1)
-    found = None
-    for i in range(cards.shape[0]):
-        if decode_u32(cards[i], 0) == 46986414:
-            found = i
-            break
-    assert found is not None, "test card not found in board encoding"
-    assert int(cards[found, 7]) == 0, "engine player 1's card → relative=0 when agent=1"
+    controller=0 (agent's own) on the board."""
+    card = _find_test_card(_build_obs_with_card_on_engine_player_1(agent_player=1))
+    assert card.controller == 0, "engine player 1's card → relative=0 when agent=1"
 
 
 def test_board_and_action_controller_agree_on_real_episode(lib, db_path, script_dirs):
@@ -151,7 +143,6 @@ def test_board_and_action_controller_agree_on_real_episode(lib, db_path, script_
     """
     import random
 
-    from yugioh_core.encoding import decode_u32
     from yugioh_env.models import YuGiOhAction
     from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
 
@@ -164,45 +155,33 @@ def test_board_and_action_controller_agree_on_real_episode(lib, db_path, script_
     max_steps = 80  # cap so the test stays fast; enough to cross several turns
 
     while not obs.done and steps_run < max_steps:
-        legal = [i for i, m in enumerate(obs.action_mask) if m == 1]
-        if not legal:
+        if obs.num_actions == 0:
             break
 
         # Build a (code, location, sequence) → controller lookup from the
-        # board encoding. Skip slots without a real code (empty slots,
-        # face-down opponent cards).
+        # board. Skip entries without a real code (face-down opponent cards).
         board_by_id: dict[tuple[int, int, int], int] = {}
         for c in obs.cards:
-            code = decode_u32(c, 0)
-            if code == 0:
+            if c.code == 0:
                 continue
-            location = c[4]
-            sequence = c[5]
-            controller = c[7]
-            board_by_id.setdefault((code, location, sequence), controller)
+            board_by_id.setdefault((c.code, c.location, c.sequence), c.controller)
 
-        # Walk legal card-bearing actions and cross-check the controller.
-        for ai, mask_v in enumerate(obs.action_mask):
-            if mask_v != 1:
+        # Walk the card-bearing actions and cross-check the controller.
+        for ai, d in enumerate(obs.action_descriptors):
+            card = getattr(d, "card", None)
+            if card is None or card.code == 0 or card.location == 0:
                 continue
-            af = obs.actions[ai]
-            a_code = decode_u32(af, 2)
-            a_loc = af[7]
-            if a_code == 0 or a_loc == 0:
-                continue
-            a_ctrl = af[6]
-            a_seq = af[8] | (af[9] << 8)
-            board_ctrl = board_by_id.get((a_code, a_loc, a_seq))
+            board_ctrl = board_by_id.get((card.code, card.location, card.sequence))
             if board_ctrl is None:
-                continue  # action references a card that isn't in obs.cards
-            assert a_ctrl == board_ctrl, (
-                f"controller drift: action[{ai}] (code={a_code}, "
-                f"loc=0x{a_loc:02x}, seq={a_seq}) ctrl={a_ctrl} but "
-                f"board_ctrl={board_ctrl}"
+                continue  # action references a card that isn't on the board
+            assert card.controller == board_ctrl, (
+                f"controller drift: action[{ai}] (code={card.code}, "
+                f"loc=0x{card.location:02x}, seq={card.sequence}) "
+                f"ctrl={card.controller} but board_ctrl={board_ctrl}"
             )
             card_actions_checked += 1
 
-        obs = env.step(YuGiOhAction(action_index=rng.choice(legal)))
+        obs = env.step(YuGiOhAction(action_index=rng.randrange(obs.num_actions)))
         steps_run += 1
 
     assert card_actions_checked >= 5, (
@@ -240,10 +219,9 @@ def test_prompt_meta_populated_on_select_msg(lib, db_path, script_dirs):
             )
             assert isinstance(obs.prompt_meta["msg_type"], int)
             return  # found a populated prompt_meta — test passes
-        legal = [i for i, m in enumerate(obs.action_mask) if m == 1]
-        if not legal:
+        if obs.num_actions == 0:
             break
-        obs = env.step(YuGiOhAction(action_index=rng.choice(legal)))
+        obs = env.step(YuGiOhAction(action_index=rng.randrange(obs.num_actions)))
 
     # If we never observed a non-None prompt_meta, the wiring is broken.
     assert obs.prompt_meta is not None or obs.done, (
@@ -264,10 +242,9 @@ def test_prompt_meta_none_on_terminal(lib, db_path, script_dirs):
 
     # Play to completion.
     while not obs.done:
-        legal = [i for i, m in enumerate(obs.action_mask) if m == 1]
-        if not legal:
+        if obs.num_actions == 0:
             break
-        obs = env.step(YuGiOhAction(action_index=rng.choice(legal)))
+        obs = env.step(YuGiOhAction(action_index=rng.randrange(obs.num_actions)))
 
     assert obs.done
     assert obs.prompt_meta is None

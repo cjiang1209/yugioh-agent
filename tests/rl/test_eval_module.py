@@ -5,14 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
-import numpy as np
 import pytest
 
 from tests.rl.conftest import make_deck_pool, requires_engine
 from yugioh_core.encoding import (
     MAX_ACTIONS,
 )
-from yugioh_env.models import YuGiOhObservation
+from yugioh_env.models import Pass, YuGiOhObservation
 from yugioh_env.opponent import (
     GreedyOpponent,
     Opponent,
@@ -176,7 +175,7 @@ class _ScriptedEnv:
 
 
 def _dummy_obs() -> YuGiOhObservation:
-    return YuGiOhObservation(action_mask=np.ones(MAX_ACTIONS, dtype=np.int8))
+    return YuGiOhObservation(action_descriptors=[Pass() for _ in range(MAX_ACTIONS)])
 
 
 class TestRunMatch:

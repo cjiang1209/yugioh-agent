@@ -37,11 +37,9 @@ def test_random_rollout_100(env):
         steps = 0
 
         while not obs.done and steps < max_steps:
-            # Collect valid actions
-            valid = [i for i, m in enumerate(obs.action_mask) if m == 1]
-            if not valid:
+            if obs.num_actions == 0:
                 break
-            action_idx = rng.choice(valid)
+            action_idx = rng.randrange(obs.num_actions)
             obs = env.step(YuGiOhAction(action_index=action_idx))
             steps += 1
 

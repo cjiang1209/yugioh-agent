@@ -111,7 +111,7 @@ def _format_prompt_summary(prompt: dict | None) -> str:
 
 def display_state(obs: YuGiOhObservation, step_num: int, action_describer: ActionDescriber) -> None:
     """Print a summary of the current observation."""
-    gs = obs.global_
+    gs = obs.global_state
     phase_name = PHASE_NAMES.get(gs.phase, f"0x{gs.phase:02x}")
     turn_marker = " <-- YOUR TURN" if gs.is_my_turn else ""
 
@@ -132,7 +132,7 @@ def display_state(obs: YuGiOhObservation, step_num: int, action_describer: Actio
     if gs.chain_count > 0:
         print(f"  Chain count: {gs.chain_count}")
 
-    legal_count = sum(1 for m in obs.action_mask if m == 1)
+    legal_count = obs.num_actions
     summary = _format_prompt_summary(action_describer.describe_prompt(obs))
     decision_line = (
         f"  Decision: {summary}  ({legal_count} legal action{'s' if legal_count != 1 else ''})"
@@ -152,7 +152,7 @@ def display_state(obs: YuGiOhObservation, step_num: int, action_describer: Actio
 
 def pick_action_interactive(obs: YuGiOhObservation) -> int:
     """Prompt the user to pick a legal action."""
-    legal = [i for i, m in enumerate(obs.action_mask) if m == 1]
+    legal = list(range(obs.num_actions))
     if len(legal) == 1:
         print(f"  >> Auto-selecting only legal action: [{legal[0]}]")
         return legal[0]
@@ -172,15 +172,11 @@ def pick_action_interactive(obs: YuGiOhObservation) -> int:
 
 def pick_action_random(obs: YuGiOhObservation) -> int:
     """Pick a random legal action."""
-    legal = [i for i, m in enumerate(obs.action_mask) if m == 1]
-    return random.choice(legal)
+    return random.randrange(obs.num_actions)
 
 
 def pick_action_greedy(obs: YuGiOhObservation) -> int:
     """Pick the first legal action (greedy/deterministic)."""
-    for i, m in enumerate(obs.action_mask):
-        if m == 1:
-            return i
     return 0
 
 
@@ -235,7 +231,7 @@ def run_episode(
             display_state(result.observation, step_num, action_describer)
 
     # Final summary
-    gs = result.observation.global_
+    gs = result.observation.global_state
     reward = result.reward
 
     if verbose:

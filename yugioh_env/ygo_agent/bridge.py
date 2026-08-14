@@ -289,7 +289,7 @@ def _decode_phase(phase: int) -> str:
 
 
 def translate_cards(obs: YuGiOhObservation) -> list[dict]:
-    """Convert obs.card_states to ygo-agent Card dicts.
+    """Convert obs.cards to ygo-agent Card dicts.
 
     Monster and spell zones are fixed-size, so the engine reports an empty one
     as a ``code == 0`` entry carrying only its location. ygo-agent never sees
@@ -299,7 +299,7 @@ def translate_cards(obs: YuGiOhObservation) -> list[dict]:
     location counts.
     """
     cards: list[dict] = []
-    for card in obs.card_states:
+    for card in obs.cards:
         # Skip fully-empty entries and empty monster/spell zone holes.
         if card.code == 0 and card.location in (0, LOCATION_MZONE, LOCATION_SZONE):
             continue
@@ -335,8 +335,8 @@ def translate_cards(obs: YuGiOhObservation) -> list[dict]:
 
 
 def translate_global(obs: YuGiOhObservation) -> dict:
-    """Convert obs.global_ to ygo-agent Global dict."""
-    gs = obs.global_
+    """Convert obs.global_state to ygo-agent Global dict."""
+    gs = obs.global_state
     # is_first: odd turns belong to the first player
     is_first = (gs.turn % 2 == 1) == gs.is_my_turn
 
@@ -884,7 +884,7 @@ def build_predict_input(
     """Build the full DuelPredictRequest body for the ygo-agent server.
 
     Args:
-        obs: The current observation (structured card_states/global_ fields
+        obs: The current observation (structured cards/global_state fields
             plus action_descriptors/prompt_meta for the active prompt).
         prev_action_idx: Index of the previously selected action (0 for first).
         index: Duel session index (must match server state).
@@ -896,13 +896,13 @@ def build_predict_input(
     global_state = translate_global(obs)
     action_msg = translate_action_msg(obs.action_descriptors, obs.prompt_meta)
 
-    # Deck cards are hidden and never appear in obs.card_states — only their
-    # count lives in obs.global_. ygo-agent derives deck counts from the card
+    # Deck cards are hidden and never appear in obs.cards — only their
+    # count lives in obs.global_state. ygo-agent derives deck counts from the card
     # list, so without these placeholders the model sees an empty deck, which is
     # far off-distribution and collapses the policy toward uniform. Synthesize
     # one hidden card per deck slot to restore the true count.
-    cards.extend(_hidden_deck_card("me") for _ in range(obs.global_.my_deck))
-    cards.extend(_hidden_deck_card("opponent") for _ in range(obs.global_.opp_deck))
+    cards.extend(_hidden_deck_card("me") for _ in range(obs.global_state.my_deck))
+    cards.extend(_hidden_deck_card("opponent") for _ in range(obs.global_state.opp_deck))
 
     return {
         "input": {
@@ -923,9 +923,9 @@ logger = logging.getLogger(__name__)
 
 
 def _find(descriptors: list, pred) -> int:
-    """First absolute index whose descriptor is non-None and satisfies pred."""
+    """First index whose descriptor satisfies pred."""
     for i, d in enumerate(descriptors):
-        if d is not None and pred(d):
+        if pred(d):
             return i
     # No slot matched. Returning 0 is indistinguishable from a real match on
     # slot 0, so say so -- a wrong-but-plausible action is otherwise invisible.
@@ -1051,8 +1051,8 @@ def match_response(msg_type: int, descriptors: list, response: int) -> int:
 
     Args:
         msg_type: Our MSG_SELECT_* constant.
-        descriptors: ``YuGiOhObservation.action_descriptors`` (may contain
-            ``None`` padding entries; skipped).
+        descriptors: ``YuGiOhObservation.action_descriptors``, one entry per
+            legal action.
         response: The ``response`` field from ygo-agent's ``ActionPredict``.
 
     Returns:

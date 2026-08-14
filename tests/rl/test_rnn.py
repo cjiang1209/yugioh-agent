@@ -20,7 +20,7 @@ from yugioh_core.encoding import (
     MAX_ACTIONS,
     MAX_CARDS,
 )
-from yugioh_env.models import YuGiOhObservation
+from yugioh_env.models import Pass, YuGiOhObservation
 from yugioh_rl.config import TrainingConfig
 from yugioh_rl.network import YuGiOhNet
 
@@ -28,10 +28,8 @@ _RNN_FIELDS = ("rnn_type", "rnn_hidden_dim", "rnn_num_layers", "bptt_chunk_len")
 
 
 def _dummy_model_opponent_obs() -> YuGiOhObservation:
-    """Full-shape observation with the first 3 actions legal."""
-    mask = np.zeros(MAX_ACTIONS, dtype=np.int8)
-    mask[:3] = 1
-    return YuGiOhObservation(action_mask=mask)
+    """Full-shape observation with 3 legal actions."""
+    return YuGiOhObservation(action_descriptors=[Pass() for _ in range(3)])
 
 
 def _save_minimal_checkpoint(path: str, config: TrainingConfig) -> None:

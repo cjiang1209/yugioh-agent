@@ -7,22 +7,34 @@ from pathlib import Path
 import pytest
 
 
-def obs_from_mask(num_legal: int = 3):
-    """Build a YuGiOhObservation carrying only an action mask.
+def obs_from_action_count(num_legal: int = 3):
+    """Build a YuGiOhObservation carrying `num_legal` legal actions.
 
-    The first `num_legal` slots are legal and the rest pad to MAX_ACTIONS, a
-    dense prefix. Both representations are supplied because consumers differ:
-    `num_actions` sums the mask, while an encoded mask counts the descriptors.
-    `Pass` is the filler -- it encodes to a byte row without needing a prompt.
-    For tests that drive an opponent's choice without needing a real board.
+    Legality is the descriptor list's length, so the legal slots are always
+    the prefix 0..num_legal-1. `Pass` is the filler -- it encodes to a byte
+    row without needing a prompt. For tests that drive an opponent's choice
+    without needing a real board.
     """
-    from yugioh_core.encoding import MAX_ACTIONS
     from yugioh_env.models import Pass, YuGiOhObservation
 
-    return YuGiOhObservation(
-        action_mask=[1] * num_legal + [0] * (MAX_ACTIONS - num_legal),
-        action_descriptors=[Pass()] * num_legal,
+    return YuGiOhObservation(action_descriptors=[Pass()] * num_legal)
+
+
+def action_features(mapper):
+    """The packed action rows for the mapper's current prompt.
+
+    Produced from a structured observation the way the server produces them,
+    so callers exercise the one encoder there is.
+    """
+    from yugioh_env.models import YuGiOhObservation
+    from yugioh_env.server.yugioh_environment import _build_action_descriptors, _build_prompt_meta
+    from yugioh_rl.obs_encoder import encode_observation
+
+    obs = YuGiOhObservation(
+        action_descriptors=_build_action_descriptors(mapper.actions),
+        prompt_meta=_build_prompt_meta(mapper),
     )
+    return encode_observation(obs)["actions"]
 
 
 def obs_from_msg(msg: dict, *, _selected: list[int] | None = None, agent_player: int = 0):
@@ -48,10 +60,6 @@ def obs_from_msg(msg: dict, *, _selected: list[int] | None = None, agent_player:
     if _selected is not None:
         mapper.update({**msg, "_selected": _selected})
     return YuGiOhObservation(
-        cards=[],
-        global_state=[],
-        actions=mapper.get_action_features().tolist(),
-        action_mask=mapper.get_action_mask().tolist(),
         action_descriptors=_build_action_descriptors(mapper.actions),
         prompt_meta=_build_prompt_meta(mapper),
         events=[],
@@ -107,6 +115,7 @@ def duel(lib, card_db, script_dirs, deck_path):
 from yugioh_core.constants import (
     COUNTER_NEED_ENABLE,
     LOCATION_MZONE,
+    LOCATION_OVERLAY,
     MSG_ANNOUNCE_ATTRIB,
     MSG_ANNOUNCE_CARD,
     MSG_ANNOUNCE_NUMBER,
@@ -129,6 +138,9 @@ from yugioh_core.constants import (
     MSG_SORT_CARD,
     MSG_SORT_CHAIN,
     OPCODE_ISCODE,
+    POS_FACEUP,
+    POS_FACEUP_ATTACK,
+    POS_FACEUP_DEFENSE,
 )
 
 _CARD = {"code": 1234, "controller": 0, "location": LOCATION_MZONE, "sequence": 0}
@@ -232,6 +244,86 @@ MINIMAL_MSGS: dict[int, dict] = {
         "counter_type": COUNTER_NEED_ENABLE | 1,
         "count": 1,
         "cards": [{**_CARD, "counter_count": 3}],
+    },
+}
+
+
+# Route cases: prompts whose action bytes take a route no MINIMAL_MSGS entry
+# reaches. Three bytes carry a position-shaped value by different routes, and a
+# per-kind case can leave any of them silently zero -- MINIMAL_MSGS' attackable
+# card, for instance, always has `direct_attackable: 0`, so byte 12 never turns
+# on. Keyed by case name rather than msg_type because two of them are the same
+# msg_type. Shared with the golden capture script, so the bytes the tests assert
+# on and the bytes the fixture freezes come from the same prompt.
+ROUTE_CASES: dict[str, dict] = {
+    "byte10_position_branch": {
+        "msg_type": MSG_SELECT_CARD,
+        "player": 0,
+        "min": 1,
+        "max": 1,
+        "cards": [
+            {
+                "code": 100,
+                "controller": 0,
+                "location": LOCATION_MZONE,
+                "sequence": 0,
+                "subsequence": POS_FACEUP,
+            }
+        ],
+    },
+    # LOCATION_OVERLAY set, so the slot is a stack index, not a position.
+    "byte10_overlay_branch": {
+        "msg_type": MSG_SELECT_CARD,
+        "player": 0,
+        "min": 1,
+        "max": 1,
+        "cards": [
+            {
+                "code": 100,
+                "controller": 0,
+                "location": LOCATION_MZONE | LOCATION_OVERLAY,
+                "sequence": 0,
+                "subsequence": 2,
+            }
+        ],
+    },
+    # The chain extractor is byte 11's only producer.
+    "byte11_chain_route": {
+        "msg_type": MSG_SELECT_CHAIN,
+        "player": 0,
+        "forced": False,
+        "chains": [
+            {
+                "code": 200,
+                "controller": 0,
+                "location": LOCATION_MZONE,
+                "sequence": 1,
+                "position": POS_FACEUP,
+                "desc": 0,
+            }
+        ],
+    },
+    # _extract_position_actions puts its bitmask in `index`, so it lands in
+    # byte 16 -- not byte 11, despite being a position.
+    "byte16_choose_position_route": {
+        "msg_type": MSG_SELECT_POSITION,
+        "player": 0,
+        "code": 300,
+        "positions": POS_FACEUP_ATTACK | POS_FACEUP_DEFENSE,
+    },
+    "byte12_direct_attackable_route": {
+        "msg_type": MSG_SELECT_BATTLECMD,
+        "player": 0,
+        "activatable": [],
+        "attackable": [
+            {
+                "code": 500,
+                "controller": 0,
+                "location": LOCATION_MZONE,
+                "sequence": 0,
+                "direct_attackable": 1,
+            }
+        ],
     },
 }
 

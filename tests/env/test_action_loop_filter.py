@@ -416,7 +416,7 @@ def test_loop_filter_suppresses_disabled_quillbolt(lib, db_path, script_dirs, de
 
         # Quillbolt Hedgehog loop detected; verify the next prompt
         # matches the recorded IDLE with 2 actions.
-        num_actions = sum(obs.action_mask)
+        num_actions = obs.num_actions
         entry = cursor.next_agent_entry(
             expected_msg_type=env._mapper.msg_type,
             expected_num_actions=num_actions,
@@ -490,7 +490,7 @@ def test_loop_filter_suppresses_period2_self_negate(lib, db_path, script_dirs, d
 
         # Honest's period-2 loop is detected and suppressed.
         assert env._loop_filter.has_looping_actions
-        num_actions = sum(obs.action_mask)
+        num_actions = obs.num_actions
         entry = cursor.next_agent_entry(
             expected_msg_type=env._mapper.msg_type,
             expected_num_actions=num_actions,
@@ -577,7 +577,7 @@ def test_loop_filter_suppresses_opponent_formula_synchron(lib, db_path, script_d
         assert env._loop_filter.has_looping_actions
         # Verify Formula Synchron loop is suppressed: the next prompt matches
         # the recorded IDLE — no opponent chain prompt intervened.
-        num_actions = sum(obs.action_mask)
+        num_actions = obs.num_actions
         entry = cursor.next_agent_entry(
             expected_msg_type=env._mapper.msg_type,
             expected_num_actions=num_actions,

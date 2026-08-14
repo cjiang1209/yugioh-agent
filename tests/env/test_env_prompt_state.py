@@ -1,7 +1,7 @@
 """Regression tests for YuGiOhEnvironment.current_msg / num_actions invariants.
 
 These properties are consumed by the eval driver (Phase 2+), which needs them
-to stay consistent with the observation's action_mask across:
+to stay consistent with the observation's action count across:
 
 1. **Multi-step card selection** — step() accumulates picks without
    re-entering _process_to_agent_choice; _current_msg must track the updated
@@ -25,13 +25,8 @@ from yugioh_core.constants import (
     MSG_SELECT_IDLECMD,
 )
 from yugioh_core.encoding import (
-    ACTION_FEATURES,
-    CARD_FEATURES,
     CHAIN_ENTRY_FEATURES,
     EVENT_ENTRY_FEATURES,
-    GLOBAL_FEATURES,
-    MAX_ACTIONS,
-    MAX_CARDS,
     MAX_EVENT_HISTORY,
     MAX_PENDING_CHAIN,
 )
@@ -52,12 +47,10 @@ def _stub_build_observation(monkeypatch):
         env_mod,
         "build_observation",
         lambda gs, msg, agent_player, query_fn=None, event_history=None: {
-            "cards": np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8),
-            "global_state": np.zeros(GLOBAL_FEATURES, dtype=np.uint8),
+            "cards": [],
+            "global_state": GlobalState(),
             "pending_chain": np.zeros((MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES), dtype=np.uint8),
             "event_history": np.zeros((MAX_EVENT_HISTORY, EVENT_ENTRY_FEATURES), dtype=np.uint8),
-            "card_states": [],
-            "global": GlobalState(),
         },
     )
 
@@ -128,12 +121,7 @@ def test_multi_step_updates_current_msg_in_sync_with_mapper():
     env._mapper.action_to_response = MagicMock(return_value=None)
     env._mapper.get_action_index = MagicMock(return_value=0)
     env._mapper.num_actions = 3
-    env._mapper.get_action_mask = MagicMock(
-        return_value=np.array([1, 1, 1] + [0] * 29, dtype=np.int8)
-    )
-    env._mapper.get_action_features = MagicMock(
-        return_value=np.zeros((MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8)
-    )
+    env._mapper.actions = []
 
     # Execute step in the multi-step branch (response is None).
     env.step(YuGiOhAction(action_index=0))
@@ -171,4 +159,4 @@ def test_terminal_observation_clears_current_msg():
     assert env.current_msg is None
     assert env.num_actions == 0
     assert env._card_sel == []
-    assert obs.action_mask.shape == (MAX_ACTIONS,) and not obs.action_mask.any()
+    assert obs.action_descriptors == []

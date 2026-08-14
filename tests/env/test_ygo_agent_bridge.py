@@ -85,10 +85,8 @@ TRANSLATED_MSG_TYPES = sorted(_ACTION_MSG_TRANSLATORS)
 
 class TestTranslateCards:
     def _make_obs_cards(self, cards_data: list[dict]) -> YuGiOhObservation:
-        """Build an observation carrying the given cards as card_states."""
-        return YuGiOhObservation(
-            card_states=[CardState(**card) for card in cards_data],
-        )
+        """Build an observation carrying the given cards."""
+        return YuGiOhObservation(cards=[CardState(**card) for card in cards_data])
 
     def test_empty_obs_returns_empty(self):
         obs = self._make_obs_cards([])
@@ -305,9 +303,9 @@ class TestTranslateGlobal:
         self, my_lp=8000, opp_lp=8000, turn=1, phase=PHASE_MAIN1, is_my_turn=True
     ) -> YuGiOhObservation:
         return YuGiOhObservation(
-            global_=GlobalState(
+            global_state=GlobalState(
                 my_lp=my_lp, opp_lp=opp_lp, turn=turn, phase=phase, is_my_turn=is_my_turn
-            ),
+            )
         )
 
     def test_reads_structured_not_bytes(self):
@@ -617,7 +615,7 @@ class TestBuildPredictInput:
         base = obs_from_msg(msg)
         obs = base.model_copy(
             update={
-                "global_": GlobalState(turn=1, phase=PHASE_MAIN1, is_my_turn=True),
+                "global_state": GlobalState(turn=1, phase=PHASE_MAIN1, is_my_turn=True),
             }
         )
         result = build_predict_input(obs, prev_action_idx=0)
@@ -634,7 +632,7 @@ class TestBuildPredictInput:
         base = obs_from_msg(msg)
         obs = base.model_copy(
             update={
-                "global_": GlobalState(
+                "global_state": GlobalState(
                     turn=1,
                     phase=PHASE_MAIN1,
                     is_my_turn=True,
@@ -873,7 +871,7 @@ def test_response_fixtures_expose_nonzero_slots(msg_type, fixture_key, slot, res
     can't distinguish a real match from match_response's slot-0 fallback."""
     obs = _fixture_obs(fixture_key)
     assert slot != 0
-    assert slot < int(obs.action_mask.sum())
+    assert slot < obs.num_actions
 
 
 def test_match_response_unknown_msg_type_falls_back_to_zero():

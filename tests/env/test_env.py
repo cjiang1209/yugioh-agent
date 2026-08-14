@@ -28,19 +28,15 @@ def test_reset_returns_observation(env):
     obs = env.reset(seed=42)
     assert obs is not None
     assert not obs.done
-    assert len(obs.action_mask) == 32
-    assert any(a == 1 for a in obs.action_mask)
+    assert obs.num_actions > 0
 
 
 def test_step_with_valid_action(env):
     """Step with a valid action should not crash."""
     obs = env.reset(seed=42)
-    # Find first valid action
-    for i, mask in enumerate(obs.action_mask):
-        if mask == 1:
-            obs2 = env.step(YuGiOhAction(action_index=i))
-            assert obs2 is not None
-            break
+    assert obs.num_actions > 0
+    obs2 = env.step(YuGiOhAction(action_index=0))
+    assert obs2 is not None
 
 
 def test_full_episode(env):
@@ -50,13 +46,9 @@ def test_full_episode(env):
     max_steps = 500
 
     while not obs.done and steps < max_steps:
-        # Pick first valid action
-        action_idx = 0
-        for i, mask in enumerate(obs.action_mask):
-            if mask == 1:
-                action_idx = i
-                break
-        obs = env.step(YuGiOhAction(action_index=action_idx))
+        # An agent prompt always offers at least one action, so slot 0 is
+        # always legal.
+        obs = env.step(YuGiOhAction(action_index=0))
         steps += 1
 
     # Game should have ended
@@ -79,10 +71,7 @@ def test_multiple_episodes(env):
         obs = env.reset(seed=seed)
         steps = 0
         while not obs.done and steps < 200:
-            for i, mask in enumerate(obs.action_mask):
-                if mask == 1:
-                    obs = env.step(YuGiOhAction(action_index=i))
-                    break
+            obs = env.step(YuGiOhAction(action_index=0))
             steps += 1
 
 
@@ -100,7 +89,7 @@ def test_reset_with_inline_decks(env, inline_deck):
     obs = env.reset(seed=100, deck0=inline_deck, deck1=inline_deck)
     assert obs is not None
     assert not obs.done
-    assert any(a == 1 for a in obs.action_mask)
+    assert obs.num_actions > 0
 
 
 def test_reset_with_one_inline_deck(env, inline_deck):
@@ -108,7 +97,7 @@ def test_reset_with_one_inline_deck(env, inline_deck):
     obs = env.reset(seed=101, deck0=inline_deck)
     assert obs is not None
     assert not obs.done
-    assert any(a == 1 for a in obs.action_mask)
+    assert obs.num_actions > 0
 
 
 def test_reset_deck_validation_rejects_empty_main(env):
@@ -153,7 +142,7 @@ def test_reset_agent_player_go_second(env):
     assert obs is not None
     assert not obs.done
     assert env._agent_player == 1
-    assert any(a == 1 for a in obs.action_mask)
+    assert obs.num_actions > 0
 
 
 def test_reset_agent_player_explicit_zero(env):
@@ -217,12 +206,7 @@ def test_full_episode_go_second(env):
     max_steps = 500
 
     while not obs.done and steps < max_steps:
-        action_idx = 0
-        for i, mask in enumerate(obs.action_mask):
-            if mask == 1:
-                action_idx = i
-                break
-        obs = env.step(YuGiOhAction(action_index=action_idx))
+        obs = env.step(YuGiOhAction(action_index=0))
         steps += 1
 
     if obs.done:
