@@ -51,16 +51,18 @@ function terminalResponse(reward: number) {
   };
 }
 
-function stubFetch(reward: number) {
+/** Answers every request with `body`. */
+function stubFetchBody(body: unknown) {
   vi.stubGlobal(
     "fetch",
     vi.fn(() =>
-      Promise.resolve({
-        ok: true,
-        json: () => Promise.resolve(terminalResponse(reward)),
-      })
+      Promise.resolve({ ok: true, json: () => Promise.resolve(body) })
     )
   );
+}
+
+function stubFetch(reward: number) {
+  stubFetchBody(terminalResponse(reward));
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -145,5 +147,20 @@ describe("useAIEngine outcome", () => {
       void result.current.reset();
     });
     await waitFor(() => expect(result.current.outcome).toBeNull());
+  });
+
+  it("finalizes without throwing when the response carries no frames", async () => {
+    // A version-skewed or malformed backend can omit `frames`. The board must
+    // still update rather than dying inside finalize().
+    stubFetchBody({ ...terminalResponse(1), frames: undefined });
+    const { result } = renderHook(() => useAIEngine());
+
+    await act(async () => {
+      await result.current.reset();
+    });
+
+    expect(result.current.error).toBeNull();
+    expect(result.current.status).toBe("ended");
+    expect(result.current.outcome).toBe("win");
   });
 });

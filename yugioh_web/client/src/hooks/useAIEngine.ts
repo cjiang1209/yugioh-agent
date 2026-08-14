@@ -357,9 +357,13 @@ export function useAIEngine(
       setStatus(resp.done ? "ended" : "dueling");
       setError(null);
 
+      // The response type says `frames` is always present, but res.json() is
+      // cast to it unvalidated, so a version-skewed payload can omit it.
+      const frames = resp.frames ?? [];
+
       const finalize = () => {
         // Update the cumulative log
-        const stepEvents = resp.frames.flatMap(f => f.events);
+        const stepEvents = frames.flatMap(f => f.events);
         const newLog = [...logRef.current, ...stepEvents];
         logRef.current = newLog;
         setState(buildDuelState(resp.board, resp.game_state, newLog));
@@ -386,11 +390,11 @@ export function useAIEngine(
       };
 
       // If frames are available, replay them before finalizing
-      if (resp.frames && resp.frames.length > 0) {
+      if (frames.length > 0) {
         setEngineActions([]);
         setEnginePrompt(null);
         setRecommendedActionIndex(null);
-        startReplay(logRef.current, resp.frames, finalize);
+        startReplay(logRef.current, frames, finalize);
       } else {
         finalize();
       }
