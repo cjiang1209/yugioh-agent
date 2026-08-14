@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { useAIEngine } from "./useAIEngine";
+import { EVENT_DELAY_MS } from "../lib/EventReplayMachine";
 import type { EngineBoard, EngineGameState } from "../../../shared/engineTypes";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -51,18 +52,91 @@ function terminalResponse(reward: number) {
   };
 }
 
+type FetchResult = { ok: boolean; json: () => Promise<unknown> };
+
+/** The shape `fetch` resolves to, as much of it as this hook reads. */
+function okJson(body: unknown): FetchResult {
+  return { ok: true, json: () => Promise.resolve(body) };
+}
+
 /** Answers every request with `body`. */
 function stubFetchBody(body: unknown) {
   vi.stubGlobal(
     "fetch",
-    vi.fn(() =>
-      Promise.resolve({ ok: true, json: () => Promise.resolve(body) })
-    )
+    vi.fn(() => Promise.resolve(okJson(body)))
   );
 }
 
 function stubFetch(reward: number) {
   stubFetchBody(terminalResponse(reward));
+}
+
+const summonAction = {
+  index: 3,
+  description: "Summon Blue-Eyes",
+  card_code: 89631139,
+  card_name: "Blue-Eyes White Dragon",
+  category: "summon",
+};
+
+/** Non-terminal response offering one action. `frames: []` keeps replay out of
+ *  the picture so finalize() runs synchronously. */
+function promptResponse(recommended: number | null, index = 3) {
+  return {
+    board,
+    game_state: gameState,
+    actions: [{ ...summonAction, index }],
+    prompt: null,
+    done: false,
+    reward: 0,
+    frames: [],
+    recommended_action_index: recommended,
+  };
+}
+
+/** Serves `responses` in order (the last repeats for any further calls) and
+ *  records the action_index of every /step call, in order. */
+function stubFetchSequence(responses: unknown[]): number[] {
+  const submitted: number[] = [];
+  let i = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((url: string, init?: RequestInit) => {
+      if (url.endsWith("/api/web/step")) {
+        submitted.push(JSON.parse(String(init?.body)).action_index as number);
+      }
+      const body = responses[Math.min(i, responses.length - 1)];
+      i += 1;
+      return Promise.resolve(okJson(body));
+    })
+  );
+  return submitted;
+}
+
+/** Serves `resetBody` for /reset immediately, but leaves every /step request
+ *  pending until `resolveStep` is called — so a request can be held genuinely
+ *  in flight while other things happen. Records the action_index of every /step
+ *  call, in order, including any unwanted concurrent ones. */
+function stubFetchWithControlledStep(resetBody: unknown): {
+  submitted: number[];
+  resolveStep: (body: unknown) => void;
+} {
+  const submitted: number[] = [];
+  let resolveStep!: (body: unknown) => void;
+  const stepPending = new Promise<FetchResult>(resolve => {
+    resolveStep = body => resolve(okJson(body));
+  });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((url: string, init?: RequestInit) => {
+      if (url.endsWith("/api/web/step")) {
+        submitted.push(JSON.parse(String(init?.body)).action_index as number);
+        return stepPending;
+      }
+      return Promise.resolve(okJson(resetBody));
+    })
+  );
+  return { submitted, resolveStep };
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -162,5 +236,456 @@ describe("useAIEngine outcome", () => {
     expect(result.current.error).toBeNull();
     expect(result.current.status).toBe("ended");
     expect(result.current.outcome).toBe("win");
+  });
+});
+
+describe("useAIEngine autoplay", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+    cleanup();
+  });
+
+  it("plays the recommended action when autoplay is switched on", async () => {
+    vi.useFakeTimers();
+    const submitted = stubFetchSequence([
+      promptResponse(3),
+      terminalResponse(1),
+    ]);
+    const { result } = renderHook(() => useAIEngine(false, true));
+
+    await act(async () => {
+      await result.current.reset();
+    });
+    expect(submitted).toEqual([]);
+
+    // Switching on must act on the prompt already displayed, not wait for the
+    // next one.
+    act(() => {
+      result.current.toggleAutoplay();
+    });
+    expect(result.current.autoplay).toBe(true);
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    expect(submitted).toEqual([3]);
+  });
+
+  it("keeps playing until the duel ends", async () => {
+    vi.useFakeTimers();
+    const submitted = stubFetchSequence([
+      promptResponse(3, 3),
+      promptResponse(4, 4),
+      terminalResponse(1),
+    ]);
+    const { result } = renderHook(() => useAIEngine(false, true));
+
+    await act(async () => {
+      await result.current.reset();
+    });
+    act(() => {
+      result.current.toggleAutoplay();
+    });
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    // reset served the first prompt; autoplay played 3, then 4, then received
+    // the terminal response and stopped.
+    expect(submitted).toEqual([3, 4]);
+    expect(result.current.outcome).toBe("win");
+  });
+
+  it("submits nothing while autoplay is off", async () => {
+    vi.useFakeTimers();
+    const submitted = stubFetchSequence([promptResponse(3)]);
+    const { result } = renderHook(() => useAIEngine(false, true));
+
+    await act(async () => {
+      await result.current.reset();
+    });
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    expect(result.current.autoplay).toBe(false);
+    expect(submitted).toEqual([]);
+  });
+
+  it("hands control back, staying on, when there is no recommendation", async () => {
+    vi.useFakeTimers();
+    // The advised prompt comes first so autoplay plays it and is already ON
+    // when the unadvised one arrives — that is the case finalize's own null
+    // guard covers, and it is unreachable if autoplay is off to begin with.
+    const submitted = stubFetchSequence([
+      promptResponse(3),
+      promptResponse(null, 8),
+    ]);
+    const { result } = renderHook(() => useAIEngine(false, true));
+
+    await act(async () => {
+      await result.current.reset();
+    });
+    act(() => {
+      result.current.toggleAutoplay();
+    });
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    // Played the advised prompt, then stopped rather than guessing at the
+    // unadvised one, leaving its actions up for the human.
+    expect(submitted).toEqual([3]);
+    expect(result.current.engineActions).toHaveLength(1);
+    // Still armed: the next prompt that does carry advice resumes autoplay.
+    expect(result.current.autoplay).toBe(true);
+  });
+
+  it("clears autoplay when a new duel is reset", async () => {
+    vi.useFakeTimers();
+    stubFetchBody(promptResponse(null));
+    const { result } = renderHook(() => useAIEngine(false, true));
+
+    await act(async () => {
+      await result.current.reset();
+    });
+    act(() => {
+      result.current.toggleAutoplay();
+    });
+    expect(result.current.autoplay).toBe(true);
+
+    await act(async () => {
+      await result.current.reset();
+    });
+    expect(result.current.autoplay).toBe(false);
+  });
+
+  it("cancels the resume-kick submit when toggled off before the timer fires", async () => {
+    vi.useFakeTimers();
+    const submitted = stubFetchSequence([promptResponse(3)]);
+    const { result } = renderHook(() => useAIEngine(false, true));
+
+    await act(async () => {
+      await result.current.reset();
+    });
+
+    // Turning autoplay on with a recommendation already displayed schedules a
+    // resume-kick submit. Toggling off again before that timer fires must
+    // cancel it, not let it play a stale action.
+    act(() => {
+      result.current.toggleAutoplay();
+      result.current.toggleAutoplay();
+    });
+    expect(result.current.autoplay).toBe(false);
+    // The timer must be gone, not merely disarmed: the callback's own ref check
+    // would suppress the submit either way, so counting timers is what pins the
+    // cancellation rather than the suppression.
+    expect(vi.getTimerCount()).toBe(0);
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    expect(submitted).toEqual([]);
+  });
+
+  it("cancels finalize's auto-submit when toggled off before the timer fires", async () => {
+    vi.useFakeTimers();
+    const submitted = stubFetchSequence([
+      promptResponse(null),
+      promptResponse(3, 3),
+    ]);
+    const { result } = renderHook(() => useAIEngine(false, true));
+
+    await act(async () => {
+      await result.current.reset();
+    });
+    // Arm autoplay while there is no recommendation on screen yet, so this
+    // toggle itself has nothing to resume-kick.
+    act(() => {
+      result.current.toggleAutoplay();
+    });
+    expect(result.current.autoplay).toBe(true);
+
+    // A manual submit (standing in for a human click) brings back a
+    // recommendation; finalize() schedules its own auto-submit for it.
+    await act(async () => {
+      await result.current.submitAction(5);
+    });
+
+    // Toggle off before that timer fires.
+    act(() => {
+      result.current.toggleAutoplay();
+    });
+    expect(result.current.autoplay).toBe(false);
+    // As above: the timer must be gone, not just disarmed by the ref check.
+    expect(vi.getTimerCount()).toBe(0);
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    // Only the manual submit landed; finalize's scheduled follow-up did not.
+    expect(submitted).toEqual([5]);
+  });
+
+  it("does not issue a second /step when autoplay is switched on while one is in flight", async () => {
+    vi.useFakeTimers();
+    const { submitted, resolveStep } = stubFetchWithControlledStep(
+      promptResponse(3, 3)
+    );
+    const { result } = renderHook(() => useAIEngine(false, true));
+
+    await act(async () => {
+      await result.current.reset();
+    });
+    expect(submitted).toEqual([]);
+
+    // The human clicks the displayed action. Its /step response is held
+    // pending deliberately, so the request stays genuinely in flight.
+    act(() => {
+      void result.current.submitAction(3);
+    });
+
+    // Switching autoplay on now must not schedule a submit at all: the request
+    // in flight means recommendedActionIndex still describes the prompt the
+    // human just left, and the backend cannot run two sessions concurrently.
+    act(() => {
+      result.current.toggleAutoplay();
+    });
+    // No timer, so the guard has to be the kick's own in-flight check. Letting
+    // a timer be scheduled and relying on its callback to bail would pass even
+    // with that check removed, because the callback re-checks too.
+    expect(vi.getTimerCount()).toBe(0);
+
+    // Resolve the step to a terminal response, which schedules nothing further,
+    // then drain the closing replay.
+    await act(async () => {
+      resolveStep(terminalResponse(1));
+      await vi.runAllTimersAsync();
+    });
+
+    expect(submitted).toEqual([3]);
+  });
+
+  it("auto-submits a lone pass action even when autoplay is off", async () => {
+    // The auto-pass branch in finalize() is unconditional — it must fire
+    // regardless of the autoplay toggle. A future refactor that folded it
+    // under the autoplay gate should fail this test loudly.
+    vi.useFakeTimers();
+    const passOnlyResponse = {
+      ...promptResponse(null, 7),
+      actions: [{ ...summonAction, index: 7, category: "pass" }],
+    };
+    const submitted = stubFetchSequence([
+      passOnlyResponse,
+      terminalResponse(1),
+    ]);
+    const { result } = renderHook(() => useAIEngine(false, true));
+
+    await act(async () => {
+      await result.current.reset();
+    });
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    expect(result.current.autoplay).toBe(false);
+    expect(submitted).toEqual([7]);
+  });
+
+  it("leaves the action list up for the dwell before submitting", async () => {
+    vi.useFakeTimers();
+    const submitted = stubFetchSequence([
+      promptResponse(3),
+      terminalResponse(1),
+    ]);
+    const { result } = renderHook(() => useAIEngine(false, true));
+
+    await act(async () => {
+      await result.current.reset();
+    });
+    act(() => {
+      result.current.toggleAutoplay();
+    });
+
+    // Most of the dwell has elapsed and the actions are still on screen: this
+    // is the window that makes an autoplayed duel readable.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(EVENT_DELAY_MS - 1);
+    });
+    expect(submitted).toEqual([]);
+    expect(result.current.engineActions).toHaveLength(1);
+    expect(result.current.recommendedActionIndex).toBe(3);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(submitted).toEqual([3]);
+  });
+
+  it("does not submit a stale index when the human clicks during the dwell", async () => {
+    vi.useFakeTimers();
+    // /reset offers a prompt recommending 3; every /step stays pending until
+    // we resolve it, so the click and the dwell overlap deterministically.
+    const { submitted, resolveStep } = stubFetchWithControlledStep(
+      promptResponse(3)
+    );
+    const { result } = renderHook(() => useAIEngine(false, true));
+
+    await act(async () => {
+      await result.current.reset();
+    });
+    act(() => {
+      result.current.toggleAutoplay();
+    });
+
+    // Part-way through the dwell the human picks a different action.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    act(() => {
+      void result.current.submitAction(9);
+    });
+
+    // Land that response *before* the original dwell deadline, so inFlightRef
+    // is back to false when it arrives. The timeout's own ref checks therefore
+    // cannot save us here — only cancelling the superseded timer can.
+    await act(async () => {
+      resolveStep(terminalResponse(1));
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    // Only the human's action. Index 3 belonged to the prompt they replaced,
+    // and the duel is over by the time the old timer would have fired.
+    expect(submitted).toEqual([9]);
+  });
+
+  it("issues no request after unmount with a dwell still pending", async () => {
+    vi.useFakeTimers();
+    const submitted = stubFetchSequence([
+      promptResponse(3),
+      terminalResponse(1),
+    ]);
+    const { result, unmount } = renderHook(() => useAIEngine(false, true));
+
+    await act(async () => {
+      await result.current.reset();
+    });
+    act(() => {
+      result.current.toggleAutoplay();
+    });
+
+    // RESTART under the default random turn order swaps in CoinFlipOverlay and
+    // unmounts the hook mid-dwell. The pending timer must not survive to POST
+    // /step — if it did, finalize would schedule the next one and the loop
+    // would run on against the duel the remount is about to start.
+    unmount();
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    expect(submitted).toEqual([]);
+  });
+
+  it("ignores a response that lands after unmount", async () => {
+    vi.useFakeTimers();
+    // The held step resolves to a pass-only prompt, which finalize auto-submits
+    // regardless of autoplay. So if a post-unmount response were applied at
+    // all, it would POST a step against the duel the remount is starting.
+    const passOnly = {
+      ...promptResponse(null, 7),
+      actions: [{ ...summonAction, index: 7, category: "pass" }],
+    };
+    const { submitted, resolveStep } = stubFetchWithControlledStep(
+      promptResponse(3)
+    );
+    const { result, unmount } = renderHook(() => useAIEngine(false, true));
+
+    await act(async () => {
+      await result.current.reset();
+    });
+    act(() => {
+      void result.current.submitAction(4);
+    });
+    expect(submitted).toEqual([4]);
+
+    // A restart that animates the coin flip swaps this hook out while its
+    // request is still in flight.
+    unmount();
+    await act(async () => {
+      resolveStep(passOnly);
+      await vi.runAllTimersAsync();
+    });
+
+    expect(submitted).toEqual([4]);
+  });
+
+  it("drops a step response that a reset has already superseded", async () => {
+    vi.useFakeTimers();
+    // /reset answers with a prompt offering action 3; the held /step would
+    // answer with action 99. Whichever list ends up on screen identifies which
+    // duel the hook thinks it is playing.
+    const { submitted, resolveStep } = stubFetchWithControlledStep(
+      promptResponse(3)
+    );
+    const { result } = renderHook(() => useAIEngine(false, true));
+
+    await act(async () => {
+      await result.current.reset();
+    });
+    act(() => {
+      void result.current.submitAction(3);
+    });
+    expect(submitted).toEqual([3]);
+
+    // Restarting does not wait for the outstanding step.
+    await act(async () => {
+      await result.current.reset();
+    });
+    expect(result.current.engineActions[0].index).toBe(3);
+
+    // The superseded step now answers. Applying it would replace the fresh
+    // duel's action list with the old duel's, and drop the fresh duel's
+    // finalize by re-arming the replay machine.
+    await act(async () => {
+      resolveStep(promptResponse(null, 99));
+      await vi.runAllTimersAsync();
+    });
+
+    expect(result.current.engineActions[0].index).toBe(3);
+  });
+
+  it("refuses a second request while one is already in flight", async () => {
+    vi.useFakeTimers();
+    const { submitted, resolveStep } = stubFetchWithControlledStep(
+      promptResponse(3)
+    );
+    const { result } = renderHook(() => useAIEngine(false, true));
+
+    await act(async () => {
+      await result.current.reset();
+    });
+
+    // The action list stays on screen and clickable for the whole round trip,
+    // so a second click is an ordinary thing to do — and must be dropped.
+    act(() => {
+      void result.current.submitAction(4);
+    });
+    act(() => {
+      void result.current.submitAction(5);
+    });
+
+    expect(submitted).toEqual([4]);
+
+    await act(async () => {
+      resolveStep(terminalResponse(1));
+      await vi.runAllTimersAsync();
+    });
+    expect(submitted).toEqual([4]);
   });
 });

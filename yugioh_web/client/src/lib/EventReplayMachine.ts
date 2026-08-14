@@ -12,7 +12,9 @@ export type ReplayCallbacks = {
   onComplete: () => void;
 };
 
-const EVENT_DELAY_MS = 1200;
+/** How long each replayed event stays on screen before the next one.
+ *  Exported because autoplay paces its own submits to the same rhythm. */
+export const EVENT_DELAY_MS = 1200;
 const FRAME_PAUSE_MS = 600;
 
 export class EventReplayMachine {

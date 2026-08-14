@@ -24,6 +24,7 @@ import type {
   PendingChainEntry,
 } from "../../../shared/engineTypes";
 import { API_BASE } from "../lib/apiBase";
+import { EVENT_DELAY_MS } from "../lib/EventReplayMachine";
 import { useEventReplay } from "./useEventReplay";
 
 export type AIEngineStatus = "idle" | "loading" | "dueling" | "ended" | "error";
@@ -40,6 +41,10 @@ export interface UseAIEngineReturn {
   outcome: DuelOutcome | null;
   engineActions: EngineAction[];
   recommendedActionIndex: number | null;
+  /** True while the agent seat is playing the recommender's advice itself. */
+  autoplay: boolean;
+  /** Flip autoplay. Switching on also plays the prompt already on screen. */
+  toggleAutoplay: () => void;
   enginePrompt: EnginePrompt | null;
   visibleLog: string[];
   isReplaying: boolean;
@@ -58,6 +63,17 @@ export interface UseAIEngineReturn {
 
 const CARD_IMAGE_BASE = "https://images.ygoprodeck.com/images/cards_small";
 const AUTO_PASS_CATEGORIES = new Set(["pass", "no"]);
+
+/**
+ * How long an autoplayed prompt stays on screen before autoplay submits it.
+ *
+ * Not cosmetic: the frames replay blanks the action panel for its whole
+ * animated stretch, so without a dwell the only time the action list is
+ * visible is one local request round trip — it flashes and is gone before you
+ * can read what the recommender was choosing between. Matched to the replay's
+ * own per-event rhythm so the whole duel reads at one speed.
+ */
+const AUTOPLAY_DWELL_MS = EVENT_DELAY_MS;
 const EMPTY_EMZ: [null, null] = [null, null];
 
 function engineCardToGameCard(
@@ -328,6 +344,31 @@ export function useAIEngine(
   const [recommendedActionIndex, setRecommendedActionIndex] = useState<
     number | null
   >(null);
+  const [autoplay, setAutoplay] = useState(false);
+  // The ref, not the state, is what finalize() reads. toggleAutoplay writes it
+  // synchronously so a response arriving between the click and the state
+  // commit cannot observe a stale value.
+  const autoplayRef = useRef(false);
+  // How many /reset or /step round trips are outstanding. Nothing may start a
+  // request while this is above zero — the engine backing this UI cannot run
+  // two concurrent requests (SUPPORTS_CONCURRENT_SESSIONS = False).
+  //
+  // A count rather than a flag: reset() does not bail when busy (a teardown
+  // must always win), so it can overlap a pending /step. With a boolean the
+  // first of the two to settle would clear it while the other was still in
+  // flight, re-opening the gate.
+  const inFlightRef = useRef(0);
+  // The one pending autoplay submit, if any. Both scheduling sites (finalize's
+  // auto-submit and toggleAutoplay's resume kick) share it, so there is never
+  // more than one autoplay timer alive: a second schedule cancels the first
+  // rather than leaving two timers that both fire and submit twice.
+  const autoplayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Retired by every reset and by teardown. A request carrying an earlier epoch
+  // belongs to a duel, or a hook, that no longer exists, so its response is
+  // dropped rather than applied: reset() does not wait for an outstanding /step,
+  // and letting that step's response land afterwards would publish the old
+  // duel's board and action list against the engine's new one.
+  const generationRef = useRef(0);
   const [enginePrompt, setEnginePrompt] = useState<EnginePrompt | null>(null);
   const [status, setStatus] = useState<AIEngineStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -343,6 +384,53 @@ export function useAIEngine(
   } = useEventReplay();
 
   const submitRef = useRef<(index: number) => Promise<void>>(undefined);
+
+  const cancelScheduledAutoplay = useCallback(() => {
+    if (autoplayTimerRef.current !== null) {
+      clearTimeout(autoplayTimerRef.current);
+      autoplayTimerRef.current = null;
+    }
+  }, []);
+
+  /**
+   * Show `idx` for AUTOPLAY_DWELL_MS, then submit it.
+   *
+   * Cancels any already-pending autoplay submit first. The dwell exists so the
+   * human can read the action list, which means the human can also *click* one
+   * during it; that click's response schedules a fresh submit, and without the
+   * cancel the older timer would still fire afterwards and play an index
+   * belonging to the prompt the click replaced.
+   */
+  const scheduleAutoplay = useCallback(
+    (idx: number) => {
+      cancelScheduledAutoplay();
+      autoplayTimerRef.current = setTimeout(() => {
+        autoplayTimerRef.current = null;
+        // Re-checked at fire time, not only at schedule time: across a dwell
+        // this long the toggle can go off, and must cancel the submit rather
+        // than let it play a stale action. The in-flight check is defensive --
+        // every request initiator cancels this timer before starting, so it
+        // should never be pending while a request is outstanding.
+        if (autoplayRef.current && inFlightRef.current === 0) {
+          submitRef.current?.(idx);
+        }
+      }, AUTOPLAY_DWELL_MS);
+    },
+    [cancelScheduledAutoplay]
+  );
+
+  // Teardown is routinely reached mid-duel: RESTART under the default random
+  // turn order renders CoinFlipOverlay *instead of* AIModeDuel. Two things can
+  // outlive the hook -- a reply in flight, and a pending dwell timer, which
+  // would POST a step and have finalize schedule the next one into a request
+  // loop with no UI attached.
+  useEffect(
+    () => () => {
+      generationRef.current += 1;
+      cancelScheduledAutoplay();
+    },
+    [cancelScheduledAutoplay]
+  );
 
   // During replay, update DuelState from the replay machine's intermediate board snapshots.
   // replayLog is intentionally excluded — log display uses visibleLog, not state.log.
@@ -386,10 +474,27 @@ export function useAIEngine(
         } else {
           setEngineActions(resp.actions);
           setRecommendedActionIndex(resp.recommended_action_index);
+
+          // Autoplay: same seam as auto-pass above, but driven by the
+          // recommender. Publishing the actions first, then dwelling, is what
+          // makes an autoplayed duel readable — the starred action stays up
+          // long enough to see what it was chosen over. No recommendation
+          // means no guess: the actions stay up for the human and autoplay
+          // resumes at the next prompt that has advice.
+          const idx = resp.recommended_action_index;
+          if (
+            autoplayRef.current &&
+            !resp.done &&
+            idx != null &&
+            resp.actions.length > 0
+          ) {
+            scheduleAutoplay(idx);
+          }
         }
       };
 
-      // If frames are available, replay them before finalizing
+      // Frames are events already known to have happened server-side; replay
+      // them on screen before finalize() publishes the next prompt.
       if (frames.length > 0) {
         setEngineActions([]);
         setEnginePrompt(null);
@@ -399,8 +504,40 @@ export function useAIEngine(
         finalize();
       }
     },
-    [startReplay]
+    [startReplay, scheduleAutoplay]
   );
+
+  const toggleAutoplay = useCallback(() => {
+    const next = !autoplayRef.current;
+    autoplayRef.current = next;
+    setAutoplay(next);
+    // Resume kick. Without it, switching autoplay on while a prompt is already
+    // displayed does nothing until the human plays one action by hand. A plain
+    // callback rather than an effect on [autoplay]: an effect would fire twice
+    // under StrictMode, which this app does not enable today but may.
+    //
+    // Skipped while a request is in flight. recommendedActionIndex then still
+    // describes the prompt the human just left, so submitting it would play a
+    // stale action as well as breaking the one-request-at-a-time rule.
+    if (
+      next &&
+      !isReplaying &&
+      inFlightRef.current === 0 &&
+      recommendedActionIndex != null
+    ) {
+      scheduleAutoplay(recommendedActionIndex);
+    } else if (!next) {
+      // Toggling off cancels a pending submit outright rather than relying on
+      // the timeout's own ref check. Same outcome, but it stops a dwell-length
+      // timer from sitting around after the user has said stop.
+      cancelScheduledAutoplay();
+    }
+  }, [
+    isReplaying,
+    recommendedActionIndex,
+    scheduleAutoplay,
+    cancelScheduledAutoplay,
+  ]);
 
   const reset = useCallback(
     async (
@@ -409,12 +546,26 @@ export function useAIEngine(
       deck1?: DeckPayload,
       agentPlayer?: 0 | 1
     ) => {
+      // Bumped before the await, so a second reset supersedes this one.
+      const generation = ++generationRef.current;
       setStatus("loading");
       setError(null);
       resetReplay();
       logRef.current = [];
       setState(INITIAL_DUEL_STATE);
       setOutcome(null);
+      // Every duel starts unattended-off, whether this is a restart, a coin-flip
+      // restart that remounts the hook, or a deck change.
+      autoplayRef.current = false;
+      setAutoplay(false);
+      // A submit scheduled against the previous duel's prompt is no longer
+      // valid once that duel is being torn down.
+      cancelScheduledAutoplay();
+      // /reset is a request round trip like /step: while it's in flight,
+      // recommendedActionIndex still holds the previous duel's stale value,
+      // so it must count as "in flight" too or a toggle in this window could
+      // kick off a submit that races the reset itself.
+      inFlightRef.current += 1;
       try {
         const body: Record<string, unknown> = {};
         if (seed !== undefined) body.seed = seed;
@@ -430,18 +581,33 @@ export function useAIEngine(
         });
         if (!res.ok) throw new Error(`Reset failed: ${res.status}`);
         const resp: EngineResponse = await res.json();
+        if (generation !== generationRef.current) return;
         applyResponse(resp);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Reset failed");
         setStatus("error");
+      } finally {
+        inFlightRef.current -= 1;
       }
     },
-    [applyResponse, resetReplay, openCards, recommend]
+    [applyResponse, resetReplay, openCards, recommend, cancelScheduledAutoplay]
   );
 
   const submitAction = useCallback(
     async (actionIndex: number) => {
+      // Reachable by one ordinary click: the dwell deliberately leaves the
+      // action list on screen and clickable while autoplay's own /step is in
+      // flight, and /step is not quick with AI assist on -- the server runs a
+      // recommender forward pass every step.
+      if (inFlightRef.current > 0) return;
+      // The epoch this step belongs to; an intervening reset invalidates it.
+      const generation = generationRef.current;
       setError(null);
+      // Any submit — the human clicking during the dwell, or autoplay's own
+      // timer firing — supersedes a pending autoplay submit for the prompt
+      // being left behind.
+      cancelScheduledAutoplay();
+      inFlightRef.current += 1;
       try {
         const res = await fetch(`${API_BASE}/api/web/step`, {
           method: "POST",
@@ -450,13 +616,16 @@ export function useAIEngine(
         });
         if (!res.ok) throw new Error(`Step failed: ${res.status}`);
         const resp: EngineResponse = await res.json();
+        if (generation !== generationRef.current) return;
         applyResponse(resp);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Step failed");
         setStatus("error");
+      } finally {
+        inFlightRef.current -= 1;
       }
     },
-    [applyResponse]
+    [applyResponse, cancelScheduledAutoplay]
   );
 
   submitRef.current = submitAction;
@@ -468,6 +637,8 @@ export function useAIEngine(
     outcome,
     engineActions,
     recommendedActionIndex,
+    autoplay,
+    toggleAutoplay,
     enginePrompt,
     visibleLog,
     isReplaying,
