@@ -21,6 +21,9 @@ from yugioh_core.constants import (
     MSG_FLIPSUMMONING,
     MSG_SPSUMMONING,
     MSG_SUMMONING,
+    TYPE_MONSTER,
+    TYPE_SPELL,
+    TYPE_TRAP,
 )
 from yugioh_env import message_parser as _mp
 from yugioh_env.deck_parser import parse_ydk
@@ -176,12 +179,6 @@ def lookup_card_info(card_ids: list[int]) -> dict[int, tuple[str, int]]:
     ).fetchall()
     conn.close()
     return {rid: (name, type_flags) for rid, name, type_flags in rows}
-
-
-# ygopro type-flag bits (from constants/cardscripts)
-TYPE_MONSTER = 0x1
-TYPE_SPELL = 0x2
-TYPE_TRAP = 0x4
 
 
 def kind_of(type_flags: int) -> str:

@@ -25,6 +25,7 @@ import struct
 import pytest
 
 from yugioh_core.constants import (
+    POS_FACEUP_ATTACK,
     QUERY_CODE,
     QUERY_END,
     QUERY_IS_PUBLIC,
@@ -33,6 +34,8 @@ from yugioh_core.constants import (
     QUERY_POSITION,
     QUERY_RACE,
     QUERY_TYPE,
+    TYPE_EFFECT,
+    TYPE_MONSTER,
 )
 from yugioh_core.query_buffer import parse_query_location
 
@@ -90,7 +93,7 @@ def test_single_card_multiple_fields():
     """One slot with QUERY_CODE + QUERY_POSITION + QUERY_TYPE + QUERY_END."""
     body = (
         _u32_field(QUERY_CODE, 12345)
-        + _u32_field(QUERY_POSITION, 0x01)  # POS_FACEUP_ATTACK
+        + _u32_field(QUERY_POSITION, POS_FACEUP_ATTACK)
         + _u32_field(QUERY_TYPE, 0x21)  # MONSTER | EFFECT
         + _terminator()
     )
@@ -100,8 +103,8 @@ def test_single_card_multiple_fields():
         {
             "sequence": 0,
             "code": 12345,
-            "position": 0x01,
-            "type": 0x21,
+            "position": POS_FACEUP_ATTACK,
+            "type": TYPE_MONSTER | TYPE_EFFECT,
         }
     ]
 

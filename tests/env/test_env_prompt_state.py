@@ -20,6 +20,10 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
+from yugioh_core.constants import (
+    MSG_SELECT_CARD,
+    MSG_SELECT_IDLECMD,
+)
 from yugioh_core.encoding import (
     ACTION_FEATURES,
     CARD_FEATURES,
@@ -107,7 +111,13 @@ def test_multi_step_updates_current_msg_in_sync_with_mapper():
     env = _bare_env()
 
     # Pre-populate state as if _process_to_agent_choice just ran.
-    original_msg = {"msg_type": 15, "player": 0, "cards": [1, 2, 3], "min": 2, "max": 2}
+    original_msg = {
+        "msg_type": MSG_SELECT_CARD,
+        "player": 0,
+        "cards": [1, 2, 3],
+        "min": 2,
+        "max": 2,
+    }
     env._current_msg = dict(original_msg)
 
     # Stub _mapper to report non-zero actions and yield response=None for the
@@ -145,9 +155,9 @@ def test_multi_step_updates_current_msg_in_sync_with_mapper():
 
 def test_terminal_observation_clears_current_msg():
     env = _bare_env()
-    env._current_msg = {"msg_type": 11, "player": 0}  # stale prompt
+    env._current_msg = {"msg_type": MSG_SELECT_IDLECMD, "player": 0}  # stale prompt
     env._card_sel = [1, 2]
-    env._mapper.update({"msg_type": 11, "player": 0})  # mapper has state
+    env._mapper.update({"msg_type": MSG_SELECT_IDLECMD, "player": 0})  # mapper has state
 
     # Provide duel.game_state for reward computation.
     env._duel.game_state.is_finished = True

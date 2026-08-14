@@ -12,6 +12,14 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from yugioh_core.action_categories import (
+    BATTLE_ATTACK,
+    BATTLE_TO_EP,
+    IDLE_ACTIVATE,
+    IDLE_SUMMON,
+    IDLE_TO_BP,
+    IDLE_TO_EP,
+)
 from yugioh_core.card_database import CardDatabase
 from yugioh_core.constants import (
     LOCATION_HAND,
@@ -346,7 +354,7 @@ class TestIdleActionFeatures:
     def test_idle_structured_actions(self, builder, gs):
         sa = [
             StructuredAction(
-                category=0,
+                category=IDLE_SUMMON,
                 cardspec="h1",
                 card_code=89631139,
                 location=LOCATION_HAND,
@@ -354,14 +362,14 @@ class TestIdleActionFeatures:
                 sub_action="s",
             ),
             StructuredAction(
-                category=5,
+                category=IDLE_ACTIVATE,
                 cardspec="s1",
                 card_code=44095762,
                 location=LOCATION_SZONE,
                 sequence=0,
                 sub_action="v",
             ),
-            StructuredAction(category=7, sub_action="e"),
+            StructuredAction(category=IDLE_TO_EP, sub_action="e"),
         ]
         prompt = ParsedPrompt(prompt_type=PromptType.IDLE_CMD, options=["e"], structured_actions=sa)
         obs = builder.build(gs, prompt)
@@ -375,24 +383,24 @@ class TestIdleActionFeatures:
         assert m[2] == 1
         assert m[3] == 0
 
-        # Action 0: msg_type=IDLE_CMD, category=0, code=BEWD
+        # Action 0: msg_type=IDLE_CMD, category=IDLE_SUMMON, code=BEWD
         assert a[0, 0] == MSG_SELECT_IDLECMD
-        assert a[0, 1] == 0  # category (summon)
+        assert a[0, 1] == IDLE_SUMMON
         assert _read_u32(a[0], 2) == 89631139
 
-        # Action 1: msg_type=IDLE_CMD, category=5
+        # Action 1: msg_type=IDLE_CMD, category=IDLE_ACTIVATE
         assert a[1, 0] == MSG_SELECT_IDLECMD
-        assert a[1, 1] == 5  # category (activate)
+        assert a[1, 1] == IDLE_ACTIVATE
         assert _read_u32(a[1], 2) == 44095762
 
-        # Action 2: end phase, category=7
-        assert a[2, 1] == 7
+        # Action 2: end phase, category=IDLE_TO_EP
+        assert a[2, 1] == IDLE_TO_EP
 
     def test_idle_index_is_per_category(self, builder, gs):
         """index (byte 8) resets per category, matching RL encoding."""
         sa = [
             StructuredAction(
-                category=0,
+                category=IDLE_SUMMON,
                 cardspec="h1",
                 card_code=89631139,
                 location=LOCATION_HAND,
@@ -400,7 +408,7 @@ class TestIdleActionFeatures:
                 sub_action="s",
             ),
             StructuredAction(
-                category=0,
+                category=IDLE_SUMMON,
                 cardspec="h2",
                 card_code=38517737,
                 location=LOCATION_HAND,
@@ -408,15 +416,15 @@ class TestIdleActionFeatures:
                 sub_action="s",
             ),
             StructuredAction(
-                category=5,
+                category=IDLE_ACTIVATE,
                 cardspec="s1",
                 card_code=44095762,
                 location=LOCATION_SZONE,
                 sequence=0,
                 sub_action="v",
             ),
-            StructuredAction(category=6, sub_action="b"),
-            StructuredAction(category=7, sub_action="e"),
+            StructuredAction(category=IDLE_TO_BP, sub_action="b"),
+            StructuredAction(category=IDLE_TO_EP, sub_action="e"),
         ]
         prompt = ParsedPrompt(
             prompt_type=PromptType.IDLE_CMD, options=["b", "e"], structured_actions=sa
@@ -425,17 +433,17 @@ class TestIdleActionFeatures:
         a = obs["actions"]
 
         # Two normal summons: index 0 and 1 within category 0
-        assert a[0, 1] == 0  # category
+        assert a[0, 1] == IDLE_SUMMON
         assert a[0, 8] == 0  # sub-index 0
-        assert a[1, 1] == 0  # same category
+        assert a[1, 1] == IDLE_SUMMON  # same category
         assert a[1, 8] == 1  # sub-index 1
         # Activate: first in its category → index 0
-        assert a[2, 1] == 5
+        assert a[2, 1] == IDLE_ACTIVATE
         assert a[2, 8] == 0
         # Phase transitions: each is first in its category → index 0
-        assert a[3, 1] == 6
+        assert a[3, 1] == IDLE_TO_BP
         assert a[3, 8] == 0
-        assert a[4, 1] == 7
+        assert a[4, 1] == IDLE_TO_EP
         assert a[4, 8] == 0
 
 
@@ -448,14 +456,14 @@ class TestBattleActionFeatures:
     def test_battle_structured_actions(self, builder, gs):
         sa = [
             StructuredAction(
-                category=1,
+                category=BATTLE_ATTACK,
                 cardspec="m1",
                 card_code=89631139,
                 location=LOCATION_MZONE,
                 sequence=0,
                 sub_action="m1",
             ),
-            StructuredAction(category=3, sub_action="e"),
+            StructuredAction(category=BATTLE_TO_EP, sub_action="e"),
         ]
         prompt = ParsedPrompt(
             prompt_type=PromptType.BATTLE_MENU, options=["a", "e"], structured_actions=sa
@@ -465,8 +473,8 @@ class TestBattleActionFeatures:
         m = obs["action_mask"]
 
         assert a[0, 0] == MSG_SELECT_BATTLECMD
-        assert a[0, 1] == 1  # attack category
-        assert a[1, 1] == 3  # end phase category
+        assert a[0, 1] == BATTLE_ATTACK
+        assert a[1, 1] == BATTLE_TO_EP
         assert m[0] == 1
         assert m[1] == 1
         assert m[2] == 0
@@ -495,7 +503,7 @@ class TestActionMask:
 
     def test_mask_max_actions_cap(self, builder, gs):
         # More actions than MAX_ACTIONS
-        sa = [StructuredAction(category=0, sub_action="e") for _ in range(40)]
+        sa = [StructuredAction(category=IDLE_SUMMON, sub_action="e") for _ in range(40)]
         prompt = ParsedPrompt(prompt_type=PromptType.IDLE_CMD, options=["e"], structured_actions=sa)
         obs = builder.build(gs, prompt)
         m = obs["action_mask"]

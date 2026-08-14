@@ -1,9 +1,13 @@
 from yugioh_core.constants import (
     HINT_CODE,
+    LOCATION_MZONE,
     MSG_HINT,
     MSG_SUMMONING,
+    PHASE_END,
+    PHASE_MAIN1,
+    PHASE_MAIN2,
 )
-from yugioh_core.encoding import decode_u32
+from yugioh_core.encoding import EVENT_ENTRY_FEATURES, MAX_EVENT_HISTORY, decode_u32
 from yugioh_env.event_buffer import EventHistoryBuffer
 
 
@@ -12,7 +16,7 @@ def _summon(code, controller, seq):
         "msg_type": MSG_SUMMONING,
         "code": code,
         "controller": controller,
-        "location": 0x04,
+        "location": LOCATION_MZONE,
         "sequence": seq,
     }
 
@@ -22,7 +26,7 @@ def test_append_and_right_aligned_tensor():
     b.append_from_enriched([_summon(111, 0, 1)], turn_count=1, current_player=0, phase=4)
     b.append_from_enriched([_summon(222, 1, 2)], turn_count=2, current_player=1, phase=4)
     t = b.to_tensor(agent_player=0)
-    assert t.shape == (32, 30)
+    assert t.shape == (MAX_EVENT_HISTORY, EVENT_ENTRY_FEATURES)
     # newest (222) at row 31, older (111) at row 30, rest empty (msg_type byte 0 == 0)
     assert t[31, 0] == MSG_SUMMONING
     assert t[30, 0] == MSG_SUMMONING
@@ -91,9 +95,9 @@ def test_phase_stored_as_bit_index():
     # Phase is a single-bit flag; the buffer stores the compact bit-index so
     # high phases (MAIN2=0x100, END=0x200) survive the 1-byte feature slot.
     b = EventHistoryBuffer()
-    b.append_from_enriched([_summon(1, 0, 1)], turn_count=1, current_player=0, phase=0x04)
-    b.append_from_enriched([_summon(2, 0, 1)], turn_count=1, current_player=0, phase=0x100)
-    b.append_from_enriched([_summon(3, 0, 1)], turn_count=1, current_player=0, phase=0x200)
+    b.append_from_enriched([_summon(1, 0, 1)], turn_count=1, current_player=0, phase=PHASE_MAIN1)
+    b.append_from_enriched([_summon(2, 0, 1)], turn_count=1, current_player=0, phase=PHASE_MAIN2)
+    b.append_from_enriched([_summon(3, 0, 1)], turn_count=1, current_player=0, phase=PHASE_END)
     t = b.to_tensor(agent_player=0)
     assert t[29, 3] == 2  # MAIN1 (0x04) → bit 2
     assert t[30, 3] == 8  # MAIN2 (0x100) → bit 8

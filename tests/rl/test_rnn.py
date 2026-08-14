@@ -390,7 +390,7 @@ def test_recurrent_minibatch_shape_and_count():
     batches = list(buffer.get_recurrent_batches(minibatch_size=32, device=torch.device("cpu")))
     assert len(batches) == 4
     for b in batches:
-        assert b.obs_cards.shape == (32, 1, 200, 42)
+        assert b.obs_cards.shape == (32, 1, MAX_CARDS, CARD_FEATURES)
         assert b.obs_global.shape == (32, 1, GLOBAL_FEATURES)
         assert b.actions.shape == (32, 1)
         assert b.dones.shape == (32, 1)

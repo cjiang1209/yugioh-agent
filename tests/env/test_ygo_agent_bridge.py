@@ -37,7 +37,14 @@ from yugioh_core.action_categories import (
     IDLE_TO_EP,
 )
 from yugioh_core.constants import (
+    ATTRIBUTE_ALL,
+    ATTRIBUTE_LIGHT,
+    LOCATION_BANISHED,
+    LOCATION_EXTRA,
+    LOCATION_GRAVE,
+    LOCATION_HAND,
     LOCATION_MZONE,
+    LOCATION_SZONE,
     MSG_ANNOUNCE_ATTRIB,
     MSG_ANNOUNCE_NUMBER,
     MSG_SELECT_BATTLECMD,
@@ -52,6 +59,12 @@ from yugioh_core.constants import (
     MSG_SELECT_TRIBUTE,
     MSG_SELECT_UNSELECT_CARD,
     MSG_SELECT_YESNO,
+    PHASE_MAIN1,
+    POS_FACEDOWN_DEFENSE,
+    POS_FACEUP,
+    POS_FACEUP_ATTACK,
+    POS_FACEUP_DEFENSE,
+    RACE_DRAGON,
 )
 from yugioh_core.encoding import (
     CARD_FEATURES,
@@ -94,15 +107,15 @@ class TestTranslateCards:
             [
                 {
                     "code": 89631139,  # Blue-Eyes White Dragon
-                    "location": 0x04,  # mzone
+                    "location": LOCATION_MZONE,  # mzone
                     "sequence": 2,
-                    "position": 0x1,  # faceup_attack
+                    "position": POS_FACEUP_ATTACK,  # faceup_attack
                     "controller": 0,  # me
                     "is_public": True,
                     "card_type": 0x11,  # monster + normal
                     "level": 8,
-                    "attribute": 0x10,  # light
-                    "race": 0x2000,  # dragon
+                    "attribute": ATTRIBUTE_LIGHT,  # light
+                    "race": RACE_DRAGON,  # dragon
                     "attack": 3000,
                     "defense": 2500,
                     "counter_count": 0,
@@ -134,9 +147,9 @@ class TestTranslateCards:
             [
                 {
                     "code": 46986414,
-                    "location": 0x04,  # mzone
+                    "location": LOCATION_MZONE,  # mzone
                     "sequence": 0,
-                    "position": 0x8,  # facedown_defense
+                    "position": POS_FACEDOWN_DEFENSE,  # facedown_defense
                     "controller": 1,  # opponent
                     "is_public": False,
                 }
@@ -152,9 +165,9 @@ class TestTranslateCards:
             [
                 {
                     "code": 84013237,
-                    "location": 0x04,  # mzone
+                    "location": LOCATION_MZONE,  # mzone
                     "sequence": 1,
-                    "position": 0x1,
+                    "position": POS_FACEUP_ATTACK,
                     "controller": 0,
                     "is_public": True,
                     "is_overlay": True,
@@ -167,11 +180,21 @@ class TestTranslateCards:
     def test_multiple_cards_skips_empty_slots(self):
         obs = np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8)
         obs[0] = encode_card(
-            code=1, location=0x02, sequence=0, position=0x1, controller=0, is_public=True
+            code=1,
+            location=LOCATION_HAND,
+            sequence=0,
+            position=POS_FACEUP_ATTACK,
+            controller=0,
+            is_public=True,
         )
         # slot 1 is empty (all zeros)
         obs[2] = encode_card(
-            code=2, location=0x02, sequence=1, position=0x1, controller=0, is_public=True
+            code=2,
+            location=LOCATION_HAND,
+            sequence=1,
+            position=POS_FACEUP_ATTACK,
+            controller=0,
+            is_public=True,
         )
         cards = translate_cards(obs)
         assert len(cards) == 2
@@ -184,13 +207,18 @@ class TestTranslateCards:
         # not be sent to ygo-agent (which never sees empty zones natively).
         obs = np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8)
         obs[0] = encode_card(
-            code=0, location=0x04, sequence=0, position=0, controller=0, is_public=False
+            code=0, location=LOCATION_MZONE, sequence=0, position=0, controller=0, is_public=False
         )  # empty mzone slot
         obs[1] = encode_card(
-            code=0, location=0x08, sequence=3, position=0, controller=1, is_public=False
+            code=0, location=LOCATION_SZONE, sequence=3, position=0, controller=1, is_public=False
         )  # empty szone slot
         obs[2] = encode_card(
-            code=89631139, location=0x04, sequence=1, position=0x1, controller=0, is_public=True
+            code=89631139,
+            location=LOCATION_MZONE,
+            sequence=1,
+            position=POS_FACEUP_ATTACK,
+            controller=0,
+            is_public=True,
         )  # a real monster
         cards = translate_cards(obs)
         assert len(cards) == 1
@@ -201,7 +229,7 @@ class TestTranslateCards:
         # model needs the hand/deck counts). Only zone holes are dropped.
         obs = np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8)
         obs[0] = encode_card(
-            code=0, location=0x02, sequence=0, position=0, controller=1, is_public=False
+            code=0, location=LOCATION_HAND, sequence=0, position=0, controller=1, is_public=False
         )  # opponent's hidden hand card
         cards = translate_cards(obs)
         assert len(cards) == 1
@@ -211,12 +239,12 @@ class TestTranslateCards:
     @pytest.mark.parametrize(
         "loc_byte,expected",
         [
-            (0x02, "hand"),
-            (0x04, "mzone"),
-            (0x08, "szone"),
-            (0x10, "grave"),
-            (0x20, "removed"),
-            (0x40, "extra"),
+            (LOCATION_HAND, "hand"),
+            (LOCATION_MZONE, "mzone"),
+            (LOCATION_SZONE, "szone"),
+            (LOCATION_GRAVE, "grave"),
+            (LOCATION_BANISHED, "removed"),
+            (LOCATION_EXTRA, "extra"),
         ],
     )
     def test_location_mapping(self, loc_byte, expected):
@@ -226,7 +254,7 @@ class TestTranslateCards:
                     "code": 1,
                     "location": loc_byte,
                     "sequence": 0,
-                    "position": 0x1,
+                    "position": POS_FACEUP_ATTACK,
                     "controller": 0,
                     "is_public": True,
                 }
@@ -240,9 +268,9 @@ class TestTranslateCards:
             [
                 {
                     "code": 1,
-                    "location": 0x08,
+                    "location": LOCATION_SZONE,
                     "sequence": 0,
-                    "position": 0x1,
+                    "position": POS_FACEUP_ATTACK,
                     "controller": 0,
                     "is_public": True,
                     "card_type": 0x20002,
@@ -257,10 +285,10 @@ class TestTranslateCards:
 
 class TestTranslateGlobal:
     def _make_obs_global(
-        self, my_lp=8000, opp_lp=8000, turn=1, phase=0x04, is_my_turn=True
+        self, my_lp=8000, opp_lp=8000, turn=1, phase=PHASE_MAIN1, is_my_turn=True
     ) -> np.ndarray:
         """Build a (21,) uint8 global_state array."""
-        g = np.zeros(21, dtype=np.uint8)
+        g = np.zeros(GLOBAL_FEATURES, dtype=np.uint8)
         g[0], g[1] = encode_u16(my_lp)
         g[2], g[3] = encode_u16(opp_lp)
         g[4] = turn
@@ -312,7 +340,7 @@ class TestTranslateActionMsg:
             "msg_type": MSG_SELECT_IDLECMD,
             "player": 0,
             "summonable": [
-                {"code": 89631139, "controller": 0, "location": 0x02, "sequence": 0},
+                {"code": 89631139, "controller": 0, "location": LOCATION_HAND, "sequence": 0},
             ],
             "sp_summonable": [],
             "repositionable": [],
@@ -347,7 +375,7 @@ class TestTranslateActionMsg:
                 {
                     "code": 12345,
                     "controller": 0,
-                    "location": 0x08,
+                    "location": LOCATION_SZONE,
                     "sequence": 1,
                     "desc": 0x99,
                     "client_mode": 0,
@@ -372,7 +400,7 @@ class TestTranslateActionMsg:
                 {
                     "code": 111,
                     "controller": 0,
-                    "location": 0x08,
+                    "location": LOCATION_SZONE,
                     "sequence": 0,
                     "position": 0,
                     "desc": 0x99,
@@ -395,7 +423,7 @@ class TestTranslateActionMsg:
                 {
                     "code": 222,
                     "controller": 0,
-                    "location": 0x04,
+                    "location": LOCATION_MZONE,
                     "sequence": 1,
                     "position": 0,
                     "desc": 0x99,
@@ -419,7 +447,7 @@ class TestTranslateActionMsg:
             "player": 1,
             "code": 89631139,
             "controller": 1,
-            "location": 0x04,
+            "location": LOCATION_MZONE,
             "sequence": 0,
             "desc": 89631139 << 4 | 0,
         }
@@ -433,7 +461,7 @@ class TestTranslateActionMsg:
             "player": 0,
             "code": 89631139,
             "controller": 0,
-            "location": 0x04,
+            "location": LOCATION_MZONE,
             "sequence": 2,
             "desc": 89631139 << 4 | 0,
         }
@@ -454,7 +482,7 @@ class TestTranslateActionMsg:
             "msg_type": MSG_SELECT_POSITION,
             "player": 0,
             "code": 111,
-            "positions": 0x5,  # FU-Atk | FU-Def
+            "positions": POS_FACEUP,  # FU-Atk | FU-Def
         }
         obs = obs_from_msg(msg)
         result = translate_action_msg(obs.action_descriptors, obs.prompt_meta)
@@ -477,8 +505,20 @@ class TestTranslateActionMsg:
             "min": 1,
             "max": 1,
             "cards": [
-                {"code": 111, "controller": 0, "location": 0x02, "sequence": 0, "subsequence": 0},
-                {"code": 222, "controller": 0, "location": 0x02, "sequence": 1, "subsequence": 0},
+                {
+                    "code": 111,
+                    "controller": 0,
+                    "location": LOCATION_HAND,
+                    "sequence": 0,
+                    "subsequence": 0,
+                },
+                {
+                    "code": 222,
+                    "controller": 0,
+                    "location": LOCATION_HAND,
+                    "sequence": 1,
+                    "subsequence": 0,
+                },
             ],
         }
         obs = obs_from_msg(msg)
@@ -518,7 +558,7 @@ class TestTranslateActionMsg:
         # count=5 is a non-default value (the field's fallback is 1); this
         # pins _build_prompt_meta actually populating `count` for
         # MSG_ANNOUNCE_ATTRIB instead of falling back to the default.
-        msg = {"msg_type": MSG_ANNOUNCE_ATTRIB, "player": 0, "count": 5, "available": 0x7F}
+        msg = {"msg_type": MSG_ANNOUNCE_ATTRIB, "player": 0, "count": 5, "available": ATTRIBUTE_ALL}
         obs = obs_from_msg(msg)
         result = translate_action_msg(obs.action_descriptors, obs.prompt_meta)
         assert result["data"]["msg_type"] == "announce_attrib"
@@ -533,7 +573,7 @@ class TestTranslateActionMsg:
                 {
                     "code": 111,
                     "controller": 0,
-                    "location": 0x04,
+                    "location": LOCATION_MZONE,
                     "sequence": 0,
                     "direct_attackable": 0,
                 },
@@ -553,7 +593,7 @@ class TestBuildPredictInput:
     def test_assembles_all_parts(self):
         global_state = np.zeros(GLOBAL_FEATURES, dtype=np.uint8)
         global_state[4] = 1  # turn
-        global_state[5], global_state[6] = encode_u16(0x04)  # phase: main1
+        global_state[5], global_state[6] = encode_u16(PHASE_MAIN1)
         global_state[7] = 1  # is_my_turn
         msg = {"msg_type": MSG_SELECT_YESNO, "player": 0, "desc": 30}
         base = obs_from_msg(msg)
@@ -579,7 +619,7 @@ class TestBuildPredictInput:
         # the model sees an empty deck (off-distribution → uniform policy).
         global_state = np.zeros(GLOBAL_FEATURES, dtype=np.uint8)
         global_state[4] = 1  # turn
-        global_state[5], global_state[6] = encode_u16(0x04)  # phase: main1
+        global_state[5], global_state[6] = encode_u16(PHASE_MAIN1)
         global_state[7] = 1  # is_my_turn
         global_state[10] = 33  # agent deck count
         global_state[15] = 36  # opponent deck count
@@ -786,7 +826,7 @@ RESPONSE_CASES: list[tuple[int, str, int, int]] = [
     (MSG_SELECT_OPTION, "option", 1, 1),
     # POSITION: choose_position matches on the position BITMASK (0x4 =
     # faceup_defense), not a list ordinal.
-    (MSG_SELECT_POSITION, "position", 2, 0x4),
+    (MSG_SELECT_POSITION, "position", 2, POS_FACEUP_DEFENSE),
     # PLACE: place_zone's response is the ordinal position in the outbound
     # list, which (PLACE prompts contain only place_zone descriptors,
     # contiguous from slot 0) equals the absolute slot.

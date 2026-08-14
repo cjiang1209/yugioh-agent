@@ -10,10 +10,16 @@ import pytest
 import torch
 
 from yugioh_core.constants import (
+    ATTRIBUTE_DARK,
     LOCATION_HAND,
     LOCATION_MZONE,
+    LOCATION_SZONE,
     MSG_SELECT_CARD,
     MSG_SELECT_IDLECMD,
+    PHASE_MAIN1,
+    POS_FACEUP_ATTACK,
+    RACE_DRAGON,
+    RACE_MACHINE,
 )
 from yugioh_core.encoding import (
     CARD_FEATURES,
@@ -45,7 +51,7 @@ from yugioh_rl.features import (
 
 
 def _card_tensor(card_array: np.ndarray) -> torch.Tensor:
-    """Wrap a single encoded card in a (1, 200, 42) batch tensor."""
+    """Wrap a single encoded card in a (1, MAX_CARDS, CARD_FEATURES) batch tensor."""
     cards = np.zeros((1, MAX_CARDS, CARD_FEATURES), dtype=np.uint8)
     cards[0, 0] = card_array
     return torch.from_numpy(cards)
@@ -73,9 +79,9 @@ class TestCardRoundtrip:
     def test_output_shape(self):
         card = encode_card(
             code=100,
-            location=0x02,
+            location=LOCATION_HAND,
             sequence=0,
-            position=0x01,
+            position=POS_FACEUP_ATTACK,
             controller=0,
             is_public=True,
         )
@@ -89,9 +95,9 @@ class TestCardRoundtrip:
     def test_card_id(self):
         card = encode_card(
             code=46986414,
-            location=0x02,
+            location=LOCATION_HAND,
             sequence=0,
-            position=0x01,
+            position=POS_FACEUP_ATTACK,
             controller=0,
             is_public=True,
         )
@@ -103,9 +109,9 @@ class TestCardRoundtrip:
         code = 100000123
         card = encode_card(
             code=code,
-            location=0x02,
+            location=LOCATION_HAND,
             sequence=0,
-            position=0x01,
+            position=POS_FACEUP_ATTACK,
             controller=0,
             is_public=True,
         )
@@ -140,7 +146,7 @@ class TestCardRoundtrip:
     def test_sequence(self):
         card = encode_card(
             code=0,
-            location=0x04,
+            location=LOCATION_MZONE,
             sequence=5,
             position=0,
             controller=0,
@@ -157,7 +163,7 @@ class TestCardRoundtrip:
         ]:
             card = encode_card(
                 code=0,
-                location=0x04,
+                location=LOCATION_MZONE,
                 sequence=0,
                 position=pos_val,
                 controller=0,
@@ -173,7 +179,7 @@ class TestCardRoundtrip:
         for ctrl in [0, 1]:
             card = encode_card(
                 code=0,
-                location=0x04,
+                location=LOCATION_MZONE,
                 sequence=0,
                 position=0,
                 controller=ctrl,
@@ -186,7 +192,7 @@ class TestCardRoundtrip:
         for pub in [True, False]:
             card = encode_card(
                 code=0,
-                location=0x04,
+                location=LOCATION_MZONE,
                 sequence=0,
                 position=0,
                 controller=0,
@@ -200,7 +206,7 @@ class TestCardRoundtrip:
         ctype = 0x21
         card = encode_card(
             code=0,
-            location=0x04,
+            location=LOCATION_MZONE,
             sequence=0,
             position=0,
             controller=0,
@@ -220,7 +226,7 @@ class TestCardRoundtrip:
         ctype = 0x4000021
         card = encode_card(
             code=0,
-            location=0x04,
+            location=LOCATION_MZONE,
             sequence=0,
             position=0,
             controller=0,
@@ -240,7 +246,7 @@ class TestCardRoundtrip:
         for i, bit in enumerate(_TYPE_BITS):
             card = encode_card(
                 code=0,
-                location=0x04,
+                location=LOCATION_MZONE,
                 sequence=0,
                 position=0,
                 controller=0,
@@ -261,7 +267,7 @@ class TestCardRoundtrip:
     def test_level(self):
         card = encode_card(
             code=0,
-            location=0x04,
+            location=LOCATION_MZONE,
             sequence=0,
             position=0,
             controller=0,
@@ -277,7 +283,7 @@ class TestCardRoundtrip:
         attr = 0x20
         card = encode_card(
             code=0,
-            location=0x04,
+            location=LOCATION_MZONE,
             sequence=0,
             position=0,
             controller=0,
@@ -294,10 +300,10 @@ class TestCardRoundtrip:
 
     def test_race(self):
         # Dragon = 0x2000
-        race = 0x2000
+        race = RACE_DRAGON
         card = encode_card(
             code=0,
-            location=0x04,
+            location=LOCATION_MZONE,
             sequence=0,
             position=0,
             controller=0,
@@ -318,7 +324,7 @@ class TestCardRoundtrip:
         race = 0x0021
         card = encode_card(
             code=0,
-            location=0x04,
+            location=LOCATION_MZONE,
             sequence=0,
             position=0,
             controller=0,
@@ -341,7 +347,7 @@ class TestCardRoundtrip:
                 continue  # skip low bits, tested elsewhere
             card = encode_card(
                 code=0,
-                location=0x04,
+                location=LOCATION_MZONE,
                 sequence=0,
                 position=0,
                 controller=0,
@@ -361,7 +367,7 @@ class TestCardRoundtrip:
     def test_atk(self):
         card = encode_card(
             code=0,
-            location=0x04,
+            location=LOCATION_MZONE,
             sequence=0,
             position=0,
             controller=0,
@@ -375,7 +381,7 @@ class TestCardRoundtrip:
     def test_def(self):
         card = encode_card(
             code=0,
-            location=0x04,
+            location=LOCATION_MZONE,
             sequence=0,
             position=0,
             controller=0,
@@ -389,7 +395,7 @@ class TestCardRoundtrip:
     def test_lscale(self):
         card = encode_card(
             code=0,
-            location=0x04,
+            location=LOCATION_MZONE,
             sequence=0,
             position=0,
             controller=0,
@@ -403,7 +409,7 @@ class TestCardRoundtrip:
     def test_rscale(self):
         card = encode_card(
             code=0,
-            location=0x04,
+            location=LOCATION_MZONE,
             sequence=0,
             position=0,
             controller=0,
@@ -419,7 +425,7 @@ class TestCardRoundtrip:
         lmark = 0xC0
         card = encode_card(
             code=0,
-            location=0x04,
+            location=LOCATION_MZONE,
             sequence=0,
             position=0,
             controller=0,
@@ -437,7 +443,7 @@ class TestCardRoundtrip:
     def test_counter_count(self):
         card = encode_card(
             code=0,
-            location=0x04,
+            location=LOCATION_MZONE,
             sequence=0,
             position=0,
             controller=0,
@@ -451,7 +457,7 @@ class TestCardRoundtrip:
     def test_negated(self):
         card = encode_card(
             code=0,
-            location=0x04,
+            location=LOCATION_MZONE,
             sequence=0,
             position=0,
             controller=0,
@@ -465,7 +471,7 @@ class TestCardRoundtrip:
     def test_is_overlay(self):
         card = encode_card(
             code=0,
-            location=0x04,
+            location=LOCATION_MZONE,
             sequence=0,
             position=0,
             controller=0,
@@ -480,15 +486,15 @@ class TestCardRoundtrip:
         """Encode a fully-populated card and verify every field decodes."""
         card = encode_card(
             code=46986414,
-            location=0x04,  # MZONE
+            location=LOCATION_MZONE,  # MZONE
             sequence=3,
-            position=0x01,  # FU-Atk
+            position=POS_FACEUP_ATTACK,  # FU-Atk
             controller=1,
             is_public=True,
             card_type=0x4000021,  # link + monster + effect
             level=4,
-            attribute=0x20,  # DARK
-            race=0x0020,  # machine
+            attribute=ATTRIBUTE_DARK,  # DARK
+            race=RACE_MACHINE,  # machine
             attack=2500,
             defense=2000,
             lscale=3,
@@ -545,7 +551,7 @@ class TestCardRoundtrip:
         """A hidden card should decode to all-zero features (except location/controller)."""
         card = encode_card(
             code=0,
-            location=0x08,
+            location=LOCATION_SZONE,
             sequence=2,
             position=0,
             controller=1,
@@ -591,10 +597,10 @@ class TestGlobalRoundtrip:
     def test_phase(self):
         # Main phase 1 = 0x04
         gs = GameState()
-        gs.phase = 0x04
+        gs.phase = PHASE_MAIN1
         feats = decode_global(_global_tensor(gs))
         phase_feats = feats[0, 3:13]
-        expected_set = _bit_index(_PHASE_BITS, 0x04)
+        expected_set = _bit_index(_PHASE_BITS, PHASE_MAIN1)
         for i in range(10):
             expected = 1.0 if i in expected_set else 0.0
             assert phase_feats[i].item() == expected, f"phase bit {i}"
@@ -715,8 +721,8 @@ class TestActionRoundtrip:
             {
                 "msg_type": MSG_SELECT_IDLECMD,
                 "player": 0,
-                "summonable": [{"code": 100, "location": 0x02, "sequence": 0}],
-                "sp_summonable": [{"code": 200, "location": 0x02, "sequence": 1}],
+                "summonable": [{"code": 100, "location": LOCATION_HAND, "sequence": 0}],
+                "sp_summonable": [{"code": 200, "location": LOCATION_HAND, "sequence": 1}],
                 "repositionable": [],
                 "mset": [],
                 "sset": [],
@@ -745,7 +751,7 @@ class TestActionRoundtrip:
                     {
                         "code": 100,
                         "controller": 0,
-                        "location": 0x04,
+                        "location": LOCATION_MZONE,
                         "sequence": 5,
                         "subsequence": 0,
                     }
@@ -755,7 +761,7 @@ class TestActionRoundtrip:
         *_, feats = decode_actions(self._action_tensor(mapper))
         # New layout: feats[..., 3:10] = location bits (after msg_type, category, controller)
         loc_feats = feats[0, 0, 3:10]
-        expected_set = _bit_index(_LOC_BITS, 0x04)
+        expected_set = _bit_index(_LOC_BITS, LOCATION_MZONE)
         for i in range(7):
             expected = 1.0 if i in expected_set else 0.0
             assert loc_feats[i].item() == expected, f"action loc bit {i}"

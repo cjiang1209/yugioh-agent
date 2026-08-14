@@ -1,15 +1,23 @@
 import torch
 
-from yugioh_core.encoding import EVENT_ENTRY_FEATURES, MAX_EVENT_HISTORY
+from yugioh_core.encoding import (
+    ACTION_FEATURES,
+    CARD_FEATURES,
+    EVENT_ENTRY_FEATURES,
+    GLOBAL_FEATURES,
+    MAX_ACTIONS,
+    MAX_CARDS,
+    MAX_EVENT_HISTORY,
+)
 from yugioh_rl.config import TrainingConfig
 from yugioh_rl.network import YuGiOhNet
 
 
 def _dummy_obs(B=2):
-    cards = torch.zeros(B, 200, 42, dtype=torch.uint8)
-    glob = torch.zeros(B, 20, dtype=torch.uint8)
-    actions = torch.zeros(B, 32, 28, dtype=torch.uint8)
-    mask = torch.ones(B, 32, dtype=torch.int8)
+    cards = torch.zeros(B, MAX_CARDS, CARD_FEATURES, dtype=torch.uint8)
+    glob = torch.zeros(B, GLOBAL_FEATURES, dtype=torch.uint8)
+    actions = torch.zeros(B, MAX_ACTIONS, ACTION_FEATURES, dtype=torch.uint8)
+    mask = torch.ones(B, MAX_ACTIONS, dtype=torch.int8)
     return cards, glob, actions, mask
 
 
@@ -37,5 +45,5 @@ def test_disabled_matches_no_event_arg():
     cards, glob, actions, mask = _dummy_obs()
     with torch.no_grad():
         logits, val, _ = net(cards, glob, actions, mask)
-    assert logits.shape == (2, 32)
+    assert logits.shape == (2, MAX_ACTIONS)
     assert val.shape == (2,)

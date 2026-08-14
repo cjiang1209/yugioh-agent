@@ -16,10 +16,10 @@ def _row(**over):
         "code": 0,
         "alias": 0,
         "setcodes": [],
-        "type": 0x21,  # MONSTER | EFFECT
+        "type": TYPE_MONSTER | TYPE_EFFECT,  # MONSTER | EFFECT
         "level": 4,
-        "attribute": 0x20,  # DARK
-        "race": 0x2000,  # Dragon
+        "attribute": ATTRIBUTE_DARK,  # DARK
+        "race": RACE_DRAGON,  # Dragon
         "attack": 1000,
         "defense": 1000,
         "lscale": 0,
@@ -53,7 +53,14 @@ def test_normal_monster():
     info = build_card_info(
         89631139,
         _FakeCardDB(
-            _row(type=0x11, level=8, attribute=0x10, race=0x2000, attack=3000, defense=2500),
+            _row(
+                type=TYPE_MONSTER | TYPE_NORMAL,
+                level=8,
+                attribute=ATTRIBUTE_LIGHT,
+                race=RACE_DRAGON,
+                attack=3000,
+                defense=2500,
+            ),
             name="Blue-Eyes White Dragon",
         ),
     )
@@ -74,7 +81,14 @@ def test_synchro_monster():
     info = build_card_info(
         44508094,
         _FakeCardDB(
-            _row(type=0x2021, level=8, attribute=0x08, race=0x2000, attack=2500, defense=2000),
+            _row(
+                type=TYPE_MONSTER | TYPE_EFFECT | TYPE_SYNCHRO,
+                level=8,
+                attribute=ATTRIBUTE_WIND,
+                race=RACE_DRAGON,
+                attack=2500,
+                defense=2000,
+            ),
             name="Stardust Dragon",
         ),
     )
@@ -88,7 +102,14 @@ def test_synchro_tuner_monster():
     info = build_card_info(
         4891376,
         _FakeCardDB(
-            _row(type=0x3021, level=7, attribute=0x20, race=0x2000, attack=2800, defense=2100),
+            _row(
+                type=TYPE_MONSTER | TYPE_EFFECT | TYPE_TUNER | TYPE_SYNCHRO,
+                level=7,
+                attribute=ATTRIBUTE_DARK,
+                race=RACE_DRAGON,
+                attack=2800,
+                defense=2100,
+            ),
             name="Zalen the Shackled Dragon",
         ),
     )
@@ -101,10 +122,10 @@ def test_pendulum_monster_has_scales():
         41546,
         _FakeCardDB(
             _row(
-                type=0x1000021,
+                type=TYPE_MONSTER | TYPE_EFFECT | TYPE_PENDULUM,
                 level=8,
-                attribute=0x20,
-                race=0x08,
+                attribute=ATTRIBUTE_DARK,
+                race=RACE_FIEND,
                 attack=1800,
                 defense=2600,
                 lscale=6,
@@ -127,10 +148,10 @@ def test_link_monster_has_arrows_and_no_defense():
         146746,
         _FakeCardDB(
             _row(
-                type=0x4000021,
+                type=TYPE_MONSTER | TYPE_EFFECT | TYPE_LINK,
                 level=2,
-                attribute=0x01,
-                race=0x20,
+                attribute=ATTRIBUTE_EARTH,
+                race=RACE_MACHINE,
                 attack=1500,
                 defense=None,
                 link_marker=34,
@@ -148,7 +169,7 @@ def test_link_monster_has_arrows_and_no_defense():
 def test_xyz_monster_level_kind_is_rank():
     info = build_card_info(
         1861629,
-        _FakeCardDB(_row(type=0x800021, level=4), name="Xyz Test"),
+        _FakeCardDB(_row(type=TYPE_MONSTER | TYPE_EFFECT | TYPE_XYZ, level=4), name="Xyz Test"),
     )
     assert info.level_kind == "rank"
 
@@ -159,7 +180,14 @@ def test_special_summon_bit_is_not_rendered():
     info = build_card_info(
         102380,
         _FakeCardDB(
-            _row(type=0x2000021, level=8, attribute=0x04, race=0x08, attack=3000, defense=2500),
+            _row(
+                type=TYPE_MONSTER | TYPE_EFFECT | TYPE_SPSUMMON,
+                level=8,
+                attribute=ATTRIBUTE_FIRE,
+                race=RACE_FIEND,
+                attack=3000,
+                defense=2500,
+            ),
             name="Lava Golem",
         ),
     )
@@ -173,7 +201,14 @@ def test_token_suppresses_normal_but_keeps_other_labels():
     info = build_card_info(
         20001444,
         _FakeCardDB(
-            _row(type=0x5011, level=4, attribute=0x02, race=0x800000, attack=0, defense=0),
+            _row(
+                type=TYPE_MONSTER | TYPE_NORMAL | TYPE_TUNER | TYPE_TOKEN,
+                level=4,
+                attribute=ATTRIBUTE_WATER,
+                race=RACE_WYRM,
+                attack=0,
+                defense=0,
+            ),
             name="Swordsoul Token",
         ),
     )
@@ -189,7 +224,9 @@ def test_quick_play_spell():
     info = build_card_info(
         483,
         _FakeCardDB(
-            _row(type=0x10002, level=0, attribute=0, race=0, attack=0, defense=0),
+            _row(
+                type=TYPE_SPELL | TYPE_QUICKPLAY, level=0, attribute=0, race=0, attack=0, defense=0
+            ),
             name="Parallel Teleport",
         ),
     )
@@ -208,7 +245,7 @@ def test_counter_trap():
     info = build_card_info(
         983995,
         _FakeCardDB(
-            _row(type=0x100004, level=0, attribute=0, race=0, attack=0, defense=0),
+            _row(type=TYPE_TRAP | TYPE_COUNTER, level=0, attribute=0, race=0, attack=0, defense=0),
             name="Rebound",
         ),
     )
@@ -223,7 +260,14 @@ def test_trap_carrying_monster_stats_reports_no_attribute_or_race():
     info = build_card_info(
         1154611,
         _FakeCardDB(
-            _row(type=0x4, level=0, attribute=0x02, race=0x40, attack=0, defense=0),
+            _row(
+                type=TYPE_TRAP,
+                level=0,
+                attribute=ATTRIBUTE_WATER,
+                race=RACE_AQUA,
+                attack=0,
+                defense=0,
+            ),
             name="Paleozoic Leanchoilia",
         ),
     )
@@ -240,7 +284,7 @@ def test_ritual_spell_resolves_in_the_spell_context():
     info = build_card_info(
         7986397,
         _FakeCardDB(
-            _row(type=0x82, level=0, attribute=0, race=0, attack=0, defense=0),
+            _row(type=TYPE_SPELL | TYPE_RITUAL, level=0, attribute=0, race=0, attack=0, defense=0),
             name="Revendread Evolution",
         ),
     )
@@ -252,7 +296,7 @@ def test_plain_spell_has_no_subtype_label():
     info = build_card_info(
         24094653,
         _FakeCardDB(
-            _row(type=0x2, level=0, attribute=0, race=0, attack=0, defense=0),
+            _row(type=TYPE_SPELL, level=0, attribute=0, race=0, attack=0, defense=0),
             name="Polymerization",
         ),
     )
@@ -291,12 +335,12 @@ def test_missing_desc_becomes_empty_string():
 
 
 def test_structural_less_row_has_empty_typeline():
-    """The two cdb junk rows (type == 0x4000) have no monster/spell/trap bit, so
+    """The two cdb junk rows (type == TYPE_TOKEN) have no monster/spell/trap bit, so
     there is no table to resolve against."""
     info = build_card_info(
         10000110,
         _FakeCardDB(
-            _row(type=0x4000, level=0, attribute=0, race=0, attack=0, defense=0),
+            _row(type=TYPE_TOKEN, level=0, attribute=0, race=0, attack=0, defense=0),
             name="Unknown",
             desc=None,
         ),
@@ -314,12 +358,35 @@ def test_structural_less_row_has_empty_typeline():
 # rendered as bare ["Spell"].
 
 from yugioh_core.constants import (
+    ATTRIBUTE_DARK,
+    ATTRIBUTE_EARTH,
+    ATTRIBUTE_FIRE,
+    ATTRIBUTE_LIGHT,
+    ATTRIBUTE_WATER,
+    ATTRIBUTE_WIND,
     IGNORED_TYPE_BITS,
     MONSTER_TYPE_LABELS,
+    RACE_AQUA,
+    RACE_DRAGON,
+    RACE_FIEND,
+    RACE_MACHINE,
+    RACE_WYRM,
     SPELL_TRAP_TYPE_LABELS,
+    TYPE_COUNTER,
+    TYPE_EFFECT,
+    TYPE_LINK,
     TYPE_MONSTER,
+    TYPE_NORMAL,
+    TYPE_PENDULUM,
+    TYPE_QUICKPLAY,
+    TYPE_RITUAL,
     TYPE_SPELL,
+    TYPE_SPSUMMON,
+    TYPE_SYNCHRO,
+    TYPE_TOKEN,
     TYPE_TRAP,
+    TYPE_TUNER,
+    TYPE_XYZ,
 )
 
 _STRUCTURAL = {TYPE_MONSTER, TYPE_SPELL, TYPE_TRAP}

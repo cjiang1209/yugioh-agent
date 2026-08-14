@@ -111,7 +111,7 @@ def test_recommender_declines_on_all_zero_mask(monkeypatch) -> None:
     request = SimpleNamespace(
         app=SimpleNamespace(state=SimpleNamespace(recommender=object(), recommend_enabled=True))
     )
-    obs = YuGiOhObservation(done=False)  # mask zeros(32), size 32
+    obs = YuGiOhObservation(done=False)  # mask zeros(MAX_ACTIONS), size MAX_ACTIONS
     assert obs.action_mask.size == 32 and not obs.action_mask.any()
 
     assert web_api._resolve_recommendation(request, obs=obs) is None

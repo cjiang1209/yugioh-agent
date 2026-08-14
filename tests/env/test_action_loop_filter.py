@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from yugioh_core.constants import MSG_SELECT_CARD, MSG_SELECT_CHAIN, MSG_SELECT_IDLECMD
+from yugioh_core.constants import (
+    LOCATION_GRAVE,
+    LOCATION_MZONE,
+    LOCATION_SZONE,
+    MSG_SELECT_CARD,
+    MSG_SELECT_CHAIN,
+    MSG_SELECT_IDLECMD,
+    STATUS_DISABLED,
+)
 from yugioh_env.action_loop_filter import _ZONES, SAMPLING_START, ActionLoopFilter
 from yugioh_env.models import YuGiOhAction
 from yugioh_env.replay import GameRecording, ScriptedOpponent
@@ -22,7 +30,7 @@ _N_SUPPRESS = SAMPLING_START + 1
 _ACTION_A: dict = {
     "code": 1001,
     "controller": 0,
-    "location": 0x10,
+    "location": LOCATION_GRAVE,
     "sequence": 0,
     "category": 5,
     "desc": 0,
@@ -30,7 +38,7 @@ _ACTION_A: dict = {
 _ACTION_B: dict = {
     "code": 1002,
     "controller": 0,
-    "location": 0x04,
+    "location": LOCATION_MZONE,
     "sequence": 1,
     "category": 1,
     "desc": 0,
@@ -38,7 +46,7 @@ _ACTION_B: dict = {
 _ACTION_C: dict = {
     "code": 1001,
     "controller": 0,
-    "location": 0x10,
+    "location": LOCATION_GRAVE,
     "sequence": 0,
     "category": 5,
     "desc": 99,
@@ -93,12 +101,12 @@ class TestActionKey:
         action = {
             "code": 89631139,
             "controller": 0,
-            "location": 0x04,
+            "location": LOCATION_MZONE,
             "sequence": 2,
             "category": 1,
             "desc": 42,
         }
-        assert ActionLoopFilter.action_key(action) == (89631139, 0, 0x04, 2, 1, 42)
+        assert ActionLoopFilter.action_key(action) == (89631139, 0, LOCATION_MZONE, 2, 1, 42)
 
     def test_defaults_missing_fields_to_zero(self):
         """Missing fields default to 0."""
@@ -106,7 +114,7 @@ class TestActionKey:
 
     def test_partial_action(self):
         """Only some fields present — rest default to 0."""
-        action = {"code": 100, "location": 0x08}
+        action = {"code": 100, "location": LOCATION_SZONE}
         assert ActionLoopFilter.action_key(action) == (100, 0, 0x08, 0, 0, 0)
 
 
@@ -312,7 +320,7 @@ class TestRecurrenceDetection:
         f, _ = _make_filter_with_state_cycle(
             [
                 {"code": 999, "sequence": 0, "position": 0, "status": 0x00},
-                {"code": 999, "sequence": 0, "position": 0, "status": 0x01},
+                {"code": 999, "sequence": 0, "position": 0, "status": STATUS_DISABLED},
             ]
         )
         _select_n(f, _ACTION_A, _N_SUPPRESS)

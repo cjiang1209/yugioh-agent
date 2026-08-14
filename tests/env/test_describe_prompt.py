@@ -7,6 +7,9 @@ import pytest
 
 from tests.env.conftest import obs_from_msg as _obs_from_msg
 from yugioh_core.constants import (
+    ATTRIBUTE_EARTH,
+    LOCATION_DECK,
+    LOCATION_MZONE,
     MSG_SELECT_CARD,
     MSG_SELECT_CHAIN,
     MSG_SELECT_DISFIELD,
@@ -22,6 +25,7 @@ from yugioh_core.constants import (
     MSG_SORT_CARD,
     POS_FACEDOWN_DEFENSE,
     POS_FACEUP_ATTACK,
+    RACE_WARRIOR,
 )
 from yugioh_env.action_describer import ActionDescriber
 from yugioh_env.server.yugioh_environment import _build_prompt_meta
@@ -406,8 +410,11 @@ def test_prompt_type_map_includes_announce_kinds():
 
     cases = [
         ({"msg_type": MSG_ANNOUNCE_NUMBER, "player": 0, "numbers": [3]}, "number"),
-        ({"msg_type": MSG_ANNOUNCE_RACE, "player": 0, "available": 0x1}, "race"),
-        ({"msg_type": MSG_ANNOUNCE_ATTRIB, "player": 0, "available": 0x1}, "attribute"),
+        ({"msg_type": MSG_ANNOUNCE_RACE, "player": 0, "available": RACE_WARRIOR}, "race"),
+        (
+            {"msg_type": MSG_ANNOUNCE_ATTRIB, "player": 0, "available": ATTRIBUTE_EARTH},
+            "attribute",
+        ),
         ({"msg_type": MSG_ROCK_PAPER_SCISSORS, "player": 0}, "rps"),
         (
             {
@@ -579,9 +586,9 @@ def test_build_prompt_meta_sort_card_first_step():
             "msg_type": MSG_SORT_CARD,
             "player": 0,
             "cards": [
-                {"code": 100, "controller": 0, "location": 0x01, "sequence": 0},
-                {"code": 200, "controller": 0, "location": 0x01, "sequence": 1},
-                {"code": 300, "controller": 0, "location": 0x01, "sequence": 2},
+                {"code": 100, "controller": 0, "location": LOCATION_DECK, "sequence": 0},
+                {"code": 200, "controller": 0, "location": LOCATION_DECK, "sequence": 1},
+                {"code": 300, "controller": 0, "location": LOCATION_DECK, "sequence": 2},
             ],
         }
 
@@ -598,9 +605,9 @@ def test_build_prompt_meta_sort_card_intermediate_step():
             "msg_type": MSG_SORT_CARD,
             "player": 0,
             "cards": [
-                {"code": 100, "controller": 0, "location": 0x01, "sequence": 0},
-                {"code": 200, "controller": 0, "location": 0x01, "sequence": 1},
-                {"code": 300, "controller": 0, "location": 0x01, "sequence": 2},
+                {"code": 100, "controller": 0, "location": LOCATION_DECK, "sequence": 0},
+                {"code": 200, "controller": 0, "location": LOCATION_DECK, "sequence": 1},
+                {"code": 300, "controller": 0, "location": LOCATION_DECK, "sequence": 2},
             ],
             "_selected": [1],
         }
@@ -608,7 +615,7 @@ def test_build_prompt_meta_sort_card_intermediate_step():
     meta = _build_prompt_meta(FakeMapper())
     assert meta["count"] == 3
     assert meta["picked_cards"] == [
-        {"code": 200, "controller": 0, "location": 0x01, "sequence": 1, "param": 0}
+        {"code": 200, "controller": 0, "location": LOCATION_DECK, "sequence": 1, "param": 0}
     ]
 
 
@@ -621,9 +628,9 @@ def test_build_prompt_meta_select_card_picked_cards():
             "max": 2,
             "cancelable": 0,
             "cards": [
-                {"code": 100, "controller": 0, "location": 0x01, "sequence": 0},
-                {"code": 200, "controller": 0, "location": 0x01, "sequence": 1},
-                {"code": 300, "controller": 0, "location": 0x01, "sequence": 2},
+                {"code": 100, "controller": 0, "location": LOCATION_DECK, "sequence": 0},
+                {"code": 200, "controller": 0, "location": LOCATION_DECK, "sequence": 1},
+                {"code": 300, "controller": 0, "location": LOCATION_DECK, "sequence": 2},
             ],
             "_selected": [2, 0],
         }
@@ -631,8 +638,8 @@ def test_build_prompt_meta_select_card_picked_cards():
     meta = _build_prompt_meta(FakeMapper())
     assert meta["selected_count"] == 2
     assert meta["picked_cards"] == [
-        {"code": 300, "controller": 0, "location": 0x01, "sequence": 2, "param": 0},
-        {"code": 100, "controller": 0, "location": 0x01, "sequence": 0, "param": 0},
+        {"code": 300, "controller": 0, "location": LOCATION_DECK, "sequence": 2, "param": 0},
+        {"code": 100, "controller": 0, "location": LOCATION_DECK, "sequence": 0, "param": 0},
     ]
     assert meta["selected"] == [2, 0]
 
@@ -646,8 +653,20 @@ def test_build_prompt_meta_select_tribute_picked_cards():
             "max": 2,
             "cancelable": 0,
             "cards": [
-                {"code": 100, "controller": 0, "location": 0x04, "sequence": 0, "release_param": 1},
-                {"code": 200, "controller": 0, "location": 0x04, "sequence": 1, "release_param": 1},
+                {
+                    "code": 100,
+                    "controller": 0,
+                    "location": LOCATION_MZONE,
+                    "sequence": 0,
+                    "release_param": 1,
+                },
+                {
+                    "code": 200,
+                    "controller": 0,
+                    "location": LOCATION_MZONE,
+                    "sequence": 1,
+                    "release_param": 1,
+                },
             ],
             "_selected": [1],
         }
@@ -655,7 +674,7 @@ def test_build_prompt_meta_select_tribute_picked_cards():
     meta = _build_prompt_meta(FakeMapper())
     assert meta["cards_selected"] == 1
     assert meta["picked_cards"] == [
-        {"code": 200, "controller": 0, "location": 0x04, "sequence": 1, "param": 1}
+        {"code": 200, "controller": 0, "location": LOCATION_MZONE, "sequence": 1, "param": 1}
     ]
     assert meta["selected"] == [1]
 
@@ -671,18 +690,18 @@ def test_build_prompt_meta_select_unselect_picked_cards():
             "min": 1,
             "max": 3,
             "selectable": [
-                {"code": 300, "controller": 0, "location": 0x01, "sequence": 2},
+                {"code": 300, "controller": 0, "location": LOCATION_DECK, "sequence": 2},
             ],
             "unselectable": [
-                {"code": 100, "controller": 0, "location": 0x01, "sequence": 0},
-                {"code": 200, "controller": 0, "location": 0x01, "sequence": 1},
+                {"code": 100, "controller": 0, "location": LOCATION_DECK, "sequence": 0},
+                {"code": 200, "controller": 0, "location": LOCATION_DECK, "sequence": 1},
             ],
         }
 
     meta = _build_prompt_meta(FakeMapper())
     assert meta["picked_cards"] == [
-        {"code": 100, "controller": 0, "location": 0x01, "sequence": 0, "param": 0},
-        {"code": 200, "controller": 0, "location": 0x01, "sequence": 1, "param": 0},
+        {"code": 100, "controller": 0, "location": LOCATION_DECK, "sequence": 0, "param": 0},
+        {"code": 200, "controller": 0, "location": LOCATION_DECK, "sequence": 1, "param": 0},
     ]
 
 
@@ -692,7 +711,7 @@ def test_effectyn_prompt_meta_has_relativized_controller() -> None:
         "msg_type": MSG_SELECT_EFFECTYN,
         "code": 999,
         "controller": 1,
-        "location": 0x04,
+        "location": LOCATION_MZONE,
         "sequence": 2,
         "desc": 0,
     }
@@ -725,13 +744,13 @@ def test_picked_cards_relativizes_controller() -> None:
         "max": 1,
         "cancelable": 0,
         "cards": [
-            {"code": 100, "controller": 0, "location": 0x04, "sequence": 0},
+            {"code": 100, "controller": 0, "location": LOCATION_MZONE, "sequence": 0},
         ],
         "_selected": [0],
     }
     obs = _obs_from_msg(msg, agent_player=1)
     assert obs.prompt_meta["picked_cards"] == [
-        {"code": 100, "controller": 1, "location": 0x04, "sequence": 0, "param": 0}
+        {"code": 100, "controller": 1, "location": LOCATION_MZONE, "sequence": 0, "param": 0}
     ]
 
 
@@ -773,7 +792,13 @@ def test_sum_prompt_meta_selected_and_must_cards_fields() -> None:
                 "_agent_player": agent_player,
                 "_selected": [0],
                 "must_cards": [
-                    {"code": 555, "controller": 1, "location": 0x04, "sequence": 3, "param": 7},
+                    {
+                        "code": 555,
+                        "controller": 1,
+                        "location": LOCATION_MZONE,
+                        "sequence": 3,
+                        "param": 7,
+                    },
                 ],
                 "optional_cards": [],
             }
@@ -783,11 +808,11 @@ def test_sum_prompt_meta_selected_and_must_cards_fields() -> None:
     meta0 = _meta(0)
     assert meta0["selected"] == [0]
     assert meta0["must_cards"] == [
-        {"code": 555, "controller": 1, "location": 0x04, "sequence": 3, "param": 7}
+        {"code": 555, "controller": 1, "location": LOCATION_MZONE, "sequence": 3, "param": 7}
     ]
 
     meta1 = _meta(1)
     # Same absolute controller (1), but now == agent_player -> relativizes to 0.
     assert meta1["must_cards"] == [
-        {"code": 555, "controller": 0, "location": 0x04, "sequence": 3, "param": 7}
+        {"code": 555, "controller": 0, "location": LOCATION_MZONE, "sequence": 3, "param": 7}
     ]

@@ -14,6 +14,9 @@ test Pydantic, not our code. We only assert non-trivial contracts:
 import pytest
 from pydantic import ValidationError
 
+from yugioh_core.constants import (
+    LOCATION_MZONE,
+)
 from yugioh_env.models import AnnounceNumber, CardRef, SelectCounter, YuGiOhObservation
 
 
@@ -31,7 +34,7 @@ def test_action_descriptors_round_trip_through_pydantic_serialization():
             None,
             SelectCounter(
                 engine_index=0,
-                card=CardRef(code=999, controller=0, location=0x4, sequence=0),
+                card=CardRef(code=999, controller=0, location=LOCATION_MZONE, sequence=0),
                 counter_type=1,
                 counter_count=2,
             ),

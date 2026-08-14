@@ -1,3 +1,6 @@
+from yugioh_core.constants import (
+    TYPE_MONSTER,
+)
 from yugioh_env.server.board_state import render_board
 
 
@@ -6,7 +9,7 @@ class _FakeCardDB:
         return f"Card{code}"
 
     def get_card(self, code):
-        return {"type": 0x1, "attack": 1000, "defense": 1000, "level": 4}
+        return {"type": TYPE_MONSTER, "attack": 1000, "defense": 1000, "level": 4}
 
 
 def test_render_board_uses_live_stats_not_db_defaults():
@@ -19,7 +22,7 @@ def test_render_board_uses_live_stats_not_db_defaults():
                     "code": 999,
                     "position": 4,
                     "sequence": 0,
-                    "type": 0x1,
+                    "type": TYPE_MONSTER,
                     "attack": 9999,
                     "defense": 8888,
                     "level": 8,

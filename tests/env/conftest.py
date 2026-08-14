@@ -87,6 +87,7 @@ def duel(lib, card_db, script_dirs, deck_path):
 # is caught rather than coinciding with a correct result.
 
 from yugioh_core.constants import (
+    COUNTER_NEED_ENABLE,
     LOCATION_MZONE,
     MSG_ANNOUNCE_ATTRIB,
     MSG_ANNOUNCE_CARD,
@@ -210,7 +211,7 @@ MINIMAL_MSGS: dict[int, dict] = {
     MSG_ROCK_PAPER_SCISSORS: {"player": 0},
     MSG_SELECT_COUNTER: {
         "player": 0,
-        "counter_type": 0x2001,
+        "counter_type": COUNTER_NEED_ENABLE | 1,
         "count": 1,
         "cards": [{**_CARD, "counter_count": 3}],
     },

@@ -12,6 +12,7 @@ from yugioh_core.constants import (
     LOCATION_MZONE,
     LOCATION_SZONE,
     POS_FACEUP,
+    STATUS_DISABLED,
 )
 from yugioh_core.encoding import (
     CARD_FEATURES,
@@ -141,7 +142,7 @@ def build_observation(
                             rscale=cdata.get("rscale", 0),
                             link_marker=cdata.get("link_marker", 0),
                             counter_count=len(cdata.get("counters", [])),
-                            negated=bool(cdata.get("status", 0) & 0x1),
+                            negated=bool(cdata.get("status", 0) & STATUS_DISABLED),
                         )
                     else:
                         # Hidden card: only location/controller visible

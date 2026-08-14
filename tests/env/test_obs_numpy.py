@@ -4,16 +4,26 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from yugioh_core.encoding import ACTION_FEATURES, CARD_FEATURES, MAX_ACTIONS, MAX_CARDS
+from yugioh_core.encoding import (
+    ACTION_FEATURES,
+    CARD_FEATURES,
+    CHAIN_ENTRY_FEATURES,
+    EVENT_ENTRY_FEATURES,
+    GLOBAL_FEATURES,
+    MAX_ACTIONS,
+    MAX_CARDS,
+    MAX_EVENT_HISTORY,
+    MAX_PENDING_CHAIN,
+)
 from yugioh_env.models import YuGiOhObservation
 
 FIELDS = {
     "cards": ((MAX_CARDS, CARD_FEATURES), np.uint8),
-    "global_state": ((21,), np.uint8),
+    "global_state": ((GLOBAL_FEATURES,), np.uint8),
     "actions": ((MAX_ACTIONS, ACTION_FEATURES), np.uint8),
     "action_mask": ((MAX_ACTIONS,), np.int8),
-    "pending_chain": ((8, 16), np.uint8),
-    "event_history": ((32, 30), np.uint8),
+    "pending_chain": ((MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES), np.uint8),
+    "event_history": ((MAX_EVENT_HISTORY, EVENT_ENTRY_FEATURES), np.uint8),
 }
 
 

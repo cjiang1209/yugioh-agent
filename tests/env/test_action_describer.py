@@ -5,17 +5,26 @@ import pytest
 from tests.env.conftest import MINIMAL_MSGS
 from tests.env.conftest import obs_from_msg as _obs_from_msg
 from yugioh_core.constants import (
+    ATTRIBUTE_DARK,
+    LOCATION_DECK,
+    LOCATION_GRAVE,
     LOCATION_MZONE,
+    MSG_ANNOUNCE_ATTRIB,
+    MSG_ANNOUNCE_NUMBER,
+    MSG_ANNOUNCE_RACE,
+    MSG_ROCK_PAPER_SCISSORS,
     MSG_SELECT_CARD,
     MSG_SELECT_CHAIN,
     MSG_SELECT_COUNTER,
     MSG_SELECT_EFFECTYN,
     MSG_SELECT_IDLECMD,
+    MSG_SELECT_OPTION,
     MSG_SELECT_PLACE,
     MSG_SELECT_TRIBUTE,
     MSG_SELECT_UNSELECT_CARD,
     MSG_SELECT_YESNO,
     MSG_SORT_CARD,
+    RACE_WARRIOR,
 )
 from yugioh_core.encoding import MAX_ACTIONS
 from yugioh_env.action_describer import ActionDescriber
@@ -70,27 +79,27 @@ def test_tribute_describe_finish():
     "msg, expected_desc, expected_category",
     [
         (
-            {"msg_type": 143, "player": 0, "numbers": [3]},  # MSG_ANNOUNCE_NUMBER
+            {"msg_type": MSG_ANNOUNCE_NUMBER, "player": 0, "numbers": [3]},
             "Announce 3",
             "number",
         ),
         (
-            {"msg_type": 140, "player": 0, "available": 0x1},  # MSG_ANNOUNCE_RACE (Warrior)
+            {"msg_type": MSG_ANNOUNCE_RACE, "player": 0, "available": RACE_WARRIOR},
             "Warrior",
             "race",
         ),
         (
-            {"msg_type": 141, "player": 0, "available": 0x20},  # MSG_ANNOUNCE_ATTRIB (DARK)
+            {"msg_type": MSG_ANNOUNCE_ATTRIB, "player": 0, "available": ATTRIBUTE_DARK},
             "DARK",
             "attribute",
         ),
         (
-            {"msg_type": 132, "player": 0},  # MSG_ROCK_PAPER_SCISSORS, first action
+            {"msg_type": MSG_ROCK_PAPER_SCISSORS, "player": 0},  # first action
             "Rock",
             "rps",
         ),
         (
-            {"msg_type": 14, "player": 0, "options": [0xABC]},  # MSG_SELECT_OPTION
+            {"msg_type": MSG_SELECT_OPTION, "player": 0, "options": [0xABC]},
             "effect 0xabc",
             "option",
         ),
@@ -118,7 +127,13 @@ def test_describer_rewrites_counter_with_card_name():
             "counter_type": 0x1,
             "count": 2,
             "cards": [
-                {"code": 999, "controller": 0, "location": 0x4, "sequence": 0, "counter_count": 3}
+                {
+                    "code": 999,
+                    "controller": 0,
+                    "location": LOCATION_MZONE,
+                    "sequence": 0,
+                    "counter_count": 3,
+                }
             ],
         }
     )
@@ -173,7 +188,7 @@ def test_describer_chain_appends_resolved_effect_text():
                 {
                     "code": 777,
                     "controller": 0,
-                    "location": 0x10,
+                    "location": LOCATION_GRAVE,
                     "sequence": 0,
                     "position": 0,
                     "desc": 0x123,
@@ -201,7 +216,7 @@ def test_describer_chain_falls_back_when_resolver_returns_none():
                 {
                     "code": 777,
                     "controller": 0,
-                    "location": 0x10,
+                    "location": LOCATION_GRAVE,
                     "sequence": 0,
                     "position": 0,
                     "desc": 0x123,
@@ -236,7 +251,7 @@ def test_describer_chain_drops_resolved_text_when_card_name_missing():
                 {
                     "code": 0,
                     "controller": 0,
-                    "location": 0x10,
+                    "location": LOCATION_GRAVE,
                     "sequence": 0,
                     "position": 0,
                     "desc": 0x123,
@@ -270,7 +285,7 @@ def test_describer_idle_activate_appends_resolved_effect_text():
                 {
                     "code": 555,
                     "controller": 0,
-                    "location": 0x4,
+                    "location": LOCATION_MZONE,
                     "sequence": 0,
                     "desc": 0xABC,
                     "client_mode": 0,
@@ -323,7 +338,7 @@ def test_describer_effectyn_yes_is_plain_yes():
             "player": 0,
             "code": 777,
             "controller": 0,
-            "location": 0x4,
+            "location": LOCATION_MZONE,
             "sequence": 0,
             "desc": 0xDEF,
         }
@@ -375,9 +390,9 @@ def test_describe_action_sort_card():
             "msg_type": MSG_SORT_CARD,
             "player": 0,
             "cards": [
-                {"code": 100, "controller": 0, "location": 0x01, "sequence": 0},
-                {"code": 200, "controller": 0, "location": 0x01, "sequence": 1},
-                {"code": 300, "controller": 0, "location": 0x01, "sequence": 2},
+                {"code": 100, "controller": 0, "location": LOCATION_DECK, "sequence": 0},
+                {"code": 200, "controller": 0, "location": LOCATION_DECK, "sequence": 1},
+                {"code": 300, "controller": 0, "location": LOCATION_DECK, "sequence": 2},
             ],
         }
     )
@@ -431,7 +446,7 @@ def test_effectyn_details_equal_at_both_seats():
         "player": 0,
         "code": 999,
         "controller": 1,
-        "location": 0x04,
+        "location": LOCATION_MZONE,
         "sequence": 2,
         "desc": 0,
     }
@@ -440,7 +455,7 @@ def test_effectyn_details_equal_at_both_seats():
         d = describer.describe(_obs_from_msg(msg, agent_player=seat), 0)
         assert d.card_code == 999
         assert d.controller == expected_ctrl
-        assert d.location == 0x04
+        assert d.location == LOCATION_MZONE
         assert d.sequence == 2
 
 

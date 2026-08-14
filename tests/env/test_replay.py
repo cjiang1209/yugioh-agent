@@ -5,7 +5,13 @@ from __future__ import annotations
 import pytest
 
 from tests.env.conftest import MINIMAL_MSGS, obs_from_msg
-from yugioh_core.constants import MSG_SELECT_BATTLECMD, MSG_SELECT_IDLECMD, MSG_SELECT_YESNO
+from yugioh_core.constants import (
+    MSG_SELECT_BATTLECMD,
+    MSG_SELECT_CHAIN,
+    MSG_SELECT_IDLECMD,
+    MSG_SELECT_TRIBUTE,
+    MSG_SELECT_YESNO,
+)
 from yugioh_env.opponent import GreedyOpponent, RandomOpponent
 from yugioh_env.replay import (
     GameRecording,
@@ -28,17 +34,17 @@ class TestGameRecording:
 
     def test_append_action(self):
         rec = GameRecording(setup={"seed": 1})
-        rec.append(msg_type=10, player=0, action=3, num_actions=5)
-        rec.append(msg_type=20, player=1, action=0, num_actions=2)
+        rec.append(msg_type=MSG_SELECT_BATTLECMD, player=0, action=3, num_actions=5)
+        rec.append(msg_type=MSG_SELECT_TRIBUTE, player=1, action=0, num_actions=2)
         assert len(rec.actions) == 2
         assert rec.actions[0] == {
-            "msg_type": 10,
+            "msg_type": MSG_SELECT_BATTLECMD,
             "player": 0,
             "action": 3,
             "num_actions": 5,
         }
         assert rec.actions[1] == {
-            "msg_type": 20,
+            "msg_type": MSG_SELECT_TRIBUTE,
             "player": 1,
             "action": 0,
             "num_actions": 2,
@@ -46,8 +52,8 @@ class TestGameRecording:
 
     def test_save_and_load_json(self, tmp_path):
         rec = GameRecording(setup={"seed": 42, "agent_player": 0})
-        rec.append(msg_type=10, player=0, action=1, num_actions=3)
-        rec.append(msg_type=20, player=1, action=0, num_actions=2)
+        rec.append(msg_type=MSG_SELECT_BATTLECMD, player=0, action=1, num_actions=3)
+        rec.append(msg_type=MSG_SELECT_TRIBUTE, player=1, action=0, num_actions=2)
 
         path = tmp_path / "recording.json"
         rec.save(path)
@@ -67,7 +73,7 @@ class TestGameRecording:
             },
         }
         rec = GameRecording(setup=setup)
-        rec.append(msg_type=5, player=0, action=0, num_actions=1)
+        rec.append(msg_type=MSG_SELECT_IDLECMD, player=0, action=0, num_actions=1)
 
         path = tmp_path / "puzzle_rec.json"
         rec.save(path)
@@ -207,10 +213,10 @@ class TestRecordingEnvironment:
 # ---------------------------------------------------------------------------
 
 CURSOR_ACTIONS = [
-    {"msg_type": 11, "player": 0, "action": 2, "num_actions": 8},
-    {"msg_type": 16, "player": 1, "action": 0, "num_actions": 3},
-    {"msg_type": 10, "player": 0, "action": 1, "num_actions": 5},
-    {"msg_type": 16, "player": 1, "action": 1, "num_actions": 2},
+    {"msg_type": MSG_SELECT_IDLECMD, "player": 0, "action": 2, "num_actions": 8},
+    {"msg_type": MSG_SELECT_CHAIN, "player": 1, "action": 0, "num_actions": 3},
+    {"msg_type": MSG_SELECT_BATTLECMD, "player": 0, "action": 1, "num_actions": 5},
+    {"msg_type": MSG_SELECT_CHAIN, "player": 1, "action": 1, "num_actions": 2},
 ]
 
 
@@ -259,7 +265,7 @@ class TestReplayCursor:
     def test_msg_type_verified(self):
         cursor = ReplayCursor(CURSOR_ACTIONS, agent_player=0)
         # Should not raise — msg_type matches
-        cursor.next_agent_entry(expected_msg_type=11)
+        cursor.next_agent_entry(expected_msg_type=MSG_SELECT_IDLECMD)
 
     def test_msg_type_drift(self):
         cursor = ReplayCursor(CURSOR_ACTIONS, agent_player=0)

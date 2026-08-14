@@ -14,11 +14,30 @@ from __future__ import annotations
 import struct
 
 from yugioh_core.constants import (
+    QUERY_ALIAS,
+    QUERY_ATTACK,
+    QUERY_ATTRIBUTE,
+    QUERY_BASE_ATTACK,
+    QUERY_BASE_DEFENSE,
+    QUERY_CODE,
     QUERY_COUNTERS,
+    QUERY_COVER,
+    QUERY_DEFENSE,
     QUERY_END,
+    QUERY_IS_HIDDEN,
+    QUERY_IS_PUBLIC,
+    QUERY_LEVEL,
     QUERY_LINK,
+    QUERY_LSCALE,
     QUERY_OVERLAY_CARD,
+    QUERY_OWNER,
+    QUERY_POSITION,
     QUERY_RACE,
+    QUERY_RANK,
+    QUERY_REASON,
+    QUERY_RSCALE,
+    QUERY_STATUS,
+    QUERY_TYPE,
 )
 
 # Flag → key tables for `parse_query_location`. Three families by
@@ -26,31 +45,31 @@ from yugioh_core.constants import (
 # / QUERY_COUNTERS have non-table-driven shapes and are dispatched inline.
 
 _FLAG_TO_KEY_U32 = {
-    0x1: "code",  # QUERY_CODE
-    0x2: "position",  # QUERY_POSITION
-    0x4: "alias",  # QUERY_ALIAS
-    0x8: "type",  # QUERY_TYPE
-    0x10: "level",  # QUERY_LEVEL
-    0x20: "rank",  # QUERY_RANK
-    0x40: "attribute",  # QUERY_ATTRIBUTE
-    0x1000: "reason",  # QUERY_REASON
-    0x80000: "status",  # QUERY_STATUS
-    0x200000: "lscale",  # QUERY_LSCALE
-    0x400000: "rscale",  # QUERY_RSCALE
-    0x2000000: "cover",  # QUERY_COVER
+    QUERY_CODE: "code",
+    QUERY_POSITION: "position",
+    QUERY_ALIAS: "alias",
+    QUERY_TYPE: "type",
+    QUERY_LEVEL: "level",
+    QUERY_RANK: "rank",
+    QUERY_ATTRIBUTE: "attribute",
+    QUERY_REASON: "reason",
+    QUERY_STATUS: "status",
+    QUERY_LSCALE: "lscale",
+    QUERY_RSCALE: "rscale",
+    QUERY_COVER: "cover",
 }
 
 _FLAG_TO_KEY_I32 = {
-    0x100: "attack",  # QUERY_ATTACK (int32, can be negative)
-    0x200: "defense",  # QUERY_DEFENSE
-    0x400: "base_attack",  # QUERY_BASE_ATTACK
-    0x800: "base_defense",  # QUERY_BASE_DEFENSE
+    QUERY_ATTACK: "attack",  # can be negative
+    QUERY_DEFENSE: "defense",
+    QUERY_BASE_ATTACK: "base_attack",
+    QUERY_BASE_DEFENSE: "base_defense",
 }
 
 _FLAG_TO_KEY_U8 = {
-    0x40000: "owner",  # QUERY_OWNER
-    0x100000: "is_public",  # QUERY_IS_PUBLIC
-    0x1000000: "is_hidden",  # QUERY_IS_HIDDEN
+    QUERY_OWNER: "owner",
+    QUERY_IS_PUBLIC: "is_public",
+    QUERY_IS_HIDDEN: "is_hidden",
 }
 
 

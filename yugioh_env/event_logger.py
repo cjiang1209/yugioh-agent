@@ -90,9 +90,9 @@ def _position_suffix(location: int, position: int) -> str:
         return f"[{name}]"
     # For spell/trap zone, face-up/face-down without atk/def
     if location == LOCATION_SZONE:
-        if position & 0x5:  # POS_FACEUP
+        if position & POS_FACEUP:
             return "[FU]"
-        if position & 0xA:  # POS_FACEDOWN
+        if position & POS_FACEDOWN:
             return "[FD]"
     return ""
 

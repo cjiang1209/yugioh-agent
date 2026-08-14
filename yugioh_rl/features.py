@@ -10,97 +10,223 @@ from __future__ import annotations
 import torch
 
 from yugioh_core.constants import (
+    ATTRIBUTE_DARK,
+    ATTRIBUTE_DIVINE,
+    ATTRIBUTE_EARTH,
+    ATTRIBUTE_FIRE,
+    ATTRIBUTE_LIGHT,
+    ATTRIBUTE_WATER,
+    ATTRIBUTE_WIND,
     HINT_ATTRIB,
     HINT_CODE,
     HINT_NUMBER,
     HINT_RACE,
+    LINK_MARKER_BOTTOM,
+    LINK_MARKER_BOTTOM_LEFT,
+    LINK_MARKER_BOTTOM_RIGHT,
+    LINK_MARKER_LEFT,
+    LINK_MARKER_RIGHT,
+    LINK_MARKER_TOP,
+    LINK_MARKER_TOP_LEFT,
+    LINK_MARKER_TOP_RIGHT,
+    LOCATION_BANISHED,
+    LOCATION_DECK,
+    LOCATION_EXTRA,
+    LOCATION_GRAVE,
+    LOCATION_HAND,
+    LOCATION_MZONE,
+    LOCATION_SZONE,
+    PHASE_BATTLE,
+    PHASE_BATTLE_START,
+    PHASE_BATTLE_STEP,
+    PHASE_DAMAGE,
+    PHASE_DAMAGE_CAL,
+    PHASE_DRAW,
+    PHASE_END,
+    PHASE_MAIN1,
+    PHASE_MAIN2,
+    PHASE_STANDBY,
+    POS_FACEDOWN_ATTACK,
+    POS_FACEDOWN_DEFENSE,
+    POS_FACEUP_ATTACK,
+    POS_FACEUP_DEFENSE,
+    RACE_AQUA,
+    RACE_BEAST,
+    RACE_BEASTWARRIOR,
+    RACE_CELESTIALWARRIOR,
+    RACE_CREATORGOD,
+    RACE_CYBERSE,
+    RACE_CYBORG,
+    RACE_DINOSAUR,
+    RACE_DIVINE,
+    RACE_DRAGON,
+    RACE_FAIRY,
+    RACE_FIEND,
+    RACE_FISH,
+    RACE_GALAXY,
+    RACE_HIGHDRAGON,
+    RACE_ILLUSION,
+    RACE_INSECT,
+    RACE_MACHINE,
+    RACE_MAGICALKNIGHT,
+    RACE_OMEGAPSYCHIC,
+    RACE_PLANT,
+    RACE_PSYCHIC,
+    RACE_PYRO,
+    RACE_REPTILE,
+    RACE_ROCK,
+    RACE_SEASERPENT,
+    RACE_SPELLCASTER,
+    RACE_THUNDER,
+    RACE_WARRIOR,
+    RACE_WINGEDBEAST,
+    RACE_WYRM,
+    RACE_ZOMBIE,
+    TYPE_CONTINUOUS,
+    TYPE_COUNTER,
+    TYPE_EFFECT,
+    TYPE_EQUIP,
+    TYPE_FIELD,
+    TYPE_FLIP,
+    TYPE_FUSION,
+    TYPE_GEMINI,
+    TYPE_LINK,
+    TYPE_MAXIMUM,
+    TYPE_MONSTER,
+    TYPE_NORMAL,
+    TYPE_PENDULUM,
+    TYPE_QUICKPLAY,
+    TYPE_RITUAL,
+    TYPE_SPELL,
+    TYPE_SPIRIT,
+    TYPE_SPSUMMON,
+    TYPE_SYNCHRO,
+    TYPE_TOKEN,
+    TYPE_TOON,
+    TYPE_TRAP,
+    TYPE_TRAPMONSTER,
+    TYPE_TUNER,
+    TYPE_UNION,
+    TYPE_XYZ,
 )
 from yugioh_core.encoding import (
+    MAX_ACTIONS,
     PER_CARD_DESC_N_VOCAB,
     SYSSTRING_VOCAB,
 )
 
 # ---------------------------------------------------------------------------
-# Card features: (B, 200, 42) uint8 → card_ids (B,200) int, card_feats (B,200,F)
+# Card features: (B, MAX_CARDS, CARD_FEATURES) uint8
+#   → card_ids (B, MAX_CARDS) int, card_feats (B, MAX_CARDS, F)
 # ---------------------------------------------------------------------------
 
-# Location bits (byte 4)
-_LOC_BITS = [0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x01]  # hand,mzone,szone,grave,banished,extra,deck
+# Location bits (byte 4), in feature-column order
+_LOC_BITS = [
+    LOCATION_HAND,
+    LOCATION_MZONE,
+    LOCATION_SZONE,
+    LOCATION_GRAVE,
+    LOCATION_BANISHED,
+    LOCATION_EXTRA,
+    LOCATION_DECK,
+]
 
-# Position bits (byte 6)
-_POS_BITS = [0x01, 0x02, 0x04, 0x08]  # FU-Atk, FD-Atk, FU-Def, FD-Def
+# Position bits (byte 6), in feature-column order
+_POS_BITS = [
+    POS_FACEUP_ATTACK,
+    POS_FACEDOWN_ATTACK,
+    POS_FACEUP_DEFENSE,
+    POS_FACEDOWN_DEFENSE,
+]
 
 # Card type bits (bytes 9-12 as uint32)
 _TYPE_BITS = [
-    0x1,  # monster
-    0x2,  # spell
-    0x4,  # trap
-    0x10,  # normal
-    0x20,  # effect
-    0x40,  # fusion
-    0x80,  # ritual
-    0x100,  # trapmonster
-    0x200,  # spirit
-    0x400,  # union
-    0x800,  # gemini
-    0x1000,  # tuner
-    0x2000,  # synchro
-    0x4000,  # token
-    0x8000,  # maximum
-    0x10000,  # quickplay
-    0x20000,  # continuous
-    0x40000,  # equip
-    0x80000,  # field
-    0x100000,  # counter
-    0x200000,  # flip
-    0x400000,  # toon
-    0x800000,  # xyz
-    0x1000000,  # pendulum
-    0x2000000,  # spsummon
-    0x4000000,  # link
+    TYPE_MONSTER,
+    TYPE_SPELL,
+    TYPE_TRAP,
+    TYPE_NORMAL,
+    TYPE_EFFECT,
+    TYPE_FUSION,
+    TYPE_RITUAL,
+    TYPE_TRAPMONSTER,
+    TYPE_SPIRIT,
+    TYPE_UNION,
+    TYPE_GEMINI,
+    TYPE_TUNER,
+    TYPE_SYNCHRO,
+    TYPE_TOKEN,
+    TYPE_MAXIMUM,
+    TYPE_QUICKPLAY,
+    TYPE_CONTINUOUS,
+    TYPE_EQUIP,
+    TYPE_FIELD,
+    TYPE_COUNTER,
+    TYPE_FLIP,
+    TYPE_TOON,
+    TYPE_XYZ,
+    TYPE_PENDULUM,
+    TYPE_SPSUMMON,
+    TYPE_LINK,
 ]
 
 # Attribute bits (byte 14)
-_ATTR_BITS = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40]  # earth,water,fire,wind,light,dark,divine
+_ATTR_BITS = [
+    ATTRIBUTE_EARTH,
+    ATTRIBUTE_WATER,
+    ATTRIBUTE_FIRE,
+    ATTRIBUTE_WIND,
+    ATTRIBUTE_LIGHT,
+    ATTRIBUTE_DARK,
+    ATTRIBUTE_DIVINE,
+]
 
 # Race bits (bytes 15-18 as uint32)
 _RACE_BITS = [
-    0x0001,  # warrior
-    0x0002,  # spellcaster
-    0x0004,  # fairy
-    0x0008,  # fiend
-    0x0010,  # zombie
-    0x0020,  # machine
-    0x0040,  # aqua
-    0x0080,  # pyro
-    0x0100,  # rock
-    0x0200,  # winged_beast
-    0x0400,  # plant
-    0x0800,  # insect
-    0x1000,  # thunder
-    0x2000,  # dragon
-    0x4000,  # beast
-    0x8000,  # beast-warrior
-    0x10000,  # dinosaur
-    0x20000,  # fish
-    0x40000,  # sea_serpent
-    0x80000,  # reptile
-    0x100000,  # psychic
-    0x200000,  # divine
-    0x400000,  # creator_god
-    0x800000,  # wyrm
-    0x1000000,  # cyberse
-    0x2000000,  # illusion
-    0x4000000,  # cyborg
-    0x8000000,  # magical_knight
-    0x10000000,  # high_dragon
-    0x20000000,  # omega_psychic
-    0x40000000,  # celestial_warrior
-    0x80000000,  # galaxy
+    RACE_WARRIOR,
+    RACE_SPELLCASTER,
+    RACE_FAIRY,
+    RACE_FIEND,
+    RACE_ZOMBIE,
+    RACE_MACHINE,
+    RACE_AQUA,
+    RACE_PYRO,
+    RACE_ROCK,
+    RACE_WINGEDBEAST,
+    RACE_PLANT,
+    RACE_INSECT,
+    RACE_THUNDER,
+    RACE_DRAGON,
+    RACE_BEAST,
+    RACE_BEASTWARRIOR,
+    RACE_DINOSAUR,
+    RACE_FISH,
+    RACE_SEASERPENT,
+    RACE_REPTILE,
+    RACE_PSYCHIC,
+    RACE_DIVINE,
+    RACE_CREATORGOD,
+    RACE_WYRM,
+    RACE_CYBERSE,
+    RACE_ILLUSION,
+    RACE_CYBORG,
+    RACE_MAGICALKNIGHT,
+    RACE_HIGHDRAGON,
+    RACE_OMEGAPSYCHIC,
+    RACE_CELESTIALWARRIOR,
+    RACE_GALAXY,
 ]
 
-# Link marker bits (bytes 25-26 as uint16)
-_LINK_BITS = [0x01, 0x02, 0x04, 0x08, 0x20, 0x40, 0x80, 0x100]  # 8 arrows
+# Link marker bits (bytes 25-26 as uint16), in feature-column order
+_LINK_BITS = [
+    LINK_MARKER_BOTTOM_LEFT,
+    LINK_MARKER_BOTTOM,
+    LINK_MARKER_BOTTOM_RIGHT,
+    LINK_MARKER_LEFT,
+    LINK_MARKER_RIGHT,
+    LINK_MARKER_TOP_LEFT,
+    LINK_MARKER_TOP,
+    LINK_MARKER_TOP_RIGHT,
+]
 
 # Number of output float features per card (excluding card_id)
 CARD_FEAT_DIM = 7 + 1 + 4 + 1 + 1 + 26 + 1 + 7 + 32 + 1 + 1 + 1 + 1 + 8 + 1 + 1 + 1  # = 95
@@ -160,90 +286,98 @@ def decode_cards(raw: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """Decode card observation bytes into card IDs and float features.
 
     Args:
-        raw: (B, 200, 42) uint8 tensor
+        raw: (B, MAX_CARDS, CARD_FEATURES) uint8 tensor
 
     Returns:
-        card_ids: (B, 200) long tensor — card passcodes for embedding
-        card_feats: (B, 200, CARD_FEAT_DIM) float32 tensor
+        card_ids: (B, MAX_CARDS) long tensor — card passcodes for embedding
+        card_feats: (B, MAX_CARDS, CARD_FEAT_DIM) float32 tensor
     """
     raw = raw.long()
 
-    card_ids = _uint32_le(raw, 0)  # (B, 200) — full uint32 card codes
+    card_ids = _uint32_le(raw, 0)  # (B, MAX_CARDS) — full uint32 card codes
 
     feats = []
 
     # location: byte 4 → 7 binary features
     loc = raw[..., 4]
-    feats.append(_extract_bits(loc, _LOC_BITS))  # (B,200,7)
+    feats.append(_extract_bits(loc, _LOC_BITS))  # (B, MAX_CARDS, 7)
 
     # sequence: byte 5 → normalized
-    feats.append((raw[..., 5].float() / 15.0).unsqueeze(-1))  # (B,200,1)
+    feats.append((raw[..., 5].float() / 15.0).unsqueeze(-1))  # (B, MAX_CARDS, 1)
 
     # position: byte 6 → 4 binary features
     pos = raw[..., 6]
-    feats.append(_extract_bits(pos, _POS_BITS))  # (B,200,4)
+    feats.append(_extract_bits(pos, _POS_BITS))  # (B, MAX_CARDS, 4)
 
     # controller: byte 7
-    feats.append(raw[..., 7].float().unsqueeze(-1))  # (B,200,1)
+    feats.append(raw[..., 7].float().unsqueeze(-1))  # (B, MAX_CARDS, 1)
 
     # is_public: byte 8
-    feats.append(raw[..., 8].float().unsqueeze(-1))  # (B,200,1)
+    feats.append(raw[..., 8].float().unsqueeze(-1))  # (B, MAX_CARDS, 1)
 
     # card_type: bytes 9-12 → uint32 → 26 binary features
     ctype = _uint32_le(raw, 9)
-    feats.append(_extract_bits(ctype, _TYPE_BITS))  # (B,200,26)
+    feats.append(_extract_bits(ctype, _TYPE_BITS))  # (B, MAX_CARDS, 26)
 
     # level: byte 13
-    feats.append((raw[..., 13].float() / 12.0).unsqueeze(-1))  # (B,200,1)
+    feats.append((raw[..., 13].float() / 12.0).unsqueeze(-1))  # (B, MAX_CARDS, 1)
 
     # attribute: byte 14 → 7 binary features
     attr = raw[..., 14]
-    feats.append(_extract_bits(attr, _ATTR_BITS))  # (B,200,7)
+    feats.append(_extract_bits(attr, _ATTR_BITS))  # (B, MAX_CARDS, 7)
 
     # race: bytes 15-18 → uint32 → 32 binary features
     race = _uint32_le(raw, 15)
-    feats.append(_extract_bits(race, _RACE_BITS))  # (B,200,32)
+    feats.append(_extract_bits(race, _RACE_BITS))  # (B, MAX_CARDS, 32)
 
     # ATK: bytes 19-20 → uint16
     atk = _uint16_le(raw, 19)
-    feats.append((atk.float() / 5000.0).unsqueeze(-1))  # (B,200,1)
+    feats.append((atk.float() / 5000.0).unsqueeze(-1))  # (B, MAX_CARDS, 1)
 
     # DEF: bytes 21-22 → uint16
     dfn = _uint16_le(raw, 21)
-    feats.append((dfn.float() / 5000.0).unsqueeze(-1))  # (B,200,1)
+    feats.append((dfn.float() / 5000.0).unsqueeze(-1))  # (B, MAX_CARDS, 1)
 
     # lscale: byte 23
-    feats.append((raw[..., 23].float() / 12.0).unsqueeze(-1))  # (B,200,1)
+    feats.append((raw[..., 23].float() / 12.0).unsqueeze(-1))  # (B, MAX_CARDS, 1)
 
     # rscale: byte 24
-    feats.append((raw[..., 24].float() / 12.0).unsqueeze(-1))  # (B,200,1)
+    feats.append((raw[..., 24].float() / 12.0).unsqueeze(-1))  # (B, MAX_CARDS, 1)
 
     # link_marker: bytes 25-26 → uint16 → 8 binary features
     lmark = _uint16_le(raw, 25)
-    feats.append(_extract_bits(lmark, _LINK_BITS))  # (B,200,8)
+    feats.append(_extract_bits(lmark, _LINK_BITS))  # (B, MAX_CARDS, 8)
 
     # counter_count: byte 27
-    feats.append((raw[..., 27].float() / 10.0).unsqueeze(-1))  # (B,200,1)
+    feats.append((raw[..., 27].float() / 10.0).unsqueeze(-1))  # (B, MAX_CARDS, 1)
 
     # negated: byte 28
-    feats.append(raw[..., 28].float().unsqueeze(-1))  # (B,200,1)
+    feats.append(raw[..., 28].float().unsqueeze(-1))  # (B, MAX_CARDS, 1)
 
     # is_overlay: byte 29
-    feats.append(raw[..., 29].float().unsqueeze(-1))  # (B,200,1)
+    feats.append(raw[..., 29].float().unsqueeze(-1))  # (B, MAX_CARDS, 1)
 
-    card_feats = torch.cat(feats, dim=-1)  # (B, 200, CARD_FEAT_DIM)
+    card_feats = torch.cat(feats, dim=-1)  # (B, MAX_CARDS, CARD_FEAT_DIM)
     return card_ids, card_feats
 
 
 # ---------------------------------------------------------------------------
-# Global state: (B, 21) uint8 → (B, F_global) float
+# Global state: (B, GLOBAL_FEATURES) uint8 → (B, F_global) float
 # ---------------------------------------------------------------------------
 
-# Phase bits (bytes 5-6, uint16 LE) — one bit per phase:
-# 0x01=draw, 0x02=standby, 0x04=main1, 0x08=battle_start,
-# 0x10=battle_step, 0x20=damage, 0x40=damage_cal, 0x80=battle,
-# 0x100=main2, 0x200=end
-_PHASE_BITS = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x100, 0x200]
+# Phase bits (bytes 5-6, uint16 LE), one column per phase
+_PHASE_BITS = [
+    PHASE_DRAW,
+    PHASE_STANDBY,
+    PHASE_MAIN1,
+    PHASE_BATTLE_START,
+    PHASE_BATTLE_STEP,
+    PHASE_DAMAGE,
+    PHASE_DAMAGE_CAL,
+    PHASE_BATTLE,
+    PHASE_MAIN2,
+    PHASE_END,
+]
 
 GLOBAL_FEAT_DIM = 2 + 1 + 10 + 1 + 1 + 10  # = 25
 # my_lp(1) + opp_lp(1) + turn(1) + phase(10) + is_my_turn(1) + chain(1) + zone_counts(10)
@@ -253,7 +387,7 @@ def decode_global(raw: torch.Tensor) -> torch.Tensor:
     """Decode global state bytes into float features.
 
     Args:
-        raw: (B, 21) uint8 tensor
+        raw: (B, GLOBAL_FEATURES) uint8 tensor
 
     Returns:
         global_feats: (B, GLOBAL_FEAT_DIM) float32 tensor
@@ -286,13 +420,18 @@ def decode_global(raw: torch.Tensor) -> torch.Tensor:
     for i in range(10, 20):
         feats.append((raw[..., i].float() / 40.0).unsqueeze(-1))
 
+    # Byte 20 (is_finished) is deliberately not decoded, so this stops one byte
+    # short of GLOBAL_FEATURES. The rollout loop substitutes a fresh-episode
+    # observation at every done index before the next forward, so the network
+    # only ever sees is_finished == 0 -- there is no signal in it. Callers that
+    # need the terminal flag read ``obs.done``.
     return torch.cat(feats, dim=-1)
 
 
 # ---------------------------------------------------------------------------
-# Actions: (B, 32, 28) uint8
-#   → action_codes (B,32) long, desc_passcodes (B,32) long, desc_ns (B,32) long,
-#     action_feats (B,32,F)
+# Actions: (B, MAX_ACTIONS, ACTION_FEATURES) uint8
+#   → action_codes (B, MAX_ACTIONS) long, desc_passcodes (B, MAX_ACTIONS) long, desc_ns (B, MAX_ACTIONS) long,
+#     action_feats (B, MAX_ACTIONS, F)
 # ---------------------------------------------------------------------------
 
 # Heuristic normalizers — module-level constants so they're tunable per-experiment.
@@ -302,7 +441,7 @@ _NORM_CATEGORY = 10.0  # category index (heuristic max)
 _NORM_SEQUENCE = 60.0  # sequence (heuristic; deck/banished/GY can grow)
 _NORM_SUBSEQUENCE = 15.0  # Xyz overlay slot (heuristic; common stack depth)
 _NORM_PARAM = 12.0  # tribute release_param / sum.param (≈max monster level)
-_NORM_COUNTER_TYPE = 50.0  # counter type id (heuristic; common counters cap)
+_NORM_COUNTER_TYPE = 255.0  # counter-type byte; its full range, so this cannot exceed 1
 _NORM_COUNTER_COUNT = 15.0  # counters on one card (heuristic)
 _NORM_NUM_SELECTED = 5.0  # accumulated picks in a multi-step prompt (heuristic)
 
@@ -333,21 +472,21 @@ def decode_actions(
     """Decode action feature bytes into action codes, desc components, and float feats.
 
     Args:
-        raw: (B, 32, 28) uint8 tensor
+        raw: (B, MAX_ACTIONS, ACTION_FEATURES) uint8 tensor
 
     Returns:
-        action_codes:   (B, 32) long  — prompt-level card code
-        desc_passcodes: (B, 32) long  — high 44 bits of desc (== 0 for sysstring)
-        desc_ns:        (B, 32) long  — low 20 bits of desc (per-card slot OR sysstring id)
-        action_feats:   (B, 32, ACTION_FEAT_DIM) float32 tensor
+        action_codes:   (B, MAX_ACTIONS) long  — prompt-level card code
+        desc_passcodes: (B, MAX_ACTIONS) long  — high 44 bits of desc (== 0 for sysstring)
+        desc_ns:        (B, MAX_ACTIONS) long  — low 20 bits of desc (per-card slot OR sysstring id)
+        action_feats:   (B, MAX_ACTIONS, ACTION_FEAT_DIM) float32 tensor
     """
     raw = raw.long()
 
     # code: bytes 2-5 → uint32
-    action_codes = _uint32_le(raw, 2)  # (B, 32)
+    action_codes = _uint32_le(raw, 2)  # (B, MAX_ACTIONS)
 
     # desc: bytes 20-27 → uint64; split into passcode (high 44 bits) and n (low 20 bits)
-    desc_full = _uint64_le(raw, 20)  # (B, 32) long
+    desc_full = _uint64_le(raw, 20)  # (B, MAX_ACTIONS) long
     desc_passcodes = desc_full >> 20
     desc_ns = desc_full & 0xFFFFF
 
@@ -374,8 +513,8 @@ def decode_actions(
         (raw[..., 13].float() / _NORM_PARAM).unsqueeze(-1),
         (raw[..., 14].float() / _NORM_COUNTER_TYPE).unsqueeze(-1),
         (raw[..., 15].float() / _NORM_COUNTER_COUNT).unsqueeze(-1),
-        # index: rigorous (MAX_ACTIONS = 32)
-        (raw[..., 16].float() / 32.0).unsqueeze(-1),
+        # index: rigorous -- the action slot count
+        (raw[..., 16].float() / float(MAX_ACTIONS)).unsqueeze(-1),
         (raw[..., 17].float() / _NORM_NUM_SELECTED).unsqueeze(-1),
         # per_card_desc_n_scalar — masked to 0 on the sysstring path
         per_card_desc_n_scalar.unsqueeze(-1),
@@ -403,10 +542,10 @@ def decode_pending_chain(
         raw: (B, MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES) uint8 tensor
 
     Returns:
-        chain_codes:     (B, 8) long  — card passcodes
-        desc_passcodes:  (B, 8) long  — high 44 bits of desc
-        desc_ns:         (B, 8) long  — low 20 bits of desc
-        chain_feats:     (B, 8, CHAIN_FEAT_DIM) float32
+        chain_codes:     (B, MAX_PENDING_CHAIN) long  — card passcodes
+        desc_passcodes:  (B, MAX_PENDING_CHAIN) long  — high 44 bits of desc
+        desc_ns:         (B, MAX_PENDING_CHAIN) long  — low 20 bits of desc
+        chain_feats:     (B, MAX_PENDING_CHAIN, CHAIN_FEAT_DIM) float32
     """
     raw_long = raw.long()
 
@@ -423,7 +562,7 @@ def decode_pending_chain(
 
     # location (byte 13): 7-bit one-hot using _extract_bits
     loc_byte = raw_long[:, :, 13]
-    feats.append(_extract_bits(loc_byte, _LOC_BITS))  # (B, 8, 7)
+    feats.append(_extract_bits(loc_byte, _LOC_BITS))  # (B, MAX_PENDING_CHAIN, 7)
 
     # sequence (byte 14): scalar float
     feats.append(raw_long[:, :, 14].float().unsqueeze(-1))
@@ -439,7 +578,7 @@ def decode_pending_chain(
     )
     feats.append(per_card_desc_n_scalar.unsqueeze(-1))
 
-    chain_feats = torch.cat(feats, dim=-1)  # (B, 8, CHAIN_FEAT_DIM)
+    chain_feats = torch.cat(feats, dim=-1)  # (B, MAX_PENDING_CHAIN, CHAIN_FEAT_DIM)
     return chain_codes, desc_passcodes, desc_ns, chain_feats
 
 
@@ -458,7 +597,7 @@ EVENT_FEAT_DIM = 6 + 2 * len(_LOC_BITS) + len(_EVENT_HINT_IDS)  # = 24
 
 
 def decode_event_history(raw: torch.Tensor):
-    """Decode (B, 32, 30) uint8 event-history bytes (tagged/discriminated record).
+    """Decode (B, MAX_EVENT_HISTORY, EVENT_ENTRY_FEATURES) uint8 event-history bytes (tagged/discriminated record).
 
     Returns (codes, desc_passcodes, desc_ns, target_codes, aux_ids, feats).
     ``aux_ids`` carries only the embedded categoricals ``[msg_type, phase]``.

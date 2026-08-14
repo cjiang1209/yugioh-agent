@@ -15,6 +15,11 @@ from __future__ import annotations
 import numpy as np
 from cli.play_client import parse_global_state
 
+from yugioh_core.constants import (
+    MSG_SELECT_IDLECMD,
+    PHASE_END,
+    PHASE_MAIN2,
+)
 from yugioh_core.encoding import GLOBAL_FEATURES, encode_u16
 
 
@@ -33,7 +38,7 @@ def _global_state() -> list[int]:
     gs[0], gs[1] = encode_u16(8000)  # my_lp
     gs[2], gs[3] = encode_u16(7000)  # opp_lp
     gs[4] = 5  # turn
-    gs[5], gs[6] = encode_u16(0x100)  # phase — MAIN2, needs the high byte
+    gs[5], gs[6] = encode_u16(PHASE_MAIN2)  # needs the high byte
     gs[7] = 1  # is_my_turn
     gs[8] = 2  # chain_count
     gs[9] = 11  # msg_type
@@ -49,10 +54,10 @@ def test_parse_global_state_matches_the_producer_layout():
         "my_lp": 8000,
         "opp_lp": 7000,
         "turn": 5,
-        "phase": 0x100,
+        "phase": PHASE_MAIN2,
         "is_my_turn": True,
         "chain_count": 2,
-        "msg_type": 11,
+        "msg_type": MSG_SELECT_IDLECMD,
         "my_deck": 30,
         "my_hand": 6,
         "my_grave": 3,
@@ -75,7 +80,7 @@ def test_parse_global_state_phase_keeps_its_high_byte():
     gs[5], gs[6] = encode_u16(0x200)  # END
     gs[7] = 0  # opponent's turn
     parsed = parse_global_state(gs)
-    assert parsed["phase"] == 0x200
+    assert parsed["phase"] == PHASE_END
     assert parsed["is_my_turn"] is False
 
 

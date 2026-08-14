@@ -19,11 +19,11 @@ def test_discriminator_round_trip_preserves_variant() -> None:
         engine_index=2,
         num_selected=1,
         param=None,
-        card=CardRef(code=7, controller=0, location=0x04, sequence=1),
+        card=CardRef(code=7, controller=0, location=LOCATION_MZONE, sequence=1),
     )
     back = ADAPTER.validate_python(ADAPTER.dump_python(src))
     assert isinstance(back, PickCard)
-    assert back.card.location == 0x04
+    assert back.card.location == LOCATION_MZONE
 
 
 def test_unknown_kind_rejected() -> None:

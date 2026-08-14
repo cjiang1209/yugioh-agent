@@ -542,6 +542,13 @@ DUEL_NORMAL_SUMMON_FACEUP_DEF = 0x1000000000
 STATUS_DISABLED = 0x0001
 STATUS_EFFECT_ENABLED = 0x0400
 
+# ─── Counter Flags ───────────────────────────────────────────────────────────
+# A counter_type is a u16: the low byte is the counter id, these flags ride
+# above it. So a counter id of 1 that needs an enabling effect arrives as
+# COUNTER_NEED_ENABLE | 1 == 0x2001, not as 1.
+COUNTER_WITHOUT_PERMIT = 0x1000
+COUNTER_NEED_ENABLE = 0x2000
+
 # ─── Predefined Duel Modes ──────────────────────────────────────────────────
 DUEL_MODE_MR5 = (
     DUEL_PZONE

@@ -7,6 +7,14 @@ import logging
 import torch
 import torch.nn as nn
 
+from yugioh_core.constants import (
+    LOCATION_BANISHED,
+    LOCATION_EXTRA,
+    LOCATION_GRAVE,
+    LOCATION_HAND,
+    LOCATION_MZONE,
+    LOCATION_SZONE,
+)
 from yugioh_core.encoding import SYSSTRING_VOCAB
 from yugioh_rl.config import TrainingConfig
 from yugioh_rl.features import (
@@ -30,9 +38,16 @@ logger = logging.getLogger(__name__)
 #   tuple of 2 Tensor — LSTM ((h, c), each (num_layers, batch, hidden_dim))
 HxState = tuple[torch.Tensor, torch.Tensor] | torch.Tensor | None
 
-# Location bits used for zone pooling (same order as features.py _LOC_BITS)
-# hand=0x02, mzone=0x04, szone=0x08, grave=0x10, banished=0x20, extra=0x40
-_ZONE_LOC_BITS = [0x02, 0x04, 0x08, 0x10, 0x20, 0x40]
+# Location bits used for zone pooling -- every zone a card can be pooled
+# from, in the same order as features.py _LOC_BITS (which also has the deck)
+_ZONE_LOC_BITS = [
+    LOCATION_HAND,
+    LOCATION_MZONE,
+    LOCATION_SZONE,
+    LOCATION_GRAVE,
+    LOCATION_BANISHED,
+    LOCATION_EXTRA,
+]
 _NUM_ZONES = len(_ZONE_LOC_BITS) * 2  # 6 zones × 2 players = 12
 
 # Card embedding vocabulary (card codes mod-hashed from uint32)
@@ -164,7 +179,7 @@ class YuGiOhNet(nn.Module):
     """Combined policy + value network for Yu-Gi-Oh! RL.
 
     Architecture:
-        1. Card encoder: embedding + MLP per card → (B, 200, card_embed_dim)
+        1. Card encoder: embedding + MLP per card → (B, MAX_CARDS, card_embed_dim)
         2. Zone pooling: mean-pool cards by (location, controller) → (B, 12, card_embed_dim)
         3. Global encoder: MLP on global features
         4. Board representation: MLP on concat(zone_pool_flat, global)
@@ -450,7 +465,7 @@ class YuGiOhNet(nn.Module):
         same result as full-width attention: masked keys leave the softmax and
         non-known rows are dropped by the scatter.
         """
-        known = card_ids != 0  # (B, 200)
+        known = card_ids != 0  # (B, MAX_CARDS)
         # Truncate to the highest known-card INDEX (+1), not the known count.
         # Known cards are interspersed among real cards (hidden cards, e.g. the
         # opponent's hand, occupy lower indices than public known cards like the
@@ -479,10 +494,10 @@ class YuGiOhNet(nn.Module):
 
     def _pool_zones(
         self,
-        card_enc: torch.Tensor,  # (B, 200, card_embed_dim)
-        raw_loc: torch.Tensor,  # (B, 200) location byte
-        raw_ctrl: torch.Tensor,  # (B, 200) controller byte
-        card_ids: torch.Tensor,  # (B, 200) card codes (attn pooling only)
+        card_enc: torch.Tensor,  # (B, MAX_CARDS, card_embed_dim)
+        raw_loc: torch.Tensor,  # (B, MAX_CARDS) location byte
+        raw_ctrl: torch.Tensor,  # (B, MAX_CARDS) controller byte
+        card_ids: torch.Tensor,  # (B, MAX_CARDS) card codes (attn pooling only)
     ) -> torch.Tensor:
         """Collapse per-card encodings into a flat zone vector.
 
@@ -494,10 +509,10 @@ class YuGiOhNet(nn.Module):
         neg_inf = torch.finfo(card_enc.dtype).min  # masked-max sentinel (mean_max)
         zone_parts = []
         for ctrl in (0, 1):
-            ctrl_mask = raw_ctrl == ctrl  # (B, 200)
+            ctrl_mask = raw_ctrl == ctrl  # (B, MAX_CARDS)
             for bit in _ZONE_LOC_BITS:
-                loc_mask = ((raw_loc & bit) != 0) & ctrl_mask  # (B, 200)
-                mask_f = loc_mask.float().unsqueeze(-1)  # (B, 200, 1)
+                loc_mask = ((raw_loc & bit) != 0) & ctrl_mask  # (B, MAX_CARDS)
+                mask_f = loc_mask.float().unsqueeze(-1)  # (B, MAX_CARDS, 1)
                 zone_count = mask_f.sum(dim=1)  # (B, 1) cards in this zone
                 mean = (card_enc * mask_f).sum(dim=1) / zone_count.clamp(min=1.0)  # (B, D)
                 if self._pooling == "mean_max":
@@ -535,31 +550,32 @@ class YuGiOhNet(nn.Module):
         between env steps.
 
         Args:
-            obs_cards: (B, 200, 42) uint8 — B is N or T*N depending on path.
-            obs_global: (B, 20) uint8
-            obs_actions: (B, 32, 28) uint8
-            action_mask: (B, 32) int8 — 1=legal, 0=illegal.
+            obs_cards: (B, MAX_CARDS, CARD_FEATURES) uint8 — B is N or T*N
+                depending on path.
+            obs_global: (B, GLOBAL_FEATURES) uint8
+            obs_actions: (B, MAX_ACTIONS, ACTION_FEATURES) uint8
+            action_mask: (B, MAX_ACTIONS) int8 — 1=legal, 0=illegal.
             hx: LSTM tuple, GRU tensor, or ``None``.
             obs_chain: (B, MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES) uint8 or ``None``.
 
-        Returns ``(logits (B,32), values (B,), new_hx)``; ``new_hx`` matches
+        Returns ``(logits (B, MAX_ACTIONS), values (B,), new_hx)``; ``new_hx`` matches
         the structure of ``hx`` (or ``None`` if no RNN).
         """
         # --- Decode observations ---
-        card_ids, card_feats = decode_cards(obs_cards)  # (B,200), (B,200,F_card)
+        card_ids, card_feats = decode_cards(obs_cards)  # (B, MAX_CARDS), (B, MAX_CARDS, F_card)
         global_feats = decode_global(obs_global)  # (B,F_global)
         # decode_actions returns (codes, desc_passcodes, desc_ns, action_feats);
         # desc_ns is clamped to SYSSTRING_VOCAB-1 for safe embedding lookup.
         action_codes, desc_passcodes, desc_ns, action_feats = decode_actions(obs_actions)
 
         # --- Card encoding ---
-        card_embed = self._embed_codes(card_ids)  # (B, 200, embed_dim)
+        card_embed = self._embed_codes(card_ids)  # (B, MAX_CARDS, embed_dim)
         card_input = torch.cat([card_embed, card_feats], dim=-1)
-        card_enc = self.card_encoder(card_input)  # (B, 200, card_embed_dim)
+        card_enc = self.card_encoder(card_input)  # (B, MAX_CARDS, card_embed_dim)
 
         # --- Zone pooling ---
-        raw_loc = obs_cards[..., 4].long()  # (B, 200) location bitmask
-        raw_ctrl = obs_cards[..., 7].long()  # (B, 200) controller
+        raw_loc = obs_cards[..., 4].long()  # (B, MAX_CARDS) location bitmask
+        raw_ctrl = obs_cards[..., 7].long()  # (B, MAX_CARDS) controller
         zone_flat = self._pool_zones(card_enc, raw_loc, raw_ctrl, card_ids)
 
         # --- Global encoding ---
@@ -586,10 +602,10 @@ class YuGiOhNet(nn.Module):
             chain_input = torch.cat(
                 [chain_card_embed, chain_desc_embed, sys_emb_masked, chain_feats], dim=-1
             )
-            chain_enc = self.chain_encoder(chain_input)  # (B, 8, chain_embed_dim)
+            chain_enc = self.chain_encoder(chain_input)  # (B, MAX_PENDING_CHAIN, chain_embed_dim)
 
             # Mean-pool, masking zero-code entries
-            mask = (chain_codes != 0).float().unsqueeze(-1)  # (B, 8, 1)
+            mask = (chain_codes != 0).float().unsqueeze(-1)  # (B, MAX_PENDING_CHAIN, 1)
             count = mask.sum(dim=1).clamp(min=1)  # (B, 1)
             chain_pooled = (chain_enc * mask).sum(dim=1) / count  # (B, chain_embed_dim)
         else:
@@ -635,16 +651,16 @@ class YuGiOhNet(nn.Module):
         # sys_emb_masked: sysstring component, masked to 0 when the desc is per-card,
         #   so exactly one of (sys_emb, per_card_desc_n_scalar in action_feats) is
         #   non-zero per action.
-        act_embed = self._embed_codes(action_codes)  # (B, 32, embed_dim)
-        desc_card_embed = self._embed_codes(desc_passcodes)  # (B, 32, embed_dim)
+        act_embed = self._embed_codes(action_codes)  # (B, MAX_ACTIONS, embed_dim)
+        desc_card_embed = self._embed_codes(desc_passcodes)  # (B, MAX_ACTIONS, embed_dim)
         is_sysstring = desc_passcodes == 0
-        sys_emb = self.sysstring_emb(desc_ns)  # (B, 32, desc_n_embed_dim)
+        sys_emb = self.sysstring_emb(desc_ns)  # (B, MAX_ACTIONS, desc_n_embed_dim)
         sys_emb_masked = sys_emb * is_sysstring.float().unsqueeze(-1)
         act_input = torch.cat(
             [act_embed, desc_card_embed, sys_emb_masked, action_feats],
             dim=-1,
         )
-        act_enc = self.action_encoder(act_input)  # (B, 32, action_embed_dim)
+        act_enc = self.action_encoder(act_input)  # (B, MAX_ACTIONS, action_embed_dim)
 
         # --- Event-history CNN branch (fused into BOTH heads) ---
         # event_pooled is a single per-board vector concatenated onto head_input
@@ -689,7 +705,7 @@ class YuGiOhNet(nn.Module):
 
         # --- Policy head: dot product ---
         board_p = self.board_proj(head_feat)  # (B, action_embed_dim)
-        logits = (act_enc * board_p.unsqueeze(1)).sum(dim=-1)  # (B, 32)
+        logits = (act_enc * board_p.unsqueeze(1)).sum(dim=-1)  # (B, MAX_ACTIONS)
 
         # Mask illegal actions
         logits = logits.masked_fill(action_mask == 0, float("-inf"))

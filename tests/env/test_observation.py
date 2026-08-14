@@ -88,11 +88,11 @@ def _build_obs_with_card_on_engine_player_1(agent_player: int):
 
     def fake_query(player: int, loc: int):
         # One face-up Atk monster on engine player 1's MZONE; nothing elsewhere.
-        if player == 1 and loc == 0x04:  # LOCATION_MZONE
+        if player == 1 and loc == LOCATION_MZONE:
             return [
                 {
                     "code": 46986414,
-                    "position": 0x01,  # POS_FACEUP_ATTACK
+                    "position": POS_FACEUP_ATTACK,  # POS_FACEUP_ATTACK
                     "is_public": 1,
                     "is_hidden": 0,
                 }
@@ -276,6 +276,10 @@ def test_prompt_meta_none_on_terminal(lib, db_path, script_dirs):
 # ─── Chain encoder gap tests ────────────────────────────────────────────────
 
 
+from yugioh_core.constants import (
+    LOCATION_MZONE,
+    POS_FACEUP_ATTACK,
+)
 from yugioh_core.encoding import MAX_PENDING_CHAIN, decode_u32
 from yugioh_env.game_state import ChainLink, GameState
 from yugioh_env.observation import build_observation
@@ -289,7 +293,7 @@ def _gs_with_links(n, controller):
                 code=1000 + i,
                 desc=0,
                 controller=controller,
-                location=0x04,
+                location=LOCATION_MZONE,
                 sequence=i,
                 chain_link=i + 1,
             )

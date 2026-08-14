@@ -8,6 +8,17 @@ torch = pytest.importorskip("torch")
 
 import numpy as np
 
+from yugioh_core.encoding import (
+    ACTION_FEATURES,
+    CARD_FEATURES,
+    CHAIN_ENTRY_FEATURES,
+    EVENT_ENTRY_FEATURES,
+    GLOBAL_FEATURES,
+    MAX_ACTIONS,
+    MAX_CARDS,
+    MAX_EVENT_HISTORY,
+    MAX_PENDING_CHAIN,
+)
 from yugioh_rl.policy_inputs import build_forward_inputs
 
 _EXPECTED_KEYS = {
@@ -22,12 +33,12 @@ _EXPECTED_KEYS = {
 
 def _obs() -> dict:
     return {
-        "cards": np.zeros((200, 42), dtype=np.uint8),
-        "global_state": np.zeros((21,), dtype=np.uint8),
-        "actions": np.zeros((32, 28), dtype=np.uint8),
-        "action_mask": np.ones((32,), dtype=np.int8),
-        "pending_chain": np.zeros((8, 16), dtype=np.uint8),
-        "event_history": np.zeros((32, 30), dtype=np.uint8),
+        "cards": np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8),
+        "global_state": np.zeros((GLOBAL_FEATURES,), dtype=np.uint8),
+        "actions": np.zeros((MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8),
+        "action_mask": np.ones((MAX_ACTIONS,), dtype=np.int8),
+        "pending_chain": np.zeros((MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES), dtype=np.uint8),
+        "event_history": np.zeros((MAX_EVENT_HISTORY, EVENT_ENTRY_FEATURES), dtype=np.uint8),
     }
 
 
@@ -38,17 +49,17 @@ def test_returns_all_forward_kwargs() -> None:
 
 def test_no_batch_dim_preserves_shapes() -> None:
     inputs = build_forward_inputs(_obs(), add_batch_dim=False)
-    assert tuple(inputs["obs_cards"].shape) == (200, 42)
-    assert tuple(inputs["action_mask"].shape) == (32,)
-    assert tuple(inputs["obs_chain"].shape) == (8, 16)
+    assert tuple(inputs["obs_cards"].shape) == (MAX_CARDS, CARD_FEATURES)
+    assert tuple(inputs["action_mask"].shape) == (MAX_ACTIONS,)
+    assert tuple(inputs["obs_chain"].shape) == (MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES)
 
 
 def test_add_batch_dim_prepends_leading_one() -> None:
     inputs = build_forward_inputs(_obs(), add_batch_dim=True)
-    assert tuple(inputs["obs_cards"].shape) == (1, 200, 42)
-    assert tuple(inputs["action_mask"].shape) == (1, 32)
-    assert tuple(inputs["obs_event"].shape) == (1, 32, 30)
-    assert tuple(inputs["obs_chain"].shape) == (1, 8, 16)
+    assert tuple(inputs["obs_cards"].shape) == (1, MAX_CARDS, CARD_FEATURES)
+    assert tuple(inputs["action_mask"].shape) == (1, MAX_ACTIONS)
+    assert tuple(inputs["obs_event"].shape) == (1, MAX_EVENT_HISTORY, EVENT_ENTRY_FEATURES)
+    assert tuple(inputs["obs_chain"].shape) == (1, MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES)
 
 
 def test_dtype_preserved() -> None:
@@ -71,8 +82,8 @@ def test_guard_optional_yields_none_for_absent_keys() -> None:
 
 def test_guard_optional_still_converts_present_keys() -> None:
     inputs = build_forward_inputs(_obs(), guard_optional=True, add_batch_dim=True)
-    assert tuple(inputs["obs_chain"].shape) == (1, 8, 16)
-    assert tuple(inputs["obs_event"].shape) == (1, 32, 30)
+    assert tuple(inputs["obs_chain"].shape) == (1, MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES)
+    assert tuple(inputs["obs_event"].shape) == (1, MAX_EVENT_HISTORY, EVENT_ENTRY_FEATURES)
 
 
 def test_direct_indexing_raises_on_absent_optional_key() -> None:

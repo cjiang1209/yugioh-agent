@@ -1,7 +1,11 @@
 import numpy as np
 import torch
 
-from yugioh_core.constants import MSG_CHAINING
+from yugioh_core.constants import (
+    ATTRIBUTE_DIVINE,
+    LOCATION_GRAVE,
+    MSG_CHAINING,
+)
 from yugioh_core.encoding import EVENT_ENTRY_FEATURES, MAX_EVENT_HISTORY, encode_event_entry
 from yugioh_rl.features import EVENT_FEAT_DIM, decode_event_history
 
@@ -52,7 +56,9 @@ def test_location_is_onehot_not_scalar():
     #                location(7), target_location(7), hint_onehot(4)]
     loc_start = 6
     # _LOC_BITS order: hand,mzone,szone,grave,banished,extra,deck → grave at idx 3
-    row = encode_event_entry(msg_type=MSG_SUMMONING, card_code=1, location=0x10, sequence=2)
+    row = encode_event_entry(
+        msg_type=MSG_SUMMONING, card_code=1, location=LOCATION_GRAVE, sequence=2
+    )
     _, _, _, _, _, feats = decode_event_history(_raw_one(row))
     loc = feats[0, -1, loc_start : loc_start + 7]
     assert loc[3].item() == 1.0  # grave bit set
@@ -73,7 +79,7 @@ def test_hint_type_is_onehot():
 
     # hint one-hot occupies the last 4 columns; _EVENT_HINT_IDS order
     # [race, attrib, code, number] → ATTRIB at idx 1.
-    row = encode_event_entry(msg_type=MSG_HINT, hint_type=HINT_ATTRIB, hint_value=0x40)
+    row = encode_event_entry(msg_type=MSG_HINT, hint_type=HINT_ATTRIB, hint_value=ATTRIBUTE_DIVINE)
     _, _, _, _, _, feats = decode_event_history(_raw_one(row))
     hint = feats[0, -1, -4:]
     assert hint[1].item() == 1.0  # attrib column set

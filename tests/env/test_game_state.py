@@ -15,6 +15,7 @@ from yugioh_core.constants import (
     MSG_RECOVER,
     MSG_START,
     MSG_WIN,
+    PHASE_BATTLE_START,
 )
 from yugioh_env.game_state import GameState
 
@@ -115,8 +116,8 @@ def test_new_turn_and_phase():
     gs.update({"msg_type": MSG_NEW_TURN, "player": 0})
     assert gs.turn_count == 1
     assert gs.current_player == 0
-    gs.update({"msg_type": MSG_NEW_PHASE, "phase": 0x08})
-    assert gs.phase == 0x08
+    gs.update({"msg_type": MSG_NEW_PHASE, "phase": PHASE_BATTLE_START})
+    assert gs.phase == PHASE_BATTLE_START
     gs.update({"msg_type": MSG_NEW_TURN, "player": 1})
     assert gs.turn_count == 2
     assert gs.current_player == 1

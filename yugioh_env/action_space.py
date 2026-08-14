@@ -1101,7 +1101,11 @@ def _encode_action(action: dict, msg_type: int) -> np.ndarray:
         [11]     position           (uint8 bitmask)
         [12]     direct_attackable  (uint8 - 0/1)
         [13]     param              (uint8 - release_param OR sum.param, aliased; narrowed here)
-        [14]     counter_type       (uint8)
+        [14]     counter_type       (uint8 - LOW BYTE of the counter id. The
+                 wire field is a u16: COUNTER_* flag bits above 0xFF are
+                 dropped, and so are id bits 8-11, which several real
+                 counters use. `counter_type` on the action dict keeps the
+                 full u16, so the response path is unaffected.)
         [15]     counter_count      (uint8)
         [16]     index              (uint8)
         [17]     num_selected       (uint8 - number of cards in combo, default 1)

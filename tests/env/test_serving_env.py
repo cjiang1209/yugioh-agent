@@ -2,7 +2,13 @@ from unittest.mock import patch
 
 import pytest
 
-from yugioh_core.constants import LOCATION_MZONE
+from yugioh_core.constants import (
+    LOCATION_MZONE,
+    MSG_SELECT_CHAIN,
+    MSG_SELECT_IDLECMD,
+    MSG_SELECT_PLACE,
+    TYPE_MONSTER,
+)
 from yugioh_env.server.serving_env import (
     FrameCollector,
     ServingEnv,
@@ -64,7 +70,7 @@ def test_capture_board_carries_dynamic_fields_unhidden():
         "code": 111,
         "position": 1,
         "sequence": 0,
-        "type": 0x1,
+        "type": TYPE_MONSTER,
         "attack": 4000,
         "defense": 3000,
         "level": 8,
@@ -179,9 +185,9 @@ def test_serving_frames_capture_per_chunk(env):
             "agent_player": 1,
         }
     )
-    recording.append(msg_type=11, player=0, action=0, num_actions=3)
-    recording.append(msg_type=18, player=0, action=0, num_actions=5)
-    recording.append(msg_type=16, player=1, action=0, num_actions=1)
+    recording.append(msg_type=MSG_SELECT_IDLECMD, player=0, action=0, num_actions=3)
+    recording.append(msg_type=MSG_SELECT_PLACE, player=0, action=0, num_actions=5)
+    recording.append(msg_type=MSG_SELECT_CHAIN, player=1, action=0, num_actions=1)
     with patch(_ENV_CLASS, return_value=env):
         serving = ServingEnv()
     serving.env.set_opponent(ScriptedOpponent(recording.cursor()))

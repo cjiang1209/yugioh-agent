@@ -4,7 +4,19 @@ from __future__ import annotations
 
 torch = __import__("pytest").importorskip("torch")
 
-from yugioh_core.encoding import CHAIN_ENTRY_FEATURES, MAX_PENDING_CHAIN, encode_chain_entry
+from yugioh_core.constants import (
+    LOCATION_MZONE,
+)
+from yugioh_core.encoding import (
+    ACTION_FEATURES,
+    CARD_FEATURES,
+    CHAIN_ENTRY_FEATURES,
+    GLOBAL_FEATURES,
+    MAX_ACTIONS,
+    MAX_CARDS,
+    MAX_PENDING_CHAIN,
+    encode_chain_entry,
+)
 from yugioh_rl.config import TrainingConfig
 from yugioh_rl.features import CHAIN_FEAT_DIM, decode_pending_chain
 
@@ -26,7 +38,7 @@ def test_decode_pending_chain_values():
         code=44444,
         desc=(0x1234 << 20) | 7,
         controller=1,
-        location=0x04,
+        location=LOCATION_MZONE,
         sequence=3,
         chain_link=2,
     )
@@ -48,12 +60,12 @@ def test_network_forward_with_chain_disabled():
 
     net = YuGiOhNet.from_config(config)
     B = 2
-    obs_cards = torch.zeros(B, 200, 42, dtype=torch.uint8)
-    obs_global = torch.zeros(B, 20, dtype=torch.uint8)
-    obs_actions = torch.zeros(B, 32, 28, dtype=torch.uint8)
-    action_mask = torch.ones(B, 32, dtype=torch.int8)
+    obs_cards = torch.zeros(B, MAX_CARDS, CARD_FEATURES, dtype=torch.uint8)
+    obs_global = torch.zeros(B, GLOBAL_FEATURES, dtype=torch.uint8)
+    obs_actions = torch.zeros(B, MAX_ACTIONS, ACTION_FEATURES, dtype=torch.uint8)
+    action_mask = torch.ones(B, MAX_ACTIONS, dtype=torch.int8)
     logits, values, hx = net(obs_cards, obs_global, obs_actions, action_mask)
-    assert logits.shape == (B, 32)
+    assert logits.shape == (B, MAX_ACTIONS)
     assert values.shape == (B,)
 
 
@@ -64,13 +76,13 @@ def test_network_forward_with_chain_enabled():
 
     net = YuGiOhNet.from_config(config)
     B = 2
-    obs_cards = torch.zeros(B, 200, 42, dtype=torch.uint8)
-    obs_global = torch.zeros(B, 20, dtype=torch.uint8)
-    obs_actions = torch.zeros(B, 32, 28, dtype=torch.uint8)
-    action_mask = torch.ones(B, 32, dtype=torch.int8)
+    obs_cards = torch.zeros(B, MAX_CARDS, CARD_FEATURES, dtype=torch.uint8)
+    obs_global = torch.zeros(B, GLOBAL_FEATURES, dtype=torch.uint8)
+    obs_actions = torch.zeros(B, MAX_ACTIONS, ACTION_FEATURES, dtype=torch.uint8)
+    action_mask = torch.ones(B, MAX_ACTIONS, dtype=torch.int8)
     obs_chain = torch.zeros(B, MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES, dtype=torch.uint8)
     logits, values, hx = net(obs_cards, obs_global, obs_actions, action_mask, obs_chain=obs_chain)
-    assert logits.shape == (B, 32)
+    assert logits.shape == (B, MAX_ACTIONS)
     assert values.shape == (B,)
 
 
@@ -82,14 +94,14 @@ def test_network_chain_changes_output():
     net = YuGiOhNet.from_config(config)
     net.eval()
     B = 1
-    obs_cards = torch.zeros(B, 200, 42, dtype=torch.uint8)
-    obs_global = torch.zeros(B, 20, dtype=torch.uint8)
-    obs_actions = torch.zeros(B, 32, 28, dtype=torch.uint8)
-    action_mask = torch.ones(B, 32, dtype=torch.int8)
+    obs_cards = torch.zeros(B, MAX_CARDS, CARD_FEATURES, dtype=torch.uint8)
+    obs_global = torch.zeros(B, GLOBAL_FEATURES, dtype=torch.uint8)
+    obs_actions = torch.zeros(B, MAX_ACTIONS, ACTION_FEATURES, dtype=torch.uint8)
+    action_mask = torch.ones(B, MAX_ACTIONS, dtype=torch.int8)
 
     empty_chain = torch.zeros(B, MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES, dtype=torch.uint8)
     entry = encode_chain_entry(
-        code=12345, desc=0, controller=1, location=0x04, sequence=0, chain_link=1
+        code=12345, desc=0, controller=1, location=LOCATION_MZONE, sequence=0, chain_link=1
     )
     nonempty_chain = empty_chain.clone()
     nonempty_chain[0, 0] = torch.from_numpy(entry)

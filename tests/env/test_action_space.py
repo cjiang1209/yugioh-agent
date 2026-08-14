@@ -13,6 +13,11 @@ from yugioh_core.action_categories import (
     IDLE_TO_EP,
 )
 from yugioh_core.constants import (
+    ATTRIBUTE_EARTH,
+    COUNTER_NEED_ENABLE,
+    LOCATION_DECK,
+    LOCATION_GRAVE,
+    LOCATION_HAND,
     LOCATION_MZONE,
     LOCATION_SZONE,
     MSG_ANNOUNCE_ATTRIB,
@@ -38,6 +43,7 @@ from yugioh_core.constants import (
     MSG_SORT_CHAIN,
     POS_FACEUP_ATTACK,
     POS_FACEUP_DEFENSE,
+    RACE_WARRIOR,
 )
 from yugioh_core.encoding import decode_u16, decode_u32
 from yugioh_env import response_builder as rb
@@ -274,7 +280,13 @@ def _sum_msg_multi(
         "max": max_sel,
         "must_cards": must_cards or [],
         "optional_cards": [
-            {"code": 100 + i, "controller": 0, "location": 0x04, "sequence": i, "param": p}
+            {
+                "code": 100 + i,
+                "controller": 0,
+                "location": LOCATION_MZONE,
+                "sequence": i,
+                "param": p,
+            }
             for i, p in enumerate(cards)
         ],
     }
@@ -371,7 +383,7 @@ def test_select_sum_must_cards_included_in_sum():
     mapper = ActionMapper()
     # target=7, must_cards=[param=4], optional: [3, 2, 5]
     # must(4) + card 0(3) = 7 ✓, must(4) + card 1(2) = 6 ✗, must(4) + card 2(5) = 9 ✗
-    must = [{"code": 999, "controller": 0, "location": 0x04, "sequence": 99, "param": 4}]
+    must = [{"code": 999, "controller": 0, "location": LOCATION_MZONE, "sequence": 99, "param": 4}]
     mapper.update(_sum_msg_multi(7, [3, 2, 5], min_sel=1, max_sel=1, must_cards=must))
     # Only card 0 (param=3) should be offered (4+3=7)
     assert mapper.num_actions == 1
@@ -855,7 +867,7 @@ def test_chain_pass_action_has_distinct_kind_from_chain_link():
                 {
                     "code": 12345,
                     "controller": 0,
-                    "location": 0x10,
+                    "location": LOCATION_GRAVE,
                     "sequence": 0,
                     "position": 0,
                     "desc": 0xABCDEF,
@@ -883,9 +895,27 @@ def test_counter_skips_cards_with_zero_counters():
             "counter_type": 0x1,
             "count": 2,
             "cards": [
-                {"code": 111, "controller": 0, "location": 0x4, "sequence": 0, "counter_count": 3},
-                {"code": 222, "controller": 0, "location": 0x4, "sequence": 1, "counter_count": 0},
-                {"code": 333, "controller": 0, "location": 0x4, "sequence": 2, "counter_count": 5},
+                {
+                    "code": 111,
+                    "controller": 0,
+                    "location": LOCATION_MZONE,
+                    "sequence": 0,
+                    "counter_count": 3,
+                },
+                {
+                    "code": 222,
+                    "controller": 0,
+                    "location": LOCATION_MZONE,
+                    "sequence": 1,
+                    "counter_count": 0,
+                },
+                {
+                    "code": 333,
+                    "controller": 0,
+                    "location": LOCATION_MZONE,
+                    "sequence": 2,
+                    "counter_count": 5,
+                },
             ],
         }
     )
@@ -903,12 +933,12 @@ def test_counter_skips_cards_with_zero_counters():
             False,
         ),
         (
-            {"msg_type": MSG_ANNOUNCE_RACE, "player": 0, "available": 0x1},
+            {"msg_type": MSG_ANNOUNCE_RACE, "player": 0, "available": RACE_WARRIOR},
             "pick_bit",
             False,
         ),
         (
-            {"msg_type": MSG_ANNOUNCE_ATTRIB, "player": 0, "available": 0x1},
+            {"msg_type": MSG_ANNOUNCE_ATTRIB, "player": 0, "available": ATTRIBUTE_EARTH},
             "pick_bit",
             False,
         ),
@@ -931,7 +961,7 @@ def test_counter_skips_cards_with_zero_counters():
                     {
                         "code": 555,
                         "controller": 0,
-                        "location": 0x10,
+                        "location": LOCATION_GRAVE,
                         "sequence": 0,
                         "position": 0,
                         "desc": 0x1,
@@ -952,7 +982,7 @@ def test_counter_skips_cards_with_zero_counters():
                     {
                         "code": 666,
                         "controller": 0,
-                        "location": 0x4,
+                        "location": LOCATION_MZONE,
                         "sequence": 0,
                         "counter_count": 1,
                     }
@@ -975,7 +1005,7 @@ def test_counter_skips_cards_with_zero_counters():
                     {
                         "code": 444,
                         "controller": 0,
-                        "location": 0x4,
+                        "location": LOCATION_MZONE,
                         "sequence": 0,
                         "desc": 0x1,
                         "client_mode": 0,
@@ -1135,10 +1165,10 @@ def test_action_controller_relativizes_per_agent_player(agent_player):
                     "flag": 0,
                     "code": 100,
                     "controller": 0,
-                    "location": 0x04,
+                    "location": LOCATION_MZONE,
                     "sequence": 0,
                     "subsequence": 0,
-                    "position": 0x01,
+                    "position": POS_FACEUP_ATTACK,
                     "desc": 0,
                 },
                 # Chain on engine player 1
@@ -1146,10 +1176,10 @@ def test_action_controller_relativizes_per_agent_player(agent_player):
                     "flag": 0,
                     "code": 200,
                     "controller": 1,
-                    "location": 0x04,
+                    "location": LOCATION_MZONE,
                     "sequence": 0,
                     "subsequence": 0,
-                    "position": 0x01,
+                    "position": POS_FACEUP_ATTACK,
                     "desc": 0,
                 },
             ],
@@ -1175,7 +1205,7 @@ def test_action_controller_relativizes_per_agent_player(agent_player):
 
 def _idle_msg_with_card(**card_overrides) -> dict:
     """SELECT_IDLECMD with a single summonable card carrying the given fields."""
-    card = {"code": 100, "controller": 0, "location": 0x02, "sequence": 0}
+    card = {"code": 100, "controller": 0, "location": LOCATION_HAND, "sequence": 0}
     card.update(card_overrides)
     return {
         "msg_type": MSG_SELECT_IDLECMD,
@@ -1195,7 +1225,13 @@ def _idle_msg_with_card(**card_overrides) -> dict:
 
 def _battle_msg_with_attackable(**card_overrides) -> dict:
     """SELECT_BATTLECMD with a single attackable card."""
-    card = {"code": 100, "controller": 0, "location": 0x04, "sequence": 0, "direct_attackable": 0}
+    card = {
+        "code": 100,
+        "controller": 0,
+        "location": LOCATION_MZONE,
+        "sequence": 0,
+        "direct_attackable": 0,
+    }
     card.update(card_overrides)
     return {
         "msg_type": MSG_SELECT_BATTLECMD,
@@ -1210,7 +1246,13 @@ def _battle_msg_with_attackable(**card_overrides) -> dict:
 
 def _tribute_msg(**card_overrides) -> dict:
     """SELECT_TRIBUTE with a single card; release_param overridable."""
-    card = {"code": 100, "controller": 0, "location": 0x04, "sequence": 0, "release_param": 1}
+    card = {
+        "code": 100,
+        "controller": 0,
+        "location": LOCATION_MZONE,
+        "sequence": 0,
+        "release_param": 1,
+    }
     card.update(card_overrides)
     return {
         "msg_type": MSG_SELECT_TRIBUTE,
@@ -1225,7 +1267,7 @@ def _tribute_msg(**card_overrides) -> dict:
 
 def _sum_msg(**card_overrides) -> dict:
     """SELECT_SUM with a single optional card; param overridable."""
-    card = {"code": 100, "controller": 0, "location": 0x04, "sequence": 0, "param": 1}
+    card = {"code": 100, "controller": 0, "location": LOCATION_MZONE, "sequence": 0, "param": 1}
     card.update(card_overrides)
     return {
         "msg_type": MSG_SELECT_SUM,
@@ -1242,7 +1284,13 @@ def _sum_msg(**card_overrides) -> dict:
 
 def _card_msg(**card_overrides) -> dict:
     """SELECT_CARD with a single card; subsequence overridable."""
-    card = {"code": 100, "controller": 0, "location": 0x04, "sequence": 0, "subsequence": 0}
+    card = {
+        "code": 100,
+        "controller": 0,
+        "location": LOCATION_MZONE,
+        "sequence": 0,
+        "subsequence": 0,
+    }
     card.update(card_overrides)
     return {
         "msg_type": MSG_SELECT_CARD,
@@ -1261,10 +1309,10 @@ def _chain_msg_with_chain(**chain_overrides) -> dict:
         "flag": 0,
         "code": 100,
         "controller": 0,
-        "location": 0x04,
+        "location": LOCATION_MZONE,
         "sequence": 0,
         "subsequence": 0,
-        "position": 0x01,
+        "position": POS_FACEUP_ATTACK,
         "desc": 0,
     }
     chain.update(chain_overrides)
@@ -1279,7 +1327,13 @@ def _chain_msg_with_chain(**chain_overrides) -> dict:
 
 def _counter_msg(**msg_overrides) -> dict:
     """SELECT_COUNTER with one card carrying counters."""
-    card = {"code": 100, "controller": 0, "location": 0x04, "sequence": 0, "counter_count": 3}
+    card = {
+        "code": 100,
+        "controller": 0,
+        "location": LOCATION_MZONE,
+        "sequence": 0,
+        "counter_count": 3,
+    }
     base = {
         "msg_type": MSG_SELECT_COUNTER,
         "player": 0,
@@ -1305,8 +1359,13 @@ def _counter_msg(**msg_overrides) -> dict:
         ("sum_param", lambda: _sum_msg(param=4), 13, 4),
         # subsequence: byte[10] == 2
         ("subsequence", lambda: _card_msg(subsequence=2), 10, 2),
-        # position: byte[11] == 0x04 (FU-Def)
-        ("position", lambda: _chain_msg_with_chain(position=0x04), 11, 0x04),
+        # position: byte[11] carries the position bitmask
+        (
+            "position",
+            lambda: _chain_msg_with_chain(position=POS_FACEUP_DEFENSE),
+            11,
+            POS_FACEUP_DEFENSE,
+        ),
         # counter_type: byte[14] == 0x05 (low byte of counter_type=5)
         ("counter_type", lambda: _counter_msg(counter_type=5), 14, 5),
         # counter_count: byte[15] == 1 (n_remove = min(card.counter_count=3, msg.count=1))
@@ -1366,9 +1425,9 @@ def test_extract_sort_actions_first_step_no_selected():
         "msg_type": MSG_SORT_CARD,
         "player": 0,
         "cards": [
-            {"code": 1, "controller": 0, "location": 0x01, "sequence": 0},
-            {"code": 2, "controller": 0, "location": 0x01, "sequence": 1},
-            {"code": 3, "controller": 0, "location": 0x01, "sequence": 2},
+            {"code": 1, "controller": 0, "location": LOCATION_DECK, "sequence": 0},
+            {"code": 2, "controller": 0, "location": LOCATION_DECK, "sequence": 1},
+            {"code": 3, "controller": 0, "location": LOCATION_DECK, "sequence": 2},
         ],
         "_agent_player": 0,
     }
@@ -1387,9 +1446,9 @@ def test_extract_sort_actions_intermediate_step():
         "msg_type": MSG_SORT_CARD,
         "player": 0,
         "cards": [
-            {"code": 1, "controller": 0, "location": 0x01, "sequence": 0},
-            {"code": 2, "controller": 0, "location": 0x01, "sequence": 1},
-            {"code": 3, "controller": 0, "location": 0x01, "sequence": 2},
+            {"code": 1, "controller": 0, "location": LOCATION_DECK, "sequence": 0},
+            {"code": 2, "controller": 0, "location": LOCATION_DECK, "sequence": 1},
+            {"code": 3, "controller": 0, "location": LOCATION_DECK, "sequence": 2},
         ],
         "_selected": [1],
         "_agent_player": 0,
@@ -1408,9 +1467,9 @@ def test_extract_sort_actions_final_step_builds_response():
         "msg_type": MSG_SORT_CARD,
         "player": 0,
         "cards": [
-            {"code": 1, "controller": 0, "location": 0x01, "sequence": 0},
-            {"code": 2, "controller": 0, "location": 0x01, "sequence": 1},
-            {"code": 3, "controller": 0, "location": 0x01, "sequence": 2},
+            {"code": 1, "controller": 0, "location": LOCATION_DECK, "sequence": 0},
+            {"code": 2, "controller": 0, "location": LOCATION_DECK, "sequence": 1},
+            {"code": 3, "controller": 0, "location": LOCATION_DECK, "sequence": 2},
         ],
         "_selected": [1, 0],
         "_agent_player": 0,
@@ -1436,9 +1495,9 @@ def test_sort_card_multi_step_dispatch():
         "msg_type": MSG_SORT_CARD,
         "player": 0,
         "cards": [
-            {"code": 10, "controller": 0, "location": 0x01, "sequence": 0},
-            {"code": 20, "controller": 0, "location": 0x01, "sequence": 1},
-            {"code": 30, "controller": 0, "location": 0x01, "sequence": 2},
+            {"code": 10, "controller": 0, "location": LOCATION_DECK, "sequence": 0},
+            {"code": 20, "controller": 0, "location": LOCATION_DECK, "sequence": 1},
+            {"code": 30, "controller": 0, "location": LOCATION_DECK, "sequence": 2},
         ],
         "_agent_player": 0,
     }
@@ -1551,7 +1610,7 @@ def test_counter_actions_preserve_coordinates_and_full_width() -> None:
             "msg_type": MSG_SELECT_COUNTER,
             "player": 0,
             "_agent_player": 0,
-            "counter_type": 0x2001,  # COUNTER_NEED_ENABLE | 1
+            "counter_type": COUNTER_NEED_ENABLE | 1,
             "count": 300,  # > 255
             "cards": [
                 {
@@ -1567,7 +1626,7 @@ def test_counter_actions_preserve_coordinates_and_full_width() -> None:
     a = mapper.actions[0]
     assert a["location"] == LOCATION_MZONE
     assert a["sequence"] == 4
-    assert a["counter_type"] == 0x2001, "u16 flag bits must survive"
+    assert a["counter_type"] == COUNTER_NEED_ENABLE | 1, "u16 flag bits must survive"
     assert a["counter_count"] == 300, "300 & 0xFF == 44; must not truncate"
 
 
@@ -1639,7 +1698,7 @@ def test_counter_encodes_coordinates() -> None:
             "msg_type": MSG_SELECT_COUNTER,
             "player": 0,
             "_agent_player": 0,
-            "counter_type": 0x2001,
+            "counter_type": COUNTER_NEED_ENABLE | 1,
             "count": 1,
             "cards": [
                 {
