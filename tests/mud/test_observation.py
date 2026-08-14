@@ -6,12 +6,12 @@ SQLite DB (same pattern as test_mud_game_state.py).
 
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
 import numpy as np
 import pytest
 
+from tests.mud.conftest import build_cards_db
 from yugioh_core.action_categories import (
     BATTLE_ATTACK,
     BATTLE_TO_EP,
@@ -58,40 +58,17 @@ from yugioh_mud.text_parser import ParsedPrompt, PromptType
 
 # Card data for the temp DB
 _CARDS = [
-    # (id, name, type, atk, def, level, race, attribute, alias)
-    (89631139, "Blue-Eyes White Dragon", 17, 3000, 2500, 8, 0x20, 0x10, 0),
-    (46986414, "Dark Magician", 17, 2500, 2100, 7, 0x2, 0x20, 0),
-    (40640057, "Kuriboh", 17, 300, 200, 1, 0x10, 0x20, 0),
-    (44095762, "Mirror Force", 4, 0, 0, 0, 0, 0, 0),
+    # (id, name, type, atk, def, level, race, attribute)
+    (89631139, "Blue-Eyes White Dragon", 17, 3000, 2500, 8, 0x20, 0x10),
+    (46986414, "Dark Magician", 17, 2500, 2100, 7, 0x2, 0x20),
+    (40640057, "Kuriboh", 17, 300, 200, 1, 0x10, 0x20),
+    (44095762, "Mirror Force", 4, 0, 0, 0, 0, 0),
 ]
 
 
 @pytest.fixture(scope="module")
 def tmp_db(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    db_path = tmp_path_factory.mktemp("cards") / "cards.cdb"
-    conn = sqlite3.connect(str(db_path))
-    conn.execute(
-        "CREATE TABLE datas ("
-        "id INTEGER PRIMARY KEY, ot INTEGER DEFAULT 0, alias INTEGER DEFAULT 0, "
-        "setcode INTEGER DEFAULT 0, type INTEGER DEFAULT 0, "
-        "atk INTEGER DEFAULT 0, def INTEGER DEFAULT 0, "
-        "level INTEGER DEFAULT 0, race INTEGER DEFAULT 0, "
-        "attribute INTEGER DEFAULT 0)"
-    )
-    conn.execute("CREATE TABLE texts (id INTEGER PRIMARY KEY, name TEXT, desc TEXT)")
-    for cid, name, ctype, atk, dfn, level, race, attr, alias in _CARDS:
-        conn.execute(
-            "INSERT INTO datas (id, alias, type, atk, def, level, race, attribute) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (cid, alias, ctype, atk, dfn, level, race, attr),
-        )
-        conn.execute(
-            "INSERT INTO texts (id, name, desc) VALUES (?, ?, ?)",
-            (cid, name, ""),
-        )
-    conn.commit()
-    conn.close()
-    return db_path
+    return build_cards_db(tmp_path_factory.mktemp("cards") / "cards.cdb", _CARDS)
 
 
 @pytest.fixture(scope="module")
