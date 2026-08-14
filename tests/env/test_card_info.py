@@ -322,9 +322,9 @@ def test_unrecognized_race_bit_is_omitted():
 def test_question_mark_atk_passes_through():
     """cards.cdb encodes "?" ATK/DEF as -2. The value is preserved;
     the client renders "?" for negatives."""
-    info = build_card_info(10000, _FakeCardDB(_row(attack=-2, defense=-2)))
-    assert info.attack == -2
-    assert info.defense == -2
+    info = build_card_info(10000, _FakeCardDB(_row(attack=STAT_UNKNOWN, defense=STAT_UNKNOWN)))
+    assert info.attack == STAT_UNKNOWN
+    assert info.defense == STAT_UNKNOWN
 
 
 def test_missing_desc_becomes_empty_string():
@@ -372,6 +372,7 @@ from yugioh_core.constants import (
     RACE_MACHINE,
     RACE_WYRM,
     SPELL_TRAP_TYPE_LABELS,
+    STAT_UNKNOWN,
     TYPE_COUNTER,
     TYPE_EFFECT,
     TYPE_LINK,

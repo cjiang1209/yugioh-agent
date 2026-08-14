@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import pickle
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
-from yugioh_core.encoding import GLOBAL_FEATURES
+from tests.rl.conftest import make_fake_obs
 
 torch = pytest.importorskip("torch")
 
@@ -63,20 +63,6 @@ def test_parse_deck_pool_picklable(assets_dir):
 # ---------------------------------------------------------------------------
 
 
-def _make_fake_obs():
-    """Return a minimal YuGiOhObservation-like object."""
-    obs = MagicMock()
-    obs.cards = [0] * (200 * 42)
-    obs.global_state = [0] * GLOBAL_FEATURES
-    obs.actions = [0] * (32 * 28)
-    obs.action_mask = [0] * 32
-    obs.pending_chain = []
-    obs.event_history = []
-    obs.reward = 0.0
-    obs.done = False
-    return obs
-
-
 POOL = [
     {"main": list(range(1, 41)), "extra": []},
     {"main": list(range(101, 141)), "extra": []},
@@ -88,7 +74,7 @@ def test_training_env_passes_deck_dicts():
     """reset() should pass deck0/deck1 dicts from the pool to env.reset()."""
     with patch("yugioh_env.server.yugioh_environment.YuGiOhEnvironment") as MockEnv:
         mock_env = MockEnv.return_value
-        mock_env.reset.return_value = _make_fake_obs()
+        mock_env.reset.return_value = make_fake_obs()
         mock_env._agent_player = 0
 
         from yugioh_rl.env_wrapper import TrainingEnv
@@ -107,7 +93,7 @@ def test_training_env_agent_deck_idx_when_first():
     """When agent is player 0, deck0 should be the agent's deck."""
     with patch("yugioh_env.server.yugioh_environment.YuGiOhEnvironment") as MockEnv:
         mock_env = MockEnv.return_value
-        mock_env.reset.return_value = _make_fake_obs()
+        mock_env.reset.return_value = make_fake_obs()
         mock_env._agent_player = 0
 
         from yugioh_rl.env_wrapper import TrainingEnv
@@ -126,7 +112,7 @@ def test_training_env_agent_deck_idx_when_second():
     """When agent is player 1, deck1 should be the agent's deck."""
     with patch("yugioh_env.server.yugioh_environment.YuGiOhEnvironment") as MockEnv:
         mock_env = MockEnv.return_value
-        mock_env.reset.return_value = _make_fake_obs()
+        mock_env.reset.return_value = make_fake_obs()
         mock_env._agent_player = 1
 
         from yugioh_rl.env_wrapper import TrainingEnv
@@ -145,10 +131,10 @@ def test_training_env_deck_info_on_done():
     """On episode end, info should contain agent_deck_idx."""
     with patch("yugioh_env.server.yugioh_environment.YuGiOhEnvironment") as MockEnv:
         mock_env = MockEnv.return_value
-        mock_env.reset.return_value = _make_fake_obs()
+        mock_env.reset.return_value = make_fake_obs()
         mock_env._agent_player = 0
 
-        done_obs = _make_fake_obs()
+        done_obs = make_fake_obs()
         done_obs.done = True
         done_obs.reward = 1.0
         mock_env.step.return_value = done_obs
@@ -168,7 +154,7 @@ def test_training_env_samples_vary_across_resets():
     """Multiple resets should produce different deck combinations."""
     with patch("yugioh_env.server.yugioh_environment.YuGiOhEnvironment") as MockEnv:
         mock_env = MockEnv.return_value
-        mock_env.reset.return_value = _make_fake_obs()
+        mock_env.reset.return_value = make_fake_obs()
         mock_env._agent_player = 0
 
         from yugioh_rl.env_wrapper import TrainingEnv

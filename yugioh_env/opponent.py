@@ -200,9 +200,12 @@ class NetworkOpponent(Opponent):
     def select_action(self, obs: YuGiOhObservation) -> tuple[int, Inference | None]:
         import torch
 
+        from yugioh_rl.obs_encoder import encode_observation
         from yugioh_rl.policy_inputs import build_forward_inputs
 
-        inputs = build_forward_inputs(obs.as_arrays(), device=self._device, add_batch_dim=True)
+        inputs = build_forward_inputs(
+            encode_observation(obs), device=self._device, add_batch_dim=True
+        )
 
         with torch.no_grad():
             logits, values, self._hx = self._network(**inputs, hx=self._hx)

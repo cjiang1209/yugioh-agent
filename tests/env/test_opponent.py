@@ -12,7 +12,7 @@ from yugioh_core.encoding import (
     MAX_ACTIONS,
 )
 from yugioh_env.deck_parser import parse_ydk
-from yugioh_env.models import CardCommand, YuGiOhAction, YuGiOhObservation
+from yugioh_env.models import CardCommand, Pass, YuGiOhAction, YuGiOhObservation
 from yugioh_env.opponent import GreedyOpponent, Opponent, RandomOpponent
 from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
 
@@ -329,10 +329,14 @@ def _make_synthetic_checkpoint(path: str) -> None:
 
 
 def _dummy_obs() -> YuGiOhObservation:
-    """Create a dummy observation with valid shapes; first 3 actions legal."""
+    """Create a dummy observation with 3 legal actions.
+
+    Both representations, because consumers differ here: `num_actions` sums
+    the mask, while an encoded mask counts the descriptors.
+    """
     mask = np.zeros(MAX_ACTIONS, dtype=np.int8)
     mask[:3] = 1
-    return YuGiOhObservation(action_mask=mask)
+    return YuGiOhObservation(action_mask=mask, action_descriptors=[Pass() for _ in range(3)])
 
 
 def test_model_opponent_construction():

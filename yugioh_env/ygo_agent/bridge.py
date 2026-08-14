@@ -15,8 +15,6 @@ from __future__ import annotations
 
 import logging
 
-import numpy as np
-
 from yugioh_core.action_categories import (
     BATTLE_ACTIVATE,
     BATTLE_ATTACK,
@@ -130,7 +128,6 @@ from yugioh_core.constants import (
     TYPE_UNION,
     TYPE_XYZ,
 )
-from yugioh_core.encoding import decode_u16, decode_u32
 from yugioh_env.models import (
     ActivateEffect,
     Attack,
@@ -262,28 +259,28 @@ _PHASE_MAP: dict[int, str] = {
 }
 
 
-def _decode_location(loc_byte: int) -> str:
-    return _LOCATION_MAP.get(loc_byte, "deck")
+def _decode_location(location: int) -> str:
+    return _LOCATION_MAP.get(location, "deck")
 
 
-def _decode_position(pos_byte: int) -> str:
-    return _POSITION_MAP.get(pos_byte, "none")
+def _decode_position(position: int) -> str:
+    return _POSITION_MAP.get(position, "none")
 
 
-def _decode_attribute(attr_byte: int) -> str:
-    return _ATTRIBUTE_MAP.get(attr_byte, "none")
+def _decode_attribute(attribute: int) -> str:
+    return _ATTRIBUTE_MAP.get(attribute, "none")
 
 
-def _decode_race(race_u32: int) -> str:
-    return _RACE_MAP.get(race_u32, "none")
+def _decode_race(race: int) -> str:
+    return _RACE_MAP.get(race, "none")
 
 
-def _decode_types(type_u32: int) -> list[str]:
-    return [name for bit, name in _TYPE_BITS if type_u32 & bit]
+def _decode_types(card_type: int) -> list[str]:
+    return [name for bit, name in _TYPE_BITS if card_type & bit]
 
 
-def _decode_phase(phase_u16: int) -> str:
-    return _PHASE_MAP.get(phase_u16, "main1")
+def _decode_phase(phase: int) -> str:
+    return _PHASE_MAP.get(phase, "main1")
 
 
 # ---------------------------------------------------------------------------
@@ -291,47 +288,42 @@ def _decode_phase(phase_u16: int) -> str:
 # ---------------------------------------------------------------------------
 
 
-def translate_cards(obs_cards: np.ndarray) -> list[dict]:
-    """Convert obs card array (MAX_CARDS × CARD_FEATURES, uint8) to ygo-agent Card dicts.
+def translate_cards(obs: YuGiOhObservation) -> list[dict]:
+    """Convert obs.card_states to ygo-agent Card dicts.
 
-    Skips empty slots. Fully-empty rows (location byte == 0) are unused slots.
-    Monster/spell zones are fixed-size arrays whose empty holes the engine
-    reports as ``code == 0`` rows carrying only a location byte; ygo-agent
-    never sees empty zones natively, so these are skipped too. ``code == 0``
-    rows in other locations (hand/deck/extra) are hidden-but-real cards and
-    are kept — the model relies on their presence for location counts.
+    Monster and spell zones are fixed-size, so the engine reports an empty one
+    as a ``code == 0`` entry carrying only its location. ygo-agent never sees
+    an empty zone natively, so those are dropped, as is an entry naming no
+    zone at all. A ``code == 0`` entry elsewhere (hand/deck/extra) is a
+    hidden-but-real card and is kept -- the model relies on its presence for
+    location counts.
     """
     cards: list[dict] = []
-    for i in range(obs_cards.shape[0]):
-        row = obs_cards[i]
-        code = decode_u32(row, 0)
-        loc_byte = int(row[4])
-        # Skip fully-empty rows and empty monster/spell zone holes.
-        if code == 0 and loc_byte in (0x00, LOCATION_MZONE, LOCATION_SZONE):
+    for card in obs.card_states:
+        # Skip fully-empty entries and empty monster/spell zone holes.
+        if card.code == 0 and card.location in (0, LOCATION_MZONE, LOCATION_SZONE):
             continue
-
-        type_u32 = decode_u32(row, 9)
-        race_u32 = decode_u32(row, 15)
-        atk = decode_u16(row, 19)
-        defense = decode_u16(row, 21)
-        is_overlay = bool(row[29])
 
         cards.append(
             {
-                "code": code,
-                "location": _decode_location(loc_byte),
-                "sequence": int(row[5]),
-                "controller": "me" if row[7] == 0 else "opponent",
-                "position": _decode_position(int(row[6])),
-                "overlay_sequence": 0 if is_overlay else -1,
-                "attribute": _decode_attribute(int(row[14])),
-                "race": _decode_race(race_u32),
-                "level": int(row[13]),
-                "counter": int(row[27]),
-                "negated": bool(row[28]),
-                "attack": atk,
-                "defense": defense,
-                "types": _decode_types(type_u32),
+                "code": card.code,
+                "location": _decode_location(card.location),
+                "sequence": card.sequence,
+                "controller": "me" if card.controller == 0 else "opponent",
+                "position": _decode_position(card.position),
+                "overlay_sequence": 0 if card.is_overlay else -1,
+                "attribute": _decode_attribute(card.attribute),
+                "race": _decode_race(card.race),
+                "level": card.level,
+                "counter": card.counter_count,
+                "negated": card.negated,
+                # A `?` stat reaches us as -2, which the server would wrap to
+                # 65534 (its feature encoder reduces mod 65536), presenting the
+                # card as having the largest attack in the space. Its schema
+                # accepts the negative, so nothing would reject it.
+                "attack": max(0, card.attack),
+                "defense": max(0, card.defense),
+                "types": _decode_types(card.card_type),
             }
         )
     return cards
@@ -342,23 +334,19 @@ def translate_cards(obs_cards: np.ndarray) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def translate_global(obs_global: np.ndarray) -> dict:
-    """Convert obs global_state array (GLOBAL_FEATURES uint8) to ygo-agent Global dict."""
-    my_lp = decode_u16(obs_global, 0)
-    opp_lp = decode_u16(obs_global, 2)
-    turn = int(obs_global[4])
-    phase = decode_u16(obs_global, 5)
-    is_my_turn = bool(obs_global[7])
+def translate_global(obs: YuGiOhObservation) -> dict:
+    """Convert obs.global_ to ygo-agent Global dict."""
+    gs = obs.global_
     # is_first: odd turns belong to the first player
-    is_first = (turn % 2 == 1) == is_my_turn
+    is_first = (gs.turn % 2 == 1) == gs.is_my_turn
 
     return {
-        "my_lp": my_lp,
-        "op_lp": opp_lp,
-        "turn": turn,
-        "phase": _decode_phase(phase),
+        "my_lp": gs.my_lp,
+        "op_lp": gs.opp_lp,
+        "turn": gs.turn,
+        "phase": _decode_phase(gs.phase),
         "is_first": is_first,
-        "is_my_turn": is_my_turn,
+        "is_my_turn": gs.is_my_turn,
     }
 
 
@@ -888,12 +876,6 @@ def _hidden_deck_card(controller: str) -> dict:
     }
 
 
-# Deck-count byte offsets in the observation global_state (agent-relative:
-# controller 0 == "me"). See build_observation's global layout.
-_GLOBAL_AGENT_DECK_IDX = 10
-_GLOBAL_OPP_DECK_IDX = 15
-
-
 def build_predict_input(
     obs: YuGiOhObservation,
     prev_action_idx: int,
@@ -902,28 +884,25 @@ def build_predict_input(
     """Build the full DuelPredictRequest body for the ygo-agent server.
 
     Args:
-        obs: The current observation (cards/global_state arrays plus
-            action_descriptors/prompt_meta for the active prompt).
+        obs: The current observation (structured card_states/global_ fields
+            plus action_descriptors/prompt_meta for the active prompt).
         prev_action_idx: Index of the previously selected action (0 for first).
         index: Duel session index (must match server state).
 
     Returns:
         JSON-serializable dict matching ``DuelPredictRequest`` schema.
     """
-    cards = translate_cards(obs.cards)
-    global_state = translate_global(obs.global_state)
+    cards = translate_cards(obs)
+    global_state = translate_global(obs)
     action_msg = translate_action_msg(obs.action_descriptors, obs.prompt_meta)
 
-    # Deck cards are hidden and never appear in the obs card array — only their
-    # count lives in global_state. ygo-agent derives deck counts from the card
+    # Deck cards are hidden and never appear in obs.card_states — only their
+    # count lives in obs.global_. ygo-agent derives deck counts from the card
     # list, so without these placeholders the model sees an empty deck, which is
     # far off-distribution and collapses the policy toward uniform. Synthesize
     # one hidden card per deck slot to restore the true count.
-    obs_global = obs.global_state
-    cards.extend(_hidden_deck_card("me") for _ in range(int(obs_global[_GLOBAL_AGENT_DECK_IDX])))
-    cards.extend(
-        _hidden_deck_card("opponent") for _ in range(int(obs_global[_GLOBAL_OPP_DECK_IDX]))
-    )
+    cards.extend(_hidden_deck_card("me") for _ in range(obs.global_.my_deck))
+    cards.extend(_hidden_deck_card("opponent") for _ in range(obs.global_.opp_deck))
 
     return {
         "input": {

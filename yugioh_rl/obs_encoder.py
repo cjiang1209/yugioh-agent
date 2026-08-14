@@ -1,7 +1,8 @@
 """Pack a structured observation into the uint8 arrays the network reads.
 
 Feature encoding is network-specific, so it lives here rather than on the
-observation, which stays a data carrier.
+observation, which stays a data carrier. Called by ``TrainingEnv`` for
+collection and ``NetworkOpponent`` for inference.
 
 Every clamp and mask in this module exists to fit a uint8 array. The structured
 models hold raw engine values; narrowing happens here and nowhere else.

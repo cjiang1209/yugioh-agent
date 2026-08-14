@@ -68,6 +68,11 @@ ATTRIBUTE_DARK = 0x20
 ATTRIBUTE_DIVINE = 0x40
 ATTRIBUTE_ALL = 0x7F
 
+# ─── Card stats ─────────────────────────────────────────────────────────────
+# cards.cdb stores a "?" ATK or DEF as -2. Consumers that need a non-negative
+# number clamp it; renderers show "?".
+STAT_UNKNOWN = -2
+
 # ─── Races (Monster Types) ──────────────────────────────────────────────────
 RACE_WARRIOR = 0x1
 RACE_SPELLCASTER = 0x2

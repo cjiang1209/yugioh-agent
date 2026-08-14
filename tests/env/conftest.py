@@ -10,14 +10,19 @@ import pytest
 def obs_from_mask(num_legal: int = 3):
     """Build a YuGiOhObservation carrying only an action mask.
 
-    The first `num_legal` slots are legal and the rest pad to MAX_ACTIONS,
-    matching how `get_action_mask` fills a dense prefix. For tests that drive an
-    opponent's choice without needing a real board or prompt.
+    The first `num_legal` slots are legal and the rest pad to MAX_ACTIONS, a
+    dense prefix. Both representations are supplied because consumers differ:
+    `num_actions` sums the mask, while an encoded mask counts the descriptors.
+    `Pass` is the filler -- it encodes to a byte row without needing a prompt.
+    For tests that drive an opponent's choice without needing a real board.
     """
     from yugioh_core.encoding import MAX_ACTIONS
-    from yugioh_env.models import YuGiOhObservation
+    from yugioh_env.models import Pass, YuGiOhObservation
 
-    return YuGiOhObservation(action_mask=[1] * num_legal + [0] * (MAX_ACTIONS - num_legal))
+    return YuGiOhObservation(
+        action_mask=[1] * num_legal + [0] * (MAX_ACTIONS - num_legal),
+        action_descriptors=[Pass()] * num_legal,
+    )
 
 
 def obs_from_msg(msg: dict, *, _selected: list[int] | None = None, agent_player: int = 0):

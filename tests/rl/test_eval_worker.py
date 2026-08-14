@@ -8,12 +8,8 @@ the harness pattern in ``tests/rl/test_actor_learner_worker.py``.
 from __future__ import annotations
 
 import multiprocessing as mp
-from pathlib import Path
 
-import pytest
-
-from tests.rl.conftest import requires_engine
-from yugioh_rl.env_wrapper import parse_deck_pool
+from tests.rl.conftest import make_deck_pool, requires_engine
 from yugioh_rl.eval import _eval_worker, _EvalTask, _PartialResult
 
 
@@ -43,16 +39,9 @@ def _spawn_eval_worker(
     return proc, parent
 
 
-def _deck_pool_or_skip():
-    deck = "assets/decks/blue_eyes.ydk"
-    if not Path(deck).exists():
-        pytest.skip(f"{deck} not present")
-    return parse_deck_pool([deck])
-
-
 @requires_engine
 def test_worker_completes_one_task() -> None:
-    deck_pool = _deck_pool_or_skip()
+    deck_pool = make_deck_pool()
     proc, parent = _spawn_eval_worker(deck_pool)
     try:
         parent.send(("task", _EvalTask(opp_idx=0, opp_spec="random", episode_idx=1)))
@@ -79,7 +68,7 @@ def test_worker_handles_multiple_same_opponent_tasks() -> None:
     past ~10s.  We just assert all 3 complete in the per-test 30s budget
     and reply in episode_idx order.
     """
-    deck_pool = _deck_pool_or_skip()
+    deck_pool = make_deck_pool()
     proc, parent = _spawn_eval_worker(deck_pool)
     try:
         for ep in (1, 2, 3):
@@ -99,7 +88,7 @@ def test_worker_handles_multiple_same_opponent_tasks() -> None:
 
 @requires_engine
 def test_worker_swaps_env_on_opponent_change() -> None:
-    deck_pool = _deck_pool_or_skip()
+    deck_pool = make_deck_pool()
     proc, parent = _spawn_eval_worker(deck_pool)
     try:
         # Task 1: opponent A.
@@ -130,7 +119,7 @@ def test_worker_propagates_error() -> None:
     parent only learns about it on its first recv, which is what the
     pool driver relies on to surface ``EvalWorkerError``.
     """
-    deck_pool = _deck_pool_or_skip()
+    deck_pool = make_deck_pool()
     proc, parent = _spawn_eval_worker(deck_pool, agent_spec="bogus_spec_xyz")
     try:
         # The worker fails BEFORE entering its main loop, in make_eval_agent.
@@ -149,7 +138,7 @@ def test_worker_propagates_error() -> None:
 @requires_engine
 def test_worker_handles_shutdown_first() -> None:
     """Worker that receives shutdown before any task exits cleanly with 0."""
-    deck_pool = _deck_pool_or_skip()
+    deck_pool = make_deck_pool()
     proc, parent = _spawn_eval_worker(deck_pool)
     try:
         parent.send(("shutdown", None))

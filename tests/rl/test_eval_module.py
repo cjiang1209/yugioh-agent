@@ -8,7 +8,7 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-from tests.rl.conftest import requires_engine
+from tests.rl.conftest import make_deck_pool, requires_engine
 from yugioh_core.encoding import (
     MAX_ACTIONS,
 )
@@ -30,14 +30,6 @@ from yugioh_rl.eval import (
 )
 
 _DECK_PATH = Path("assets/decks/blue_eyes.ydk")
-
-
-def _deck_pool_or_skip():
-    from yugioh_rl.env_wrapper import parse_deck_pool
-
-    if not _DECK_PATH.exists():
-        pytest.skip(f"missing deck: {_DECK_PATH}")
-    return parse_deck_pool([str(_DECK_PATH)])
 
 
 # ---------------------------------------------------------------------------
@@ -644,7 +636,7 @@ def test_eval_env_returns_the_canonical_observation() -> None:
     arrays the network consumes."""
     from yugioh_rl.env_wrapper import EvalEnv
 
-    env = EvalEnv(deck_pool=_deck_pool_or_skip(), opponent="random", seed=0)
+    env = EvalEnv(deck_pool=make_deck_pool(), opponent="random", seed=0)
     try:
         obs = env.reset(episode_idx=0)
         assert isinstance(obs, YuGiOhObservation)
@@ -658,7 +650,7 @@ def test_eval_env_returns_the_canonical_observation() -> None:
 def test_evalenv_terminal_info_has_turn_and_player() -> None:
     from yugioh_rl.env_wrapper import EvalEnv
 
-    deck_pool = _deck_pool_or_skip()
+    deck_pool = make_deck_pool()
     env = EvalEnv(deck_pool=deck_pool, opponent="random", seed=0, agent_player="first")
     try:
         env.reset(episode_idx=1)
@@ -677,7 +669,7 @@ def test_parallel_matches_sequential_new_fields() -> None:
     from yugioh_rl.eval import evaluate
 
     kw = dict(
-        deck_pool=_deck_pool_or_skip(),
+        deck_pool=make_deck_pool(),
         opponent_specs=["random"],
         num_episodes=6,
         seed=0,
@@ -706,7 +698,7 @@ def test_evaluate_counts_timeouts() -> None:
     # natural end, so the per-checkpoint timeout count is deterministic.
     results = evaluate(
         "random",
-        deck_pool=_deck_pool_or_skip(),
+        deck_pool=make_deck_pool(),
         opponent_specs=["random"],
         num_episodes=2,
         seed=42,

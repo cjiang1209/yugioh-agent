@@ -6,12 +6,10 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-import numpy as np
 import torch.nn as nn
 
 from tests.env.conftest import obs_from_mask
 from yugioh_core.encoding import MAX_ACTIONS
-from yugioh_env.models import YuGiOhObservation
 from yugioh_env.opponent import NetworkOpponent
 
 
@@ -89,18 +87,14 @@ def test_stochastic_negative_temperature_raises() -> None:
 
 
 def test_stochastic_respects_action_mask() -> None:
-    # Highest logit at action 0, but mask it out (sparse mask: only 1 and 2
-    # are legal, action 0 is not, even though mask.sum() == 2 != 3). This
-    # deliberately exercises a case where a naive `min(action, mask.sum()-1)`
-    # clamp would be WRONG -- the -inf masking alone must fully constrain
-    # sampling to the legal indices {1, 2}.
-    net = _FakeNet([10.0, 0.0, 0.0])
-    mask = np.zeros(MAX_ACTIONS, dtype=np.int8)
-    mask[1] = 1
-    mask[2] = 1
-    obs = YuGiOhObservation(action_mask=mask)
+    # The highest logit sits on the one illegal slot, so -inf masking alone
+    # has to keep sampling inside the legal prefix. Legality is a descriptor
+    # count, so only a prefix is expressible: an illegal slot *between* legal
+    # ones -- which would also catch an index-clamping bug -- cannot be built.
+    net = _FakeNet([0.0, 0.0, 10.0])
+    obs = obs_from_mask(2)
     for seed in range(50):
         torch.manual_seed(seed)
         opp = NetworkOpponent(net, stochastic=True, temperature=1.0)
         a, _ = opp.select_action(obs)
-        assert a in (1, 2), f"illegal action {a} was sampled at seed {seed}"
+        assert a in (0, 1), f"illegal action {a} was sampled at seed {seed}"

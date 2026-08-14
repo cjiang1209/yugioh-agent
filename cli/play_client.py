@@ -24,39 +24,12 @@ from pathlib import Path
 
 from yugioh_core.card_database import CardDatabase
 from yugioh_core.constants import PHASE_NAMES
-from yugioh_core.encoding import decode_u16
 from yugioh_core.string_resolver import load_sys_strings
 from yugioh_env.action_describer import ActionDescriber
 from yugioh_env.client import YuGiOhEnv
 from yugioh_env.deck_parser import parse_ydk
 from yugioh_env.event_logger import EventDescriber
 from yugioh_env.models import YuGiOhAction, YuGiOhObservation
-
-
-def parse_global_state(gs: list[int]) -> dict:
-    """Parse global_state vector into human-readable dict."""
-    return {
-        "my_lp": decode_u16(gs, 0),
-        "opp_lp": decode_u16(gs, 2),
-        "turn": gs[4],
-        # phase occupies TWO bytes (5-6): it is a bitmask reaching 0x200, so a
-        # single-byte read drops MAIN2/END and shifts every later field by one.
-        "phase": decode_u16(gs, 5),
-        "is_my_turn": bool(gs[7]),
-        "chain_count": gs[8],
-        "msg_type": gs[9],
-        "my_deck": gs[10],
-        "my_hand": gs[11],
-        "my_grave": gs[12],
-        "my_banished": gs[13],
-        "my_extra": gs[14],
-        "opp_deck": gs[15],
-        "opp_hand": gs[16],
-        "opp_grave": gs[17],
-        "opp_banished": gs[18],
-        "opp_extra": gs[19],
-        "is_finished": bool(gs[20]),
-    }
 
 
 def display_events(event_log: list[str]) -> None:
@@ -138,26 +111,26 @@ def _format_prompt_summary(prompt: dict | None) -> str:
 
 def display_state(obs: YuGiOhObservation, step_num: int, action_describer: ActionDescriber) -> None:
     """Print a summary of the current observation."""
-    gs = parse_global_state(obs.global_state)
-    phase_name = PHASE_NAMES.get(gs["phase"], f"0x{gs['phase']:02x}")
-    turn_marker = " <-- YOUR TURN" if gs["is_my_turn"] else ""
+    gs = obs.global_
+    phase_name = PHASE_NAMES.get(gs.phase, f"0x{gs.phase:02x}")
+    turn_marker = " <-- YOUR TURN" if gs.is_my_turn else ""
 
     print()
     print(f"{'=' * 60}")
-    print(f"  Step {step_num}  |  Turn {gs['turn']}  |  Phase: {phase_name}{turn_marker}")
+    print(f"  Step {step_num}  |  Turn {gs.turn}  |  Phase: {phase_name}{turn_marker}")
     print(f"{'=' * 60}")
-    print(f"  YOUR LP: {gs['my_lp']:>5}    |  OPP LP: {gs['opp_lp']:>5}")
+    print(f"  YOUR LP: {gs.my_lp:>5}    |  OPP LP: {gs.opp_lp:>5}")
     print(
-        f"  Hand: {gs['my_hand']:>2}  Deck: {gs['my_deck']:>2}  GY: {gs['my_grave']:>2}  "
-        f"Ban: {gs['my_banished']:>2}  Extra: {gs['my_extra']:>2}"
+        f"  Hand: {gs.my_hand:>2}  Deck: {gs.my_deck:>2}  GY: {gs.my_grave:>2}  "
+        f"Ban: {gs.my_banished:>2}  Extra: {gs.my_extra:>2}"
     )
     print(
-        f"  Opp Hand: {gs['opp_hand']:>2}  Deck: {gs['opp_deck']:>2}  GY: {gs['opp_grave']:>2}  "
-        f"Ban: {gs['opp_banished']:>2}  Extra: {gs['opp_extra']:>2}"
+        f"  Opp Hand: {gs.opp_hand:>2}  Deck: {gs.opp_deck:>2}  GY: {gs.opp_grave:>2}  "
+        f"Ban: {gs.opp_banished:>2}  Extra: {gs.opp_extra:>2}"
     )
 
-    if gs["chain_count"] > 0:
-        print(f"  Chain count: {gs['chain_count']}")
+    if gs.chain_count > 0:
+        print(f"  Chain count: {gs.chain_count}")
 
     legal_count = sum(1 for m in obs.action_mask if m == 1)
     summary = _format_prompt_summary(action_describer.describe_prompt(obs))
@@ -262,14 +235,14 @@ def run_episode(
             display_state(result.observation, step_num, action_describer)
 
     # Final summary
-    gs = parse_global_state(result.observation.global_state)
+    gs = result.observation.global_
     reward = result.reward
 
     if verbose:
         print()
         print(f"{'#' * 60}")
         print(f"  DUEL OVER after {step_num} steps")
-        print(f"  Final LP — You: {gs['my_lp']}  |  Opponent: {gs['opp_lp']}")
+        print(f"  Final LP — You: {gs.my_lp}  |  Opponent: {gs.opp_lp}")
         print(f"  Reward: {reward}")
         if reward is not None and reward > 0:
             print("  Result: WIN!")
@@ -283,8 +256,8 @@ def run_episode(
     return {
         "steps": step_num,
         "reward": reward,
-        "my_lp": gs["my_lp"],
-        "opp_lp": gs["opp_lp"],
+        "my_lp": gs.my_lp,
+        "opp_lp": gs.opp_lp,
     }
 
 

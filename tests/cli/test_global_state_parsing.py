@@ -1,106 +1,92 @@
-"""Tests for cli/play_client.py:parse_global_state.
+"""Tests for cli/play_client.py:display_state's global-state rendering.
 
-Two things are pinned here. First, the buffer layout: global_state is written
-by yugioh_env/observation.py, is positional, and `phase` is two bytes wide, so
-an off-by-one in any single field silently shifts every field after it.
-
-Second, numpy widening: obs.global_state is delivered as np.uint8, and
-`hi << 8` on a numpy uint8 scalar wraps mod 256 rather than widening, silently
-truncating the high byte to 0 (e.g. LP=8000 renders as 64). parse_global_state
-gets this right by going through yugioh_core.encoding.decode_u16.
+YuGiOhObservation carries a structured obs.global_ (a GlobalState), and
+display_state reads its fields directly -- there is no buffer layout to get
+wrong. What's worth pinning is that display_state reads the RIGHT field under
+the right name (a copy-paste could easily print my_hand where opp_hand
+belongs) and that it renders raw, unclamped values faithfully rather than
+assuming some byte-width ceiling.
 """
 
 from __future__ import annotations
 
-import numpy as np
-from cli.play_client import parse_global_state
+from cli.play_client import display_state
 
-from yugioh_core.constants import (
-    MSG_SELECT_IDLECMD,
-    PHASE_END,
-    PHASE_MAIN2,
-)
-from yugioh_core.encoding import GLOBAL_FEATURES, encode_u16
+from yugioh_core.constants import PHASE_END, PHASE_MAIN2
+from yugioh_env.action_describer import ActionDescriber
+from yugioh_env.models import GlobalState, YuGiOhObservation
 
-
-def _global_state() -> list[int]:
-    """A buffer laid out exactly as yugioh_env/observation.py writes it.
-
-    Every integer field gets a DISTINCT value, so a shift cannot coincidentally
-    agree: reading a neighbour always produces the wrong number. `phase` and the
-    two life-point fields exceed one byte, which is what makes the widths matter.
-
-    That trick does NOT work for the two booleans -- bool() collapses every
-    non-zero neighbour to True -- so is_my_turn and is_finished each get a
-    dedicated test below that sets them False against a truthy neighbour.
-    """
-    gs = [0] * GLOBAL_FEATURES
-    gs[0], gs[1] = encode_u16(8000)  # my_lp
-    gs[2], gs[3] = encode_u16(7000)  # opp_lp
-    gs[4] = 5  # turn
-    gs[5], gs[6] = encode_u16(PHASE_MAIN2)  # needs the high byte
-    gs[7] = 1  # is_my_turn
-    gs[8] = 2  # chain_count
-    gs[9] = 11  # msg_type
-    gs[10], gs[11], gs[12], gs[13], gs[14] = 30, 6, 3, 1, 9  # mine
-    gs[15], gs[16], gs[17], gs[18], gs[19] = 28, 7, 4, 2, 8  # opponent
-    gs[20] = 1  # is_finished
-    return gs
+# No active prompt and no legal actions, so ActionDescriber never touches its
+# card_db -- a stand-in is safe here.
+_DESCRIBER = ActionDescriber(None, sys_strings=None)
 
 
-def test_parse_global_state_matches_the_producer_layout():
-    """Every field, so a one-slot shift anywhere in the buffer is caught."""
-    assert parse_global_state(_global_state()) == {
-        "my_lp": 8000,
-        "opp_lp": 7000,
-        "turn": 5,
-        "phase": PHASE_MAIN2,
-        "is_my_turn": True,
-        "chain_count": 2,
-        "msg_type": MSG_SELECT_IDLECMD,
-        "my_deck": 30,
-        "my_hand": 6,
-        "my_grave": 3,
-        "my_banished": 1,
-        "my_extra": 9,
-        "opp_deck": 28,
-        "opp_hand": 7,
-        "opp_grave": 4,
-        "opp_banished": 2,
-        "opp_extra": 8,
-        "is_finished": True,
-    }
+def _render(capsys, **fields) -> str:
+    """Render an observation carrying only the GlobalState under test: no
+    active prompt and no legal actions."""
+    obs = YuGiOhObservation(global_=GlobalState(**fields))
+    display_state(obs, step_num=0, action_describer=_DESCRIBER)
+    return capsys.readouterr().out
 
 
-def test_parse_global_state_phase_keeps_its_high_byte():
-    """MAIN2 (0x100) and END (0x200) live entirely in the high byte, so a
-    one-byte phase read reports 0 for both and misreads is_my_turn from the
-    byte it skipped."""
-    gs = _global_state()
-    gs[5], gs[6] = encode_u16(0x200)  # END
-    gs[7] = 0  # opponent's turn
-    parsed = parse_global_state(gs)
-    assert parsed["phase"] == PHASE_END
-    assert parsed["is_my_turn"] is False
+def test_display_state_prints_every_global_field(capsys):
+    """Every field gets a DISTINCT value, so a copy-paste that reads the wrong
+    attribute (e.g. opp_hand where my_hand belongs) shows up as a wrong number
+    in the output rather than coincidentally matching."""
+    out = _render(
+        capsys,
+        my_lp=8000,
+        opp_lp=7000,
+        turn=5,
+        phase=PHASE_MAIN2,
+        is_my_turn=True,
+        chain_count=2,
+        my_deck=30,
+        my_hand=6,
+        my_grave=3,
+        my_banished=1,
+        my_extra=9,
+        opp_deck=28,
+        opp_hand=7,
+        opp_grave=4,
+        opp_banished=2,
+        opp_extra=8,
+    )
+
+    assert "Turn 5" in out
+    assert "<-- YOUR TURN" in out
+    assert "YOUR LP:  8000" in out
+    assert "OPP LP:  7000" in out
+    assert "Hand:  6" in out
+    assert "Deck: 30" in out
+    assert "GY:  3" in out
+    assert "Ban:  1" in out
+    assert "Extra:  9" in out
+    assert "Opp Hand:  7" in out
+    assert "Chain count: 2" in out
 
 
-def test_parse_global_state_is_finished_reads_its_own_slot():
-    """is_finished is the last slot; reading one short lands on opp_extra and
-    reports a live duel as over whenever the opponent holds extra-deck cards."""
-    gs = _global_state()
-    gs[19] = 9  # opponent has extra-deck cards
-    gs[20] = 0  # but the duel is NOT finished
-    assert parse_global_state(gs)["is_finished"] is False
+def test_display_state_phase_name_keeps_its_high_byte(capsys):
+    """MAIN2 (0x100) and END (0x200) live entirely in the high byte of the
+    engine bitmask. GlobalState.phase carries the raw int, so this pins that
+    display_state's PHASE_NAMES lookup resolves the wide value and that a
+    false turn marker doesn't leak through."""
+    out = _render(capsys, phase=PHASE_END, is_my_turn=False)
+
+    assert "Phase: End" in out
+    assert "<-- YOUR TURN" not in out
 
 
-def test_parse_global_state_lp_survives_numpy_uint8_global_state():
-    """obs.global_state as delivered is an np.uint8 array; LP fields must
-    decode correctly rather than truncating to the low byte."""
-    gs = np.zeros(GLOBAL_FEATURES, dtype=np.uint8)
-    gs[0], gs[1] = 0x40, 0x1F  # my_lp = 8000
-    gs[2], gs[3] = 0x40, 0x1F  # opp_lp = 8000
+def test_display_state_omits_chain_line_when_no_chain(capsys):
+    out = _render(capsys, chain_count=0)
 
-    parsed = parse_global_state(gs)
+    assert "Chain count" not in out
 
-    assert parsed["my_lp"] == 8000
-    assert parsed["opp_lp"] == 8000
+
+def test_display_state_reports_lp_above_the_byte_ceiling(capsys):
+    """The byte path clamps LP to a uint16 (max 65535). GlobalState.my_lp is
+    a plain int with no such ceiling, so display_state must show the raw
+    engine value rather than a wrapped or clamped one."""
+    out = _render(capsys, my_lp=99999, opp_lp=8000)
+
+    assert "YOUR LP: 99999" in out

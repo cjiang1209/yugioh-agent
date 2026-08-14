@@ -19,9 +19,9 @@ from yugioh_core.encoding import (
     MAX_CARDS,
     MAX_EVENT_HISTORY,
     MAX_PENDING_CHAIN,
-    decode_u16,
 )
-from yugioh_env.models import YuGiOhAction, YuGiOhObservation
+from yugioh_env.models import GlobalState, YuGiOhAction, YuGiOhObservation
+from yugioh_rl.obs_encoder import encode_observation
 from yugioh_rl.policy_inputs import build_forward_inputs
 
 if TYPE_CHECKING:
@@ -183,13 +183,8 @@ class TrainingEnv:
             deck1=deck1,
             agent_player=resolved_player,
         )
-        np_obs = obs.as_arrays()
-
-        # Initialize shaping state
-        gs = np_obs["global_state"]
-        self._prev_my_lp = decode_u16(gs, 0)
-        self._prev_opp_lp = decode_u16(gs, 2)
-        self._prev_advantage = self._compute_advantage(gs)
+        np_obs = encode_observation(obs)
+        self._snapshot_shaping_state(obs.global_)
 
         return np_obs
 
@@ -210,7 +205,7 @@ class TrainingEnv:
                   ``steps``, and ``agent_deck_idx``
         """
         obs = self._env.step(YuGiOhAction(action_index=action_index))
-        np_obs = obs.as_arrays()
+        np_obs = encode_observation(obs)
         info: dict[str, Any] = {}
 
         reward = obs.reward
@@ -232,38 +227,33 @@ class TrainingEnv:
             # (vec-env workers do it eagerly to preserve wire behavior;
             # eval workers reset to a specific episode_idx for the next task).
         elif self._reward_shaping:
-            reward += self._compute_shaping(np_obs["global_state"])
+            reward += self._compute_shaping(obs.global_)
 
         return np_obs, reward, done, info
 
     @staticmethod
-    def _compute_advantage(gs: np.ndarray) -> int:
-        """Compute card advantage from global state zone counts."""
-        # observation.py packs five counts per player after the 2-byte phase:
-        # 10=my_deck, 11=my_hand, 12=my_grave, 13=my_banished, 14=my_extra
-        # 15=opp_deck, 16=opp_hand, 17=opp_grave, 18=opp_banished, 19=opp_extra
-        my_hand = int(gs[11])
-        opp_hand = int(gs[16])
-        return my_hand - opp_hand
+    def _compute_advantage(gs: GlobalState) -> int:
+        """Compute card advantage from the agent's and opponent's hand counts."""
+        return gs.my_hand - gs.opp_hand
 
-    def _compute_shaping(self, gs: np.ndarray) -> float:
+    def _snapshot_shaping_state(self, gs: GlobalState) -> None:
+        """Record the values the next shaping delta is measured against."""
+        self._prev_my_lp = gs.my_lp
+        self._prev_opp_lp = gs.opp_lp
+        self._prev_advantage = self._compute_advantage(gs)
+
+    def _compute_shaping(self, gs: GlobalState) -> float:
         """Compute reward shaping based on LP and card advantage deltas."""
-        my_lp = decode_u16(gs, 0)
-        opp_lp = decode_u16(gs, 2)
-        advantage = self._compute_advantage(gs)
-
-        delta_my_lp = my_lp - self._prev_my_lp
-        delta_opp_lp = opp_lp - self._prev_opp_lp
-        delta_advantage = advantage - self._prev_advantage
+        delta_my_lp = gs.my_lp - self._prev_my_lp
+        delta_opp_lp = gs.opp_lp - self._prev_opp_lp
+        delta_advantage = self._compute_advantage(gs) - self._prev_advantage
 
         shaped = (
             self._lp_weight * (delta_my_lp - delta_opp_lp) / 8000.0
             + self._card_weight * delta_advantage
         )
 
-        self._prev_my_lp = my_lp
-        self._prev_opp_lp = opp_lp
-        self._prev_advantage = advantage
+        self._snapshot_shaping_state(gs)
 
         return shaped
 

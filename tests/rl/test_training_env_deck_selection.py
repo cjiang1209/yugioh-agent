@@ -1,20 +1,6 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-from yugioh_core.encoding import GLOBAL_FEATURES
-
-
-def _fake_obs():
-    obs = MagicMock()
-    obs.cards = [0] * (200 * 42)
-    obs.global_state = [0] * GLOBAL_FEATURES
-    obs.actions = [0] * (32 * 28)
-    obs.action_mask = [0] * 32
-    obs.pending_chain = []
-    obs.event_history = []
-    obs.reward = 0.0
-    obs.done = False
-    return obs
-
+from tests.rl.conftest import make_fake_obs
 
 POOL = [{"main": list(range(1, 41)), "extra": []} for _ in range(31)]
 
@@ -22,7 +8,7 @@ POOL = [{"main": list(range(1, 41)), "extra": []} for _ in range(31)]
 def test_mirror_gives_both_sides_same_deck():
     with patch("yugioh_env.server.yugioh_environment.YuGiOhEnvironment") as MockEnv:
         mock = MockEnv.return_value
-        mock.reset.return_value = _fake_obs()
+        mock.reset.return_value = make_fake_obs()
         mock._agent_player = 0
         from yugioh_rl.env_wrapper import TrainingEnv
 
@@ -37,7 +23,7 @@ def test_mirror_gives_both_sides_same_deck():
 def test_balanced_agent_deck_is_round_robin():
     with patch("yugioh_env.server.yugioh_environment.YuGiOhEnvironment") as MockEnv:
         mock = MockEnv.return_value
-        mock.reset.return_value = _fake_obs()
+        mock.reset.return_value = make_fake_obs()
         mock._agent_player = 0
         from yugioh_rl.env_wrapper import TrainingEnv
 

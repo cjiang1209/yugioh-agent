@@ -2,22 +2,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 torch = pytest.importorskip("torch")
 pytest.importorskip("yugioh_env.server.yugioh_environment")
 
-from tests.rl.conftest import requires_engine
-from yugioh_rl.env_wrapper import parse_deck_pool
-
-
-def _make_deck_pool() -> list[dict[str, list[int]]]:
-    deck_path = Path("assets/decks/blue_eyes.ydk")
-    if not deck_path.exists():
-        pytest.skip(f"missing deck: {deck_path}")
-    return parse_deck_pool([str(deck_path)])
+from tests.rl.conftest import make_deck_pool, requires_engine
 
 
 @requires_engine
@@ -36,7 +26,7 @@ def test_training_env_swaps_opponent_per_episode() -> None:
     )
 
     env = TrainingEnv(
-        deck_pool=_make_deck_pool(),
+        deck_pool=make_deck_pool(),
         opponent="random",
         opponent_pool_handles=pool.share_handles(),
         opponent_pool_temperature=1.0,
@@ -69,7 +59,7 @@ def test_training_env_snapshot_opponent_uses_yugioh_net() -> None:
     pool.add_snapshot(YuGiOhNet.from_config(config))
 
     env = TrainingEnv(
-        deck_pool=_make_deck_pool(),
+        deck_pool=make_deck_pool(),
         opponent="greedy",
         opponent_pool_handles=pool.share_handles(),
         opponent_pool_temperature=1.0,

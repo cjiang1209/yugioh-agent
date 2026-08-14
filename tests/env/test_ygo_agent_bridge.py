@@ -15,7 +15,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import numpy as np
 import pytest
 
 from tests.env.conftest import (
@@ -65,15 +64,9 @@ from yugioh_core.constants import (
     POS_FACEUP_ATTACK,
     POS_FACEUP_DEFENSE,
     RACE_DRAGON,
+    STAT_UNKNOWN,
 )
-from yugioh_core.encoding import (
-    CARD_FEATURES,
-    GLOBAL_FEATURES,
-    MAX_CARDS,
-    encode_card,
-    encode_u16,
-)
-from yugioh_env.models import YuGiOhObservation
+from yugioh_env.models import CardState, GlobalState, YuGiOhObservation
 from yugioh_env.ygo_agent.bridge import (
     _ACTION_MSG_TRANSLATORS,
     build_predict_input,
@@ -91,15 +84,14 @@ TRANSLATED_MSG_TYPES = sorted(_ACTION_MSG_TRANSLATORS)
 
 
 class TestTranslateCards:
-    def _make_obs_cards(self, cards_data: list[dict]) -> np.ndarray:
-        """Build a (MAX_CARDS, CARD_FEATURES) uint8 array from card specs."""
-        obs = np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8)
-        for i, card in enumerate(cards_data):
-            obs[i] = encode_card(**card)
-        return obs
+    def _make_obs_cards(self, cards_data: list[dict]) -> YuGiOhObservation:
+        """Build an observation carrying the given cards as card_states."""
+        return YuGiOhObservation(
+            card_states=[CardState(**card) for card in cards_data],
+        )
 
     def test_empty_obs_returns_empty(self):
-        obs = np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8)
+        obs = self._make_obs_cards([])
         assert translate_cards(obs) == []
 
     def test_single_card_basic_fields(self):
@@ -178,23 +170,26 @@ class TestTranslateCards:
         assert cards[0]["overlay_sequence"] == 0
 
     def test_multiple_cards_skips_empty_slots(self):
-        obs = np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8)
-        obs[0] = encode_card(
-            code=1,
-            location=LOCATION_HAND,
-            sequence=0,
-            position=POS_FACEUP_ATTACK,
-            controller=0,
-            is_public=True,
-        )
-        # slot 1 is empty (all zeros)
-        obs[2] = encode_card(
-            code=2,
-            location=LOCATION_HAND,
-            sequence=1,
-            position=POS_FACEUP_ATTACK,
-            controller=0,
-            is_public=True,
+        obs = self._make_obs_cards(
+            [
+                {
+                    "code": 1,
+                    "location": LOCATION_HAND,
+                    "sequence": 0,
+                    "position": POS_FACEUP_ATTACK,
+                    "controller": 0,
+                    "is_public": True,
+                },
+                {},  # empty slot
+                {
+                    "code": 2,
+                    "location": LOCATION_HAND,
+                    "sequence": 1,
+                    "position": POS_FACEUP_ATTACK,
+                    "controller": 0,
+                    "is_public": True,
+                },
+            ]
         )
         cards = translate_cards(obs)
         assert len(cards) == 2
@@ -202,35 +197,57 @@ class TestTranslateCards:
         assert cards[1]["code"] == 2
 
     def test_skips_empty_mzone_szone_slots(self):
-        # The engine reports empty monster/spell zone slots as code==0 rows
-        # with a non-zero location byte. These are holes, not cards, and must
-        # not be sent to ygo-agent (which never sees empty zones natively).
-        obs = np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8)
-        obs[0] = encode_card(
-            code=0, location=LOCATION_MZONE, sequence=0, position=0, controller=0, is_public=False
-        )  # empty mzone slot
-        obs[1] = encode_card(
-            code=0, location=LOCATION_SZONE, sequence=3, position=0, controller=1, is_public=False
-        )  # empty szone slot
-        obs[2] = encode_card(
-            code=89631139,
-            location=LOCATION_MZONE,
-            sequence=1,
-            position=POS_FACEUP_ATTACK,
-            controller=0,
-            is_public=True,
-        )  # a real monster
+        # The engine reports empty monster/spell zone slots as code==0
+        # entries with a non-zero location. These are holes, not cards, and
+        # must not be sent to ygo-agent (which never sees empty zones
+        # natively).
+        obs = self._make_obs_cards(
+            [
+                {"code": 0, "location": LOCATION_MZONE, "sequence": 0, "controller": 0},
+                {"code": 0, "location": LOCATION_SZONE, "sequence": 3, "controller": 1},
+                {
+                    "code": 89631139,
+                    "location": LOCATION_MZONE,
+                    "sequence": 1,
+                    "position": POS_FACEUP_ATTACK,
+                    "controller": 0,
+                    "is_public": True,
+                },  # a real monster
+            ]
+        )
         cards = translate_cards(obs)
         assert len(cards) == 1
         assert cards[0]["code"] == 89631139
 
+    def test_unknown_stats_are_clamped_for_the_server(self):
+        """No bundled deck holds a `?` ATK/DEF card, so nothing but this
+        exercises the clamp the negative stat needs.
+        """
+        obs = self._make_obs_cards(
+            [
+                {
+                    "code": 10000,
+                    "location": LOCATION_HAND,
+                    "sequence": 0,
+                    "controller": 0,
+                    "is_public": True,
+                    "attack": STAT_UNKNOWN,
+                    "defense": STAT_UNKNOWN,
+                }
+            ]
+        )
+        (card,) = translate_cards(obs)
+        assert card["attack"] == 0
+        assert card["defense"] == 0
+
     def test_keeps_hidden_hand_card(self):
         # A hidden card in hand/deck/extra is code==0 but a REAL card (the
         # model needs the hand/deck counts). Only zone holes are dropped.
-        obs = np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8)
-        obs[0] = encode_card(
-            code=0, location=LOCATION_HAND, sequence=0, position=0, controller=1, is_public=False
-        )  # opponent's hidden hand card
+        obs = self._make_obs_cards(
+            [
+                {"code": 0, "location": LOCATION_HAND, "sequence": 0, "controller": 1},
+            ]  # opponent's hidden hand card
+        )
         cards = translate_cards(obs)
         assert len(cards) == 1
         assert cards[0]["location"] == "hand"
@@ -286,15 +303,20 @@ class TestTranslateCards:
 class TestTranslateGlobal:
     def _make_obs_global(
         self, my_lp=8000, opp_lp=8000, turn=1, phase=PHASE_MAIN1, is_my_turn=True
-    ) -> np.ndarray:
-        """Build a (21,) uint8 global_state array."""
-        g = np.zeros(GLOBAL_FEATURES, dtype=np.uint8)
-        g[0], g[1] = encode_u16(my_lp)
-        g[2], g[3] = encode_u16(opp_lp)
-        g[4] = turn
-        g[5], g[6] = encode_u16(phase)
-        g[7] = 1 if is_my_turn else 0
-        return g
+    ) -> YuGiOhObservation:
+        return YuGiOhObservation(
+            global_=GlobalState(
+                my_lp=my_lp, opp_lp=opp_lp, turn=turn, phase=phase, is_my_turn=is_my_turn
+            ),
+        )
+
+    def test_reads_structured_not_bytes(self):
+        """Feed an LP above the byte path's 65535 ceiling: a decoder would
+        clamp it, a structured reader reports it."""
+        g = translate_global(self._make_obs_global(my_lp=99999, turn=3, phase=PHASE_MAIN1))
+        assert g["my_lp"] == 99999
+        assert g["op_lp"] == 8000
+        assert g["phase"] == "main1"
 
     def test_basic_global(self):
         g = translate_global(self._make_obs_global())
@@ -591,19 +613,12 @@ class TestTranslateActionMsg:
 
 class TestBuildPredictInput:
     def test_assembles_all_parts(self):
-        global_state = np.zeros(GLOBAL_FEATURES, dtype=np.uint8)
-        global_state[4] = 1  # turn
-        global_state[5], global_state[6] = encode_u16(PHASE_MAIN1)
-        global_state[7] = 1  # is_my_turn
         msg = {"msg_type": MSG_SELECT_YESNO, "player": 0, "desc": 30}
         base = obs_from_msg(msg)
-        obs = YuGiOhObservation(
-            cards=np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8),
-            global_state=global_state,
-            actions=base.actions,
-            action_mask=base.action_mask,
-            action_descriptors=base.action_descriptors,
-            prompt_meta=base.prompt_meta,
+        obs = base.model_copy(
+            update={
+                "global_": GlobalState(turn=1, phase=PHASE_MAIN1, is_my_turn=True),
+            }
         )
         result = build_predict_input(obs, prev_action_idx=0)
         assert "input" in result
@@ -613,25 +628,20 @@ class TestBuildPredictInput:
         assert result["input"]["action_msg"]["data"]["msg_type"] == "select_yesno"
 
     def test_injects_hidden_deck_cards(self):
-        # Deck cards are hidden and absent from the obs card array (only their
-        # count lives in global_state). ygo-agent counts deck cards from the
-        # card list, so the bridge must synthesize hidden deck placeholders or
-        # the model sees an empty deck (off-distribution → uniform policy).
-        global_state = np.zeros(GLOBAL_FEATURES, dtype=np.uint8)
-        global_state[4] = 1  # turn
-        global_state[5], global_state[6] = encode_u16(PHASE_MAIN1)
-        global_state[7] = 1  # is_my_turn
-        global_state[10] = 33  # agent deck count
-        global_state[15] = 36  # opponent deck count
+        # The deck reaches the bridge as a count, and ygo-agent reads deck
+        # size off the card list, so the placeholders have to be synthesized.
         msg = {"msg_type": MSG_SELECT_YESNO, "player": 0, "desc": 30}
         base = obs_from_msg(msg)
-        obs = YuGiOhObservation(
-            cards=np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8),
-            global_state=global_state,
-            actions=base.actions,
-            action_mask=base.action_mask,
-            action_descriptors=base.action_descriptors,
-            prompt_meta=base.prompt_meta,
+        obs = base.model_copy(
+            update={
+                "global_": GlobalState(
+                    turn=1,
+                    phase=PHASE_MAIN1,
+                    is_my_turn=True,
+                    my_deck=33,
+                    opp_deck=36,
+                ),
+            }
         )
         result = build_predict_input(obs, prev_action_idx=0)
         cards = result["input"]["cards"]

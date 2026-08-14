@@ -45,6 +45,33 @@ def script_dirs(project_root):
     return existing
 
 
+def make_deck_pool(count: int = 1) -> list[dict[str, list[int]]]:
+    """The bundled Blue-Eyes deck as a pool of `count` entries.
+
+    Repeating one file is enough wherever only the pool index matters, as in
+    the deck-sampling determinism tests. The deck is checked in, so a missing
+    file is a broken checkout and `parse_deck_pool` should say so.
+    """
+    from yugioh_rl.env_wrapper import parse_deck_pool
+
+    path = Path(__file__).resolve().parents[2] / "assets" / "decks" / "blue_eyes.ydk"
+    return parse_deck_pool([str(path)] * count)
+
+
+def make_fake_obs():
+    """A minimal but real YuGiOhObservation.
+
+    TrainingEnv.reset()/step() run the observation through
+    encode_observation(), which reads the structured card_states/global_
+    fields; those don't exist on a bare mock, so a real one is required. Every
+    packed field defaults to its zero array, so only `reward` has to be given
+    -- its own default is None, which callers do arithmetic on.
+    """
+    from yugioh_env.models import YuGiOhObservation
+
+    return YuGiOhObservation(reward=0.0)
+
+
 def hash_obs_field(arr: np.ndarray) -> str:
     """Stable hex digest of an observation array's bytes.
 
