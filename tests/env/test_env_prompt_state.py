@@ -37,7 +37,7 @@ from yugioh_core.encoding import (
 )
 from yugioh_env.action_space import ActionMapper
 from yugioh_env.event_buffer import EventHistoryBuffer
-from yugioh_env.models import YuGiOhAction
+from yugioh_env.models import GlobalState, YuGiOhAction
 from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
 
 
@@ -56,6 +56,8 @@ def _stub_build_observation(monkeypatch):
             "global_state": np.zeros(GLOBAL_FEATURES, dtype=np.uint8),
             "pending_chain": np.zeros((MAX_PENDING_CHAIN, CHAIN_ENTRY_FEATURES), dtype=np.uint8),
             "event_history": np.zeros((MAX_EVENT_HISTORY, EVENT_ENTRY_FEATURES), dtype=np.uint8),
+            "card_states": [],
+            "global": GlobalState(),
         },
     )
 

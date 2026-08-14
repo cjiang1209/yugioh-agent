@@ -108,6 +108,9 @@ class PickCard:
     card: CardRef
     num_selected: int
     param: int | None = None  # tribute release_param; sum param (FULL u32)
+    # 4th loc_info slot, overloaded by the engine: the material's index in the
+    # overlay stack when location & LOCATION_OVERLAY, else the position bitmask.
+    subsequence: int = 0
 
 
 @dataclass(slots=True, kw_only=True)
@@ -139,6 +142,8 @@ class ActivateEffect:
     engine_index: int
     card: CardRef
     desc: int
+    # The activating card's position bitmask, as the chain extractor reports it.
+    position: int = 0
 
 
 @dataclass(slots=True, kw_only=True)
@@ -241,10 +246,75 @@ ActionDescriptor = Annotated[
 ]
 
 
+@dataclass(slots=True, kw_only=True)
+class CardState:
+    """One card as the engine reported it.
+
+    Fields mirror ``encode_card``'s parameters so packing is mechanical. Values
+    are raw: clamping and masking happen only when encoding to bytes.
+
+    A dataclass rather than a model: one is built per card on every board
+    observation, and the values come straight from the engine, so validation
+    cost buys nothing here.
+
+    A hidden card is a real card with ``code=0`` and ``is_public=False`` --
+    its zone and seat are known, only its identity is withheld.
+    """
+
+    code: int = 0
+    location: int = 0
+    sequence: int = 0
+    position: int = 0
+    controller: int = 0
+    is_public: bool = False
+    card_type: int = 0
+    level: int = 0
+    attribute: int = 0
+    race: int = 0
+    attack: int = 0
+    defense: int = 0
+    lscale: int = 0
+    rscale: int = 0
+    link_marker: int = 0
+    counter_count: int = 0
+    negated: bool = False
+    is_overlay: bool = False
+
+
+@dataclass(slots=True, kw_only=True)
+class GlobalState:
+    """Duel-level scalars as the engine reported them, agent-relative.
+
+    A dataclass rather than a model, for the same reason as `CardState`.
+
+    ``phase`` is the engine bitmask, not a name: both the encoder and the
+    ygo-agent bridge consume the bitmask, and naming is a rendering concern.
+    """
+
+    my_lp: int = 0
+    opp_lp: int = 0
+    turn: int = 0
+    phase: int = 0
+    is_my_turn: bool = False
+    chain_count: int = 0
+    msg_type: int = 0
+    my_deck: int = 0
+    my_hand: int = 0
+    my_grave: int = 0
+    my_banished: int = 0
+    my_extra: int = 0
+    opp_deck: int = 0
+    opp_hand: int = 0
+    opp_grave: int = 0
+    opp_banished: int = 0
+    opp_extra: int = 0
+    is_finished: bool = False
+
+
 class YuGiOhObservation(Observation):
     """Observation returned to the agent."""
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(arbitrary_types_allowed=True, populate_by_name=True)
 
     cards: NDArrayField((MAX_CARDS, CARD_FEATURES)) = Field(
         description=f"Card features ({MAX_CARDS} x {CARD_FEATURES}) uint8 encoded",
@@ -268,6 +338,17 @@ class YuGiOhObservation(Observation):
         default_factory=list,
         description="Per-action structured descriptor, parallel to actions[]; "
         "None for padding slots. Empty on terminal observations.",
+    )
+    card_states: list[CardState] = Field(
+        default_factory=list,
+        description="Structured board cards, raw engine values, in packed-row order. "
+        "Hidden and known cards interleave, and the network's row ordering follows "
+        "this order, so consumers must not filter or reorder it.",
+    )
+    global_: GlobalState = Field(
+        default_factory=GlobalState,
+        alias="global",
+        description="Structured duel scalars, raw engine values",
     )
     prompt_meta: dict | None = Field(
         default=None,

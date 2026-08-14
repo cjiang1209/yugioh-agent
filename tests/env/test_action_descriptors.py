@@ -6,9 +6,14 @@ import pytest
 from pydantic import TypeAdapter, ValidationError
 
 from tests.env.conftest import MINIMAL_MSGS
-from yugioh_core.constants import LOCATION_MZONE, MSG_SELECT_CARD, MSG_SELECT_IDLECMD
+from yugioh_core.constants import (
+    LOCATION_MZONE,
+    MSG_SELECT_CARD,
+    MSG_SELECT_CHAIN,
+    MSG_SELECT_IDLECMD,
+)
 from yugioh_env.action_space import _ACTION_EXTRACTORS
-from yugioh_env.models import ActionDescriptor, CardRef, Pass, PickCard
+from yugioh_env.models import ActionDescriptor, ActivateEffect, CardRef, Pass, PickCard
 from yugioh_env.server.yugioh_environment import _build_action_descriptors
 
 ADAPTER = TypeAdapter(ActionDescriptor)
@@ -169,6 +174,60 @@ def test_pick_card_num_selected_tracks_selection_progress() -> None:
     assert action["num_selected"] == 2, "fixture must exercise num_selected != 1"
     descriptor = _build_action_descriptors([action])[0]
     assert descriptor.num_selected == action["num_selected"]
+
+
+def test_pick_card_descriptor_carries_the_overloaded_loc_info_slot() -> None:
+    """PickCard must carry the 4th loc_info slot, which is byte 10's only
+    source. MINIMAL_MSGS omits the key, so its value there is the builder's
+    own fallback."""
+    actions = _ACTION_EXTRACTORS[MSG_SELECT_CARD](
+        {
+            "msg_type": MSG_SELECT_CARD,
+            "player": 0,
+            "_agent_player": 0,
+            "min": 1,
+            "max": 1,
+            "cards": [
+                {
+                    "code": 100,
+                    "controller": 0,
+                    "location": LOCATION_MZONE,
+                    "sequence": 2,
+                    "subsequence": 5,
+                }
+            ],
+        }
+    )
+    picks = [d for d in _build_action_descriptors(actions) if isinstance(d, PickCard)]
+    assert picks, "no PickCard descriptor produced"
+    assert picks[0].subsequence == 5
+
+
+def test_activate_effect_descriptor_carries_position() -> None:
+    """The chain extractor's position key is byte 11's only source, and it
+    reaches the encoder through this field. MINIMAL_MSGS carries position 0
+    for chains, so only a non-zero value tells the field from its fallback."""
+    actions = _ACTION_EXTRACTORS[MSG_SELECT_CHAIN](
+        {
+            "msg_type": MSG_SELECT_CHAIN,
+            "player": 0,
+            "_agent_player": 0,
+            "forced": False,
+            "chains": [
+                {
+                    "code": 200,
+                    "controller": 0,
+                    "location": LOCATION_MZONE,
+                    "sequence": 1,
+                    "position": 0x5,
+                    "desc": 0,
+                }
+            ],
+        }
+    )
+    effects = [d for d in _build_action_descriptors(actions) if isinstance(d, ActivateEffect)]
+    assert effects, "no ActivateEffect descriptor produced"
+    assert effects[0].position == 0x5
 
 
 def test_descriptor_none_iff_mask_zero() -> None:

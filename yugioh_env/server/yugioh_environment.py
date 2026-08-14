@@ -62,6 +62,7 @@ from yugioh_env.models import (
     ChooseRPS,
     Confirm,
     FinishPick,
+    GlobalState,
     Pass,
     PhaseChange,
     PickBit,
@@ -117,6 +118,7 @@ _DESCRIPTOR_BUILDERS = {
         num_selected=a.get("num_selected", 1),
         param=a.get("param"),
         card=_card_ref(a),
+        subsequence=a.get("subsequence", 0),
     ),
     "pick_bit": lambda a: PickBit(
         engine_index=a["index"],
@@ -128,7 +130,10 @@ _DESCRIPTOR_BUILDERS = {
         engine_index=a["index"], command=a["category"], card=_card_ref(a)
     ),
     "activate_effect": lambda a: ActivateEffect(
-        engine_index=a["index"], card=_card_ref(a), desc=a.get("desc", 0)
+        engine_index=a["index"],
+        card=_card_ref(a),
+        desc=a.get("desc", 0),
+        position=a.get("position", 0),
     ),
     "attack": lambda a: Attack(
         engine_index=a["index"],
@@ -756,6 +761,8 @@ class YuGiOhEnvironment(Environment):
                 "global_state": obs_data["global_state"],
                 "pending_chain": obs_data["pending_chain"],
                 "event_history": obs_data["event_history"],
+                "card_states": obs_data["card_states"],
+                "global_": obs_data["global"],
             }
 
         return YuGiOhObservation(
@@ -819,6 +826,8 @@ class YuGiOhEnvironment(Environment):
             global_state=obs_data.get("global_state"),
             pending_chain=obs_data.get("pending_chain"),
             event_history=obs_data.get("event_history"),
+            card_states=obs_data.get("card_states", []),
+            global_=obs_data.get("global", GlobalState()),
             action_descriptors=[],
             prompt_meta=None,
             events=list(self._cycle_events),
