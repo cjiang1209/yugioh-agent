@@ -10,6 +10,14 @@ export const RECOMMENDED_BORDER = `1px solid ${RECOMMENDED_COLOR}`;
 export const RECOMMENDED_SHADOW = "0 0 8px rgba(255,176,32,0.6)";
 
 /**
+ * Fill and glow for AI-assist *controls* — the DeckSelector toggle and the
+ * board autoplay pill. Softer than RECOMMENDED_SHADOW above, which rings an
+ * individual recommended action rather than a control.
+ */
+export const RECOMMENDED_BACKGROUND = "rgba(255,176,32,0.1)";
+export const RECOMMENDED_GLOW = "0 0 12px rgba(255,176,32,0.25)";
+
+/**
  * Amber star badge marking the action recommended by AI Assist.
  *
  * Renders unconditionally; callers gate on their own `isRecommended` flag and

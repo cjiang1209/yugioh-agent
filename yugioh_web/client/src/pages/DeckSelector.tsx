@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
 import type { DeckDefinition, DeckPayload } from "../../../shared/deckTypes";
 import { API_BASE } from "../lib/apiBase";
+import {
+  RECOMMENDED_BACKGROUND,
+  RECOMMENDED_COLOR,
+  RECOMMENDED_GLOW,
+} from "../components/duel/RecommendedBadge";
 import { resolveTurnOrder, type TurnOrder } from "./turnOrder";
 import {
   Select,
@@ -71,11 +76,15 @@ export function DeckSelector({ onDeckSelected }: DeckSelectorProps) {
   useEffect(() => {
     fetch(`${API_BASE}/api/web/config`)
       .then(res => (res.ok ? res.json() : { recommend_available: false }))
-      .then((cfg: { recommend_available?: boolean }) =>
-        setRecommendStatus(
-          cfg.recommend_available ? "available" : "unavailable"
-        )
-      )
+      .then((cfg: { recommend_available?: boolean }) => {
+        const available = Boolean(cfg.recommend_available);
+        setRecommendStatus(available ? "available" : "unavailable");
+        // On by default — but only once a recommender is known to exist.
+        // Initialising the state to true instead would show an armed toggle
+        // during the "checking" window and send recommend=true to a server
+        // that cannot honor it.
+        setAiAssist(available);
+      })
       .catch(() => setRecommendStatus("unavailable"));
   }, []);
 
@@ -325,12 +334,12 @@ const GOLD_ACCENT: ToggleAccent = {
   glow: "0 0 12px rgba(255,215,0,0.25)",
 };
 
-// Amber, matching the recommended-action star badge (EngineActionPanel), so the
-// AI-assist toggle and the highlight it produces read as the same feature.
+// The AI-assist toggle and the star badge its recommendations produce are one
+// feature, so they share one set of amber tokens.
 const AMBER_ACCENT: ToggleAccent = {
-  color: "#ffb020",
-  background: "rgba(255,176,32,0.1)",
-  glow: "0 0 12px rgba(255,176,32,0.25)",
+  color: RECOMMENDED_COLOR,
+  background: RECOMMENDED_BACKGROUND,
+  glow: RECOMMENDED_GLOW,
 };
 
 // Title (tooltip) + caption for the AI-assist toggle, per recommender status.

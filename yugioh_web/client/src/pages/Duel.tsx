@@ -102,6 +102,8 @@ function AIModeDuel({
     outcome,
     engineActions,
     recommendedActionIndex,
+    autoplay,
+    toggleAutoplay,
     enginePrompt,
     visibleLog,
     isReplaying,
@@ -176,6 +178,10 @@ function AIModeDuel({
       engineMode
       engineActions={engineActions}
       recommendedActionIndex={recommendedActionIndex}
+      autoplay={autoplay}
+      // Withheld when AI Assist is off: with no recommendations arriving there
+      // is nothing for autoplay to play.
+      onToggleAutoplay={recommend ? toggleAutoplay : undefined}
       enginePrompt={enginePrompt}
       onEngineAction={submitAction}
       outcome={outcome}

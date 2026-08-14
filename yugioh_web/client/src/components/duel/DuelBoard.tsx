@@ -23,6 +23,11 @@ import { DuelResultOverlay } from "./DuelResultOverlay";
 import { CardDetail } from "./CardDetail";
 import { PanelPlaceholder } from "./PanelPlaceholder";
 import { PanelSection } from "./PanelSection";
+import {
+  RECOMMENDED_BACKGROUND,
+  RECOMMENDED_COLOR,
+  RECOMMENDED_GLOW,
+} from "./RecommendedBadge";
 import { PANEL_WIDTH } from "../../lib/duelLayout";
 import type {
   EngineAction,
@@ -45,6 +50,9 @@ export interface DuelBoardProps {
   visibleLog?: string[];
   isReplaying?: boolean;
   openCards?: boolean;
+  autoplay?: boolean;
+  /** Omitted when autoplay is unavailable, which hides the control. */
+  onToggleAutoplay?: () => void;
 }
 
 type SelectionMode =
@@ -227,6 +235,8 @@ export function DuelBoard({
   visibleLog,
   isReplaying,
   openCards,
+  autoplay,
+  onToggleAutoplay,
 }: DuelBoardProps) {
   const [selection, setSelection] = useState<SelectionMode>({ type: "none" });
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -1693,9 +1703,9 @@ export function DuelBoard({
             </div>
           </div>
 
-          {/* Absolute right, vertically centered: RESTART while the duel runs,
-              SHOW RESULT once it is over — restarting then lives in the result
-              overlay. */}
+          {/* Absolute right, vertically centered: the autoplay toggle, plus
+              RESTART while the duel runs or SHOW RESULT once it is over —
+              restarting then lives in the result overlay. */}
           {(() => {
             const pill = outcome
               ? {
@@ -1712,23 +1722,58 @@ export function DuelBoard({
                     onClick: () => setShowRestartConfirm(true),
                   }
                 : null;
-            if (!pill) return null;
+            // The autoplay control lives here rather than in the ACTIONS panel
+            // header because that panel drops to NO ACTIONS during replay and
+            // auto-pass — it would flicker on every step, which is exactly when
+            // autoplay is running. This strip is always present.
+            // Hidden once the duel is over: finalize has cleared the actions
+            // and the recommendation, so the toggle could only flip to ON and
+            // stall.
+            const showAutoplay = Boolean(
+              engineMode && onToggleAutoplay && !outcome
+            );
             return (
-              <div className="absolute right-3 top-0 bottom-0 flex items-center">
-                <button
-                  onClick={e => {
-                    e.stopPropagation();
-                    pill.onClick();
-                  }}
-                  className="px-2 py-0.5 text-[0.5rem] rounded opacity-70 hover:opacity-100 transition-opacity"
-                  style={{
-                    border: `1px solid ${pill.border}`,
-                    color: pill.color,
-                    fontFamily: "'Orbitron', sans-serif",
-                  }}
-                >
-                  {pill.label}
-                </button>
+              <div className="absolute right-3 top-0 bottom-0 flex items-center gap-2">
+                {showAutoplay && (
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
+                      onToggleAutoplay?.();
+                    }}
+                    title="Play the recommender's suggested action automatically"
+                    aria-pressed={autoplay}
+                    className="px-2 py-0.5 text-[0.5rem] rounded opacity-70 hover:opacity-100 transition-all"
+                    style={{
+                      fontFamily: "'Orbitron', sans-serif",
+                      background: autoplay
+                        ? RECOMMENDED_BACKGROUND
+                        : "transparent",
+                      border: `1px solid ${
+                        autoplay ? RECOMMENDED_COLOR : "var(--border-dim)"
+                      }`,
+                      color: autoplay ? RECOMMENDED_COLOR : "var(--text-muted)",
+                      boxShadow: autoplay ? RECOMMENDED_GLOW : "none",
+                    }}
+                  >
+                    AUTOPLAY: {autoplay ? "ON" : "OFF"}
+                  </button>
+                )}
+                {pill && (
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
+                      pill.onClick();
+                    }}
+                    className="px-2 py-0.5 text-[0.5rem] rounded opacity-70 hover:opacity-100 transition-opacity"
+                    style={{
+                      border: `1px solid ${pill.border}`,
+                      color: pill.color,
+                      fontFamily: "'Orbitron', sans-serif",
+                    }}
+                  >
+                    {pill.label}
+                  </button>
+                )}
               </div>
             );
           })()}

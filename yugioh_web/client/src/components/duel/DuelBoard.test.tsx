@@ -204,3 +204,76 @@ describe("DuelBoard panel layout", () => {
     expect(getByText(card.name)).toBeTruthy();
   });
 });
+
+describe("DuelBoard autoplay control", () => {
+  /** Mid-duel with a prompt showing — the pill only makes sense there. */
+  const midDuel: Partial<DuelBoardProps> = {
+    outcome: null,
+    engineActions: summonActions,
+    onEngineAction: () => {},
+  };
+
+  /** Autoplay available — a handler is supplied — with the pill in the given
+   *  state. */
+  const armed = (autoplay: boolean): Partial<DuelBoardProps> => ({
+    autoplay,
+    onToggleAutoplay: () => {},
+  });
+
+  it("hides the pill when autoplay is unavailable", () => {
+    // Duel withholds the handler when AI Assist is off, since no
+    // recommendations arrive for autoplay to play.
+    const { queryByRole } = renderBoard({
+      ...midDuel,
+      autoplay: false,
+      onToggleAutoplay: undefined,
+    });
+    expect(queryByRole("button", { name: /AUTOPLAY/i })).toBeNull();
+  });
+
+  it("labels the pill to match the autoplay prop", () => {
+    const { getByRole, rerender } = renderBoard({
+      ...midDuel,
+      ...armed(false),
+    });
+    expect(getByRole("button", { name: /AUTOPLAY: OFF/i })).toBeTruthy();
+
+    rerender(<DuelBoard {...boardProps({ ...midDuel, ...armed(true) })} />);
+    expect(getByRole("button", { name: /AUTOPLAY: ON/i })).toBeTruthy();
+  });
+
+  it("calls onToggleAutoplay when the pill is clicked", () => {
+    const onToggleAutoplay = vi.fn();
+    const { getByRole } = renderBoard({
+      ...midDuel,
+      ...armed(false),
+      onToggleAutoplay,
+    });
+
+    fireEvent.click(getByRole("button", { name: /AUTOPLAY: OFF/i }));
+    expect(onToggleAutoplay).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the pill once the duel is over", () => {
+    // Post-duel finalize has cleared the actions and the recommendation, so
+    // the toggle could only flip to ON and stall.
+    const { queryByRole, getByRole } = renderBoard({
+      ...midDuel,
+      ...armed(true),
+      outcome: "win",
+    });
+
+    fireEvent.click(getByRole("button", { name: "VIEW BOARD" }));
+    expect(queryByRole("button", { name: /AUTOPLAY/i })).toBeNull();
+  });
+
+  it("keeps RESTART alongside the pill", () => {
+    const { getByRole } = renderBoard({
+      ...midDuel,
+      ...armed(true),
+      onRestart: () => {},
+    });
+    expect(getByRole("button", { name: /AUTOPLAY: ON/i })).toBeTruthy();
+    expect(getByRole("button", { name: "RESTART" })).toBeTruthy();
+  });
+});
