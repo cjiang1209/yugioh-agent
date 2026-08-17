@@ -280,7 +280,7 @@ def _play_one_episode(
     done = False
     info: dict[str, Any] = {}
     while not done:
-        action = agent.select_action(obs)
+        action, _ = agent.select_action(obs)
         obs, _reward, done, info = env.step(action)
     return _EpisodeRecord(
         episode_idx=episode_idx,

@@ -668,7 +668,7 @@ class _FakeRec:
     """Non-network fake recommender: picks the last (dense) legal slot."""
 
     def select_action(self, obs):
-        return int(obs.action_mask.sum()) - 1
+        return int(obs.action_mask.sum()) - 1, None
 
     def reseed(self, seed):
         pass

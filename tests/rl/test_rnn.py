@@ -80,7 +80,7 @@ def test_legacy_checkpoint_inference_via_model_opponent(tmp_path):
 
     opp = ModelOpponent(ckpt_path, device="cpu")
 
-    action = opp.select_action(_dummy_model_opponent_obs())
+    action, _ = opp.select_action(_dummy_model_opponent_obs())
     assert 0 <= action < 3
 
 

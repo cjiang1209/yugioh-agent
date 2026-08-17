@@ -697,7 +697,7 @@ class YuGiOhEnvironment(Environment):
                         opp_obs = self._build_seat_observation(
                             opp_mapper, include_board=self._opponent.needs_board_state
                         )
-                        opp_action = self._opponent.select_action(opp_obs)
+                        opp_action, _ = self._opponent.select_action(opp_obs)
                         self._opp_step_count += 1
                         opp_action = min(opp_action, opp_mapper.num_actions - 1)
                         if opp_selected_action is None:

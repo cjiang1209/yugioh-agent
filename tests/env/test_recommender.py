@@ -61,7 +61,7 @@ def test_recommend_action_index_passes_obs_through():
 
         def select_action(self, obs):
             self.seen = obs
-            return 2
+            return 2, None
 
     mask = [1, 1, 1] + [0] * (MAX_ACTIONS - 3)
     obs = YuGiOhObservation(action_mask=mask)
@@ -81,7 +81,7 @@ def test_recommend_action_index_returns_recommenders_choice():
 
     class FakeGreedy:
         def select_action(self, obs):
-            return int(obs.action_mask.sum()) - 1
+            return int(obs.action_mask.sum()) - 1, None
 
     obs = YuGiOhObservation(action_mask=[1, 1] + [0] * (MAX_ACTIONS - 2))
     idx = recommend_action_index(FakeGreedy(), obs)

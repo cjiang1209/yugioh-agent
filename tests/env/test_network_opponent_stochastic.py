@@ -9,6 +9,7 @@ torch = pytest.importorskip("torch")
 import numpy as np
 import torch.nn as nn
 
+from tests.env.conftest import obs_from_mask
 from yugioh_core.encoding import MAX_ACTIONS
 from yugioh_env.models import YuGiOhObservation
 from yugioh_env.opponent import NetworkOpponent
@@ -18,7 +19,7 @@ class _FakeNet(nn.Module):
     """Minimal stand-in: ignores inputs, returns canned logits + dummy value + hx.
 
     ``logits`` covers only the legal actions under test; padded out to
-    ``MAX_ACTIONS`` with filler values that ``_make_obs``'s mask marks
+    ``MAX_ACTIONS`` with filler values that ``obs_from_mask``'s mask marks
     illegal, so they're masked to -inf regardless of the filler.
     """
 
@@ -43,29 +44,24 @@ class _FakeNet(nn.Module):
         return self._logits, torch.zeros(1, 1), hx
 
 
-def _make_obs(n_actions: int) -> YuGiOhObservation:
-    """First `n_actions` slots legal, the rest (padding to MAX_ACTIONS) illegal."""
-    mask = np.zeros(MAX_ACTIONS, dtype=np.int8)
-    mask[:n_actions] = 1
-    return YuGiOhObservation(action_mask=mask)
-
-
 def test_stochastic_false_is_argmax() -> None:
     net = _FakeNet([3.0, 1.0, 0.5])
     opp = NetworkOpponent(net, stochastic=False)
-    assert opp.select_action(_make_obs(3)) == 0
+    action, _ = opp.select_action(obs_from_mask(3))
+    assert action == 0
 
 
 def test_stochastic_true_samples_distribution() -> None:
     # Logits where action 2 is much more likely; with temperature 1 we
     # should see it dominate over many samples.
     net = _FakeNet([0.0, 0.0, 5.0])
-    obs = _make_obs(3)
+    obs = obs_from_mask(3)
     counts = [0, 0, 0]
     for seed in range(200):
         torch.manual_seed(seed)
         opp = NetworkOpponent(net, stochastic=True, temperature=1.0)
-        counts[opp.select_action(obs)] += 1
+        action, _ = opp.select_action(obs)
+        counts[action] += 1
     assert counts[2] > counts[0]
     assert counts[2] > counts[1]
     assert counts[2] > 100  # vast majority
@@ -76,7 +72,8 @@ def test_stochastic_low_temperature_approaches_argmax() -> None:
     net = _FakeNet([3.0, 1.0, 0.5])
     torch.manual_seed(0)
     opp = NetworkOpponent(net, stochastic=True, temperature=0.01)
-    assert opp.select_action(_make_obs(3)) == 0
+    action, _ = opp.select_action(obs_from_mask(3))
+    assert action == 0
 
 
 def test_stochastic_temperature_zero_raises() -> None:
@@ -105,5 +102,5 @@ def test_stochastic_respects_action_mask() -> None:
     for seed in range(50):
         torch.manual_seed(seed)
         opp = NetworkOpponent(net, stochastic=True, temperature=1.0)
-        a = opp.select_action(obs)
+        a, _ = opp.select_action(obs)
         assert a in (1, 2), f"illegal action {a} was sampled at seed {seed}"

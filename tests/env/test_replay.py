@@ -92,9 +92,10 @@ class TestRecordingOpponent:
 
         obs = obs_from_msg({**MINIMAL_MSGS[MSG_SELECT_IDLECMD], "msg_type": MSG_SELECT_IDLECMD})
         num_actions = int(obs.action_mask.sum())
-        action = wrapper.select_action(obs)
+        action, inference = wrapper.select_action(obs)
         assert isinstance(action, int)
         assert 0 <= action < num_actions
+        assert inference is None
 
     def test_records_action(self):
         """Each select_action call appends an entry with correct player and msg_type."""
@@ -294,9 +295,9 @@ class TestScriptedOpponent:
         opp = ScriptedOpponent(cursor)
 
         obs = obs_from_msg({**MINIMAL_MSGS[MSG_SELECT_YESNO], "msg_type": MSG_SELECT_YESNO})
-        a0 = opp.select_action(obs)
+        a0, _ = opp.select_action(obs)
         assert a0 == 1
-        a1 = opp.select_action(obs)
+        a1, _ = opp.select_action(obs)
         assert a1 == 0
 
     def test_drift_on_wrong_msg_type(self):

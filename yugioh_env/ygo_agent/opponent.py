@@ -21,7 +21,7 @@ from yugioh_core.constants import (
     MSG_SORT_CHAIN,
 )
 from yugioh_env.models import YuGiOhObservation
-from yugioh_env.opponent import Opponent
+from yugioh_env.opponent import Inference, Opponent
 from yugioh_env.ygo_agent.bridge import build_predict_input, match_response
 
 logger = logging.getLogger(__name__)
@@ -98,7 +98,10 @@ class YGOAgentOpponent(Opponent):
             self._index = 0
             self._prev_action_idx = 0
 
-    def select_action(self, obs: YuGiOhObservation) -> int:
+    def select_action(self, obs: YuGiOhObservation) -> tuple[int, Inference | None]:
+        return self._select_index(obs), None
+
+    def _select_index(self, obs: YuGiOhObservation) -> int:
         if self._duel_id is None:
             logger.warning("YGOAgentOpponent: no duel session, returning 0")
             return 0

@@ -27,7 +27,7 @@ from yugioh_core.encoding import (
     MAX_PENDING_CHAIN,
 )
 from yugioh_env.models import YuGiOhAction
-from yugioh_env.opponent import ModelOpponent, Opponent, RandomOpponent
+from yugioh_env.opponent import Inference, ModelOpponent, Opponent, RandomOpponent
 from yugioh_env.replay import GameRecording, RecordingOpponent
 
 # ---------------------------------------------------------------------------
@@ -145,8 +145,8 @@ class _FakeInner(Opponent):
     def needs_board_state(self) -> bool:
         return self._needs_board_state
 
-    def select_action(self, obs) -> int:
-        return 0
+    def select_action(self, obs) -> tuple[int, Inference | None]:
+        return 0, None
 
 
 @pytest.mark.parametrize("inner_hint", [True, False])

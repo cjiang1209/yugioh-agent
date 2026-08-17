@@ -46,4 +46,5 @@ def recommend_action_index(recommender: Opponent, obs: YuGiOhObservation) -> int
     directly usable as an ``EngineAction.index``. The caller must ensure
     ``obs`` is non-terminal with at least one legal action.
     """
-    return recommender.select_action(obs)
+    action_index, _ = recommender.select_action(obs)
+    return action_index

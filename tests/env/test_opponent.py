@@ -66,7 +66,8 @@ def test_random_opponent_zero_actions_returns_zero():
     """An observation with no legal actions (all-zero mask) returns 0."""
     obs = YuGiOhObservation(action_mask=np.zeros(MAX_ACTIONS, dtype=np.int8))
     opp = RandomOpponent(seed=0)
-    assert opp.select_action(obs) == 0
+    action, _ = opp.select_action(obs)
+    assert action == 0
 
 
 def test_pick_action_random_seeded():
@@ -129,7 +130,8 @@ def test_greedy_opponent_idle_prefers_summon_over_everything():
     even though sp_summonable/sset/to_bp are all also available."""
     opp = GreedyOpponent()
     obs = obs_from_msg(_idle_msg())
-    assert opp.select_action(obs) == 0
+    action, _ = opp.select_action(obs)
+    assert action == 0
     assert isinstance(obs.action_descriptors[0], CardCommand)
 
 
@@ -137,7 +139,8 @@ def test_greedy_opponent_idle_prefers_sp_summon_when_no_summon():
     """With summonable empty, sp_summon (now the first category) wins."""
     opp = GreedyOpponent()
     obs = obs_from_msg(_idle_msg(summonable=[]))
-    assert opp.select_action(obs) == 0
+    action, _ = opp.select_action(obs)
+    assert action == 0
 
 
 def test_greedy_opponent_idle_prefers_sset_over_reposition_and_mset():
@@ -146,7 +149,8 @@ def test_greedy_opponent_idle_prefers_sset_over_reposition_and_mset():
     opp = GreedyOpponent()
     obs = obs_from_msg(_idle_msg(summonable=[], sp_summonable=[]))
     # order: repositionable(0), mset(1), sset(2), activatable(3), to_bp(4), to_ep(5)
-    assert opp.select_action(obs) == 2
+    action, _ = opp.select_action(obs)
+    assert action == 2
 
 
 def test_greedy_opponent_idle_moves_to_battle_phase_as_last_resort():
@@ -154,7 +158,8 @@ def test_greedy_opponent_idle_moves_to_battle_phase_as_last_resort():
     opp = GreedyOpponent()
     obs = obs_from_msg(_idle_msg(summonable=[], sp_summonable=[], sset=[]))
     # order: repositionable(0), mset(1), activatable(2), to_bp(3), to_ep(4)
-    assert opp.select_action(obs) == 3
+    action, _ = opp.select_action(obs)
+    assert action == 3
 
 
 def test_greedy_opponent_idle_falls_back_to_last_action():
@@ -162,7 +167,8 @@ def test_greedy_opponent_idle_falls_back_to_last_action():
     opp = GreedyOpponent()
     obs = obs_from_msg(_idle_msg(summonable=[], sp_summonable=[], sset=[], to_bp=0))
     num_actions = int(obs.action_mask.sum())
-    assert opp.select_action(obs) == num_actions - 1
+    action, _ = opp.select_action(obs)
+    assert action == num_actions - 1
 
 
 def test_greedy_opponent_battle_prefers_attack():
@@ -170,7 +176,8 @@ def test_greedy_opponent_battle_prefers_attack():
     opp = GreedyOpponent()
     obs = obs_from_msg(_battle_msg())
     # order: activatable(0), attackable(1), to_m2(2), to_ep(3)
-    assert opp.select_action(obs) == 1
+    action, _ = opp.select_action(obs)
+    assert action == 1
 
 
 def test_greedy_opponent_battle_falls_back_to_last_action():
@@ -178,14 +185,16 @@ def test_greedy_opponent_battle_falls_back_to_last_action():
     opp = GreedyOpponent()
     obs = obs_from_msg(_battle_msg(attackable=[]))
     num_actions = int(obs.action_mask.sum())
-    assert opp.select_action(obs) == num_actions - 1
+    action, _ = opp.select_action(obs)
+    assert action == num_actions - 1
 
 
 def test_greedy_opponent_other_prompts_pick_first_option():
     """For non-idle/non-battle prompts, GreedyOpponent picks index 0."""
     opp = GreedyOpponent()
     obs = _yesno_obs()
-    assert opp.select_action(obs) == 0
+    action, _ = opp.select_action(obs)
+    assert action == 0
 
 
 def test_greedy_opponent_single_legal_action_short_circuits():
@@ -194,13 +203,15 @@ def test_greedy_opponent_single_legal_action_short_circuits():
     mask = np.zeros(MAX_ACTIONS, dtype=np.int8)
     mask[0] = 1
     obs = YuGiOhObservation(action_mask=mask, prompt_meta={"msg_type": MSG_SELECT_IDLECMD})
-    assert opp.select_action(obs) == 0
+    action, _ = opp.select_action(obs)
+    assert action == 0
 
 
 def test_greedy_opponent_zero_legal_actions_returns_zero():
     opp = GreedyOpponent()
     obs = YuGiOhObservation(action_mask=np.zeros(MAX_ACTIONS, dtype=np.int8))
-    assert opp.select_action(obs) == 0
+    action, _ = opp.select_action(obs)
+    assert action == 0
 
 
 # ---------------------------------------------------------------------------
@@ -229,7 +240,7 @@ def test_opponent_receives_full_observation(lib, db_path, script_dirs, deck_path
                 # processing can append unrelated later calls (e.g. the
                 # agent's own observation being built afterwards).
                 seen["call"] = calls[-1] if calls else None
-            return 0
+            return 0, None
 
         def reseed(self, seed):
             pass
@@ -343,7 +354,7 @@ def test_model_opponent_select_action():
         opp = ModelOpponent(f.name, device="cpu")
 
         obs = _dummy_obs()
-        action = opp.select_action(obs)
+        action, _ = opp.select_action(obs)
         assert 0 <= action < int(obs.action_mask.sum())
 
 
@@ -410,7 +421,7 @@ def test_model_opponent_semantic_checkpoint():
 
     # Verify select_action works
     obs = _dummy_obs()
-    action = opp.select_action(obs)
+    action, _ = opp.select_action(obs)
     assert 0 <= action < int(obs.action_mask.sum())
 
     import os

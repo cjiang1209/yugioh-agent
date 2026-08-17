@@ -135,7 +135,7 @@ class _RecordingAgent(Opponent):
 
     def select_action(self, obs):
         self.select_action_calls.append(obs)
-        return 0
+        return 0, None
 
 
 class _ScriptedEnv:

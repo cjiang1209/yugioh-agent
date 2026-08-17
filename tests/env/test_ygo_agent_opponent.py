@@ -78,7 +78,7 @@ class TestYGOAgentOpponent:
         mock_resp.raise_for_status = MagicMock()
         with patch("yugioh_env.ygo_agent.opponent.requests") as mock_req:
             mock_req.post.return_value = mock_resp
-            action = opp.select_action(obs)
+            action, _ = opp.select_action(obs)
         # response=0 ("no") matches the Confirm(yes=False) descriptor, which is
         # slot 1 (slot 0 is always yes=True) — deliberately non-zero so this
         # assertion can't be satisfied by match_response's slot-0 fallback.
@@ -90,7 +90,8 @@ class TestYGOAgentOpponent:
         opp._duel_id = None
         msg = {"msg_type": MSG_SELECT_YESNO, "player": 0, "desc": 30}
         obs = obs_from_msg(msg)
-        assert opp.select_action(obs) == 0
+        action, _ = opp.select_action(obs)
+        assert action == 0
 
     @pytest.mark.parametrize("msg_type", sorted(_SERVER_UNSUPPORTED_MSGS))
     def test_select_action_short_circuits_unsupported(self, msg_type):
@@ -106,7 +107,7 @@ class TestYGOAgentOpponent:
         opp._duel_id = "test-duel"
         obs = obs_from_msg({**MINIMAL_MSGS[msg_type], "msg_type": msg_type})
         with patch("yugioh_env.ygo_agent.opponent.requests") as mock_req:
-            result = opp.select_action(obs)
+            result, _ = opp.select_action(obs)
         assert result == 0
         mock_req.post.assert_not_called()
 

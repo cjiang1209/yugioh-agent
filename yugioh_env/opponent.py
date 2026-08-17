@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import random
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
 from yugioh_core.action_categories import IDLE_SP_SUMMON, IDLE_SSET, IDLE_SUMMON
 from yugioh_core.constants import (
@@ -21,6 +22,20 @@ from yugioh_core.constants import (
     MSG_SELECT_IDLECMD,
 )
 from yugioh_env.models import Attack, CardCommand, PhaseChange, YuGiOhObservation
+
+
+@dataclass(frozen=True)
+class Inference:
+    """Readouts from the forward pass that chose an action.
+
+    Travels back with that action, so a caller holding one holds the other.
+    """
+
+    value: float
+    """Raw value-head output for the acting seat's position."""
+
+    action_probs: list[float]
+    """Policy probabilities over the legal actions, in engine index order."""
 
 
 class Opponent(ABC):
@@ -39,8 +54,13 @@ class Opponent(ABC):
         """
 
     @abstractmethod
-    def select_action(self, obs: YuGiOhObservation) -> int:
-        """Select an action index given the current observation."""
+    def select_action(self, obs: YuGiOhObservation) -> tuple[int, Inference | None]:
+        """Choose an action for the current observation.
+
+        Returns the chosen index and, for a policy with a value head, the
+        readouts from the same forward pass. Implementations without one
+        return ``None`` as the second element.
+        """
         ...
 
     def reseed(self, seed: int) -> None:  # noqa: B027
@@ -60,11 +80,11 @@ class RandomOpponent(Opponent):
     def reseed(self, seed: int) -> None:
         self._rng = random.Random(seed)
 
-    def select_action(self, obs: YuGiOhObservation) -> int:
+    def select_action(self, obs: YuGiOhObservation) -> tuple[int, Inference | None]:
         num_actions = obs.num_actions
         if num_actions == 0:
-            return 0
-        return self._rng.randint(0, num_actions - 1)
+            return 0, None
+        return self._rng.randint(0, num_actions - 1), None
 
 
 class GreedyOpponent(Opponent):
@@ -83,20 +103,20 @@ class GreedyOpponent(Opponent):
     def needs_board_state(self) -> bool:
         return False  # reads descriptors, mask, prompt_meta
 
-    def select_action(self, obs: YuGiOhObservation) -> int:
+    def select_action(self, obs: YuGiOhObservation) -> tuple[int, Inference | None]:
         num_actions = obs.num_actions
         if num_actions <= 1:
-            return 0
+            return 0, None
 
         msg_type = obs.msg_type
         descriptors = obs.action_descriptors
 
         if msg_type == MSG_SELECT_IDLECMD:
-            return self._greedy_idle(descriptors, num_actions)
+            return self._greedy_idle(descriptors, num_actions), None
         elif msg_type == MSG_SELECT_BATTLECMD:
-            return self._greedy_battle(descriptors, num_actions)
+            return self._greedy_battle(descriptors, num_actions), None
         else:
-            return 0
+            return 0, None
 
     @staticmethod
     def _first_command(descriptors: list, command: int) -> int | None:
@@ -177,7 +197,7 @@ class NetworkOpponent(Opponent):
         """The wrapped policy network."""
         return self._network
 
-    def select_action(self, obs: YuGiOhObservation) -> int:
+    def select_action(self, obs: YuGiOhObservation) -> tuple[int, Inference | None]:
         import torch
 
         from yugioh_rl.policy_inputs import build_forward_inputs
@@ -185,15 +205,28 @@ class NetworkOpponent(Opponent):
         inputs = build_forward_inputs(obs.as_arrays(), device=self._device, add_batch_dim=True)
 
         with torch.no_grad():
-            logits, _, self._hx = self._network(**inputs, hx=self._hx)
+            logits, values, self._hx = self._network(**inputs, hx=self._hx)
             masked = logits.masked_fill(~inputs["action_mask"].bool(), float("-inf"))
+            # One softmax per branch, reported as-is: `action_probs` is the
+            # distribution the action came from, so a temperature that shapes
+            # the sampling shapes the report too. Each branch enqueues it before
+            # its `.item()`, so the sync that reads the action also waits out
+            # this kernel -- the reads below stall on no GPU work, though each
+            # is still its own device-to-host copy.
             if self._stochastic:
                 probs = torch.softmax(masked / self._temperature, dim=-1)
                 action = int(torch.multinomial(probs[0], 1).item())
             else:
+                probs = torch.softmax(masked, dim=-1)
                 action = int(masked.argmax(dim=-1).item())
+            inference = Inference(
+                value=float(values[0].item()),
+                # A contiguous prefix slice is only correct because
+                # get_action_mask() (action_space.py) fills mask[:n] densely.
+                action_probs=probs[0, : obs.num_actions].tolist(),
+            )
 
-        return action
+        return action, inference
 
     def reseed(self, seed: int) -> None:
         # Resets per-duel recurrent state. Stochastic-mode sampling uses
@@ -224,7 +257,7 @@ class ModelOpponent(Opponent):
     def needs_board_state(self) -> bool:
         return self._impl.needs_board_state
 
-    def select_action(self, obs: YuGiOhObservation) -> int:
+    def select_action(self, obs: YuGiOhObservation) -> tuple[int, Inference | None]:
         return self._impl.select_action(obs)
 
     def reseed(self, seed: int) -> None:

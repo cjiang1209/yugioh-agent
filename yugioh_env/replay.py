@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from yugioh_env.models import YuGiOhAction, YuGiOhObservation
-from yugioh_env.opponent import Opponent
+from yugioh_env.opponent import Inference, Opponent
 
 
 class ReplayCursor:
@@ -164,15 +164,15 @@ class RecordingOpponent(Opponent):
     def needs_board_state(self) -> bool:
         return self._inner.needs_board_state
 
-    def select_action(self, obs: YuGiOhObservation) -> int:
-        action = self._inner.select_action(obs)
+    def select_action(self, obs: YuGiOhObservation) -> tuple[int, Inference | None]:
+        action, inference = self._inner.select_action(obs)
         self._recording.append(
             msg_type=obs.msg_type,
             player=self._seat_fn(),
             action=action,
             num_actions=obs.num_actions,
         )
-        return action
+        return action, inference
 
     def reseed(self, seed: int) -> None:
         self._inner.reseed(seed)
@@ -188,12 +188,12 @@ class ScriptedOpponent(Opponent):
     def __init__(self, cursor: ReplayCursor) -> None:
         self._cursor = cursor
 
-    def select_action(self, obs: YuGiOhObservation) -> int:
+    def select_action(self, obs: YuGiOhObservation) -> tuple[int, Inference | None]:
         entry = self._cursor.next_opponent_entry(
             expected_msg_type=obs.msg_type,
             expected_num_actions=obs.num_actions,
         )
-        return entry["action"]
+        return entry["action"], None
 
     def reseed(self, seed: int) -> None:
         pass  # No RNG to seed
