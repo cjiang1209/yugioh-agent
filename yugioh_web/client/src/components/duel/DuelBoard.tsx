@@ -23,6 +23,7 @@ import { DuelResultOverlay } from "./DuelResultOverlay";
 import { CardDetail } from "./CardDetail";
 import { PanelPlaceholder } from "./PanelPlaceholder";
 import { PanelSection } from "./PanelSection";
+import { ModelInspectorPanel } from "./ModelInspectorPanel";
 import {
   RECOMMENDED_BACKGROUND,
   RECOMMENDED_COLOR,
@@ -53,6 +54,15 @@ export interface DuelBoardProps {
   autoplay?: boolean;
   /** Omitted when autoplay is unavailable, which hides the control. */
   onToggleAutoplay?: () => void;
+  /** Whether the MODEL panel is showing. */
+  inspectorOn?: boolean;
+  /** Omitted when AI Assist is off, which hides the control. */
+  onToggleInspector?: () => void;
+  /** One V(s) sample per prompt this duel, oldest first; the last is the
+   *  current evaluation. */
+  valueTrace?: number[];
+  /** Policy probabilities index-aligned with `engineActions`, or null. */
+  actionProbs?: number[] | null;
 }
 
 type SelectionMode =
@@ -220,6 +230,42 @@ const EMZ_BADGE = (
   </div>
 );
 
+// ─── Control strip pills ─────────────────────────────────────────────────────
+
+/** A small toggle button for the control strip (AUTOPLAY, INSPECT). */
+function ControlPill({
+  label,
+  on,
+  title,
+  onClick,
+}: {
+  label: string;
+  on: boolean;
+  title: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={e => {
+        e.stopPropagation();
+        onClick();
+      }}
+      title={title}
+      aria-pressed={on}
+      className="px-2 py-0.5 text-[0.5rem] rounded opacity-70 hover:opacity-100 transition-all"
+      style={{
+        fontFamily: "'Orbitron', sans-serif",
+        background: on ? RECOMMENDED_BACKGROUND : "transparent",
+        border: `1px solid ${on ? RECOMMENDED_COLOR : "var(--border-dim)"}`,
+        color: on ? RECOMMENDED_COLOR : "var(--text-muted)",
+        boxShadow: on ? RECOMMENDED_GLOW : "none",
+      }}
+    >
+      {label}: {on ? "ON" : "OFF"}
+    </button>
+  );
+}
+
 export function DuelBoard({
   state,
   mySide,
@@ -237,6 +283,10 @@ export function DuelBoard({
   openCards,
   autoplay,
   onToggleAutoplay,
+  inspectorOn,
+  onToggleInspector,
+  valueTrace,
+  actionProbs,
 }: DuelBoardProps) {
   const [selection, setSelection] = useState<SelectionMode>({ type: "none" });
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -1463,6 +1513,11 @@ export function DuelBoard({
   const oppRows = renderZoneRows(opponentPlayer, "opponent");
   const myRows = renderZoneRows(myPlayer, "mine");
 
+  // One flag for everything the inspector puts on the board: the MODEL panel,
+  // the left column's split, and the probability column on the action list.
+  // Sharing it is what keeps the INSPECT toggle governing all of them at once.
+  const inspectorVisible = Boolean(engineMode && inspectorOn);
+
   return (
     <div
       className="flex h-full w-full"
@@ -1471,7 +1526,7 @@ export function DuelBoard({
         if (selection.type !== "none") clearSelection();
       }}
     >
-      {/* ── Left panel: card detail ── */}
+      {/* ── Left panel: card detail, and the model inspector beneath it ── */}
       <div
         className="flex-shrink-0 flex flex-col"
         style={{
@@ -1482,7 +1537,17 @@ export function DuelBoard({
         }}
         onClick={e => e.stopPropagation()}
       >
-        <PanelSection title="CARD DETAIL" style={{ flex: "1 1 0" }}>
+        {/* Splits 80:20 with MODEL when the inspector is on, and takes the
+            whole column when it is off. */}
+        <PanelSection
+          title="CARD DETAIL"
+          style={{
+            flex: inspectorVisible ? "8 1 0" : "1 1 0",
+            borderBottom: inspectorVisible
+              ? "1px solid rgba(0,245,255,0.25)"
+              : undefined,
+          }}
+        >
           <div className="h-full overflow-y-auto p-2">
             {selectedCardDetail ? (
               <CardDetail card={selectedCardDetail} />
@@ -1491,6 +1556,12 @@ export function DuelBoard({
             )}
           </div>
         </PanelSection>
+
+        {inspectorVisible && (
+          <PanelSection title="MODEL" style={{ flex: "2 1 0" }}>
+            <ModelInspectorPanel trace={valueTrace ?? []} />
+          </PanelSection>
+        )}
       </div>
 
       {/* ── Field ── */}
@@ -1732,31 +1803,26 @@ export function DuelBoard({
             const showAutoplay = Boolean(
               engineMode && onToggleAutoplay && !outcome
             );
+            // Unlike autoplay this survives `outcome`: once the duel is over
+            // the accumulated trace is exactly what you want to read back.
+            const showInspector = Boolean(engineMode && onToggleInspector);
             return (
               <div className="absolute right-3 top-0 bottom-0 flex items-center gap-2">
+                {showInspector && (
+                  <ControlPill
+                    label="INSPECT"
+                    on={Boolean(inspectorOn)}
+                    title="Show the recommender's board evaluation"
+                    onClick={() => onToggleInspector?.()}
+                  />
+                )}
                 {showAutoplay && (
-                  <button
-                    onClick={e => {
-                      e.stopPropagation();
-                      onToggleAutoplay?.();
-                    }}
+                  <ControlPill
+                    label="AUTOPLAY"
+                    on={Boolean(autoplay)}
                     title="Play the recommender's suggested action automatically"
-                    aria-pressed={autoplay}
-                    className="px-2 py-0.5 text-[0.5rem] rounded opacity-70 hover:opacity-100 transition-all"
-                    style={{
-                      fontFamily: "'Orbitron', sans-serif",
-                      background: autoplay
-                        ? RECOMMENDED_BACKGROUND
-                        : "transparent",
-                      border: `1px solid ${
-                        autoplay ? RECOMMENDED_COLOR : "var(--border-dim)"
-                      }`,
-                      color: autoplay ? RECOMMENDED_COLOR : "var(--text-muted)",
-                      boxShadow: autoplay ? RECOMMENDED_GLOW : "none",
-                    }}
-                  >
-                    AUTOPLAY: {autoplay ? "ON" : "OFF"}
-                  </button>
+                    onClick={() => onToggleAutoplay?.()}
+                  />
                 )}
                 {pill && (
                   <button
@@ -1926,6 +1992,7 @@ export function DuelBoard({
                 prompt={enginePrompt ?? null}
                 onAction={onEngineAction}
                 recommendedIndex={recommendedActionIndex}
+                actionProbs={inspectorVisible ? actionProbs : null}
               />
             ) : (
               <PanelPlaceholder label="NO ACTIONS" />

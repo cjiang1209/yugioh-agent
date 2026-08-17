@@ -13,6 +13,9 @@ interface EnginePromptRouterProps {
   prompt: EnginePrompt | null;
   onAction: (actionIndex: number) => void;
   recommendedIndex?: number | null;
+  /** Forwarded to the generic action list only; the specialized panels do not
+   *  render probabilities yet. */
+  actionProbs?: number[] | null;
 }
 
 export function EnginePromptRouter({
@@ -20,6 +23,7 @@ export function EnginePromptRouter({
   prompt,
   onAction,
   recommendedIndex,
+  actionProbs,
 }: EnginePromptRouterProps) {
   if (!prompt) {
     return (
@@ -27,6 +31,7 @@ export function EnginePromptRouter({
         actions={actions}
         onAction={onAction}
         recommendedIndex={recommendedIndex}
+        actionProbs={actionProbs}
       />
     );
   }
@@ -80,6 +85,7 @@ export function EnginePromptRouter({
           actions={actions}
           onAction={onAction}
           recommendedIndex={recommendedIndex}
+          actionProbs={actionProbs}
         />
       );
   }

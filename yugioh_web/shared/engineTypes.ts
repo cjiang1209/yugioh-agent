@@ -186,6 +186,27 @@ export interface EventFrame {
   game_state: EngineGameState;
 }
 
+/**
+ * Value-head and policy-head readouts for the current prompt, from the same
+ * forward pass that produced the recommendation.
+ *
+ * Null unless AI Assist is on with a model recommender — random, greedy and
+ * ygo-agent recommenders have no value head.
+ */
+export interface EngineRecommendation {
+  /** Matches an `EngineAction.index`. */
+  action_index: number;
+  /**
+   * Raw value-head output for the human player's position: the model's
+   * estimate of the discounted return — the terminal win or loss plus any
+   * reward shaping it trained with. NOT a win probability. Null for a
+   * recommender with no value head, which still picks an index.
+   */
+  value: number | null;
+  /** Policy probabilities, index-aligned with `actions[]`; null with `value`. */
+  action_probs: number[] | null;
+}
+
 /** Unified response shape from all /api/web/ endpoints. */
 export interface EngineResponse {
   board: EngineBoard;
@@ -195,9 +216,9 @@ export interface EngineResponse {
   done: boolean;
   reward: number;
   frames: EventFrame[];
-  /** Index of the action the recommender suggests, or null when AI-assist is
-   *  off / unavailable / terminal. Matches an EngineAction.index. */
-  recommended_action_index: number | null;
+  /** What the recommender produced for this prompt, or null when AI-assist is
+   *  off / unavailable / terminal. */
+  recommendation: EngineRecommendation | null;
 }
 
 // ─── Card info (GET /api/web/card/{code}) ────────────────────────────────────

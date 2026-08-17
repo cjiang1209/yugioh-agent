@@ -48,7 +48,7 @@ function terminalResponse(reward: number) {
       },
       { events: ["LP reached 0", "duel over"], board, game_state: gameState },
     ],
-    recommended_action_index: null,
+    recommendation: null,
   };
 }
 
@@ -90,7 +90,10 @@ function promptResponse(recommended: number | null, index = 3) {
     done: false,
     reward: 0,
     frames: [],
-    recommended_action_index: recommended,
+    recommendation:
+      recommended == null
+        ? null
+        : { action_index: recommended, value: null, action_probs: null },
   };
 }
 
@@ -687,5 +690,223 @@ describe("useAIEngine autoplay", () => {
       await vi.runAllTimersAsync();
     });
     expect(submitted).toEqual([4]);
+  });
+});
+
+describe("useAIEngine inspection", () => {
+  /** A non-terminal response carrying one prompt and an optional readout. */
+  function inspectableResponse(recommendation: unknown) {
+    return {
+      board,
+      game_state: gameState,
+      actions: [
+        {
+          index: 0,
+          description: "Summon",
+          card_code: 0,
+          card_name: "x",
+          category: "summon",
+        },
+      ],
+      prompt: null,
+      done: false,
+      reward: 0,
+      frames: [],
+      recommendation:
+        recommendation == null
+          ? null
+          : { action_index: 0, ...(recommendation as object) },
+    };
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    cleanup();
+  });
+
+  it("appends the value to the trace", async () => {
+    stubFetchBody(inspectableResponse({ value: 0.25, action_probs: [1] }));
+    const { result } = renderHook(() => useAIEngine(false, true));
+
+    await act(async () => {
+      await result.current.reset(1);
+    });
+
+    await waitFor(() => {
+      expect(result.current.valueTrace).toEqual([0.25]);
+    });
+  });
+
+  it("accumulates one trace point per prompt", async () => {
+    stubFetchBody(inspectableResponse({ value: 0.25, action_probs: [1] }));
+    const { result } = renderHook(() => useAIEngine(false, true));
+
+    await act(async () => {
+      await result.current.reset(1);
+    });
+    await act(async () => {
+      await result.current.submitAction(0);
+    });
+
+    await waitFor(() => {
+      expect(result.current.valueTrace).toEqual([0.25, 0.25]);
+    });
+  });
+
+  it("leaves the trace empty when the recommender has no value head", async () => {
+    stubFetchBody(inspectableResponse(null));
+    const { result } = renderHook(() => useAIEngine(false, true));
+
+    await act(async () => {
+      await result.current.reset(1);
+    });
+
+    await waitFor(() => {
+      expect(result.current.valueTrace).toEqual([]);
+    });
+  });
+
+  it("clears the trace on reset so a new duel starts from scratch", async () => {
+    stubFetchBody(inspectableResponse({ value: 0.25, action_probs: [1] }));
+    const { result } = renderHook(() => useAIEngine(false, true));
+
+    await act(async () => {
+      await result.current.reset(1);
+    });
+    await waitFor(() => expect(result.current.valueTrace).toEqual([0.25]));
+
+    await act(async () => {
+      await result.current.reset(2);
+    });
+    await waitFor(() => expect(result.current.valueTrace).toEqual([0.25]));
+  });
+
+  it("counts an auto-passed prompt's readout in the trace", async () => {
+    // The trace push in finalize() runs before the auto-pass/else split, so a
+    // pass-only prompt -- which never reaches the branch the other tests in
+    // this file exercise -- must still land its value here.
+    vi.useFakeTimers();
+    const passResponse = {
+      ...inspectableResponse({ value: 0.5, action_probs: [1] }),
+      actions: [
+        {
+          index: 7,
+          description: "Pass",
+          card_code: 0,
+          card_name: "x",
+          category: "pass",
+        },
+      ],
+    };
+    const submitted = stubFetchSequence([passResponse, terminalResponse(1)]);
+    const { result } = renderHook(() => useAIEngine(false, true));
+
+    await act(async () => {
+      await result.current.reset(1);
+    });
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+
+    expect(submitted).toEqual([7]);
+    expect(result.current.valueTrace).toEqual([0.5]);
+    vi.useRealTimers();
+  });
+
+  it("drops the per-action probabilities when a response carries none", async () => {
+    // V(s) is sticky, the probabilities are not: they are keyed to one prompt's
+    // action list by position. Inference can fail mid-duel (the server catches
+    // it and sends recommendation: null with a fresh actions list), and carrying the
+    // previous array forward would paint its percentages onto unrelated
+    // actions -- silently, and wrongly.
+    stubFetchSequence([
+      inspectableResponse({ value: 0.25, action_probs: [0.6, 0.4] }),
+      { ...inspectableResponse(null), recommendation: null },
+    ]);
+    const { result } = renderHook(() => useAIEngine(false, true));
+
+    await act(async () => {
+      await result.current.reset(1);
+    });
+    expect(result.current.actionProbs).toEqual([0.6, 0.4]);
+
+    await act(async () => {
+      await result.current.submitAction(0);
+    });
+
+    await waitFor(() => {
+      expect(result.current.engineActions.length).toBeGreaterThan(0);
+      expect(result.current.actionProbs).toBeNull();
+    });
+    // The history still holds -- only the position-keyed array is dropped.
+    expect(result.current.valueTrace).toEqual([0.25]);
+  });
+
+  it("holds the last readout when a response carries none", async () => {
+    // A terminal step sends recommendation: null. Blanking on it would wipe the
+    // number at exactly the moment you want to read the duel back, so the
+    // panel keeps the newest evaluation it has seen until the next reset.
+    vi.useFakeTimers();
+    stubFetchSequence([
+      inspectableResponse({ value: 0.25, action_probs: [1] }),
+      terminalResponse(1),
+    ]);
+    const { result } = renderHook(() => useAIEngine(false, true));
+
+    await act(async () => {
+      await result.current.reset(1);
+    });
+    expect(result.current.valueTrace).toEqual([0.25]);
+
+    await act(async () => {
+      await result.current.submitAction(0);
+    });
+    // Drain the closing replay. `status` flips to "ended" the moment the
+    // response lands, before finalize() runs, so waiting on it would assert
+    // nothing -- `outcome` is set inside finalize and is the real signal.
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+    expect(result.current.outcome).toBe("win");
+
+    // The terminal response carried no readout, so it added no trace point.
+    expect(result.current.valueTrace).toEqual([0.25]);
+    vi.useRealTimers();
+  });
+
+  it("keeps the readout on screen for an auto-passed prompt", async () => {
+    // Most prompts in a real duel are single-action passes, so blanking the
+    // readout here would leave V(s) absent while the sparkline and the prompt
+    // count kept advancing. Only the recommendation clears -- there is nothing
+    // to click -- and the value describes the board either way.
+    vi.useFakeTimers();
+    const passResponse = {
+      ...inspectableResponse({ value: 0.5, action_probs: [1] }),
+      actions: [
+        {
+          index: 7,
+          description: "Pass",
+          card_code: 0,
+          card_name: "x",
+          category: "pass",
+        },
+      ],
+    };
+    stubFetchSequence([passResponse, terminalResponse(1)]);
+    const { result } = renderHook(() => useAIEngine(false, true));
+
+    // Read between finalize() and the queued auto-submit: this is the window
+    // the human actually looks at while the pass goes through.
+    await act(async () => {
+      await result.current.reset(1);
+    });
+
+    expect(result.current.recommendedActionIndex).toBeNull();
+    expect(result.current.valueTrace).toEqual([0.5]);
+
+    await act(async () => {
+      await vi.runAllTimersAsync();
+    });
+    vi.useRealTimers();
   });
 });

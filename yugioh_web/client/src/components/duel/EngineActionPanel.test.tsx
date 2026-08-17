@@ -60,3 +60,39 @@ describe("EngineActionPanel recommended tag", () => {
     ).toHaveLength(0);
   });
 });
+
+describe("EngineActionPanel probabilities", () => {
+  it("shows one percentage per action, aligned by list position", () => {
+    // actionProbs is index-aligned with actions[], NOT keyed by action.index:
+    // actions[0].index is 3 here, and 0.61 belongs to it.
+    const { container } = render(
+      <EngineActionPanel
+        actions={actions}
+        onAction={() => {}}
+        actionProbs={[0.61, 0.39]}
+      />
+    );
+    expect(container.textContent).toContain("61%");
+    expect(container.textContent).toContain("39%");
+  });
+
+  it("renders no percentages when none are supplied", () => {
+    const { container } = render(
+      <EngineActionPanel actions={actions} onAction={() => {}} />
+    );
+    expect(container.textContent).not.toMatch(/\d+%/);
+  });
+
+  it("omits the percentage for an action the array does not cover", () => {
+    // A short array must degrade per-row rather than throwing or showing NaN.
+    const { container } = render(
+      <EngineActionPanel
+        actions={actions}
+        onAction={() => {}}
+        actionProbs={[0.61]}
+      />
+    );
+    expect(container.textContent).toContain("61%");
+    expect(container.textContent).not.toContain("NaN");
+  });
+});

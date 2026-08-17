@@ -678,7 +678,7 @@ def test_recommend_absent_when_flag_off(lib, db_path, script_dirs, deck_path):
     client = _make_app_with_recommender(db_path, script_dirs, deck_path, _FakeRec())
     resp = client.post("/api/web/reset", json={"seed": 42})
     assert resp.status_code == 200
-    assert resp.json()["recommended_action_index"] is None
+    assert resp.json()["recommendation"] is None
 
 
 def test_recommend_present_and_legal_when_flag_on(lib, db_path, script_dirs, deck_path):
@@ -686,8 +686,9 @@ def test_recommend_present_and_legal_when_flag_on(lib, db_path, script_dirs, dec
     resp = client.post("/api/web/reset", json={"seed": 42, "recommend": True})
     assert resp.status_code == 200
     data = resp.json()
-    rec_idx = data["recommended_action_index"]
-    assert rec_idx is not None
+    rec = data["recommendation"]
+    assert rec is not None
+    rec_idx = rec["action_index"]
     offered = {a["index"] for a in data["actions"]}
     assert rec_idx in offered
 
@@ -696,7 +697,7 @@ def test_recommend_none_without_recommender(lib, db_path, script_dirs, deck_path
     client = _make_app_with_recommender(db_path, script_dirs, deck_path, None)
     resp = client.post("/api/web/reset", json={"seed": 42, "recommend": True})
     assert resp.status_code == 200
-    assert resp.json()["recommended_action_index"] is None
+    assert resp.json()["recommendation"] is None
 
 
 def test_state_never_recommends(lib, db_path, script_dirs, deck_path):
@@ -704,7 +705,7 @@ def test_state_never_recommends(lib, db_path, script_dirs, deck_path):
     client.post("/api/web/reset", json={"seed": 42, "recommend": True})
     resp = client.get("/api/web/state")
     assert resp.status_code == 200
-    assert resp.json()["recommended_action_index"] is None
+    assert resp.json()["recommendation"] is None
 
 
 def test_config_reports_recommend_available_true(lib, db_path, script_dirs, deck_path):
@@ -736,7 +737,7 @@ def test_reset_survives_reseed_failure(lib, db_path, script_dirs, deck_path):
     assert resp.status_code == 200
     data = resp.json()
     assert data["done"] is False
-    assert data["recommended_action_index"] is None
+    assert data["recommendation"] is None
 
 
 class _RaisingSelectRec(_FakeRec):
@@ -752,10 +753,10 @@ def test_step_survives_recommend_failure(lib, db_path, script_dirs, deck_path):
     client = _make_app_with_recommender(db_path, script_dirs, deck_path, _RaisingSelectRec())
     reset = client.post("/api/web/reset", json={"seed": 42, "recommend": True})
     assert reset.status_code == 200
-    assert reset.json()["recommended_action_index"] is None
+    assert reset.json()["recommendation"] is None
     step = client.post("/api/web/step", json={"action_index": 0})
     assert step.status_code == 200
-    assert step.json()["recommended_action_index"] is None
+    assert step.json()["recommendation"] is None
 
 
 def test_failed_reset_does_not_arm_recommender(lib, db_path, script_dirs, deck_path):
@@ -773,7 +774,7 @@ def test_failed_reset_does_not_arm_recommender(lib, db_path, script_dirs, deck_p
     # A subsequent reset that does NOT request recommendation stays off.
     ok = client.post("/api/web/reset", json={"seed": 42})
     assert ok.status_code == 200
-    assert ok.json()["recommended_action_index"] is None
+    assert ok.json()["recommendation"] is None
 
 
 def test_card_info_returns_printed_face(web_client):
@@ -858,8 +859,6 @@ def test_recommendation_carries_the_readout_when_the_recommender_has_one(web_cli
         "value": 0.5,
         "action_probs": [0.6, 0.4],
     }
-    # Superseded, still emitted, and must agree with the object.
-    assert data["recommended_action_index"] == 0
 
 
 def test_recommendation_readouts_are_null_without_a_value_head(web_client):
@@ -881,4 +880,3 @@ def test_recommendation_readouts_are_null_without_a_value_head(web_client):
         "value": None,
         "action_probs": None,
     }
-    assert data["recommended_action_index"] == 0

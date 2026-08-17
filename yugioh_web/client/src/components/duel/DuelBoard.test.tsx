@@ -277,3 +277,94 @@ describe("DuelBoard autoplay control", () => {
     expect(getByRole("button", { name: "RESTART" })).toBeTruthy();
   });
 });
+
+describe("DuelBoard inspector control", () => {
+  it("offers the inspector pill when AI Assist supplies a toggle", () => {
+    const { getByText } = renderBoard({
+      outcome: null,
+      onToggleInspector: () => {},
+      inspectorOn: false,
+    });
+    expect(getByText(/INSPECT: OFF/)).toBeTruthy();
+  });
+
+  it("hides the pill when AI Assist is off", () => {
+    // AI Assist off reaches the board as an omitted handler.
+    const { queryByText } = renderBoard({ outcome: null });
+    expect(queryByText(/INSPECT:/)).toBeNull();
+  });
+
+  it("keeps the pill after the duel ends, unlike autoplay", () => {
+    const { getByText, queryByText } = renderBoard({
+      outcome: "win",
+      onToggleInspector: () => {},
+      inspectorOn: true,
+      onToggleAutoplay: () => {},
+    });
+    // Dismiss the result overlay first -- it fully replaces the board,
+    // including the control strip, until "VIEW BOARD" is clicked.
+    fireEvent.click(getByText("VIEW BOARD"));
+    expect(getByText(/INSPECT: ON/)).toBeTruthy();
+    expect(queryByText(/AUTOPLAY:/)).toBeNull();
+  });
+
+  it("reports clicks through the handler", () => {
+    const onToggleInspector = vi.fn();
+    const { getByText } = renderBoard({
+      outcome: null,
+      onToggleInspector,
+      inspectorOn: false,
+    });
+    fireEvent.click(getByText(/INSPECT: OFF/));
+    expect(onToggleInspector).toHaveBeenCalledOnce();
+  });
+
+  it("shows the MODEL panel and the probability column together", () => {
+    // One toggle governs everything the inspector adds, so the two are
+    // asserted as a pair: either half appearing without the other is the bug.
+    // AI Assist keeps recommending regardless -- only the readouts are hidden.
+    const inspectable = {
+      outcome: null,
+      onToggleInspector: () => {},
+      engineActions: summonActions,
+      onEngineAction: () => {},
+      valueTrace: [0.5],
+      actionProbs: [0.61],
+    };
+
+    const { queryByText, rerender } = renderBoard({
+      ...inspectable,
+      inspectorOn: false,
+    });
+    expect(queryByText("MODEL")).toBeNull();
+    expect(queryByText("61%")).toBeNull();
+
+    rerender(
+      <DuelBoard {...boardProps({ ...inspectable, inspectorOn: true })} />
+    );
+    expect(queryByText("MODEL")).not.toBeNull();
+    expect(queryByText("61%")).not.toBeNull();
+  });
+
+  it("puts MODEL in the left column, directly after CARD DETAIL", () => {
+    const { getByText } = renderBoard({
+      outcome: null,
+      onToggleInspector: () => {},
+      inspectorOn: true,
+      valueTrace: [0.5],
+    });
+
+    // A PanelSection's title sits in a header div inside the section, so the
+    // section is the title's parent and the column is the section's parent.
+    const cardDetail = getByText("CARD DETAIL").parentElement!;
+    const model = getByText("MODEL").parentElement!;
+
+    expect(model.parentElement).toBe(cardDetail.parentElement);
+    expect(cardDetail.nextElementSibling).toBe(model);
+    // Not the right-hand column, which owns LOG.
+    expect(cardDetail.parentElement).not.toContain(getByText("LOG"));
+
+    // The 80:20 split itself is not asserted here: jsdom's CSSOM drops the
+    // `flex` shorthand, so the inline style is unreadable from a test.
+  });
+});

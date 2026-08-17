@@ -41,6 +41,17 @@ export interface UseAIEngineReturn {
   outcome: DuelOutcome | null;
   engineActions: EngineAction[];
   recommendedActionIndex: number | null;
+  /** Policy probabilities for the prompt on screen, index-aligned with
+   *  `engineActions`. Unlike `valueTrace` this is NOT sticky: it is keyed to
+   *  one prompt's action list by position, so carrying it forward would paint
+   *  stale percentages onto unrelated actions. It shares `engineActions`'
+   *  lifecycle exactly. */
+  actionProbs: number[] | null;
+  /** One V(s) sample per prompt this duel, oldest first; the last is the
+   *  current evaluation. Only grows -- a response carrying no readout leaves
+   *  the last one standing -- until `reset()` clears it. Accumulates whether
+   *  or not the inspector is on, so turning it on shows the full history. */
+  valueTrace: number[];
   /** True while the agent seat is playing the recommender's advice itself. */
   autoplay: boolean;
   /** Flip autoplay. Switching on also plays the prompt already on screen. */
@@ -341,9 +352,11 @@ export function useAIEngine(
   const [state, setState] = useState<DuelState | null>(null);
   const [outcome, setOutcome] = useState<DuelOutcome | null>(null);
   const [engineActions, setEngineActions] = useState<EngineAction[]>([]);
+  const [actionProbs, setActionProbs] = useState<number[] | null>(null);
   const [recommendedActionIndex, setRecommendedActionIndex] = useState<
     number | null
   >(null);
+  const [valueTrace, setValueTrace] = useState<number[]>([]);
   const [autoplay, setAutoplay] = useState(false);
   // The ref, not the state, is what finalize() reads. toggleAutoplay writes it
   // synchronously so a response arriving between the click and the state
@@ -461,6 +474,19 @@ export function useAIEngine(
         // until the board has caught up.
         setOutcome(duelOutcome(resp.done, resp.reward));
 
+        // Before the branch below, so every prompt contributes a point --
+        // auto-passed and autoplayed ones are real state evaluations even
+        // though the human never chose. Here rather than at response receipt
+        // so the sparkline advances in step with the frame replay.
+        const nextRecommendation = resp.recommendation ?? null;
+        // Gated on the value, not on the recommendation: a recommender with no
+        // value head still recommends, so the object arrives with `value` null
+        // and there is nothing to plot.
+        const nextValue = nextRecommendation?.value ?? null;
+        if (nextValue != null) {
+          setValueTrace(prev => [...prev, nextValue]);
+        }
+
         // Auto-pass or show actions
         if (
           !resp.done &&
@@ -468,12 +494,15 @@ export function useAIEngine(
           AUTO_PASS_CATEGORIES.has(resp.actions[0].category)
         ) {
           setEngineActions([]);
+          setActionProbs(null);
           setEnginePrompt(null);
           setRecommendedActionIndex(null);
           setTimeout(() => submitRef.current?.(resp.actions[0].index), 0);
         } else {
+          const idx = nextRecommendation?.action_index ?? null;
           setEngineActions(resp.actions);
-          setRecommendedActionIndex(resp.recommended_action_index);
+          setActionProbs(nextRecommendation?.action_probs ?? null);
+          setRecommendedActionIndex(idx);
 
           // Autoplay: same seam as auto-pass above, but driven by the
           // recommender. Publishing the actions first, then dwelling, is what
@@ -481,7 +510,6 @@ export function useAIEngine(
           // long enough to see what it was chosen over. No recommendation
           // means no guess: the actions stay up for the human and autoplay
           // resumes at the next prompt that has advice.
-          const idx = resp.recommended_action_index;
           if (
             autoplayRef.current &&
             !resp.done &&
@@ -497,6 +525,7 @@ export function useAIEngine(
       // them on screen before finalize() publishes the next prompt.
       if (frames.length > 0) {
         setEngineActions([]);
+        setActionProbs(null);
         setEnginePrompt(null);
         setRecommendedActionIndex(null);
         startReplay(logRef.current, frames, finalize);
@@ -554,6 +583,8 @@ export function useAIEngine(
       logRef.current = [];
       setState(INITIAL_DUEL_STATE);
       setOutcome(null);
+      setValueTrace([]);
+      setActionProbs(null);
       // Every duel starts unattended-off, whether this is a restart, a coin-flip
       // restart that remounts the hook, or a deck change.
       autoplayRef.current = false;
@@ -637,6 +668,8 @@ export function useAIEngine(
     outcome,
     engineActions,
     recommendedActionIndex,
+    actionProbs,
+    valueTrace,
     autoplay,
     toggleAutoplay,
     enginePrompt,

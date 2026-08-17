@@ -91,8 +91,7 @@ def _build_response(
             when True the opponent's hidden cards are revealed at render time.
         recommendation: The recommender's output for this prompt, or None when
             AI-assist is off / unavailable / this is the read-only /state
-            endpoint. Supplies the `recommendation` object and the superseded
-            `recommended_action_index` beside it.
+            endpoint.
     """
     card_db = serving.card_db
     frames = [
@@ -133,10 +132,6 @@ def _build_response(
         # One object, so the index and the readouts it was computed with cannot
         # arrive out of step.
         "recommendation": (recommendation.to_dict() if recommendation is not None else None),
-        # Superseded by `recommendation.action_index`; kept while clients migrate.
-        "recommended_action_index": (
-            recommendation.action_index if recommendation is not None else None
-        ),
     }
 
 

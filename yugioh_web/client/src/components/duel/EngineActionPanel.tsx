@@ -117,12 +117,16 @@ interface EngineActionPanelProps {
   actions: EngineAction[];
   onAction: (actionIndex: number) => void;
   recommendedIndex?: number | null;
+  /** Policy probabilities index-aligned with `actions`, or null when AI Assist
+   *  is off or the recommender has no policy head to report. */
+  actionProbs?: number[] | null;
 }
 
 export function EngineActionPanel({
   actions,
   onAction,
   recommendedIndex,
+  actionProbs,
 }: EngineActionPanelProps) {
   return (
     <div className="flex flex-col h-full">
@@ -147,10 +151,11 @@ export function EngineActionPanel({
             No actions available
           </div>
         ) : (
-          actions.map(action => {
+          actions.map((action, position) => {
             const colors = CATEGORY_COLORS[action.category] ?? DEFAULT_COLOR;
             const isRecommended =
               recommendedIndex != null && action.index === recommendedIndex;
+            const prob = actionProbs?.[position];
             return (
               <button
                 key={action.index}
@@ -202,22 +207,64 @@ export function EngineActionPanel({
 
                 {/* Text content */}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  {/* Category badge */}
+                  {/* Category badge, with the probability riding the unused
+                      space beside it. Kept off the description's line so the
+                      action text keeps the full row width and does not ellipse. */}
                   <div
                     style={{
-                      display: "inline-block",
-                      padding: "1px 5px",
-                      borderRadius: "3px",
-                      fontSize: "0.45rem",
-                      fontFamily: "'Orbitron', sans-serif",
-                      letterSpacing: "0.08em",
-                      background: colors.bg,
-                      border: `1px solid ${colors.border}`,
-                      color: colors.text,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: "6px",
                       marginBottom: "2px",
                     }}
                   >
-                    {categoryLabel(action.category)}
+                    <span
+                      style={{
+                        padding: "1px 5px",
+                        borderRadius: "3px",
+                        fontSize: "0.45rem",
+                        fontFamily: "'Orbitron', sans-serif",
+                        letterSpacing: "0.08em",
+                        background: colors.bg,
+                        border: `1px solid ${colors.border}`,
+                        color: colors.text,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {categoryLabel(action.category)}
+                    </span>
+                    {prob != null && (
+                      <span
+                        style={{
+                          position: "relative",
+                          flexShrink: 0,
+                          width: "34px",
+                          textAlign: "right",
+                          fontFamily: "'Share Tech Mono', monospace",
+                          fontSize: "0.55rem",
+                          color: "#c8d8e8",
+                        }}
+                        title={`Policy probability ${(prob * 100).toFixed(1)}%`}
+                      >
+                        {/* Proportional bar behind the number so ranking reads
+                            at a glance without comparing digits. */}
+                        <span
+                          style={{
+                            position: "absolute",
+                            right: 0,
+                            top: 0,
+                            bottom: 0,
+                            width: `${Math.max(0, Math.min(1, prob)) * 100}%`,
+                            background: "rgba(0,245,255,0.15)",
+                            borderRadius: "2px",
+                          }}
+                        />
+                        <span style={{ position: "relative" }}>
+                          {Math.round(prob * 100)}%
+                        </span>
+                      </span>
+                    )}
                   </div>
                   {/* Description */}
                   <div

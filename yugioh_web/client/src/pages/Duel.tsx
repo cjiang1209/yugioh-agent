@@ -102,6 +102,8 @@ function AIModeDuel({
     outcome,
     engineActions,
     recommendedActionIndex,
+    valueTrace,
+    actionProbs,
     autoplay,
     toggleAutoplay,
     enginePrompt,
@@ -112,6 +114,8 @@ function AIModeDuel({
     reset,
     submitAction,
   } = useAIEngine(openCards, recommend);
+
+  const [inspectorOn, setInspectorOn] = useState(false);
 
   const deck0 = agentPlayer === 0 ? myDeck : oppDeck;
   const deck1 = agentPlayer === 0 ? oppDeck : myDeck;
@@ -182,6 +186,14 @@ function AIModeDuel({
       // Withheld when AI Assist is off: with no recommendations arriving there
       // is nothing for autoplay to play.
       onToggleAutoplay={recommend ? toggleAutoplay : undefined}
+      inspectorOn={inspectorOn}
+      // Withheld when AI Assist is off: with no recommendation arriving there
+      // is no readout to inspect.
+      onToggleInspector={
+        recommend ? () => setInspectorOn(on => !on) : undefined
+      }
+      valueTrace={valueTrace}
+      actionProbs={actionProbs}
       enginePrompt={enginePrompt}
       onEngineAction={submitAction}
       outcome={outcome}
