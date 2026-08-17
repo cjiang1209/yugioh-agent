@@ -814,3 +814,71 @@ def test_card_info_link_monster_has_arrows(web_client):
 def test_card_info_unknown_code_returns_404(web_client):
     resp = web_client.get("/api/web/card/99999999")
     assert resp.status_code == 404
+
+
+# ─── Recommendation field ───────────────────────────────────────────────────
+
+
+def test_recommendation_is_null_without_a_recommender(web_client):
+    """The field is always present so clients need no version check, but it is
+    null when AI Assist was never configured."""
+    data = _reset(web_client)
+    assert "recommendation" in data
+    assert data["recommendation"] is None
+
+    data = _step(web_client)
+    assert data["recommendation"] is None
+
+
+def test_state_endpoint_never_recommends(web_client):
+    """GET /state is read-only and runs no inference, so it cannot report a
+    recommendation even when AI Assist is on."""
+    _reset(web_client)
+    resp = web_client.get("/api/web/state")
+    assert resp.status_code == 200
+    assert resp.json()["recommendation"] is None
+
+
+def test_recommendation_carries_the_readout_when_the_recommender_has_one(web_client):
+    """With AI Assist armed and a recommender that reports a value, the field
+    mirrors it onto the wire alongside the recommended index."""
+    from yugioh_env.opponent import Inference
+
+    class _WithValueHead(_FakeRec):
+        def select_action(self, obs):
+            return 0, Inference(value=0.5, action_probs=[0.6, 0.4])
+
+    web_client.app.state.recommender = _WithValueHead()
+    resp = web_client.post("/api/web/reset", json={"seed": 42, "recommend": True})
+    assert resp.status_code == 200
+    data = resp.json()
+
+    assert data["recommendation"] == {
+        "action_index": 0,
+        "value": 0.5,
+        "action_probs": [0.6, 0.4],
+    }
+    # Superseded, still emitted, and must agree with the object.
+    assert data["recommended_action_index"] == 0
+
+
+def test_recommendation_readouts_are_null_without_a_value_head(web_client):
+    """A greedy recommender still recommends; it just has nothing to inspect."""
+
+    class _NoValueHead(_FakeRec):
+        def select_action(self, obs):
+            return 0, None
+
+    web_client.app.state.recommender = _NoValueHead()
+    resp = web_client.post("/api/web/reset", json={"seed": 42, "recommend": True})
+    assert resp.status_code == 200
+    data = resp.json()
+
+    # A recommender with no value head still recommends; only the readouts
+    # inside the object are null.
+    assert data["recommendation"] == {
+        "action_index": 0,
+        "value": None,
+        "action_probs": None,
+    }
+    assert data["recommended_action_index"] == 0

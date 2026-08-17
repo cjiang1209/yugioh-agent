@@ -4,7 +4,7 @@ import pytest
 
 from yugioh_env.server.recommender import (
     make_recommender,
-    recommend_action_index,
+    recommend,
     recommender_device_from_env,
     recommender_spec_from_env,
 )
@@ -48,10 +48,9 @@ def test_device_from_env_default(monkeypatch):
     assert recommender_device_from_env() == "cuda"
 
 
-def test_recommend_action_index_passes_obs_through():
-    """The recommender receives the observation directly -- there is no
-    longer a needs_observation split -- and its choice flows straight
-    through as the returned action index."""
+def test_recommend_passes_obs_through():
+    """The recommender receives the observation directly, and its choice
+    flows straight through as the returned action index."""
     from yugioh_core.encoding import MAX_ACTIONS
     from yugioh_env.models import YuGiOhObservation
 
@@ -66,16 +65,16 @@ def test_recommend_action_index_passes_obs_through():
     mask = [1, 1, 1] + [0] * (MAX_ACTIONS - 3)
     obs = YuGiOhObservation(action_mask=mask)
     rec = FakeRecommender()
-    idx = recommend_action_index(rec, obs)
+    result = recommend(rec, obs)
 
-    assert idx == 2
-    assert obs.action_mask[idx] == 1
+    assert result.action_index == 2
+    assert obs.action_mask[result.action_index] == 1
     assert rec.seen is obs
 
 
-def test_recommend_action_index_returns_recommenders_choice():
-    """recommend_action_index is a thin pass-through: whatever index the
-    recommender picks is returned unchanged, for any recommender kind."""
+def test_recommend_returns_recommenders_choice():
+    """recommend is a thin pass-through: whatever index the recommender picks
+    is returned unchanged, for any recommender kind."""
     from yugioh_core.encoding import MAX_ACTIONS
     from yugioh_env.models import YuGiOhObservation
 
@@ -84,9 +83,44 @@ def test_recommend_action_index_returns_recommenders_choice():
             return int(obs.action_mask.sum()) - 1, None
 
     obs = YuGiOhObservation(action_mask=[1, 1] + [0] * (MAX_ACTIONS - 2))
-    idx = recommend_action_index(FakeGreedy(), obs)
+    result = recommend(FakeGreedy(), obs)
 
-    assert idx == 1
+    assert result.action_index == 1
+
+
+def test_recommend_carries_the_value_head_readout_when_present():
+    from yugioh_core.encoding import MAX_ACTIONS
+    from yugioh_env.models import YuGiOhObservation
+    from yugioh_env.opponent import Inference
+
+    class FakeNetworkRecommender:
+        def select_action(self, obs):
+            return 0, Inference(value=-0.25, action_probs=[0.7, 0.3])
+
+    obs = YuGiOhObservation(action_mask=[1, 1] + [0] * (MAX_ACTIONS - 2))
+    result = recommend(FakeNetworkRecommender(), obs)
+
+    assert result.action_index == 0
+    assert result.value == -0.25
+    assert result.action_probs == [0.7, 0.3]
+
+
+def test_recommend_reports_no_readout_without_a_value_head():
+    """random / greedy / ygo-agent pick an index but have nothing to inspect,
+    so both readouts must be None rather than zero."""
+    from yugioh_core.encoding import MAX_ACTIONS
+    from yugioh_env.models import YuGiOhObservation
+
+    class FakeGreedy:
+        def select_action(self, obs):
+            return 1, None
+
+    obs = YuGiOhObservation(action_mask=[1, 1] + [0] * (MAX_ACTIONS - 2))
+    result = recommend(FakeGreedy(), obs)
+
+    assert result.action_index == 1
+    assert result.value is None
+    assert result.action_probs is None
 
 
 def test_recommender_declines_on_all_zero_mask(monkeypatch) -> None:
@@ -104,7 +138,7 @@ def test_recommender_declines_on_all_zero_mask(monkeypatch) -> None:
     called = []
     monkeypatch.setattr(
         web_api,
-        "recommend_action_index",
+        "recommend",
         lambda *a, **k: called.append(1) or 0,
     )
 

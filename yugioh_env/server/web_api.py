@@ -15,7 +15,7 @@ from yugioh_env.event_logger import EventDescriber
 from yugioh_env.models import YuGiOhAction
 from yugioh_env.server.board_state import render_board
 from yugioh_env.server.card_info import CardInfo, build_card_info
-from yugioh_env.server.recommender import recommend_action_index
+from yugioh_env.server.recommender import Recommendation, recommend
 from yugioh_env.server.yugioh_environment import API_PHASE_NAMES, agent_reward
 
 web_router = APIRouter(prefix="/api/web")
@@ -79,7 +79,7 @@ def _build_response(
     *,
     raw_frames: list[dict],
     open_cards: bool,
-    recommended_action_index: int | None = None,
+    recommendation: Recommendation | None = None,
 ) -> dict:
     """Build the unified JSON response from ServingEnv state (the ONLY builder).
 
@@ -89,6 +89,10 @@ def _build_response(
             fresh to render).
         open_cards: Per-duel display policy (set at /reset, persisted in app.state);
             when True the opponent's hidden cards are revealed at render time.
+        recommendation: The recommender's output for this prompt, or None when
+            AI-assist is off / unavailable / this is the read-only /state
+            endpoint. Supplies the `recommendation` object and the superseded
+            `recommended_action_index` beside it.
     """
     card_db = serving.card_db
     frames = [
@@ -126,12 +130,18 @@ def _build_response(
         "done": done,
         "reward": reward,
         "frames": frames,
-        "recommended_action_index": recommended_action_index,
+        # One object, so the index and the readouts it was computed with cannot
+        # arrive out of step.
+        "recommendation": (recommendation.to_dict() if recommendation is not None else None),
+        # Superseded by `recommendation.action_index`; kept while clients migrate.
+        "recommended_action_index": (
+            recommendation.action_index if recommendation is not None else None
+        ),
     }
 
 
-def _resolve_recommendation(request: Request, obs) -> int | None:
-    """Best-effort recommended action index for the current prompt, or None.
+def _resolve_recommendation(request: Request, obs) -> Recommendation | None:
+    """Best-effort recommendation for the current prompt, or None.
 
     Returns None when AI-assist is disabled for this duel, no recommender is
     configured, the observation is terminal/empty, or inference fails. Called
@@ -144,7 +154,7 @@ def _resolve_recommendation(request: Request, obs) -> int | None:
     if obs is None or obs.done or not obs.action_mask.any():
         return None
     try:
-        return recommend_action_index(recommender, obs)
+        return recommend(recommender, obs)
     except Exception:
         logger.warning("Recommendation failed; returning no recommendation", exc_info=True)
         return None
@@ -237,7 +247,7 @@ def reset_duel(body: ResetRequest, request: Request) -> dict:
         obs.reward,
         raw_frames=raw_frames,
         open_cards=body.open_cards,
-        recommended_action_index=_resolve_recommendation(request, obs),
+        recommendation=_resolve_recommendation(request, obs),
     )
 
 
@@ -312,7 +322,7 @@ def step_duel(body: StepRequest, request: Request) -> dict:
         obs.reward,
         raw_frames=raw_frames,
         open_cards=getattr(request.app.state, "open_cards", False),
-        recommended_action_index=_resolve_recommendation(request, obs),
+        recommendation=_resolve_recommendation(request, obs),
     )
 
 
