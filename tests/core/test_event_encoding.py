@@ -9,7 +9,7 @@ from yugioh_core.constants import (
 )
 from yugioh_core.encoding import (
     EVENT_ENTRY_FEATURES,
-    decode_u32,
+    EVENT_LAYOUT,
     encode_event_entry,
 )
 
@@ -28,13 +28,12 @@ def test_chaining_entry_roundtrips_code_and_desc():
     )
     assert feat.dtype == np.uint8
     assert feat.shape == (EVENT_ENTRY_FEATURES,)
-    assert feat[0] == MSG_CHAINING  # raw msg_type discriminator
-    assert feat[1] == 1  # raw controller
-    assert feat[2] == 0  # raw turn_player
-    assert feat[4] == 7  # turn_count (uint8)
-    assert decode_u32(feat, 5) == 89631139  # card_code [5:9]
-    desc = int.from_bytes(bytes(feat[17:25]), "little")
-    assert desc == 0x1234_0000_0000_0005  # desc [17:25]
+    assert EVENT_LAYOUT.read(feat, "msg_type") == MSG_CHAINING  # raw discriminator
+    assert EVENT_LAYOUT.read(feat, "controller") == 1  # raw seat
+    assert EVENT_LAYOUT.read(feat, "turn_player") == 0  # raw seat
+    assert EVENT_LAYOUT.read(feat, "turn_count") == 7
+    assert EVENT_LAYOUT.read(feat, "card_code") == 89631139
+    assert EVENT_LAYOUT.read(feat, "desc") == 0x1234_0000_0000_0005
 
 
 def test_attack_entry_carries_target():
@@ -51,17 +50,17 @@ def test_attack_entry_carries_target():
         target_sequence=3,
         turn_count=2,
     )
-    assert decode_u32(feat, 11) == 200  # target_code [11:15]
-    assert feat[15] == LOCATION_MZONE  # target_location
-    assert feat[16] == 3  # target_sequence
+    assert EVENT_LAYOUT.read(feat, "target_code") == 200
+    assert EVENT_LAYOUT.read(feat, "target_location") == LOCATION_MZONE
+    assert EVENT_LAYOUT.read(feat, "target_sequence") == 3
 
 
 def test_hint_fields_grouped_in_payload():
     feat = encode_event_entry(msg_type=MSG_HINT, hint_type=HINT_NUMBER, hint_value=16)
-    assert feat[25] == HINT_NUMBER  # hint_type [25]
-    assert decode_u32(feat, 26) == 16  # hint_value [26:30]
+    assert EVENT_LAYOUT.read(feat, "hint_type") == HINT_NUMBER
+    assert EVENT_LAYOUT.read(feat, "hint_value") == 16
 
 
 def test_empty_default_is_zero_msg_type():
     feat = encode_event_entry(msg_type=0)
-    assert feat[0] == 0
+    assert EVENT_LAYOUT.read(feat, "msg_type") == 0

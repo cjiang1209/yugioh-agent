@@ -49,12 +49,11 @@ from yugioh_core.constants import (
 from yugioh_core.encoding import (
     ACTION_FEATURES,
     CARD_FEATURES,
-    GLOBAL_FEATURES,
     MAX_ACTIONS,
     MAX_CARDS,
     ZONE_SLOTS,
     encode_card,
-    encode_u16,
+    encode_global,
     encode_u32,
 )
 from yugioh_mud.game_state import CardEntry, MUDGameState
@@ -271,57 +270,28 @@ class MUDObservationBuilder:
         gs: MUDGameState,
         prompt: ParsedPrompt,
     ) -> np.ndarray:
-        g = np.zeros(GLOBAL_FEATURES, dtype=np.uint8)
-        idx = 0
-
-        # my_lp (2 bytes)
-        g[idx], g[idx + 1] = encode_u16(min(gs.my_lp, 65535))
-        idx += 2
-        # opp_lp (2 bytes)
-        g[idx], g[idx + 1] = encode_u16(min(gs.opp_lp, 65535))
-        idx += 2
-        # turn_count
-        g[idx] = min(gs.turn, 255)
-        idx += 1
-        # phase (2 bytes, uint16 LE -- the bitmask reaches 0x200, so a single
-        # byte drops MAIN2/END and shifts every later field by one)
-        g[idx], g[idx + 1] = encode_u16(PHASE_MAP.get(gs.phase.lower(), 0))
-        idx += 2
-        # is_my_turn
-        g[idx] = 1 if gs.is_my_turn else 0
-        idx += 1
-        # chain_count — TODO: MUD text parser doesn't track chain depth yet
-        g[idx] = 0
-        idx += 1
-        # msg_type
-        g[idx] = PROMPT_MSG_MAP.get(prompt.prompt_type, 0) & 0xFF
-        idx += 1
-        # Per-player counts: [agent, opponent] × [deck, hand, grave, banished, extra]
-        g[idx] = min(gs.my_deck_count, 255)
-        idx += 1
-        g[idx] = min(len(gs.my_hand), 255)
-        idx += 1
-        g[idx] = min(len(gs.my_graveyard), 255)
-        idx += 1
-        g[idx] = min(len(gs.my_banished), 255)
-        idx += 1
-        g[idx] = min(len(gs.my_extra), 255)
-        idx += 1
-        g[idx] = min(gs.opp_deck_count, 255)
-        idx += 1
-        g[idx] = min(gs.opp_hand_count, 255)
-        idx += 1
-        g[idx] = min(len(gs.opp_graveyard), 255)
-        idx += 1
-        g[idx] = min(len(gs.opp_banished), 255)
-        idx += 1
-        g[idx] = min(len(gs.opp_extra), 255)
-        idx += 1
-        # is_finished — always 0 (we're still playing if we're building obs)
-        g[idx] = 0
-        idx += 1
-
-        return g
+        return encode_global(
+            gs.my_lp,
+            gs.opp_lp,
+            gs.turn,
+            PHASE_MAP.get(gs.phase.lower(), 0),
+            gs.is_my_turn,
+            # chain_count -- the MUD text parser doesn't track chain depth yet.
+            0,
+            PROMPT_MSG_MAP.get(prompt.prompt_type, 0),
+            gs.my_deck_count,
+            len(gs.my_hand),
+            len(gs.my_graveyard),
+            len(gs.my_banished),
+            len(gs.my_extra),
+            gs.opp_deck_count,
+            gs.opp_hand_count,
+            len(gs.opp_graveyard),
+            len(gs.opp_banished),
+            len(gs.opp_extra),
+            # is_finished -- we're still playing if we're building an observation.
+            False,
+        )
 
     # ------------------------------------------------------------------
     # Action encoding

@@ -32,13 +32,11 @@ from yugioh_core.constants import (
 from yugioh_core.encoding import (
     ACTION_FEATURES,
     CARD_FEATURES,
-    GLOBAL_FEATURES,
     MAX_ACTIONS,
     MAX_CARDS,
-    encode_card,
-    encode_u16,
-    encode_u32,
-    encode_u64,
+    encode_global,
+    pack_action_into,
+    pack_card_into,
 )
 from yugioh_env.models import (
     ActivateEffect,
@@ -62,50 +60,50 @@ from yugioh_env.models import (
 
 
 def _encode_cards(obs: YuGiOhObservation) -> np.ndarray:
-    cards = np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8)
+    """Pack the board into one buffer, a row per card.
+
+    Every card writes straight into the shared buffer, so a board costs one
+    allocation. Unoccupied rows keep the zeros the buffer starts with.
+    """
+    buf = bytearray(MAX_CARDS * CARD_FEATURES)
     for i, c in enumerate(obs.cards[:MAX_CARDS]):
-        cards[i] = encode_card(
-            code=c.code,
-            location=c.location,
-            sequence=c.sequence,
-            position=c.position,
-            controller=c.controller,
-            is_public=c.is_public,
-            card_type=c.card_type,
-            level=c.level,
-            attribute=c.attribute,
-            race=c.race & 0xFFFFFFFF,
-            attack=c.attack,
-            defense=c.defense,
-            lscale=c.lscale,
-            rscale=c.rscale,
-            link_marker=c.link_marker,
-            counter_count=c.counter_count,
-            negated=c.negated,
-            is_overlay=c.is_overlay,
+        # Positional, and the order is the layout's: keyword arguments cost
+        # about as much again as the packing itself at this call rate.
+        pack_card_into(
+            buf,
+            i * CARD_FEATURES,
+            c.code,
+            c.location,
+            c.sequence,
+            c.position,
+            c.controller,
+            c.is_public,
+            c.card_type,
+            c.level,
+            c.attribute,
+            c.race,
+            c.attack,
+            c.defense,
+            c.lscale,
+            c.rscale,
+            c.link_marker,
+            c.counter_count,
+            c.negated,
+            c.is_overlay,
         )
-    return cards
+    return np.frombuffer(buf, dtype=np.uint8).reshape(MAX_CARDS, CARD_FEATURES)
 
 
 def _encode_global(obs: YuGiOhObservation) -> np.ndarray:
-    g = np.zeros(GLOBAL_FEATURES, dtype=np.uint8)
     s = obs.global_state
-    idx = 0
-    g[idx], g[idx + 1] = encode_u16(min(s.my_lp, 65535))
-    idx += 2
-    g[idx], g[idx + 1] = encode_u16(min(s.opp_lp, 65535))
-    idx += 2
-    g[idx] = min(s.turn, 255)
-    idx += 1
-    g[idx], g[idx + 1] = encode_u16(s.phase)
-    idx += 2
-    g[idx] = 1 if s.is_my_turn else 0
-    idx += 1
-    g[idx] = min(s.chain_count, 255)
-    idx += 1
-    g[idx] = s.msg_type & 0xFF
-    idx += 1
-    for count in (
+    return encode_global(
+        s.my_lp,
+        s.opp_lp,
+        s.turn,
+        s.phase,
+        s.is_my_turn,
+        s.chain_count,
+        s.msg_type,
         s.my_deck,
         s.my_hand,
         s.my_grave,
@@ -116,11 +114,8 @@ def _encode_global(obs: YuGiOhObservation) -> np.ndarray:
         s.opp_grave,
         s.opp_banished,
         s.opp_extra,
-    ):
-        g[idx] = min(count, 255)
-        idx += 1
-    g[idx] = 1 if s.is_finished else 0
-    return g
+        s.is_finished,
+    )
 
 
 def _encode_action_mask(obs: YuGiOhObservation) -> np.ndarray:
@@ -174,9 +169,9 @@ def _confirm_card_fields(obs: YuGiOhObservation) -> tuple[int, int, int, int]:
 
 
 def _row_fields(d, i: int, msg_type: int, obs: YuGiOhObservation) -> dict:
-    """Reconstruct the raw values `_encode_action_row`'s byte layout needs,
-    one branch per descriptor kind. A kind that carries no value for a field
-    leaves the default below, which the frozen goldens hold it to.
+    """Reconstruct the raw values the action layout needs, one branch per
+    descriptor kind. A kind that carries no value for a field leaves the
+    default below, which the frozen goldens hold it to.
     """
     f = {
         "category": 0,
@@ -266,61 +261,22 @@ def _row_fields(d, i: int, msg_type: int, obs: YuGiOhObservation) -> dict:
     return f
 
 
-def _encode_action_row(d, i: int, msg_type: int, obs: YuGiOhObservation) -> np.ndarray:
-    """Encode a single action as a feature vector.
-
-    Layout (28 bytes):
-        [0]      msg_type           (uint8)
-        [1]      category           (uint8)
-        [2:6]    code               (uint32 LE - card passcode)
-        [6]      controller         (uint8 - relativized: 0=agent, 1=opp)
-        [7]      location           (uint8)
-        [8:10]   sequence           (uint16 LE)
-        [10]     subsequence        (uint8 - Xyz overlay slot)
-        [11]     position           (uint8 bitmask)
-        [12]     direct_attackable  (uint8 - 0/1)
-        [13]     param              (uint8 - release_param OR sum.param, aliased; narrowed here)
-        [14]     counter_type       (uint8 - LOW BYTE of the counter id.
-                 `SelectCounter.counter_type` is a u16: COUNTER_* flag bits
-                 above 0xFF are dropped here, and so are id bits 8-11, which
-                 several real counters use. The engine response carries
-                 per-card counts and no counter id, so only what the network
-                 sees is narrowed.)
-        [15]     counter_count      (uint8)
-        [16]     index              (uint8)
-        [17]     num_selected       (uint8 - number of cards in combo, default 1)
-        [18]     extra_idx_0        (uint8 - no producer, left zero)
-        [19]     extra_idx_1        (uint8 - no producer, left zero)
-        [20:28]  desc               (uint64 LE - engine effect string ID)
-    """
-    f = _row_fields(d, i, msg_type, obs)
-    feat = np.zeros(ACTION_FEATURES, dtype=np.uint8)
-    feat[0] = msg_type & 0xFF
-    feat[1] = f["category"]
-    feat[2:6] = encode_u32(f["code"] & 0xFFFFFFFF)
-    feat[6] = f["controller"] & 0xFF
-    feat[7] = f["location"] & 0xFF
-    feat[8:10] = encode_u16(min(f["sequence"], 65535))
-    feat[10] = f["subsequence"] & 0xFF
-    feat[11] = f["position"] & 0xFF
-    feat[12] = 1 if f["direct_attackable"] else 0
-    feat[13] = f["param"] & 0xFF
-    feat[14] = f["counter_type"] & 0xFF
-    feat[15] = f["counter_count"] & 0xFF
-    feat[16] = f["index"] & 0xFF
-    feat[17] = f["num_selected"]
-    feat[20:28] = encode_u64(f["desc"] & 0xFFFFFFFFFFFFFFFF)
-    return feat
-
-
 def _encode_actions(obs: YuGiOhObservation) -> np.ndarray:
-    feats = np.zeros((MAX_ACTIONS, ACTION_FEATURES), dtype=np.uint8)
+    """Pack the prompt's actions into one buffer, a row per action.
+
+    Both arrays hold MAX_ACTIONS rows, so both stop there: the mask's slice
+    clamps and this bound matches it. Slots past the descriptor list keep the
+    zeros the buffer starts with.
+    """
+    buf = bytearray(MAX_ACTIONS * ACTION_FEATURES)
     msg_type = obs.msg_type
-    # Both arrays hold MAX_ACTIONS rows, so both stop there: the mask's slice
-    # clamps and this bound matches it.
     for i, d in enumerate(obs.action_descriptors[:MAX_ACTIONS]):
-        feats[i] = _encode_action_row(d, i, msg_type, obs)
-    return feats
+        # `_row_fields` is keyed by the packer's own parameter names, so the
+        # two cannot fall out of order, and a field it grows that the packer
+        # lacks raises rather than packing as a default.
+        f = _row_fields(d, i, msg_type, obs)
+        pack_action_into(buf, i * ACTION_FEATURES, msg_type, **f)
+    return np.frombuffer(buf, dtype=np.uint8).reshape(MAX_ACTIONS, ACTION_FEATURES)
 
 
 def encode_observation(obs: YuGiOhObservation) -> dict[str, np.ndarray]:

@@ -131,6 +131,8 @@ def capture_observations() -> dict[str, np.ndarray]:
                 out[f"{key}_global"] = encoded["global_state"]
                 out[f"{key}_actions"] = encoded["actions"]
                 out[f"{key}_mask"] = encoded["action_mask"]
+                out[f"{key}_chain"] = encoded["pending_chain"]
+                out[f"{key}_events"] = encoded["event_history"]
                 obs = env.step(YuGiOhAction(action_index=int(rng.choice(obs.num_actions))))
     finally:
         env.close()
@@ -144,4 +146,4 @@ if __name__ == "__main__":
     print("wrote encoder_goldens_actions.json")
     obs_goldens = capture_observations()
     np.savez_compressed(HERE / "encoder_goldens_observations.npz", **obs_goldens)
-    print(f"wrote encoder_goldens_observations.npz ({len(obs_goldens) // 4} observations)")
+    print(f"wrote encoder_goldens_observations.npz ({len(obs_goldens) // 6} observations)")

@@ -257,7 +257,7 @@ from yugioh_core.constants import (
     LOCATION_MZONE,
     POS_FACEUP_ATTACK,
 )
-from yugioh_core.encoding import MAX_PENDING_CHAIN, decode_u32
+from yugioh_core.encoding import CHAIN_LAYOUT, MAX_PENDING_CHAIN
 from yugioh_env.game_state import ChainLink, GameState
 from yugioh_env.observation import build_observation
 
@@ -295,4 +295,4 @@ def test_encoder_truncates_beyond_max_pending_chain():
     pc = obs["pending_chain"]
     assert pc.shape == (MAX_PENDING_CHAIN, pc.shape[1])
     for i in range(MAX_PENDING_CHAIN):
-        assert decode_u32(pc[i], 0) == 1000 + i
+        assert CHAIN_LAYOUT.read(pc[i], "code") == 1000 + i

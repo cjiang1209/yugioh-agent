@@ -4,9 +4,9 @@
 Run deliberately, never automatically:
     .venv/bin/python tests/mud/fixtures/capture_mud_goldens.py
 
-MUD keeps its own encoder but shares `encode_card`, `encode_u16` and
-`encode_u32`, so a change to any shared primitive would move its arrays
-silently.
+MUD's action rows are hand-written and have drifted off ACTION_LAYOUT, but
+its cards and global state share `encode_card` and `encode_global`, so a
+change to either moves these arrays too.
 """
 
 from __future__ import annotations

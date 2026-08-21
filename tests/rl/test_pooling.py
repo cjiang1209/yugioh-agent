@@ -15,6 +15,7 @@ from yugioh_core.constants import (
 from yugioh_core.encoding import (
     ACTION_FEATURES,
     CARD_FEATURES,
+    CARD_LAYOUT,
     GLOBAL_FEATURES,
     MAX_ACTIONS,
     MAX_CARDS,
@@ -233,7 +234,7 @@ def test_attn_degenerate_empty_known_no_nan(attn_net):
     """All cards hidden/empty → no NaN in forward (m == 0 short-circuit)."""
     obs_cards, obs_global, obs_actions, action_mask = _obs(2)
     # Give a hidden card (location set, code 0) so location!=0 but code==0.
-    obs_cards[:, 0, 4] = LOCATION_HAND  # location byte
+    obs_cards[:, 0, CARD_LAYOUT.offsets["location"]] = LOCATION_HAND
     with torch.no_grad():
         logits, values, _ = attn_net(obs_cards, obs_global, obs_actions, action_mask)
     assert not torch.isnan(logits).any()

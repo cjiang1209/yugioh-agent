@@ -45,7 +45,11 @@ from yugioh_core.constants import (
     POS_FACEUP_DEFENSE,
     RACE_WARRIOR,
 )
-from yugioh_core.encoding import ACTION_FEATURES, MAX_ACTIONS, decode_u16, decode_u32
+from yugioh_core.encoding import (
+    ACTION_FEATURES,
+    ACTION_LAYOUT,
+    MAX_ACTIONS,
+)
 from yugioh_env import response_builder as rb
 from yugioh_env.action_space import _ACTION_EXTRACTORS, ActionMapper
 from yugioh_env.server.yugioh_environment import _build_action_descriptors
@@ -134,7 +138,7 @@ def test_action_features_shape():
 
 
 def test_action_features_card_code_encoding():
-    """Card code should be encoded as 4-byte uint32 LE in feat[2:6]."""
+    """The card code is a uint32 LE in the action row's `code` field."""
     mapper = ActionMapper()
     mapper.update(
         {
@@ -150,16 +154,11 @@ def test_action_features_card_code_encoding():
     )
     features = action_features(mapper)
     feat = features[0]
-    # feat[0] = msg_type
-    assert feat[0] == MSG_SELECT_CARD
-    # feat[2:6] = code as uint32 LE (89631139 = 0x0557B1A3)
-    code = decode_u32(feat, 2)
-    assert code == 89631139
-    # New 28-byte layout: [6]=controller, [7]=location, [8:10]=sequence (u16 LE), [16]=index
-    assert feat[7] == 2  # location
-    seq = decode_u16(feat, 8)
-    assert seq == 3  # sequence
-    assert feat[16] == 0  # index
+    assert feat[ACTION_LAYOUT.offsets["msg_type"]] == MSG_SELECT_CARD
+    assert ACTION_LAYOUT.read(feat, "code") == 89631139
+    assert feat[ACTION_LAYOUT.offsets["location"]] == 2
+    assert ACTION_LAYOUT.read(feat, "sequence") == 3
+    assert feat[ACTION_LAYOUT.offsets["index"]] == 0
 
 
 def test_invalid_action_index():
@@ -560,8 +559,8 @@ def test_select_card_min_max_multi_step():
     features = action_features(mapper)
     # Each card action has num_selected = 1 (will be 1 after pick)
     for i in range(4):
-        assert features[i][17] == 1
-        assert features[i][1] == 0  # category = 0 (card pick)
+        assert features[i][ACTION_LAYOUT.offsets["num_selected"]] == 1
+        assert features[i][ACTION_LAYOUT.offsets["category"]] == 0  # card pick
 
     # Pick card 0 — returns None (multi-step in progress)
     resp = mapper.action_to_response(0)
@@ -798,7 +797,7 @@ def test_tribute_release_param_finish_early():
 
 
 def test_tribute_num_selected_feature():
-    """Feature byte 9 (num_selected) reflects multi-step accumulation."""
+    """`num_selected` reflects multi-step accumulation."""
     mapper = ActionMapper()
     msg = {
         "msg_type": MSG_SELECT_TRIBUTE,
@@ -816,7 +815,7 @@ def test_tribute_num_selected_feature():
     features = action_features(mapper)
     # Step 1: each card action has num_selected = 1 (will be 1 after pick)
     for i in range(3):
-        assert features[i][17] == 1
+        assert features[i][ACTION_LAYOUT.offsets["num_selected"]] == 1
 
     # Step 2: after picking card 0
     mapper.update({**msg, "_selected": [0]})
@@ -1034,8 +1033,7 @@ def test_action_descriptor_card_code_consistency(setup):
         assert action["kind"] == expected_kind
         descriptor = descriptors[i]
         card = getattr(descriptor, "card", None)
-        feats_row = list(feats[i])
-        decoded_code = decode_u32(feats_row, 2)
+        decoded_code = ACTION_LAYOUT.read(feats[i], "code")
         if has_card_code:
             assert decoded_code != 0, (
                 f"{expected_kind} action #{i}: feats code is 0 but kind references a card"
@@ -1180,9 +1178,9 @@ def test_action_controller_relativizes_per_agent_player(agent_player):
         }
     )
     features = action_features(mapper)
-    # New 28-byte layout: byte 6 = controller (relativized: 0=agent, 1=opp)
-    ctrl_p0 = int(features[0][6])  # chain on engine player 0
-    ctrl_p1 = int(features[1][6])  # chain on engine player 1
+    controller = ACTION_LAYOUT.offsets["controller"]  # relativized: 0=agent, 1=opp
+    ctrl_p0 = int(features[0][controller])  # chain on engine player 0
+    ctrl_p1 = int(features[1][controller])  # chain on engine player 1
     if agent_player == 0:
         assert ctrl_p0 == 0  # agent's own
         assert ctrl_p1 == 1  # opponent's
@@ -1193,7 +1191,7 @@ def test_action_controller_relativizes_per_agent_player(agent_player):
 
 # --- Test 1 (consolidated 8-case): single-byte wire field roundtrip ---
 # Each case sets ONE wire field on a synthesized prompt, decodes the
-# corresponding feats byte (per the 28-byte layout in _encode_action),
+# corresponding field of the encoded action row,
 # and asserts the value survived. Catches drop/typo bugs in extractors.
 
 
@@ -1341,47 +1339,47 @@ def _counter_msg(**msg_overrides) -> dict:
 
 
 @pytest.mark.parametrize(
-    "case_name, msg_factory, byte_idx, expected",
+    "case_name, msg_factory, field, expected",
     [
-        # controller: opponent's card (engine ctrl=1, agent_player=0) → byte[6] == 1
-        ("controller", lambda: _idle_msg_with_card(controller=1), 6, 1),
-        # direct_attackable: byte[12] == 1
-        ("direct_attackable", lambda: _battle_msg_with_attackable(direct_attackable=1), 12, 1),
-        # release_param (tribute weight): byte[13] == 7
-        ("release_param", lambda: _tribute_msg(release_param=7), 13, 7),
-        # sum.param (sum weight): byte[13] == 4
-        ("sum_param", lambda: _sum_msg(param=4), 13, 4),
-        # subsequence: byte[10] == 2
-        ("subsequence", lambda: _card_msg(subsequence=2), 10, 2),
-        # position: byte[11] carries the position bitmask
+        # the opponent's card (engine ctrl=1, agent_player=0) relativizes to 1
+        ("controller", lambda: _idle_msg_with_card(controller=1), "controller", 1),
+        (
+            "direct_attackable",
+            lambda: _battle_msg_with_attackable(direct_attackable=1),
+            "direct_attackable",
+            1,
+        ),
+        # a tribute's release_param and a sum prompt's param share one field
+        ("release_param", lambda: _tribute_msg(release_param=7), "param", 7),
+        ("sum_param", lambda: _sum_msg(param=4), "param", 4),
+        ("subsequence", lambda: _card_msg(subsequence=2), "subsequence", 2),
         (
             "position",
             lambda: _chain_msg_with_chain(position=POS_FACEUP_DEFENSE),
-            11,
+            "position",
             POS_FACEUP_DEFENSE,
         ),
-        # counter_type: byte[14] == 0x05 (low byte of counter_type=5)
-        ("counter_type", lambda: _counter_msg(counter_type=5), 14, 5),
-        # counter_count: byte[15] == 1 (n_remove = min(card.counter_count=3, msg.count=1))
-        ("counter_count", lambda: _counter_msg(), 15, 1),
+        # only the low byte of counter_type survives
+        ("counter_type", lambda: _counter_msg(counter_type=5), "counter_type", 5),
+        # n_remove = min(card.counter_count=3, msg.count=1)
+        ("counter_count", lambda: _counter_msg(), "counter_count", 1),
     ],
 )
-def test_extractor_single_byte_field_roundtrip(case_name, msg_factory, byte_idx, expected):
-    """Each wire field shows up in the right byte of the encoded action."""
+def test_extractor_single_byte_field_roundtrip(case_name, msg_factory, field, expected):
+    """Each wire field shows up in the right field of the encoded action."""
     mapper = ActionMapper()
     mapper.update(msg_factory())
     features = action_features(mapper)
-    assert features[0][byte_idx] == expected, (
-        f"case {case_name}: feats[0][{byte_idx}]={int(features[0][byte_idx])}, expected {expected}"
-    )
+    got = int(features[0][ACTION_LAYOUT.offsets[field]])
+    assert got == expected, f"case {case_name}: {field}={got}, expected {expected}"
 
 
-# --- Test 2: desc decomposition (bytes 20-27 as u64 LE) ---
+# --- Test 2: desc decomposition ---
 
 
-def test_extractor_desc_packs_into_bytes_20_27():
-    """desc is encoded as u64 LE in bytes 20-27. Pack a known value with
-    distinguishable passcode/n halves and verify decomposition."""
+def test_extractor_desc_packs_as_u64() -> None:
+    """`desc` is a u64 LE. Pack a known value with distinguishable
+    passcode/n halves and verify the decomposition."""
     desc_value = (0x12345 << 20) | 0x67  # passcode=0x12345, n=0x67
     msg = {
         "msg_type": MSG_SELECT_YESNO,
@@ -1392,9 +1390,7 @@ def test_extractor_desc_packs_into_bytes_20_27():
     mapper = ActionMapper()
     mapper.update(msg)
     feat = action_features(mapper)[0]
-    decoded = 0
-    for i in range(8):
-        decoded |= int(feat[20 + i]) << (8 * i)
+    decoded = ACTION_LAYOUT.read(feat, "desc")
     assert decoded == desc_value
     assert (decoded >> 20) == 0x12345  # passcode half
     assert (decoded & 0xFFFFF) == 0x67  # n half (low 20 bits)
@@ -1410,7 +1406,7 @@ def test_extractor_sequence_widens_to_u16():
     mapper = ActionMapper()
     mapper.update(msg)
     feat = action_features(mapper)[0]
-    assert decode_u16(feat, 8) == 300
+    assert ACTION_LAYOUT.read(feat, "sequence") == 300
 
 
 def test_extract_sort_actions_first_step_no_selected():
@@ -1660,8 +1656,9 @@ def test_place_encodes_controller_byte() -> None:
     )
     feats = action_features(mapper)
     n = mapper.num_actions
-    assert set(int(feats[i][6]) for i in range(n)) == {0, 1}, (
-        "feat[6] must now distinguish my/opponent zones"
+    controller = ACTION_LAYOUT.offsets["controller"]
+    assert set(int(feats[i][controller]) for i in range(n)) == {0, 1}, (
+        "the controller byte must distinguish my zones from the opponent's"
     )
 
 
@@ -1676,15 +1673,15 @@ def test_sort_encodes_coordinates() -> None:
         }
     )
     feats = action_features(mapper)
-    assert int(feats[0][7]) == LOCATION_MZONE  # location
-    assert int(feats[0][8]) == 3  # sequence low byte
+    assert int(feats[0][ACTION_LAYOUT.offsets["location"]]) == LOCATION_MZONE
+    assert ACTION_LAYOUT.read(feats[0], "sequence") == 3
 
 
 def test_counter_encodes_coordinates() -> None:
     """The third prompt whose tensor moves — omitted from earlier drafts.
 
-    Uses sequence=300 (> 255) so feat[9] (the sequence high byte) is
-    non-zero and actually exercised, not just coincidentally 0.
+    Uses sequence=300 (> 255) so the sequence field's high byte is non-zero
+    and actually exercised, not just coincidentally 0.
     """
     mapper = ActionMapper()
     mapper.update(
@@ -1706,9 +1703,8 @@ def test_counter_encodes_coordinates() -> None:
         }
     )
     feats = action_features(mapper)
-    assert int(feats[0][7]) == LOCATION_MZONE
-    assert decode_u16(feats[0], 8) == 300
-    assert int(feats[0][9]) == 300 >> 8
+    assert int(feats[0][ACTION_LAYOUT.offsets["location"]]) == LOCATION_MZONE
+    assert ACTION_LAYOUT.read(feats[0], "sequence") == 300
 
 
 # ─── Per-extractor `kind` tagging and action-mask invariants ────────────────

@@ -27,6 +27,7 @@ from yugioh_core.constants import (
 )
 from yugioh_core.encoding import (
     EVENT_ENTRY_FEATURES,
+    EVENT_LAYOUT,
     MAX_EVENT_HISTORY,
     encode_event_entry,
 )
@@ -40,9 +41,9 @@ _SUMMON_MSGS = frozenset({MSG_SUMMONING, MSG_SPSUMMONING, MSG_FLIPSUMMONING, MSG
 class _Entry:
     """A stored event: its fully-encoded row plus the raw player fields.
 
-    The row is encoded once at append time with RAW controller/turn_player in
-    bytes [1]/[2]; ``to_tensor`` copies the row and overwrites just those two
-    bytes with the agent-relative values (only they depend on ``agent_player``).
+    The row is encoded once at append time with the raw engine seats;
+    ``to_tensor`` copies it and overwrites just those two fields with the
+    agent-relative values, the only ones that depend on ``agent_player``.
     """
 
     __slots__ = ("row", "raw_controller", "raw_turn_player")
@@ -124,8 +125,8 @@ class EventHistoryBuffer:
         out = np.zeros((MAX_EVENT_HISTORY, EVENT_ENTRY_FEATURES), dtype=np.uint8)
         n = len(self._buf)
         for i, entry in enumerate(self._buf):
-            row = MAX_EVENT_HISTORY - n + i  # right-aligned; newest at last row
-            out[row] = entry.row  # cached, raw controller/turn_player in [1]/[2]
-            out[row, 1] = 0 if entry.raw_controller == agent_player else 1
-            out[row, 2] = 0 if entry.raw_turn_player == agent_player else 1
+            row = out[MAX_EVENT_HISTORY - n + i]  # right-aligned; newest last
+            row[:] = entry.row  # cached, with the raw engine seats
+            EVENT_LAYOUT.write(row, "controller", entry.raw_controller != agent_player)
+            EVENT_LAYOUT.write(row, "turn_player", entry.raw_turn_player != agent_player)
         return out

@@ -21,6 +21,7 @@ import numpy as np
 import pytest
 
 from tests.env.conftest import MINIMAL_MSGS, ROUTE_CASES, obs_from_msg
+from yugioh_core.encoding import ACTION_LAYOUT
 from yugioh_rl.obs_encoder import encode_observation
 
 FIXTURES = pathlib.Path(__file__).resolve().parents[1] / "env" / "fixtures"
@@ -62,31 +63,39 @@ def _route_actions(case: str) -> np.ndarray:
 
 
 def test_byte10_position_branch() -> None:
-    assert int(_route_actions("byte10_position_branch")[0][10]) == 0x5
+    """The case names are the golden keys, so they keep their byte numbers."""
+    assert (
+        int(_route_actions("byte10_position_branch")[0][ACTION_LAYOUT.offsets["subsequence"]])
+        == 0x5
+    )
 
 
 def test_byte10_overlay_branch() -> None:
     """LOCATION_OVERLAY set, so the slot is a stack index, not a position."""
-    assert int(_route_actions("byte10_overlay_branch")[0][10]) == 2
+    assert (
+        int(_route_actions("byte10_overlay_branch")[0][ACTION_LAYOUT.offsets["subsequence"]]) == 2
+    )
 
 
 def test_byte11_chain_route() -> None:
-    """The chain extractor is byte 11's only producer."""
-    assert int(_route_actions("byte11_chain_route")[0][11]) == 0x5
+    """The chain extractor is `position`'s only producer."""
+    assert int(_route_actions("byte11_chain_route")[0][ACTION_LAYOUT.offsets["position"]]) == 0x5
 
 
 def test_byte16_choose_position_route() -> None:
-    """_extract_position_actions puts its bitmask in `index`, so it lands in
-    byte 16 -- not byte 11, despite being a position."""
+    """_extract_position_actions puts its bitmask in `index`, not in
+    `position`, despite the name."""
     actions = _route_actions("byte16_choose_position_route")
-    assert {int(actions[0][16]), int(actions[1][16])} == {0x1, 0x4}
-    assert int(actions[0][11]) == 0
+    at = ACTION_LAYOUT.offsets["index"]
+    assert {int(actions[0][at]), int(actions[1][at])} == {0x1, 0x4}
+    assert int(actions[0][ACTION_LAYOUT.offsets["position"]]) == 0
 
 
 def test_byte12_direct_attackable_route() -> None:
     """`MINIMAL_MSGS`'s attackable card always carries `direct_attackable: 0`,
     so the per-kind case never exercises the byte turning on."""
-    assert int(_route_actions("byte12_direct_attackable_route")[0][12]) == 1
+    at = ACTION_LAYOUT.offsets["direct_attackable"]
+    assert int(_route_actions("byte12_direct_attackable_route")[0][at]) == 1
 
 
 def test_matches_the_frozen_observation_goldens(lib, db_path, script_dirs, assets_dir) -> None:
@@ -130,6 +139,8 @@ def test_matches_the_frozen_observation_goldens(lib, db_path, script_dirs, asset
                     ("global_state", "global"),
                     ("actions", "actions"),
                     ("action_mask", "mask"),
+                    ("pending_chain", "chain"),
+                    ("event_history", "events"),
                 ):
                     np.testing.assert_array_equal(
                         encoded[field],

@@ -28,6 +28,7 @@ from yugioh_rl.features import (
     decode_event_history,
     decode_global,
     decode_pending_chain,
+    zone_keys,
 )
 
 logger = logging.getLogger(__name__)
@@ -574,8 +575,7 @@ class YuGiOhNet(nn.Module):
         card_enc = self.card_encoder(card_input)  # (B, MAX_CARDS, card_embed_dim)
 
         # --- Zone pooling ---
-        raw_loc = obs_cards[..., 4].long()  # (B, MAX_CARDS) location bitmask
-        raw_ctrl = obs_cards[..., 7].long()  # (B, MAX_CARDS) controller
+        raw_loc, raw_ctrl = zone_keys(obs_cards)  # (B, MAX_CARDS) each
         zone_flat = self._pool_zones(card_enc, raw_loc, raw_ctrl, card_ids)
 
         # --- Global encoding ---

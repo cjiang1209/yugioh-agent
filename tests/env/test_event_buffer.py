@@ -7,7 +7,11 @@ from yugioh_core.constants import (
     PHASE_MAIN1,
     PHASE_MAIN2,
 )
-from yugioh_core.encoding import EVENT_ENTRY_FEATURES, MAX_EVENT_HISTORY, decode_u32
+from yugioh_core.encoding import (
+    EVENT_ENTRY_FEATURES,
+    EVENT_LAYOUT,
+    MAX_EVENT_HISTORY,
+)
 from yugioh_env.event_buffer import EventHistoryBuffer
 
 
@@ -28,10 +32,10 @@ def test_append_and_right_aligned_tensor():
     t = b.to_tensor(agent_player=0)
     assert t.shape == (MAX_EVENT_HISTORY, EVENT_ENTRY_FEATURES)
     # newest (222) at row 31, older (111) at row 30, rest empty (msg_type byte 0 == 0)
-    assert t[31, 0] == MSG_SUMMONING
-    assert t[30, 0] == MSG_SUMMONING
-    assert t[29, 0] == 0
-    assert decode_u32(t[31], 5) == 222
+    assert t[31, EVENT_LAYOUT.offsets["msg_type"]] == MSG_SUMMONING
+    assert t[30, EVENT_LAYOUT.offsets["msg_type"]] == MSG_SUMMONING
+    assert t[29, EVENT_LAYOUT.offsets["msg_type"]] == 0
+    assert EVENT_LAYOUT.read(t[31], "card_code") == 222
 
 
 def test_controller_relativized_at_encode():
@@ -39,12 +43,12 @@ def test_controller_relativized_at_encode():
     b.append_from_enriched([_summon(111, 1, 1)], turn_count=1, current_player=1, phase=4)
     # agent_player=1 → raw controller 1 becomes relative 0 (=me); controller=[1], turn_player=[2]
     t = b.to_tensor(agent_player=1)
-    assert t[31, 1] == 0
-    assert t[31, 2] == 0  # turn_player raw 1, agent 1 → 0
+    assert t[31, EVENT_LAYOUT.offsets["controller"]] == 0
+    assert t[31, EVENT_LAYOUT.offsets["turn_player"]] == 0  # turn_player raw 1, agent 1 → 0
     # agent_player=0 → raw controller 1 becomes relative 1 (=opp)
     t0 = b.to_tensor(agent_player=0)
-    assert t0[31, 1] == 1
-    assert t0[31, 2] == 1
+    assert t0[31, EVENT_LAYOUT.offsets["controller"]] == 1
+    assert t0[31, EVENT_LAYOUT.offsets["turn_player"]] == 1
 
 
 def test_hint_code_records_declared_passcode():
@@ -56,9 +60,9 @@ def test_hint_code_records_declared_passcode():
         phase=4,
     )
     t = b.to_tensor(agent_player=0)
-    assert t[31, 0] == MSG_HINT
-    assert t[31, 25] == HINT_CODE  # hint_type at [25]
-    assert decode_u32(t[31], 5) == 55144522
+    assert t[31, EVENT_LAYOUT.offsets["msg_type"]] == MSG_HINT
+    assert t[31, EVENT_LAYOUT.offsets["hint_type"]] == HINT_CODE
+    assert EVENT_LAYOUT.read(t[31], "card_code") == 55144522
 
 
 def test_non_declaration_hint_ignored():
@@ -70,7 +74,7 @@ def test_non_declaration_hint_ignored():
         phase=4,
     )
     t = b.to_tensor(agent_player=0)
-    assert t[31, 0] == 0  # nothing recorded
+    assert t[31, EVENT_LAYOUT.offsets["msg_type"]] == 0  # nothing recorded
 
 
 def test_reset_clears():
@@ -78,7 +82,7 @@ def test_reset_clears():
     b.append_from_enriched([_summon(111, 0, 1)], turn_count=1, current_player=0, phase=4)
     b.reset()
     t = b.to_tensor(agent_player=0)
-    assert t[31, 0] == 0
+    assert t[31, EVENT_LAYOUT.offsets["msg_type"]] == 0
 
 
 def test_maxlen_evicts_oldest():
@@ -87,8 +91,8 @@ def test_maxlen_evicts_oldest():
         b.append_from_enriched([_summon(1000 + i, 0, 1)], turn_count=1, current_player=0, phase=4)
     t = b.to_tensor(agent_player=0)
     # 32 kept; newest (1039) at row 31
-    assert decode_u32(t[31], 5) == 1039
-    assert all(t[r, 0] != 0 for r in range(32))  # full
+    assert EVENT_LAYOUT.read(t[31], "card_code") == 1039
+    assert all(t[r, EVENT_LAYOUT.offsets["msg_type"]] != 0 for r in range(32))  # full
 
 
 def test_phase_stored_as_bit_index():
@@ -99,6 +103,6 @@ def test_phase_stored_as_bit_index():
     b.append_from_enriched([_summon(2, 0, 1)], turn_count=1, current_player=0, phase=PHASE_MAIN2)
     b.append_from_enriched([_summon(3, 0, 1)], turn_count=1, current_player=0, phase=PHASE_END)
     t = b.to_tensor(agent_player=0)
-    assert t[29, 3] == 2  # MAIN1 (0x04) → bit 2
-    assert t[30, 3] == 8  # MAIN2 (0x100) → bit 8
-    assert t[31, 3] == 9  # END  (0x200) → bit 9
+    assert t[29, EVENT_LAYOUT.offsets["phase"]] == 2  # MAIN1 (0x04) → bit 2
+    assert t[30, EVENT_LAYOUT.offsets["phase"]] == 8  # MAIN2 (0x100) → bit 8
+    assert t[31, EVENT_LAYOUT.offsets["phase"]] == 9  # END  (0x200) → bit 9

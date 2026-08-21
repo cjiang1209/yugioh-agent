@@ -110,9 +110,16 @@ from yugioh_core.constants import (
     TYPE_XYZ,
 )
 from yugioh_core.encoding import (
+    ACTION_LAYOUT,
+    CARD_LAYOUT,
+    CHAIN_LAYOUT,
+    EVENT_LAYOUT,
+    GLOBAL_LAYOUT,
+    GLOBAL_ZONE_COUNTS,
     MAX_ACTIONS,
     PER_CARD_DESC_N_VOCAB,
     SYSSTRING_VOCAB,
+    Layout,
 )
 
 # ---------------------------------------------------------------------------
@@ -120,7 +127,7 @@ from yugioh_core.encoding import (
 #   → card_ids (B, MAX_CARDS) int, card_feats (B, MAX_CARDS, F)
 # ---------------------------------------------------------------------------
 
-# Location bits (byte 4), in feature-column order
+# Location bits, in feature-column order
 _LOC_BITS = [
     LOCATION_HAND,
     LOCATION_MZONE,
@@ -131,7 +138,7 @@ _LOC_BITS = [
     LOCATION_DECK,
 ]
 
-# Position bits (byte 6), in feature-column order
+# Position bits, in feature-column order
 _POS_BITS = [
     POS_FACEUP_ATTACK,
     POS_FACEDOWN_ATTACK,
@@ -139,7 +146,7 @@ _POS_BITS = [
     POS_FACEDOWN_DEFENSE,
 ]
 
-# Card type bits (bytes 9-12 as uint32)
+# Card type bits (as uint32)
 _TYPE_BITS = [
     TYPE_MONSTER,
     TYPE_SPELL,
@@ -169,7 +176,7 @@ _TYPE_BITS = [
     TYPE_LINK,
 ]
 
-# Attribute bits (byte 14)
+# Attribute bits
 _ATTR_BITS = [
     ATTRIBUTE_EARTH,
     ATTRIBUTE_WATER,
@@ -180,7 +187,7 @@ _ATTR_BITS = [
     ATTRIBUTE_DIVINE,
 ]
 
-# Race bits (bytes 15-18 as uint32)
+# Race bits (as uint32)
 _RACE_BITS = [
     RACE_WARRIOR,
     RACE_SPELLCASTER,
@@ -216,7 +223,7 @@ _RACE_BITS = [
     RACE_GALAXY,
 ]
 
-# Link marker bits (bytes 25-26 as uint16), in feature-column order
+# Link marker bits (as uint16), in feature-column order
 _LINK_BITS = [
     LINK_MARKER_BOTTOM_LEFT,
     LINK_MARKER_BOTTOM,
@@ -233,6 +240,17 @@ CARD_FEAT_DIM = 7 + 1 + 4 + 1 + 1 + 26 + 1 + 7 + 32 + 1 + 1 + 1 + 1 + 8 + 1 + 1 
 # location(7) + sequence(1) + position(4) + controller(1) + is_public(1)
 # + card_type(26) + level(1) + attribute(7) + race(32) + atk(1) + def(1) + lscale(1) + rscale(1)
 # + link_marker(8) + counter(1) + negated(1) + is_overlay(1) = 95
+
+
+def _uint8(raw: torch.Tensor, byte0: int) -> torch.Tensor:
+    """Extract one uint8 byte along the last dim.
+
+    raw: (..., N) uint8/int tensor.  Returns (...) int tensor.
+
+    Widening is the point: a byte read straight off a uint8 observation would
+    wrap on the first arithmetic done to it.
+    """
+    return raw[..., byte0].long()
 
 
 def _uint16_le(raw: torch.Tensor, byte0: int) -> torch.Tensor:
@@ -261,13 +279,54 @@ def _uint64_le(raw: torch.Tensor, byte0: int) -> torch.Tensor:
 
     raw: (..., N) uint8/int tensor.  Returns (...) int64 tensor.
 
-    Overflow note: signed int64 wraps at 2^63. The action vector's only
-    u64 field is `desc = (passcode << 20) | n_low20`. Passcode is u32 so
-    desc occupies at most bits 0-51; bytes 26-27 (bits 48+) are always 0
-    in practice, keeping the high bit clear and preventing wraparound.
+    Overflow note: signed int64 wraps at 2^63. Every u64 field in these
+    layouts is a `desc`, built as `(passcode << 20) | n_low20`; passcode is
+    u32, so a desc occupies at most bits 0-51 and the high bit stays clear.
     """
     bytes_slice = raw[..., byte0 : byte0 + 8].long()
     return (bytes_slice * _SHIFTS_U64.to(raw.device)).sum(dim=-1)
+
+
+# Every reader widens, so a field's dtype does not depend on its width.
+_WIDTH_READERS = {
+    "B": _uint8,
+    "H": _uint16_le,
+    "I": _uint32_le,
+    "Q": _uint64_le,
+}
+
+
+class _TensorLayout:
+    """A `Layout` read as batched tensors.
+
+    The struct readers a `Layout` carries cannot take a batched tensor, so
+    each field's declared width maps to a vectorized reader instead. Offset
+    and width still come off the one table.
+    """
+
+    __slots__ = ("layout", "_readers")
+
+    def __init__(self, layout: Layout) -> None:
+        self.layout = layout
+        self._readers = {
+            name: (layout.offsets[name], _WIDTH_READERS[code]) for name, code in layout
+        }
+
+    def read(self, raw: torch.Tensor, name: str) -> torch.Tensor:
+        """One field, at its declared offset and its declared width."""
+        byte0, reader = self._readers[name]
+        return reader(raw, byte0)
+
+    def scaled(self, raw: torch.Tensor, name: str, denom: float) -> torch.Tensor:
+        """One field as a single normalized feature: (..., N) -> (..., 1)."""
+        return (self.read(raw, name).float() / denom).unsqueeze(-1)
+
+
+_CARD = _TensorLayout(CARD_LAYOUT)
+_ACTION = _TensorLayout(ACTION_LAYOUT)
+_GLOBAL = _TensorLayout(GLOBAL_LAYOUT)
+_CHAIN = _TensorLayout(CHAIN_LAYOUT)
+_EVENT = _TensorLayout(EVENT_LAYOUT)
 
 
 def _extract_bits(val: torch.Tensor, bits: list[int]) -> torch.Tensor:
@@ -282,6 +341,15 @@ def _extract_bits(val: torch.Tensor, bits: list[int]) -> torch.Tensor:
     return torch.stack(parts, dim=-1)
 
 
+def zone_keys(raw: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """The location bitmask and controller of every card, as pooling keys.
+
+    Zone pooling groups cards by where they sit and whose they are, which is
+    the raw pair rather than the normalized features `decode_cards` returns.
+    """
+    return _CARD.read(raw, "location"), _CARD.read(raw, "controller")
+
+
 def decode_cards(raw: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """Decode card observation bytes into card IDs and float features.
 
@@ -294,68 +362,59 @@ def decode_cards(raw: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """
     raw = raw.long()
 
-    card_ids = _uint32_le(raw, 0)  # (B, MAX_CARDS) — full uint32 card codes
+    card_ids = _CARD.read(raw, "code")  # (B, MAX_CARDS) — full uint32 card codes
 
     feats = []
 
-    # location: byte 4 → 7 binary features
-    loc = raw[..., 4]
+    # location → 7 binary features
+    loc = _CARD.read(raw, "location")
     feats.append(_extract_bits(loc, _LOC_BITS))  # (B, MAX_CARDS, 7)
 
-    # sequence: byte 5 → normalized
-    feats.append((raw[..., 5].float() / 15.0).unsqueeze(-1))  # (B, MAX_CARDS, 1)
+    feats.append(_CARD.scaled(raw, "sequence", 15.0))  # (B, MAX_CARDS, 1)
 
-    # position: byte 6 → 4 binary features
-    pos = raw[..., 6]
+    # position → 4 binary features
+    pos = _CARD.read(raw, "position")
     feats.append(_extract_bits(pos, _POS_BITS))  # (B, MAX_CARDS, 4)
 
-    # controller: byte 7
-    feats.append(raw[..., 7].float().unsqueeze(-1))  # (B, MAX_CARDS, 1)
+    feats.append(_CARD.read(raw, "controller").float().unsqueeze(-1))  # (B, MAX_CARDS, 1)
 
-    # is_public: byte 8
-    feats.append(raw[..., 8].float().unsqueeze(-1))  # (B, MAX_CARDS, 1)
+    feats.append(_CARD.read(raw, "is_public").float().unsqueeze(-1))  # (B, MAX_CARDS, 1)
 
-    # card_type: bytes 9-12 → uint32 → 26 binary features
-    ctype = _uint32_le(raw, 9)
+    # card_type → uint32 → 26 binary features
+    ctype = _CARD.read(raw, "card_type")
     feats.append(_extract_bits(ctype, _TYPE_BITS))  # (B, MAX_CARDS, 26)
 
-    # level: byte 13
-    feats.append((raw[..., 13].float() / 12.0).unsqueeze(-1))  # (B, MAX_CARDS, 1)
+    feats.append(_CARD.scaled(raw, "level", 12.0))  # (B, MAX_CARDS, 1)
 
-    # attribute: byte 14 → 7 binary features
-    attr = raw[..., 14]
+    # attribute → 7 binary features
+    attr = _CARD.read(raw, "attribute")
     feats.append(_extract_bits(attr, _ATTR_BITS))  # (B, MAX_CARDS, 7)
 
-    # race: bytes 15-18 → uint32 → 32 binary features
-    race = _uint32_le(raw, 15)
+    # race → uint32 → 32 binary features
+    race = _CARD.read(raw, "race")
     feats.append(_extract_bits(race, _RACE_BITS))  # (B, MAX_CARDS, 32)
 
-    # ATK: bytes 19-20 → uint16
-    atk = _uint16_le(raw, 19)
+    # ATK → uint16
+    atk = _CARD.read(raw, "attack")
     feats.append((atk.float() / 5000.0).unsqueeze(-1))  # (B, MAX_CARDS, 1)
 
-    # DEF: bytes 21-22 → uint16
-    dfn = _uint16_le(raw, 21)
+    # DEF → uint16
+    dfn = _CARD.read(raw, "defense")
     feats.append((dfn.float() / 5000.0).unsqueeze(-1))  # (B, MAX_CARDS, 1)
 
-    # lscale: byte 23
-    feats.append((raw[..., 23].float() / 12.0).unsqueeze(-1))  # (B, MAX_CARDS, 1)
+    feats.append(_CARD.scaled(raw, "lscale", 12.0))  # (B, MAX_CARDS, 1)
 
-    # rscale: byte 24
-    feats.append((raw[..., 24].float() / 12.0).unsqueeze(-1))  # (B, MAX_CARDS, 1)
+    feats.append(_CARD.scaled(raw, "rscale", 12.0))  # (B, MAX_CARDS, 1)
 
-    # link_marker: bytes 25-26 → uint16 → 8 binary features
-    lmark = _uint16_le(raw, 25)
+    # link_marker → uint16 → 8 binary features
+    lmark = _CARD.read(raw, "link_marker")
     feats.append(_extract_bits(lmark, _LINK_BITS))  # (B, MAX_CARDS, 8)
 
-    # counter_count: byte 27
-    feats.append((raw[..., 27].float() / 10.0).unsqueeze(-1))  # (B, MAX_CARDS, 1)
+    feats.append(_CARD.scaled(raw, "counter_count", 10.0))  # (B, MAX_CARDS, 1)
 
-    # negated: byte 28
-    feats.append(raw[..., 28].float().unsqueeze(-1))  # (B, MAX_CARDS, 1)
+    feats.append(_CARD.read(raw, "negated").float().unsqueeze(-1))  # (B, MAX_CARDS, 1)
 
-    # is_overlay: byte 29
-    feats.append(raw[..., 29].float().unsqueeze(-1))  # (B, MAX_CARDS, 1)
+    feats.append(_CARD.read(raw, "is_overlay").float().unsqueeze(-1))  # (B, MAX_CARDS, 1)
 
     card_feats = torch.cat(feats, dim=-1)  # (B, MAX_CARDS, CARD_FEAT_DIM)
     return card_ids, card_feats
@@ -365,7 +424,7 @@ def decode_cards(raw: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 # Global state: (B, GLOBAL_FEATURES) uint8 → (B, F_global) float
 # ---------------------------------------------------------------------------
 
-# Phase bits (bytes 5-6, uint16 LE), one column per phase
+# Phase bits, one column per phase
 _PHASE_BITS = [
     PHASE_DRAW,
     PHASE_STANDBY,
@@ -379,7 +438,7 @@ _PHASE_BITS = [
     PHASE_END,
 ]
 
-GLOBAL_FEAT_DIM = 2 + 1 + 10 + 1 + 1 + 10  # = 25
+GLOBAL_FEAT_DIM = 2 + 1 + len(_PHASE_BITS) + 1 + 1 + len(GLOBAL_ZONE_COUNTS)  # = 25
 # my_lp(1) + opp_lp(1) + turn(1) + phase(10) + is_my_turn(1) + chain(1) + zone_counts(10)
 
 
@@ -395,36 +454,31 @@ def decode_global(raw: torch.Tensor) -> torch.Tensor:
     raw = raw.long()
     feats = []
 
-    # my_lp: bytes 0-1
-    my_lp = _uint16_le(raw, 0)
+    my_lp = _GLOBAL.read(raw, "my_lp")
     feats.append((my_lp.float() / 8000.0).unsqueeze(-1))
 
-    # opp_lp: bytes 2-3
-    opp_lp = _uint16_le(raw, 2)
+    opp_lp = _GLOBAL.read(raw, "opp_lp")
     feats.append((opp_lp.float() / 8000.0).unsqueeze(-1))
 
-    # turn_count: byte 4
-    feats.append((raw[..., 4].float() / 50.0).unsqueeze(-1))
+    feats.append(_GLOBAL.scaled(raw, "turn", 50.0))
 
-    # phase: bytes 5-6 (uint16 LE) → 10 binary features
-    phase = _uint16_le(raw, 5)
+    # phase → 10 binary features
+    phase = _GLOBAL.read(raw, "phase")
     feats.append(_extract_bits(phase, _PHASE_BITS))
 
-    # is_my_turn: byte 7
-    feats.append(raw[..., 7].float().unsqueeze(-1))
+    feats.append(_GLOBAL.read(raw, "is_my_turn").float().unsqueeze(-1))
 
-    # chain_count: byte 8
-    feats.append((raw[..., 8].float() / 5.0).unsqueeze(-1))
+    feats.append(_GLOBAL.scaled(raw, "chain_count", 5.0))
 
-    # zone counts: bytes 10-19 (10 bytes, skip byte 9 = msg_type)
-    for i in range(10, 20):
-        feats.append((raw[..., i].float() / 40.0).unsqueeze(-1))
+    # msg_type is skipped -- see GLOBAL_LAYOUT.
+    for name in GLOBAL_ZONE_COUNTS:
+        feats.append(_GLOBAL.scaled(raw, name, 40.0))
 
-    # Byte 20 (is_finished) is deliberately not decoded, so this stops one byte
-    # short of GLOBAL_FEATURES. The rollout loop substitutes a fresh-episode
-    # observation at every done index before the next forward, so the network
-    # only ever sees is_finished == 0 -- there is no signal in it. Callers that
-    # need the terminal flag read ``obs.done``.
+    # is_finished is deliberately not decoded, so this stops one byte short of
+    # GLOBAL_FEATURES. The rollout loop substitutes a fresh-episode observation
+    # at every done index before the next forward, so the network only ever
+    # sees is_finished == 0 -- there is no signal in it. Callers that need the
+    # terminal flag read ``obs.done``.
     return torch.cat(feats, dim=-1)
 
 
@@ -444,9 +498,6 @@ _NORM_PARAM = 12.0  # tribute release_param / sum.param (≈max monster level)
 _NORM_COUNTER_TYPE = 255.0  # counter-type byte; its full range, so this cannot exceed 1
 _NORM_COUNTER_COUNT = 15.0  # counters on one card (heuristic)
 _NORM_NUM_SELECTED = 5.0  # accumulated picks in a multi-step prompt (heuristic)
-
-# Per-card desc_n vocab — rigorous: cards.cdb texts has str1..str16
-# (Imported at top of module; re-noted here for context.)
 
 ACTION_FEAT_DIM = (
     1  # msg_type
@@ -482,11 +533,11 @@ def decode_actions(
     """
     raw = raw.long()
 
-    # code: bytes 2-5 → uint32
-    action_codes = _uint32_le(raw, 2)  # (B, MAX_ACTIONS)
+    # code → uint32
+    action_codes = _ACTION.read(raw, "code")  # (B, MAX_ACTIONS)
 
-    # desc: bytes 20-27 → uint64; split into passcode (high 44 bits) and n (low 20 bits)
-    desc_full = _uint64_le(raw, 20)  # (B, MAX_ACTIONS) long
+    # desc → uint64; split into passcode (high 44 bits) and n (low 20 bits)
+    desc_full = _ACTION.read(raw, "desc")  # (B, MAX_ACTIONS) long
     desc_passcodes = desc_full >> 20
     desc_ns = desc_full & 0xFFFFF
 
@@ -498,24 +549,24 @@ def decode_actions(
     )
 
     feats = [
-        (raw[..., 0].float() / _NORM_MSG_TYPE).unsqueeze(-1),
-        (raw[..., 1].float() / _NORM_CATEGORY).unsqueeze(-1),
+        _ACTION.scaled(raw, "msg_type", _NORM_MSG_TYPE),
+        _ACTION.scaled(raw, "category", _NORM_CATEGORY),
         # controller: binary 0/1, no normalization
-        raw[..., 6].float().unsqueeze(-1),
+        _ACTION.read(raw, "controller").float().unsqueeze(-1),
         # location: 7 rigorous bits
-        _extract_bits(raw[..., 7], _LOC_BITS),
-        (_uint16_le(raw, 8).float() / _NORM_SEQUENCE).unsqueeze(-1),
-        (raw[..., 10].float() / _NORM_SUBSEQUENCE).unsqueeze(-1),
+        _extract_bits(_ACTION.read(raw, "location"), _LOC_BITS),
+        _ACTION.scaled(raw, "sequence", _NORM_SEQUENCE),
+        _ACTION.scaled(raw, "subsequence", _NORM_SUBSEQUENCE),
         # position: 4 rigorous bits
-        _extract_bits(raw[..., 11], _POS_BITS),
+        _extract_bits(_ACTION.read(raw, "position"), _POS_BITS),
         # direct_attackable: binary 0/1
-        raw[..., 12].float().unsqueeze(-1),
-        (raw[..., 13].float() / _NORM_PARAM).unsqueeze(-1),
-        (raw[..., 14].float() / _NORM_COUNTER_TYPE).unsqueeze(-1),
-        (raw[..., 15].float() / _NORM_COUNTER_COUNT).unsqueeze(-1),
+        _ACTION.read(raw, "direct_attackable").float().unsqueeze(-1),
+        _ACTION.scaled(raw, "param", _NORM_PARAM),
+        _ACTION.scaled(raw, "counter_type", _NORM_COUNTER_TYPE),
+        _ACTION.scaled(raw, "counter_count", _NORM_COUNTER_COUNT),
         # index: rigorous -- the action slot count
-        (raw[..., 16].float() / float(MAX_ACTIONS)).unsqueeze(-1),
-        (raw[..., 17].float() / _NORM_NUM_SELECTED).unsqueeze(-1),
+        _ACTION.scaled(raw, "index", float(MAX_ACTIONS)),
+        _ACTION.scaled(raw, "num_selected", _NORM_NUM_SELECTED),
         # per_card_desc_n_scalar — masked to 0 on the sysstring path
         per_card_desc_n_scalar.unsqueeze(-1),
     ]
@@ -549,26 +600,23 @@ def decode_pending_chain(
     """
     raw_long = raw.long()
 
-    chain_codes = _uint32_le(raw_long, 0)  # bytes 0-3
+    chain_codes = _CHAIN.read(raw_long, "code")
 
-    desc_full = _uint64_le(raw_long, 4)  # bytes 4-11
+    desc_full = _CHAIN.read(raw_long, "desc")
     desc_passcodes = desc_full >> 20
     desc_ns = desc_full & 0xFFFFF
 
     feats = []
 
-    # controller (byte 12): scalar float
-    feats.append(raw_long[:, :, 12].float().unsqueeze(-1))
+    feats.append(_CHAIN.read(raw_long, "controller").float().unsqueeze(-1))
 
-    # location (byte 13): 7-bit one-hot using _extract_bits
-    loc_byte = raw_long[:, :, 13]
+    # location: 7-bit one-hot
+    loc_byte = _CHAIN.read(raw_long, "location")
     feats.append(_extract_bits(loc_byte, _LOC_BITS))  # (B, MAX_PENDING_CHAIN, 7)
 
-    # sequence (byte 14): scalar float
-    feats.append(raw_long[:, :, 14].float().unsqueeze(-1))
+    feats.append(_CHAIN.read(raw_long, "sequence").float().unsqueeze(-1))
 
-    # chain_link (byte 15): scalar float
-    feats.append(raw_long[:, :, 15].float().unsqueeze(-1))
+    feats.append(_CHAIN.read(raw_long, "chain_link").float().unsqueeze(-1))
 
     # per_card_desc_n: derived from desc_ns, masked to 0 when sysstring
     # (same pattern as decode_actions)
@@ -608,28 +656,24 @@ def decode_event_history(raw: torch.Tensor):
     scalars (already relativized to agent=0/opp=1 at encode time).
     turn_delta is computed relative to the newest event's turn_count in each row
     (== current turn at encode), clamped to [0,16].
-    Byte offsets match the entry encoder: msg_type[0], controller[1],
-    turn_player[2], phase[3], turn_count[4], card_code[5:9], location[9],
-    sequence[10], target_code[11:15], target_location[15], target_sequence[16],
-    desc[17:25], hint_type[25], hint_value[26:30].
     """
     raw_long = raw.long()
-    msg_type = raw_long[..., 0]
-    controller = raw_long[..., 1].float()
-    turn_player = raw_long[..., 2].float()
-    phase = raw_long[..., 3]
-    turn_count = raw_long[..., 4]
-    codes = _uint32_le(raw_long, 5)
-    location = _extract_bits(raw_long[..., 9], _LOC_BITS)  # (B,T,7) one-hot zone
-    sequence = raw_long[..., 10].float()
-    target_codes = _uint32_le(raw_long, 11)
-    target_location = _extract_bits(raw_long[..., 15], _LOC_BITS)  # (B,T,7) one-hot zone
-    target_sequence = raw_long[..., 16].float()
-    desc_full = _uint64_le(raw_long, 17)
+    msg_type = _EVENT.read(raw_long, "msg_type")
+    controller = _EVENT.read(raw_long, "controller").float()
+    turn_player = _EVENT.read(raw_long, "turn_player").float()
+    phase = _EVENT.read(raw_long, "phase")
+    turn_count = _EVENT.read(raw_long, "turn_count")
+    codes = _EVENT.read(raw_long, "card_code")
+    location = _extract_bits(_EVENT.read(raw_long, "location"), _LOC_BITS)  # (B,T,7)
+    sequence = _EVENT.read(raw_long, "sequence").float()
+    target_codes = _EVENT.read(raw_long, "target_code")
+    target_location = _extract_bits(_EVENT.read(raw_long, "target_location"), _LOC_BITS)  # (B,T,7)
+    target_sequence = _EVENT.read(raw_long, "target_sequence").float()
+    desc_full = _EVENT.read(raw_long, "desc")
     desc_passcodes = desc_full >> 20
     desc_ns = desc_full & 0xFFFFF
-    hint_type = raw_long[..., 25]
-    hint_value = _uint32_le(raw_long, 26).float()
+    hint_type = _EVENT.read(raw_long, "hint_type")
+    hint_value = _EVENT.read(raw_long, "hint_value").float()
 
     # hint_type is nominal (race/attrib/code/number) → one-hot; empty/non-hint
     # entries (hint_type not in the set) get an all-zero row.

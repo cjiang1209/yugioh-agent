@@ -37,7 +37,9 @@ from yugioh_core.constants import (
 )
 from yugioh_core.encoding import (
     ACTION_FEATURES,
+    ACTION_LAYOUT,
     CARD_FEATURES,
+    CARD_LAYOUT,
     GLOBAL_FEATURES,
     MAX_ACTIONS,
     MAX_CARDS,
@@ -86,19 +88,6 @@ def builder(card_db: CardDatabase) -> MUDObservationBuilder:
 @pytest.fixture
 def gs() -> MUDGameState:
     return MUDGameState()
-
-
-def _read_u16(arr: np.ndarray, offset: int) -> int:
-    return int(arr[offset]) | (int(arr[offset + 1]) << 8)
-
-
-def _read_u32(arr: np.ndarray, offset: int) -> int:
-    return (
-        int(arr[offset])
-        | (int(arr[offset + 1]) << 8)
-        | (int(arr[offset + 2]) << 16)
-        | (int(arr[offset + 3]) << 24)
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -225,20 +214,13 @@ class TestCardEncoding:
         assert c.shape == (MAX_CARDS, CARD_FEATURES)
         # First card should be the hand card
         card0 = c[0]
-        # code (bytes 0-3)
-        assert _read_u32(card0, 0) == 89631139
-        # location (byte 4)
-        assert card0[4] == LOCATION_HAND
-        # sequence (byte 5)
-        assert card0[5] == 0
-        # controller (byte 7)
-        assert card0[7] == 0  # agent
-        # is_public (byte 8)
-        assert card0[8] == 1
-        # ATK starts at offset 19 (code:4 + loc:1 + seq:1 + pos:1 + ctrl:1 + pub:1 + type:4 + lvl:1 + attr:1 + race:4)
-        assert _read_u16(card0, 19) == 3000
-        # DEF at offset 21
-        assert _read_u16(card0, 21) == 2500
+        assert CARD_LAYOUT.read(card0, "code") == 89631139
+        assert card0[CARD_LAYOUT.offsets["location"]] == LOCATION_HAND
+        assert card0[CARD_LAYOUT.offsets["sequence"]] == 0
+        assert card0[CARD_LAYOUT.offsets["controller"]] == 0  # agent
+        assert card0[CARD_LAYOUT.offsets["is_public"]] == 1
+        assert CARD_LAYOUT.read(card0, "attack") == 3000
+        assert CARD_LAYOUT.read(card0, "defense") == 2500
 
 
 # ---------------------------------------------------------------------------
@@ -259,17 +241,17 @@ class TestOpponentHand:
         # Find first non-zero card
         opp_hand_cards = []
         for i in range(MAX_CARDS):
-            if c[i, 4] == LOCATION_HAND and c[i, 7] == 1:
+            if (
+                c[i, CARD_LAYOUT.offsets["location"]] == LOCATION_HAND
+                and c[i, CARD_LAYOUT.offsets["controller"]] == 1
+            ):
                 opp_hand_cards.append(c[i])
 
         assert len(opp_hand_cards) == 3
         for card in opp_hand_cards:
-            # code should be 0 (hidden)
-            assert _read_u32(card, 0) == 0
-            # controller = 1 (opponent)
-            assert card[7] == 1
-            # is_public = 0
-            assert card[8] == 0
+            assert CARD_LAYOUT.read(card, "code") == 0  # hidden
+            assert card[CARD_LAYOUT.offsets["controller"]] == 1  # opponent
+            assert card[CARD_LAYOUT.offsets["is_public"]] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -289,14 +271,17 @@ class TestOpponentFaceDown:
         # Find the opp mzone card
         opp_mon = []
         for i in range(MAX_CARDS):
-            if c[i, 4] == LOCATION_MZONE and c[i, 7] == 1:
+            if (
+                c[i, CARD_LAYOUT.offsets["location"]] == LOCATION_MZONE
+                and c[i, CARD_LAYOUT.offsets["controller"]] == 1
+            ):
                 opp_mon.append(c[i])
 
         assert len(opp_mon) == 1
         card = opp_mon[0]
-        assert _read_u32(card, 0) == 0  # code hidden
-        assert card[6] == 0  # position = 0 (hidden)
-        assert card[8] == 0  # is_public = 0
+        assert CARD_LAYOUT.read(card, "code") == 0  # hidden
+        assert card[CARD_LAYOUT.offsets["position"]] == 0  # face-down
+        assert card[CARD_LAYOUT.offsets["is_public"]] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -317,7 +302,7 @@ class TestZoneFillOrder:
         # Cards should appear in order: hand, mzone, szone, grave, ...
         codes = []
         for i in range(MAX_CARDS):
-            code = _read_u32(c[i], 0)
+            code = CARD_LAYOUT.read(c[i], "code")
             if code != 0:
                 codes.append(code)
 
@@ -368,12 +353,12 @@ class TestIdleActionFeatures:
         # Action 0: msg_type=IDLE_CMD, category=IDLE_SUMMON, code=BEWD
         assert a[0, 0] == MSG_SELECT_IDLECMD
         assert a[0, 1] == IDLE_SUMMON
-        assert _read_u32(a[0], 2) == 89631139
+        assert ACTION_LAYOUT.read(a[0], "code") == 89631139
 
         # Action 1: msg_type=IDLE_CMD, category=IDLE_ACTIVATE
         assert a[1, 0] == MSG_SELECT_IDLECMD
         assert a[1, 1] == IDLE_ACTIVATE
-        assert _read_u32(a[1], 2) == 44095762
+        assert ACTION_LAYOUT.read(a[1], "code") == 44095762
 
         # Action 2: end phase, category=IDLE_TO_EP
         assert a[2, 1] == IDLE_TO_EP
@@ -532,8 +517,8 @@ class TestNonIdlePromptActions:
         a = obs["actions"]
 
         # Both Yes and No should carry Mirror Force's passcode (44095762)
-        code_yes = _read_u32(a[0], 2)
-        code_no = _read_u32(a[1], 2)
+        code_yes = ACTION_LAYOUT.read(a[0], "code")
+        code_no = ACTION_LAYOUT.read(a[1], "code")
         assert code_yes == 44095762
         assert code_no == 44095762
 
