@@ -3,6 +3,9 @@ import { describe, it, expect } from "vitest";
 import { EngineActionPanel } from "./EngineActionPanel";
 import type { EngineAction } from "../../../../shared/engineTypes";
 
+// Indices differ from positions so the panel's two lookups stay
+// distinguishable: the badge matches `action.index`, the percentage is read
+// by position.
 const actions: EngineAction[] = [
   {
     index: 3,
@@ -62,9 +65,7 @@ describe("EngineActionPanel recommended tag", () => {
 });
 
 describe("EngineActionPanel probabilities", () => {
-  it("shows one percentage per action, aligned by list position", () => {
-    // actionProbs is index-aligned with actions[], NOT keyed by action.index:
-    // actions[0].index is 3 here, and 0.61 belongs to it.
+  it("shows one percentage per action, read by list position", () => {
     const { container } = render(
       <EngineActionPanel
         actions={actions}

@@ -120,9 +120,13 @@ function AIModeDuel({
   const deck0 = agentPlayer === 0 ? myDeck : oppDeck;
   const deck1 = agentPlayer === 0 ? oppDeck : myDeck;
 
+  // `reset` keeps one identity for this component's lifetime: its dependency
+  // chain ends in callbacks that have none of their own, plus `openCards` and
+  // `recommend`, which are fixed before AIModeDuel mounts. So this starts a
+  // duel on a deck or turn-order change and at no other time.
   useEffect(() => {
     reset(randomSeed(), deck0, deck1, agentPlayer);
-  }, [deck0, deck1, agentPlayer]);
+  }, [deck0, deck1, agentPlayer, reset]);
 
   if (status === "loading" || (status === "idle" && !state)) {
     return <LoadingSpinner message="Connecting to engine..." />;

@@ -21,7 +21,6 @@ import type {
   EngineHandCard,
   EnginePrompt,
   EngineResponse,
-  PendingChainEntry,
 } from "../../../shared/engineTypes";
 import { API_BASE } from "../lib/apiBase";
 import { EVENT_DELAY_MS } from "../lib/EventReplayMachine";
@@ -86,6 +85,32 @@ const AUTO_PASS_CATEGORIES = new Set(["pass", "no"]);
  */
 const AUTOPLAY_DWELL_MS = EVENT_DELAY_MS;
 const EMPTY_EMZ: [null, null] = [null, null];
+
+/**
+ * Everything on screen for one prompt: the engine's prompt metadata, the
+ * action list, and the annotations that mean nothing apart from it.
+ *
+ * One piece of state because they are only ever right together. Published
+ * separately, a transition could replace the list while an annotation still
+ * described the prompt the human just left, pointing advice at the wrong
+ * actions.
+ */
+interface PromptActions {
+  /** Prompt metadata the specialized panels render from, or null. */
+  prompt: EnginePrompt | null;
+  list: EngineAction[];
+  /** Policy probabilities, one per entry of `list`. */
+  probs: number[] | null;
+  /** The recommended action's `EngineAction.index`. */
+  recommendedIndex: number | null;
+}
+
+const NO_PROMPT: PromptActions = {
+  prompt: null,
+  list: [],
+  probs: null,
+  recommendedIndex: null,
+};
 
 function engineCardToGameCard(
   card: EngineHandCard | EngineFieldCard,
@@ -351,11 +376,7 @@ export function useAIEngine(
 ): UseAIEngineReturn {
   const [state, setState] = useState<DuelState | null>(null);
   const [outcome, setOutcome] = useState<DuelOutcome | null>(null);
-  const [engineActions, setEngineActions] = useState<EngineAction[]>([]);
-  const [actionProbs, setActionProbs] = useState<number[] | null>(null);
-  const [recommendedActionIndex, setRecommendedActionIndex] = useState<
-    number | null
-  >(null);
+  const [promptActions, setPromptActions] = useState<PromptActions>(NO_PROMPT);
   const [valueTrace, setValueTrace] = useState<number[]>([]);
   const [autoplay, setAutoplay] = useState(false);
   // The ref, not the state, is what finalize() reads. toggleAutoplay writes it
@@ -382,7 +403,6 @@ export function useAIEngine(
   // and letting that step's response land afterwards would publish the old
   // duel's board and action list against the engine's new one.
   const generationRef = useRef(0);
-  const [enginePrompt, setEnginePrompt] = useState<EnginePrompt | null>(null);
   const [status, setStatus] = useState<AIEngineStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const logRef = useRef<string[]>([]);
@@ -468,7 +488,6 @@ export function useAIEngine(
         const newLog = [...logRef.current, ...stepEvents];
         logRef.current = newLog;
         setState(buildDuelState(resp.board, resp.game_state, newLog));
-        setEnginePrompt(resp.prompt ?? null);
         // Only here, never beside setStatus above: the closing events are
         // still replaying at that point and the result screen must not show
         // until the board has caught up.
@@ -493,16 +512,16 @@ export function useAIEngine(
           resp.actions.length === 1 &&
           AUTO_PASS_CATEGORIES.has(resp.actions[0].category)
         ) {
-          setEngineActions([]);
-          setActionProbs(null);
-          setEnginePrompt(null);
-          setRecommendedActionIndex(null);
+          setPromptActions(NO_PROMPT);
           setTimeout(() => submitRef.current?.(resp.actions[0].index), 0);
         } else {
           const idx = nextRecommendation?.action_index ?? null;
-          setEngineActions(resp.actions);
-          setActionProbs(nextRecommendation?.action_probs ?? null);
-          setRecommendedActionIndex(idx);
+          setPromptActions({
+            prompt: resp.prompt ?? null,
+            list: resp.actions,
+            probs: nextRecommendation?.action_probs ?? null,
+            recommendedIndex: idx,
+          });
 
           // Autoplay: same seam as auto-pass above, but driven by the
           // recommender. Publishing the actions first, then dwelling, is what
@@ -524,10 +543,7 @@ export function useAIEngine(
       // Frames are events already known to have happened server-side; replay
       // them on screen before finalize() publishes the next prompt.
       if (frames.length > 0) {
-        setEngineActions([]);
-        setActionProbs(null);
-        setEnginePrompt(null);
-        setRecommendedActionIndex(null);
+        setPromptActions(NO_PROMPT);
         startReplay(logRef.current, frames, finalize);
       } else {
         finalize();
@@ -552,9 +568,9 @@ export function useAIEngine(
       next &&
       !isReplaying &&
       inFlightRef.current === 0 &&
-      recommendedActionIndex != null
+      promptActions.recommendedIndex != null
     ) {
-      scheduleAutoplay(recommendedActionIndex);
+      scheduleAutoplay(promptActions.recommendedIndex);
     } else if (!next) {
       // Toggling off cancels a pending submit outright rather than relying on
       // the timeout's own ref check. Same outcome, but it stops a dwell-length
@@ -563,7 +579,7 @@ export function useAIEngine(
     }
   }, [
     isReplaying,
-    recommendedActionIndex,
+    promptActions.recommendedIndex,
     scheduleAutoplay,
     cancelScheduledAutoplay,
   ]);
@@ -584,7 +600,7 @@ export function useAIEngine(
       setState(INITIAL_DUEL_STATE);
       setOutcome(null);
       setValueTrace([]);
-      setActionProbs(null);
+      setPromptActions(NO_PROMPT);
       // Every duel starts unattended-off, whether this is a restart, a coin-flip
       // restart that remounts the hook, or a deck change.
       autoplayRef.current = false;
@@ -592,10 +608,8 @@ export function useAIEngine(
       // A submit scheduled against the previous duel's prompt is no longer
       // valid once that duel is being torn down.
       cancelScheduledAutoplay();
-      // /reset is a request round trip like /step: while it's in flight,
-      // recommendedActionIndex still holds the previous duel's stale value,
-      // so it must count as "in flight" too or a toggle in this window could
-      // kick off a submit that races the reset itself.
+      // /reset is a request round trip like /step, so it counts as in flight
+      // too: a submit fired in this window would race the reset itself.
       inFlightRef.current += 1;
       try {
         const body: Record<string, unknown> = {};
@@ -666,13 +680,13 @@ export function useAIEngine(
   return {
     state,
     outcome,
-    engineActions,
-    recommendedActionIndex,
-    actionProbs,
+    engineActions: promptActions.list,
+    recommendedActionIndex: promptActions.recommendedIndex,
+    actionProbs: promptActions.probs,
     valueTrace,
     autoplay,
     toggleAutoplay,
-    enginePrompt,
+    enginePrompt: promptActions.prompt,
     visibleLog,
     isReplaying,
     status,

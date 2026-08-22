@@ -724,6 +724,28 @@ describe("useAIEngine inspection", () => {
     cleanup();
   });
 
+  it("surfaces the prompt a response carries", async () => {
+    // The prompt travels with the action list it belongs to, so it is
+    // published by the same transition rather than on its own.
+    stubFetchBody({
+      ...inspectableResponse({ value: 0.25, action_probs: [1] }),
+      prompt: { type: "select_card", min: 1, max: 1 },
+    });
+    const { result } = renderHook(() => useAIEngine(false, true));
+
+    await act(async () => {
+      await result.current.reset(1);
+    });
+
+    await waitFor(() => {
+      expect(result.current.enginePrompt).toEqual({
+        type: "select_card",
+        min: 1,
+        max: 1,
+      });
+    });
+  });
+
   it("appends the value to the trace", async () => {
     stubFetchBody(inspectableResponse({ value: 0.25, action_probs: [1] }));
     const { result } = renderHook(() => useAIEngine(false, true));
@@ -779,6 +801,33 @@ describe("useAIEngine inspection", () => {
       await result.current.reset(2);
     });
     await waitFor(() => expect(result.current.valueTrace).toEqual([0.25]));
+  });
+
+  it("clears the prompt on screen when a reset fails", async () => {
+    // A reset tears the duel down, so nothing describing the old prompt may
+    // survive it. A failed reset is where that shows -- no response arrives to
+    // overwrite them.
+    stubFetchBody(inspectableResponse({ value: 0.25, action_probs: [0.6] }));
+    const { result } = renderHook(() => useAIEngine(false, true));
+
+    await act(async () => {
+      await result.current.reset(1);
+    });
+    expect(result.current.engineActions.length).toBe(1);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.reject(new Error("boom")))
+    );
+    await act(async () => {
+      await result.current.reset(2);
+    });
+
+    expect(result.current.status).toBe("error");
+    expect(result.current.engineActions).toEqual([]);
+    expect(result.current.actionProbs).toBeNull();
+    expect(result.current.recommendedActionIndex).toBeNull();
+    expect(result.current.enginePrompt).toBeNull();
   });
 
   it("counts an auto-passed prompt's readout in the trace", async () => {

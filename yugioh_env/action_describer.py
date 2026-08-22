@@ -180,6 +180,9 @@ class ActionDetails:
     """
 
     index: int
+    """Position in the observation's descriptor list, which is what the engine
+    takes back as the chosen action."""
+
     description: str
     category: str
     card_code: int
