@@ -68,3 +68,20 @@ describe("PositionPanel recommended badge", () => {
     expect(within(container).queryAllByTitle(BADGE)).toHaveLength(0);
   });
 });
+
+describe("PositionPanel probabilities", () => {
+  it("shows each position's probability, keyed by its action index", () => {
+    const { container } = render(
+      <PositionPanel
+        actions={actions}
+        prompt={prompt}
+        onAction={() => {}}
+        actionProbs={[0.9, 0.7, 0.05, 0.3]}
+      />
+    );
+    expect(container.textContent).toContain("70%");
+    expect(container.textContent).toContain("30%");
+    // The value at position 0 belongs to an action this panel never renders.
+    expect(container.textContent).not.toContain("90%");
+  });
+});

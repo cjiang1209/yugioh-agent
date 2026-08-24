@@ -1,5 +1,6 @@
 import type { EngineAction } from "../../../../shared/engineTypes";
 import { CardThumbnail } from "./CardThumbnail";
+import { ActionProbability } from "./ActionProbability";
 import { RecommendedBadge } from "./RecommendedBadge";
 
 const CATEGORY_COLORS: Record<
@@ -117,8 +118,8 @@ interface EngineActionPanelProps {
   actions: EngineAction[];
   onAction: (actionIndex: number) => void;
   recommendedIndex?: number | null;
-  /** Policy probabilities index-aligned with `actions`, or null when AI Assist
-   *  is off or the recommender has no policy head to report. */
+  /** Policy probabilities for `actions`, read by `EngineAction.index`, or
+   *  null when AI Assist is off or the recommender has no policy head. */
   actionProbs?: number[] | null;
 }
 
@@ -151,11 +152,10 @@ export function EngineActionPanel({
             No actions available
           </div>
         ) : (
-          actions.map((action, position) => {
+          actions.map(action => {
             const colors = CATEGORY_COLORS[action.category] ?? DEFAULT_COLOR;
             const isRecommended =
               recommendedIndex != null && action.index === recommendedIndex;
-            const prob = actionProbs?.[position];
             return (
               <button
                 key={action.index}
@@ -203,18 +203,17 @@ export function EngineActionPanel({
                     }
                   />
                   {isRecommended && <RecommendedBadge />}
+                  <ActionProbability value={actionProbs?.[action.index]} />
                 </div>
 
                 {/* Text content */}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  {/* Category badge, with the probability riding the unused
-                      space beside it. Kept off the description's line so the
-                      action text keeps the full row width and does not ellipse. */}
+                  {/* Category badge, on its own line so the description
+                      below keeps the full row width and does not ellipse. */}
                   <div
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      justifyContent: "space-between",
                       gap: "6px",
                       marginBottom: "2px",
                     }}
@@ -234,37 +233,6 @@ export function EngineActionPanel({
                     >
                       {categoryLabel(action.category)}
                     </span>
-                    {prob != null && (
-                      <span
-                        style={{
-                          position: "relative",
-                          flexShrink: 0,
-                          width: "34px",
-                          textAlign: "right",
-                          fontFamily: "'Share Tech Mono', monospace",
-                          fontSize: "0.55rem",
-                          color: "#c8d8e8",
-                        }}
-                        title={`Policy probability ${(prob * 100).toFixed(1)}%`}
-                      >
-                        {/* Proportional bar behind the number so ranking reads
-                            at a glance without comparing digits. */}
-                        <span
-                          style={{
-                            position: "absolute",
-                            right: 0,
-                            top: 0,
-                            bottom: 0,
-                            width: `${Math.max(0, Math.min(1, prob)) * 100}%`,
-                            background: "rgba(0,245,255,0.15)",
-                            borderRadius: "2px",
-                          }}
-                        />
-                        <span style={{ position: "relative" }}>
-                          {Math.round(prob * 100)}%
-                        </span>
-                      </span>
-                    )}
                   </div>
                   {/* Description */}
                   <div

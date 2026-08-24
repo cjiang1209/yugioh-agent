@@ -40,11 +40,11 @@ export interface UseAIEngineReturn {
   outcome: DuelOutcome | null;
   engineActions: EngineAction[];
   recommendedActionIndex: number | null;
-  /** Policy probabilities for the prompt on screen, index-aligned with
-   *  `engineActions`. Unlike `valueTrace` this is NOT sticky: it is keyed to
-   *  one prompt's action list by position, so carrying it forward would paint
-   *  stale percentages onto unrelated actions. It shares `engineActions`'
-   *  lifecycle exactly. */
+  /** Policy probabilities for the prompt on screen, read by
+   *  `EngineAction.index`. Unlike `valueTrace` this is NOT sticky: it belongs
+   *  to one prompt's action list, so carrying it forward would paint stale
+   *  percentages onto unrelated actions. It shares `engineActions`' lifecycle
+   *  exactly. */
   actionProbs: number[] | null;
   /** One V(s) sample per prompt this duel, oldest first; the last is the
    *  current evaluation. Only grows -- a response carrying no readout leaves

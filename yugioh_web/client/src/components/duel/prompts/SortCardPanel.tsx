@@ -10,6 +10,8 @@ interface SortCardPanelProps {
   prompt: EnginePrompt;
   onAction: (actionIndex: number) => void;
   recommendedIndex?: number | null;
+  /** Policy probabilities for the prompt on screen, read by `action.index`. */
+  actionProbs?: number[] | null;
 }
 
 export function SortCardPanel({
@@ -17,6 +19,7 @@ export function SortCardPanel({
   prompt,
   onAction,
   recommendedIndex,
+  actionProbs,
 }: SortCardPanelProps) {
   const sortActions = actions.filter(a => a.category === "sort");
   const pickedCards = prompt.picked_cards ?? [];
@@ -83,6 +86,7 @@ export function SortCardPanel({
             isRecommended={
               recommendedIndex != null && action.index === recommendedIndex
             }
+            probability={actionProbs?.[action.index]}
             onSelect={onAction}
           />
         ))}

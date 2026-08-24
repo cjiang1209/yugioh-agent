@@ -329,7 +329,8 @@ describe("DuelBoard inspector control", () => {
       engineActions: summonActions,
       onEngineAction: () => {},
       valueTrace: [0.5],
-      actionProbs: [0.61],
+      // Keyed by `action.index`, and summonActions' only entry is index 3.
+      actionProbs: [0, 0, 0, 0.61],
     };
 
     const { queryByText, rerender } = renderBoard({

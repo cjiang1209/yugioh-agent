@@ -3,9 +3,9 @@ import { describe, it, expect } from "vitest";
 import { EngineActionPanel } from "./EngineActionPanel";
 import type { EngineAction } from "../../../../shared/engineTypes";
 
-// Indices differ from positions so the panel's two lookups stay
-// distinguishable: the badge matches `action.index`, the percentage is read
-// by position.
+// Indices differ from positions, so anything keyed by position instead of by
+// `action.index` shows the wrong action's data. Both the badge and the
+// percentages key on `action.index`.
 const actions: EngineAction[] = [
   {
     index: 3,
@@ -65,16 +65,19 @@ describe("EngineActionPanel recommended tag", () => {
 });
 
 describe("EngineActionPanel probabilities", () => {
-  it("shows one percentage per action, read by list position", () => {
+  it("shows each action's percentage, keyed by its index", () => {
     const { container } = render(
       <EngineActionPanel
         actions={actions}
         onAction={() => {}}
-        actionProbs={[0.61, 0.39]}
+        actionProbs={[0.2, 0.3, 0.05, 0.61, 0.06, 0.39]}
       />
     );
     expect(container.textContent).toContain("61%");
     expect(container.textContent).toContain("39%");
+    // The values sitting at positions 0 and 1 belong to actions not shown.
+    expect(container.textContent).not.toContain("20%");
+    expect(container.textContent).not.toContain("30%");
   });
 
   it("renders no percentages when none are supplied", () => {
@@ -90,10 +93,36 @@ describe("EngineActionPanel probabilities", () => {
       <EngineActionPanel
         actions={actions}
         onAction={() => {}}
-        actionProbs={[0.61]}
+        actionProbs={[0.2, 0.3, 0.05, 0.61]}
       />
     );
     expect(container.textContent).toContain("61%");
     expect(container.textContent).not.toContain("NaN");
+    expect(container.textContent?.match(/\d+%/g)).toHaveLength(1);
+  });
+});
+
+describe("EngineActionPanel probability placement", () => {
+  it("pins the readout out of flow, in the star's container", () => {
+    // Out of flow is what stops showing or hiding it from moving anything
+    // around it; sharing the star's container is what puts it in the same
+    // corner here as on every other panel.
+    const { container } = render(
+      <EngineActionPanel
+        actions={actions}
+        onAction={() => {}}
+        recommendedIndex={3}
+        actionProbs={[0.2, 0.3, 0.05, 0.61, 0.06, 0.39]}
+      />
+    );
+    const readout = container.querySelector<HTMLElement>(
+      '[data-testid="action-probability"]'
+    )!;
+    const star = container.querySelector<HTMLElement>(
+      '[title="Recommended by AI Assist"]'
+    )!;
+
+    expect(readout.style.position).toBe("absolute");
+    expect(readout.parentElement).toBe(star.parentElement);
   });
 });

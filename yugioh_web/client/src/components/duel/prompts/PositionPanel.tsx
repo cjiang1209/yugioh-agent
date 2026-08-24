@@ -8,6 +8,7 @@ import {
   RECOMMENDED_BORDER,
   RECOMMENDED_SHADOW,
 } from "../RecommendedBadge";
+import { ActionProbability } from "../ActionProbability";
 
 const POSITION_ICONS: Record<string, string> = {
   "Face-up Attack": "\u2694\uFE0F",
@@ -53,6 +54,8 @@ interface PositionPanelProps {
   prompt: EnginePrompt;
   onAction: (actionIndex: number) => void;
   recommendedIndex?: number | null;
+  /** Policy probabilities for the prompt on screen, read by `action.index`. */
+  actionProbs?: number[] | null;
 }
 
 export function PositionPanel({
@@ -60,6 +63,7 @@ export function PositionPanel({
   prompt,
   onAction,
   recommendedIndex,
+  actionProbs,
 }: PositionPanelProps) {
   const cardCode = prompt.card_code ?? 0;
   const cardName = prompt.card_name ?? "";
@@ -116,6 +120,7 @@ export function PositionPanel({
                 position: "relative",
                 display: "flex",
                 alignItems: "center",
+                justifyContent: "center",
                 gap: "8px",
                 padding: "8px 12px",
                 borderRadius: "4px",
@@ -129,7 +134,7 @@ export function PositionPanel({
                 fontSize: "0.5rem",
                 letterSpacing: "0.08em",
                 cursor: "pointer",
-                textAlign: "left",
+                textAlign: "center",
               }}
               onMouseEnter={e => {
                 e.currentTarget.style.background = colors.bg.replace(
@@ -142,6 +147,7 @@ export function PositionPanel({
               }}
             >
               {isRecommended && <RecommendedBadge />}
+              <ActionProbability value={actionProbs?.[action.index]} />
               <span style={{ fontSize: "0.8rem" }}>{icon}</span>
               <span>{posName.toUpperCase()}</span>
             </button>

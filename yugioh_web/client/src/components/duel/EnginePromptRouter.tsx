@@ -13,8 +13,7 @@ interface EnginePromptRouterProps {
   prompt: EnginePrompt | null;
   onAction: (actionIndex: number) => void;
   recommendedIndex?: number | null;
-  /** Forwarded to the generic action list only; the specialized panels do not
-   *  render probabilities yet. */
+  /** Policy probabilities for the prompt on screen, read by `action.index`. */
   actionProbs?: number[] | null;
 }
 
@@ -45,6 +44,7 @@ export function EnginePromptRouter({
           prompt={prompt}
           onAction={onAction}
           recommendedIndex={recommendedIndex}
+          actionProbs={actionProbs}
         />
       );
 
@@ -55,6 +55,7 @@ export function EnginePromptRouter({
           prompt={prompt}
           onAction={onAction}
           recommendedIndex={recommendedIndex}
+          actionProbs={actionProbs}
         />
       );
 
@@ -66,6 +67,7 @@ export function EnginePromptRouter({
           prompt={prompt}
           onAction={onAction}
           recommendedIndex={recommendedIndex}
+          actionProbs={actionProbs}
         />
       );
 
@@ -76,6 +78,7 @@ export function EnginePromptRouter({
           prompt={prompt}
           onAction={onAction}
           recommendedIndex={recommendedIndex}
+          actionProbs={actionProbs}
         />
       );
 

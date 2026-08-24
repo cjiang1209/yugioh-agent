@@ -5,10 +5,13 @@ import {
   RECOMMENDED_BORDER,
   RECOMMENDED_SHADOW,
 } from "../RecommendedBadge";
+import { ActionProbability } from "../ActionProbability";
 
 interface SelectableCardTileProps {
   action: EngineAction;
   isRecommended: boolean;
+  /** The policy's probability for this action, when there is one. */
+  probability?: number;
   onSelect: (actionIndex: number) => void;
 }
 
@@ -21,6 +24,7 @@ interface SelectableCardTileProps {
 export function SelectableCardTile({
   action,
   isRecommended,
+  probability,
   onSelect,
 }: SelectableCardTileProps) {
   return (
@@ -77,6 +81,7 @@ export function SelectableCardTile({
           }
         />
         {isRecommended && <RecommendedBadge />}
+        <ActionProbability value={probability} />
       </div>
       <span
         style={{

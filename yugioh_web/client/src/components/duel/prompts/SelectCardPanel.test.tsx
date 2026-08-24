@@ -6,16 +6,18 @@ import type {
   EnginePrompt,
 } from "../../../../../shared/engineTypes";
 
+// Indices differ from positions, so a lookup keyed by position instead of
+// by `action.index` shows the wrong card's data.
 const actions: EngineAction[] = [
   {
-    index: 0,
+    index: 2,
     description: "Blue-Eyes White Dragon",
     card_code: 89631139,
     card_name: "Blue-Eyes White Dragon",
     category: "select_card",
   },
   {
-    index: 1,
+    index: 5,
     description: "Dark Magician",
     card_code: 46986414,
     card_name: "Dark Magician",
@@ -41,7 +43,7 @@ describe("SelectCardPanel recommended badge", () => {
         actions={actions}
         prompt={prompt}
         onAction={() => {}}
-        recommendedIndex={0}
+        recommendedIndex={2}
       />
     );
     expect(within(container).getAllByTitle(BADGE)).toHaveLength(1);
@@ -90,5 +92,24 @@ describe("SelectCardPanel recommended badge", () => {
       .getByText("FINISH")
       .closest("button") as HTMLButtonElement;
     expect(within(finishButton).getByTitle(BADGE)).toBeTruthy();
+  });
+});
+
+describe("SelectCardPanel probabilities", () => {
+  it("shows a probability on each card tile", () => {
+    const { container } = render(
+      <SelectCardPanel
+        actions={actions}
+        prompt={prompt}
+        onAction={() => {}}
+        actionProbs={[0.9, 0.05, 0.7, 0.04, 0.06, 0.3, 0, 0, 0, 0.15]}
+      />
+    );
+    expect(container.textContent).toContain("70%");
+    expect(container.textContent).toContain("30%");
+    // The finish action is an option too, and carries its own share.
+    expect(container.textContent).toContain("15%");
+    // The value at position 0 belongs to an action this panel never renders.
+    expect(container.textContent).not.toContain("90%");
   });
 });

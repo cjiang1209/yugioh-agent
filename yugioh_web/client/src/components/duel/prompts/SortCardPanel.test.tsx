@@ -6,16 +6,18 @@ import type {
   EnginePrompt,
 } from "../../../../../shared/engineTypes";
 
+// Indices differ from positions, so a lookup keyed by position instead of
+// by `action.index` shows the wrong card's data.
 const actions: EngineAction[] = [
   {
-    index: 0,
+    index: 2,
     description: "Blue-Eyes White Dragon",
     card_code: 89631139,
     card_name: "Blue-Eyes White Dragon",
     category: "sort",
   },
   {
-    index: 1,
+    index: 5,
     description: "Dark Magician",
     card_code: 46986414,
     card_name: "Dark Magician",
@@ -34,7 +36,7 @@ describe("SortCardPanel recommended badge", () => {
         actions={actions}
         prompt={prompt}
         onAction={() => {}}
-        recommendedIndex={1}
+        recommendedIndex={5}
       />
     );
     expect(within(container).getAllByTitle(BADGE)).toHaveLength(1);
@@ -66,5 +68,22 @@ describe("SortCardPanel recommended badge", () => {
       />
     );
     expect(within(container).queryAllByTitle(BADGE)).toHaveLength(0);
+  });
+});
+
+describe("SortCardPanel probabilities", () => {
+  it("shows a probability on each card tile", () => {
+    const { container } = render(
+      <SortCardPanel
+        actions={actions}
+        prompt={prompt}
+        onAction={() => {}}
+        actionProbs={[0.9, 0.05, 0.7, 0.04, 0.06, 0.3]}
+      />
+    );
+    expect(container.textContent).toContain("70%");
+    expect(container.textContent).toContain("30%");
+    // The value at position 0 belongs to an action this panel never renders.
+    expect(container.textContent).not.toContain("90%");
   });
 });

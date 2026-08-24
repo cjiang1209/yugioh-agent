@@ -8,6 +8,7 @@ import {
   RECOMMENDED_SHADOW,
 } from "../RecommendedBadge";
 import { PickedCardRow } from "./PickedCardRow";
+import { ActionProbability } from "../ActionProbability";
 import { SelectableCardTile } from "./SelectableCardTile";
 
 interface SelectCardPanelProps {
@@ -15,6 +16,8 @@ interface SelectCardPanelProps {
   prompt: EnginePrompt;
   onAction: (actionIndex: number) => void;
   recommendedIndex?: number | null;
+  /** Policy probabilities for the prompt on screen, read by `action.index`. */
+  actionProbs?: number[] | null;
 }
 
 export function SelectCardPanel({
@@ -22,6 +25,7 @@ export function SelectCardPanel({
   prompt,
   onAction,
   recommendedIndex,
+  actionProbs,
 }: SelectCardPanelProps) {
   const isTribute = prompt.type === "tribute";
   const cardActions = actions.filter(
@@ -122,6 +126,7 @@ export function SelectCardPanel({
             isRecommended={
               recommendedIndex != null && action.index === recommendedIndex
             }
+            probability={actionProbs?.[action.index]}
             onSelect={onAction}
           />
         ))}
@@ -162,6 +167,7 @@ export function SelectCardPanel({
             }}
           >
             {finishRecommended && <RecommendedBadge />}
+            <ActionProbability value={actionProbs?.[finishAction.index]} />
             {finishAction.description.toUpperCase()}
           </button>
         </div>

@@ -61,7 +61,8 @@ export interface DuelBoardProps {
   /** One V(s) sample per prompt this duel, oldest first; the last is the
    *  current evaluation. */
   valueTrace?: number[];
-  /** Policy probabilities index-aligned with `engineActions`, or null. */
+  /** Policy probabilities for `engineActions`, read by `EngineAction.index`,
+   *  or null. */
   actionProbs?: number[] | null;
 }
 

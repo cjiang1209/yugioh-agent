@@ -80,3 +80,27 @@ describe("YesNoPanel recommended badge", () => {
     expect(within(container).queryAllByTitle(BADGE)).toHaveLength(0);
   });
 });
+
+describe("YesNoPanel probabilities", () => {
+  it("shows each button's probability, keyed by its action index", () => {
+    const { container } = render(
+      <YesNoPanel
+        actions={actions}
+        prompt={prompt}
+        onAction={() => {}}
+        actionProbs={[0.9, 0.05, 0.7, 0.04, 0.3]}
+      />
+    );
+    const yesButton = within(container).getByText("YES").closest("button")!;
+    const noButton = within(container).getByText("NO").closest("button")!;
+    expect(yesButton.textContent).toContain("70%");
+    expect(noButton.textContent).toContain("30%");
+  });
+
+  it("shows no percentages without probabilities", () => {
+    const { container } = render(
+      <YesNoPanel actions={actions} prompt={prompt} onAction={() => {}} />
+    );
+    expect(container.textContent).not.toMatch(/\d+%/);
+  });
+});

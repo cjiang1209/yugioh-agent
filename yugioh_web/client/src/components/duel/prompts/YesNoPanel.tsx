@@ -8,12 +8,15 @@ import {
   RECOMMENDED_BORDER,
   RECOMMENDED_SHADOW,
 } from "../RecommendedBadge";
+import { ActionProbability } from "../ActionProbability";
 
 interface YesNoPanelProps {
   actions: EngineAction[];
   prompt: EnginePrompt;
   onAction: (actionIndex: number) => void;
   recommendedIndex?: number | null;
+  /** Policy probabilities for the prompt on screen, read by `action.index`. */
+  actionProbs?: number[] | null;
 }
 
 export function YesNoPanel({
@@ -21,6 +24,7 @@ export function YesNoPanel({
   prompt,
   onAction,
   recommendedIndex,
+  actionProbs,
 }: YesNoPanelProps) {
   const yesAction = actions.find(a => a.category === "yes");
   const noAction = actions.find(a => a.category === "no");
@@ -106,6 +110,7 @@ export function YesNoPanel({
             }}
           >
             {yesRecommended && <RecommendedBadge />}
+            <ActionProbability value={actionProbs?.[yesAction.index]} />
             YES
           </button>
         )}
@@ -137,6 +142,7 @@ export function YesNoPanel({
             }}
           >
             {noRecommended && <RecommendedBadge />}
+            <ActionProbability value={actionProbs?.[noAction.index]} />
             NO
           </button>
         )}
