@@ -50,6 +50,7 @@ def mud_observation_cases() -> dict[str, Callable[[], dict]]:
     from yugioh_core.action_categories import BATTLE_ATTACK, BATTLE_TO_EP, IDLE_SUMMON, IDLE_TO_EP
     from yugioh_core.card_database import CardDatabase
     from yugioh_core.constants import LOCATION_HAND, LOCATION_MZONE
+    from yugioh_mud.card_lookup import CardNameLookup
     from yugioh_mud.cmd_handler import StructuredAction
     from yugioh_mud.game_state import CardEntry, MUDGameState
     from yugioh_mud.observation import MUDObservationBuilder
@@ -65,14 +66,24 @@ def mud_observation_cases() -> dict[str, Callable[[], dict]]:
 
     card_db = CardDatabase(db_path)
     builder = MUDObservationBuilder(card_db)
+    lookup = CardNameLookup(db_path)
+
+    def _state(turn, phase, *, lp=8000, opp_lp=8000, my_turn=True, with_lookup=False):
+        """A board with the four scalars every case has to set."""
+        gs = MUDGameState(card_lookup=lookup if with_lookup else None)
+        gs.my_lp, gs.opp_lp = lp, opp_lp
+        gs.turn, gs.phase, gs.is_my_turn = turn, phase, my_turn
+        return gs
 
     def _idle() -> dict:
-        gs = MUDGameState()
-        gs.my_lp, gs.opp_lp = 8000, 8000
-        gs.turn = 1
-        gs.phase = "main1 phase"
-        gs.is_my_turn = True
-        gs.my_hand = [CardEntry(name="Blue-Eyes White Dragon", code=89631139)]
+        gs = _state(1, "main1 phase")
+        gs.my_hand = [
+            CardEntry(name="Blue-Eyes White Dragon", code=89631139),
+            CardEntry(name="Mirror Force", code=44095762),
+        ]
+        # Two same-category rows at different zone slots, so `index` and
+        # `sequence` are both non-zero on the second -- the fields a
+        # single-action case leaves at 0.
         sa = [
             StructuredAction(
                 category=IDLE_SUMMON,
@@ -82,17 +93,21 @@ def mud_observation_cases() -> dict[str, Callable[[], dict]]:
                 sequence=0,
                 sub_action="s",
             ),
+            StructuredAction(
+                category=IDLE_SUMMON,
+                cardspec="h2",
+                card_code=44095762,
+                location=LOCATION_HAND,
+                sequence=3,
+                sub_action="s",
+            ),
             StructuredAction(category=IDLE_TO_EP, sub_action="e"),
         ]
         prompt = ParsedPrompt(prompt_type=PromptType.IDLE_CMD, options=["e"], structured_actions=sa)
         return builder.build(gs, prompt)
 
     def _battle() -> dict:
-        gs = MUDGameState()
-        gs.my_lp, gs.opp_lp = 8000, 6000
-        gs.turn = 2
-        gs.phase = "battle phase"
-        gs.is_my_turn = True
+        gs = _state(2, "battle phase", opp_lp=6000)
         gs.my_mzone = [
             CardEntry(name="Blue-Eyes White Dragon", code=89631139, position="face-up attack")
         ]
@@ -112,4 +127,39 @@ def mud_observation_cases() -> dict[str, Callable[[], dict]]:
         )
         return builder.build(gs, prompt)
 
-    return {"idle": _idle, "battle": _battle}
+    def _effectyn() -> dict:
+        """`_encode_binary_choice`: yes/no, with the card named in the text."""
+        gs = _state(3, "main1 phase", with_lookup=True)
+        gs.my_mzone = [
+            CardEntry(name="Blue-Eyes White Dragon", code=89631139, position="face-up attack")
+        ]
+        prompt = ParsedPrompt(
+            prompt_type=PromptType.SELECT_EFFECTYN,
+            options=["y", "n"],
+            raw_lines=["Do you want to use the effect from Blue-Eyes White Dragon?"],
+        )
+        return builder.build(gs, prompt)
+
+    def _select_card() -> dict:
+        """`_encode_option_actions`: a pick list, three choices."""
+        gs = _state(4, "main1 phase", lp=7000)
+        gs.my_hand = [
+            CardEntry(name="Blue-Eyes White Dragon", code=89631139),
+            CardEntry(name="Mirror Force", code=44095762),
+        ]
+        prompt = ParsedPrompt(prompt_type=PromptType.SELECT_CARD, options=["1", "2", "3"])
+        return builder.build(gs, prompt)
+
+    def _select_place() -> dict:
+        """`_encode_generic_options`: the fall-through path, index only."""
+        gs = _state(5, "main2 phase", opp_lp=5000, my_turn=False)
+        prompt = ParsedPrompt(prompt_type=PromptType.SELECT_PLACE, options=["m1", "m2"])
+        return builder.build(gs, prompt)
+
+    return {
+        "idle": _idle,
+        "battle": _battle,
+        "effectyn": _effectyn,
+        "select_card": _select_card,
+        "select_place": _select_place,
+    }

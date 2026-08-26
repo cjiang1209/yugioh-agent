@@ -215,10 +215,10 @@ class TestCardEncoding:
         # First card should be the hand card
         card0 = c[0]
         assert CARD_LAYOUT.read(card0, "code") == 89631139
-        assert card0[CARD_LAYOUT.offsets["location"]] == LOCATION_HAND
-        assert card0[CARD_LAYOUT.offsets["sequence"]] == 0
-        assert card0[CARD_LAYOUT.offsets["controller"]] == 0  # agent
-        assert card0[CARD_LAYOUT.offsets["is_public"]] == 1
+        assert CARD_LAYOUT.read(card0, "location") == LOCATION_HAND
+        assert CARD_LAYOUT.read(card0, "sequence") == 0
+        assert CARD_LAYOUT.read(card0, "controller") == 0  # agent
+        assert CARD_LAYOUT.read(card0, "is_public") == 1
         assert CARD_LAYOUT.read(card0, "attack") == 3000
         assert CARD_LAYOUT.read(card0, "defense") == 2500
 
@@ -242,16 +242,16 @@ class TestOpponentHand:
         opp_hand_cards = []
         for i in range(MAX_CARDS):
             if (
-                c[i, CARD_LAYOUT.offsets["location"]] == LOCATION_HAND
-                and c[i, CARD_LAYOUT.offsets["controller"]] == 1
+                CARD_LAYOUT.read(c[i], "location") == LOCATION_HAND
+                and CARD_LAYOUT.read(c[i], "controller") == 1
             ):
                 opp_hand_cards.append(c[i])
 
         assert len(opp_hand_cards) == 3
         for card in opp_hand_cards:
             assert CARD_LAYOUT.read(card, "code") == 0  # hidden
-            assert card[CARD_LAYOUT.offsets["controller"]] == 1  # opponent
-            assert card[CARD_LAYOUT.offsets["is_public"]] == 0
+            assert CARD_LAYOUT.read(card, "controller") == 1  # opponent
+            assert CARD_LAYOUT.read(card, "is_public") == 0
 
 
 # ---------------------------------------------------------------------------
@@ -272,16 +272,16 @@ class TestOpponentFaceDown:
         opp_mon = []
         for i in range(MAX_CARDS):
             if (
-                c[i, CARD_LAYOUT.offsets["location"]] == LOCATION_MZONE
-                and c[i, CARD_LAYOUT.offsets["controller"]] == 1
+                CARD_LAYOUT.read(c[i], "location") == LOCATION_MZONE
+                and CARD_LAYOUT.read(c[i], "controller") == 1
             ):
                 opp_mon.append(c[i])
 
         assert len(opp_mon) == 1
         card = opp_mon[0]
         assert CARD_LAYOUT.read(card, "code") == 0  # hidden
-        assert card[CARD_LAYOUT.offsets["position"]] == 0  # face-down
-        assert card[CARD_LAYOUT.offsets["is_public"]] == 0
+        assert CARD_LAYOUT.read(card, "position") == 0  # face-down
+        assert CARD_LAYOUT.read(card, "is_public") == 0
 
 
 # ---------------------------------------------------------------------------
@@ -351,20 +351,20 @@ class TestIdleActionFeatures:
         assert m[3] == 0
 
         # Action 0: msg_type=IDLE_CMD, category=IDLE_SUMMON, code=BEWD
-        assert a[0, 0] == MSG_SELECT_IDLECMD
-        assert a[0, 1] == IDLE_SUMMON
+        assert ACTION_LAYOUT.read(a[0], "msg_type") == MSG_SELECT_IDLECMD
+        assert ACTION_LAYOUT.read(a[0], "category") == IDLE_SUMMON
         assert ACTION_LAYOUT.read(a[0], "code") == 89631139
 
         # Action 1: msg_type=IDLE_CMD, category=IDLE_ACTIVATE
-        assert a[1, 0] == MSG_SELECT_IDLECMD
-        assert a[1, 1] == IDLE_ACTIVATE
+        assert ACTION_LAYOUT.read(a[1], "msg_type") == MSG_SELECT_IDLECMD
+        assert ACTION_LAYOUT.read(a[1], "category") == IDLE_ACTIVATE
         assert ACTION_LAYOUT.read(a[1], "code") == 44095762
 
         # Action 2: end phase, category=IDLE_TO_EP
-        assert a[2, 1] == IDLE_TO_EP
+        assert ACTION_LAYOUT.read(a[2], "category") == IDLE_TO_EP
 
     def test_idle_index_is_per_category(self, builder, gs):
-        """index (byte 8) resets per category, matching RL encoding."""
+        """`index` resets per category, matching the in-process encoding."""
         sa = [
             StructuredAction(
                 category=IDLE_SUMMON,
@@ -400,18 +400,18 @@ class TestIdleActionFeatures:
         a = obs["actions"]
 
         # Two normal summons: index 0 and 1 within category 0
-        assert a[0, 1] == IDLE_SUMMON
-        assert a[0, 8] == 0  # sub-index 0
-        assert a[1, 1] == IDLE_SUMMON  # same category
-        assert a[1, 8] == 1  # sub-index 1
+        assert ACTION_LAYOUT.read(a[0], "category") == IDLE_SUMMON
+        assert ACTION_LAYOUT.read(a[0], "index") == 0
+        assert ACTION_LAYOUT.read(a[1], "category") == IDLE_SUMMON  # same category
+        assert ACTION_LAYOUT.read(a[1], "index") == 1
         # Activate: first in its category → index 0
-        assert a[2, 1] == IDLE_ACTIVATE
-        assert a[2, 8] == 0
+        assert ACTION_LAYOUT.read(a[2], "category") == IDLE_ACTIVATE
+        assert ACTION_LAYOUT.read(a[2], "index") == 0
         # Phase transitions: each is first in its category → index 0
-        assert a[3, 1] == IDLE_TO_BP
-        assert a[3, 8] == 0
-        assert a[4, 1] == IDLE_TO_EP
-        assert a[4, 8] == 0
+        assert ACTION_LAYOUT.read(a[3], "category") == IDLE_TO_BP
+        assert ACTION_LAYOUT.read(a[3], "index") == 0
+        assert ACTION_LAYOUT.read(a[4], "category") == IDLE_TO_EP
+        assert ACTION_LAYOUT.read(a[4], "index") == 0
 
 
 # ---------------------------------------------------------------------------
@@ -439,9 +439,9 @@ class TestBattleActionFeatures:
         a = obs["actions"]
         m = obs["action_mask"]
 
-        assert a[0, 0] == MSG_SELECT_BATTLECMD
-        assert a[0, 1] == BATTLE_ATTACK
-        assert a[1, 1] == BATTLE_TO_EP
+        assert ACTION_LAYOUT.read(a[0], "msg_type") == MSG_SELECT_BATTLECMD
+        assert ACTION_LAYOUT.read(a[0], "category") == BATTLE_ATTACK
+        assert ACTION_LAYOUT.read(a[1], "category") == BATTLE_TO_EP
         assert m[0] == 1
         assert m[1] == 1
         assert m[2] == 0
@@ -494,13 +494,13 @@ class TestNonIdlePromptActions:
         assert m[0] == 1
         assert m[1] == 1
         assert m[2] == 0
-        assert a[0, 0] == MSG_SELECT_EFFECTYN
-        assert a[1, 0] == MSG_SELECT_EFFECTYN
+        assert ACTION_LAYOUT.read(a[0], "msg_type") == MSG_SELECT_EFFECTYN
+        assert ACTION_LAYOUT.read(a[1], "msg_type") == MSG_SELECT_EFFECTYN
         # RL encoding: Yes → category=0, No → category=1, both index=0
-        assert a[0, 1] == 0  # category 0 = yes
-        assert a[1, 1] == 1  # category 1 = no
-        assert a[0, 8] == 0  # index 0
-        assert a[1, 8] == 0  # index 0
+        assert ACTION_LAYOUT.read(a[0], "category") == 0  # category 0 = yes
+        assert ACTION_LAYOUT.read(a[1], "category") == 1  # category 1 = no
+        assert ACTION_LAYOUT.read(a[0], "index") == 0
+        assert ACTION_LAYOUT.read(a[1], "index") == 0
 
     def test_effectyn_extracts_card_code(self, builder, tmp_db):
         from yugioh_mud.card_lookup import CardNameLookup
@@ -535,7 +535,7 @@ class TestNonIdlePromptActions:
         assert m[1] == 1
         assert m[2] == 1
         assert m[3] == 0
-        assert a[0, 0] == MSG_SELECT_CARD
-        assert a[0, 8] == 0
-        assert a[1, 8] == 1
-        assert a[2, 8] == 2
+        assert ACTION_LAYOUT.read(a[0], "msg_type") == MSG_SELECT_CARD
+        assert ACTION_LAYOUT.read(a[0], "index") == 0
+        assert ACTION_LAYOUT.read(a[1], "index") == 1
+        assert ACTION_LAYOUT.read(a[2], "index") == 2

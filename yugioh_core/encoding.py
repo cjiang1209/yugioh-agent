@@ -40,11 +40,6 @@ ZONE_SLOTS = {
 # Total per player = 15+7+6+30+20+15 = 93, times 2 = 186, leaves room for overflow
 
 
-def encode_u32(val: int) -> tuple[int, int, int, int]:
-    """Encode a uint32 value as four uint8 bytes (little-endian)."""
-    return val & 0xFF, (val >> 8) & 0xFF, (val >> 16) & 0xFF, (val >> 24) & 0xFF
-
-
 class Layout:
     """A packed row: its fields, and everything derived from them.
 
@@ -345,6 +340,53 @@ def encode_card(
         counter_count,
         negated,
         is_overlay,
+    )
+    return np.frombuffer(buf, dtype=np.uint8)
+
+
+def encode_action(
+    msg_type: int,
+    *,
+    category: int = 0,
+    code: int = 0,
+    controller: int = 0,
+    location: int = 0,
+    sequence: int = 0,
+    subsequence: int = 0,
+    position: int = 0,
+    direct_attackable: int = 0,
+    param: int = 0,
+    counter_type: int = 0,
+    counter_count: int = 0,
+    index: int = 0,
+    num_selected: int = 1,
+    desc: int = 0,
+) -> np.ndarray:
+    """Encode one action as a uint8 feature vector.
+
+    For a caller with one row to build rather than a block to fill. A field a
+    caller cannot supply keeps its default, and `num_selected` defaults to the
+    one pick a single-step prompt represents.
+    """
+    buf = bytearray(ACTION_FEATURES)
+    pack_action_into(
+        buf,
+        0,
+        msg_type,
+        category,
+        code,
+        controller,
+        location,
+        sequence,
+        subsequence,
+        position,
+        direct_attackable,
+        param,
+        counter_type,
+        counter_count,
+        index,
+        num_selected,
+        desc,
     )
     return np.frombuffer(buf, dtype=np.uint8)
 

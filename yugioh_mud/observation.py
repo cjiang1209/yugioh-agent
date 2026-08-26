@@ -52,9 +52,9 @@ from yugioh_core.encoding import (
     MAX_ACTIONS,
     MAX_CARDS,
     ZONE_SLOTS,
+    encode_action,
     encode_card,
     encode_global,
-    encode_u32,
 )
 from yugioh_mud.game_state import CardEntry, MUDGameState
 from yugioh_mud.text_parser import ParsedPrompt, PromptType
@@ -311,10 +311,8 @@ class MUDObservationBuilder:
             self._encode_structured_actions(actions, mask, prompt, msg_type)
         elif prompt.prompt_type in (PromptType.SELECT_EFFECTYN, PromptType.SELECT_YESNO):
             self._encode_binary_choice(actions, mask, msg_type, prompt, gs)
-        elif prompt.prompt_type in (PromptType.SELECT_CARD, PromptType.SELECT_TRIBUTE):
-            self._encode_option_actions(actions, mask, prompt, msg_type, gs)
         else:
-            self._encode_generic_options(actions, mask, prompt, msg_type)
+            self._encode_indexed_options(actions, mask, prompt, msg_type)
 
         return actions, mask
 
@@ -325,24 +323,26 @@ class MUDObservationBuilder:
         prompt: ParsedPrompt,
         msg_type: int,
     ) -> None:
-        # Track per-category counts so ``index`` matches the RL encoding
-        # (index within the sub-category list, not the flat action list).
+        # ``index`` is the position within the sub-category list, not the flat
+        # action list, which is what the in-process encoder puts there.
+        #
+        # controller is 0 because `_resolve_card_code` looks only in the
+        # agent's own zones and no cardspec prefix names a side; a battle row
+        # names the attacker, not its target. A future opponent-addressable
+        # cardspec has to revisit this.
         cat_counts: dict[int, int] = {}
         for i, sa in enumerate(prompt.structured_actions[:MAX_ACTIONS]):
             cat = sa.category
             sub_idx = cat_counts.get(cat, 0)
             cat_counts[cat] = sub_idx + 1
-
-            feat = np.zeros(ACTION_FEATURES, dtype=np.uint8)
-            feat[0] = msg_type & 0xFF
-            feat[1] = cat & 0xFF
-            code = sa.card_code
-            feat[2], feat[3], feat[4], feat[5] = encode_u32(code)
-            feat[6] = sa.location & 0xFF
-            feat[7] = min(sa.sequence, 255)
-            feat[8] = sub_idx & 0xFF
-            feat[9] = 1  # num_selected
-            actions[i] = feat
+            actions[i] = encode_action(
+                msg_type,
+                category=cat,
+                code=sa.card_code,
+                location=sa.location,
+                sequence=sa.sequence,
+                index=sub_idx,
+            )
             mask[i] = 1
 
     def _encode_binary_choice(
@@ -361,41 +361,24 @@ class MUDObservationBuilder:
             if m:
                 code = gs.resolve_code(m.group(1))
         for i in range(2):
-            feat = np.zeros(ACTION_FEATURES, dtype=np.uint8)
-            feat[0] = msg_type & 0xFF
-            feat[1] = i & 0xFF  # category: 0=Yes, 1=No
-            feat[2], feat[3], feat[4], feat[5] = encode_u32(code)
-            # feat[8] = 0 (index stays 0 for both)
-            actions[i] = feat
+            # Both choices carry index 0; the category is the answer.
+            actions[i] = encode_action(msg_type, category=i, code=code)
             mask[i] = 1
 
-    def _encode_option_actions(
-        self,
-        actions: np.ndarray,
-        mask: np.ndarray,
-        prompt: ParsedPrompt,
-        msg_type: int,
-        gs: MUDGameState,
-    ) -> None:
-        for i, _opt in enumerate(prompt.options[:MAX_ACTIONS]):
-            feat = np.zeros(ACTION_FEATURES, dtype=np.uint8)
-            feat[0] = msg_type & 0xFF
-            feat[8] = i & 0xFF
-            feat[9] = 1
-            actions[i] = feat
-            mask[i] = 1
-
-    def _encode_generic_options(
+    def _encode_indexed_options(
         self,
         actions: np.ndarray,
         mask: np.ndarray,
         prompt: ParsedPrompt,
         msg_type: int,
     ) -> None:
+        """Every prompt the parser reads only as a numbered list.
+
+        The row carries the option's number and nothing else, so one option
+        is offered even when the text listed none -- a prompt with an empty
+        mask is one the agent cannot answer at all.
+        """
         n = max(len(prompt.options), 1)
         for i in range(min(n, MAX_ACTIONS)):
-            feat = np.zeros(ACTION_FEATURES, dtype=np.uint8)
-            feat[0] = msg_type & 0xFF
-            feat[8] = i & 0xFF
-            actions[i] = feat
+            actions[i] = encode_action(msg_type, index=i)
             mask[i] = 1

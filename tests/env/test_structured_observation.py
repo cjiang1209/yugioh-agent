@@ -22,23 +22,21 @@ from yugioh_core.encoding import (
     EVENT_LAYOUT,
     GLOBAL_FEATURES,
     GLOBAL_LAYOUT,
+    encode_action,
     encode_card,
     encode_chain_entry,
     encode_event_entry,
     encode_global,
-    pack_action_into,
 )
 from yugioh_env.models import CardState, GlobalState, YuGiOhObservation
 
 _ACTION_ARGS = [n for n, _ in ACTION_LAYOUT if not n.startswith("extra_idx")]
 
 
-def _pack_action(**fields) -> bytearray:
-    """The action packer in the shape the four encoders already have: fields
-    by name, the rest zero."""
-    buf = bytearray(ACTION_FEATURES)
-    pack_action_into(buf, 0, *(fields.get(n, 0) for n in _ACTION_ARGS))
-    return buf
+def _pack_action(**fields):
+    """`encode_action` minus the extra_idx slots, which it has no parameters
+    for -- callers here pass every field the layout names."""
+    return encode_action(**{n: v for n, v in fields.items() if not n.startswith("extra_idx")})
 
 
 def _assert_fields(layout, row, values) -> None:

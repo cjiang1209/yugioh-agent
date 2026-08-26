@@ -102,14 +102,29 @@ Messages that write `loc_info`: `MSG_MOVE`, `MSG_SET`, `MSG_SUMMONING`, `MSG_SPS
 
 ### MUD Bot Client (`yugioh_mud/`)
 
-- **Known limitation — multi-effect cards**: Cards with multiple activatable effects (va/vb) get a single `StructuredAction` with `sub_action="v"`; the handler always picks the first effect. Future model agents needing per-effect choice will require one `StructuredAction` per effect.
-- **Known limitation — sort prompts (MSG_SORT_CARD)**: The MUD `Agent`
-  protocol returns a single int per prompt, which can't express an N-element
-  permutation. All MUD agents submit the identity permutation `[1, 2, ..., N]`
-  for sort prompts. A model trained against the in-process engine (which uses
-  the multi-step pick harness) cannot meaningfully drive sort decisions
-  through the MUD bot. Restructuring would require a new agent-return shape
-  for sort, deferred until needed.
+**Known limitations:**
+
+- **Action rows carry less than the engine's**: MUD's action rows are packed
+  through `yugioh_core.encoding.encode_action`, so every field lands where
+  `ACTION_LAYOUT` says, and `tests/mud/test_action_layout_parity.py` compares a
+  MUD row against the in-process row for the same action. Alignment is not
+  parity — the text protocol reaches far less than the engine. Card-selection
+  prompts carry no card identity at all, and `desc`, `direct_attackable` and
+  `position` are zero on every path, so every activation and yes/no prompt
+  collapses to the same embedding. A checkpoint's MUD play is therefore not
+  comparable to in-process eval until `yugioh_mud/text_parser.py` extracts card
+  codes and coordinates.
+- **Multi-effect cards**: Cards with multiple activatable effects (va/vb) get a
+  single `StructuredAction` with `sub_action="v"`; the handler always picks the
+  first effect. Future model agents needing per-effect choice will require one
+  `StructuredAction` per effect.
+- **Sort prompts (MSG_SORT_CARD)**: The MUD `Agent` protocol returns a single
+  int per prompt, which can't express an N-element permutation. All MUD agents
+  submit the identity permutation `[1, 2, ..., N]` for sort prompts. A model
+  trained against the in-process engine (which uses the multi-step pick
+  harness) cannot meaningfully drive sort decisions through the MUD bot.
+  Restructuring would require a new agent-return shape for sort, deferred until
+  needed.
 
 ### Puzzle State Initialization (`yugioh_env/puzzle.py`)
 

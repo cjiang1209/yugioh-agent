@@ -4,9 +4,10 @@
 Run deliberately, never automatically:
     .venv/bin/python tests/mud/fixtures/capture_mud_goldens.py
 
-MUD's action rows are hand-written and have drifted off ACTION_LAYOUT, but
-its cards and global state share `encode_card` and `encode_global`, so a
-change to either moves these arrays too.
+MUD packs through the shared `encode_card`, `encode_global` and
+`pack_action_into`, so a change to any of them moves these arrays too. What
+MUD's rows carry is thinner than the engine's -- see
+tests/mud/test_action_layout_parity.py, which pins the difference.
 """
 
 from __future__ import annotations
