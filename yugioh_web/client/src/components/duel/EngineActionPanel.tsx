@@ -143,8 +143,8 @@ export function EngineActionPanel({
           <div
             className="p-4 text-center"
             style={{
-              fontFamily: "'Share Tech Mono', monospace",
-              fontSize: "0.6rem",
+              fontFamily: "var(--ui-font-mono)",
+              fontSize: "var(--ui-text-sm)",
               color: "var(--text-secondary)",
               opacity: 0.5,
             }}
@@ -193,7 +193,7 @@ export function EngineActionPanel({
                     fallback={
                       <span
                         style={{
-                          fontSize: "0.6rem",
+                          fontSize: "var(--ui-text-sm)",
                           color: colors.text,
                           opacity: 0.5,
                         }}
@@ -222,9 +222,9 @@ export function EngineActionPanel({
                       style={{
                         padding: "1px 5px",
                         borderRadius: "3px",
-                        fontSize: "0.45rem",
-                        fontFamily: "'Orbitron', sans-serif",
-                        letterSpacing: "0.08em",
+                        fontSize: "var(--ui-text-xs)",
+                        fontFamily: "var(--ui-font-display)",
+                        letterSpacing: "var(--ui-tracking-wide)",
                         background: colors.bg,
                         border: `1px solid ${colors.border}`,
                         color: colors.text,
@@ -237,8 +237,8 @@ export function EngineActionPanel({
                   {/* Description */}
                   <div
                     style={{
-                      fontFamily: "'Share Tech Mono', monospace",
-                      fontSize: "0.55rem",
+                      fontFamily: "var(--ui-font-body)",
+                      fontSize: "var(--ui-text-md)",
                       color: "#c8d8e8",
                       lineHeight: 1.3,
                       overflow: "hidden",

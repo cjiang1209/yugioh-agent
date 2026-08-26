@@ -163,7 +163,7 @@ export function CardZone({
               <div
                 className="absolute bottom-0 left-0 right-0 text-center font-bold"
                 style={{
-                  fontSize: "0.65rem",
+                  fontSize: "var(--ui-text-sm)",
                   paddingBlock: "2px",
                   background: "rgba(0,0,0,0.8)",
                   color:

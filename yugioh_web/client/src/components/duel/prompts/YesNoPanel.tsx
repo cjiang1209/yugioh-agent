@@ -69,8 +69,8 @@ export function YesNoPanel({
       {/* Question text */}
       <div
         style={{
-          fontFamily: "'Share Tech Mono', monospace",
-          fontSize: "0.6rem",
+          fontFamily: "var(--ui-font-body)",
+          fontSize: "var(--ui-text-md)",
           color: "#c8d8e8",
           textAlign: "center",
           lineHeight: 1.4,
@@ -97,9 +97,9 @@ export function YesNoPanel({
               boxShadow: yesRecommended ? RECOMMENDED_SHADOW : undefined,
               background: "rgba(0,200,80,0.12)",
               color: "#00d850",
-              fontFamily: "'Orbitron', sans-serif",
-              fontSize: "0.55rem",
-              letterSpacing: "0.1em",
+              fontFamily: "var(--ui-font-display)",
+              fontSize: "var(--ui-text-xs)",
+              letterSpacing: "var(--ui-tracking-wide)",
               cursor: "pointer",
             }}
             onMouseEnter={e => {
@@ -129,9 +129,9 @@ export function YesNoPanel({
               boxShadow: noRecommended ? RECOMMENDED_SHADOW : undefined,
               background: "rgba(255,45,120,0.12)",
               color: "#ff2d78",
-              fontFamily: "'Orbitron', sans-serif",
-              fontSize: "0.55rem",
-              letterSpacing: "0.1em",
+              fontFamily: "var(--ui-font-display)",
+              fontSize: "var(--ui-text-xs)",
+              letterSpacing: "var(--ui-tracking-wide)",
               cursor: "pointer",
             }}
             onMouseEnter={e => {

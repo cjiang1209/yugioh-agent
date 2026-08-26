@@ -105,9 +105,9 @@ export function DeckSelector({ onDeckSelected }: DeckSelectorProps) {
         <div
           className="text-xs"
           style={{
-            fontFamily: "'Orbitron', sans-serif",
+            fontFamily: "var(--ui-font-display)",
             color: "var(--neon-cyan)",
-            letterSpacing: "0.15em",
+            letterSpacing: "var(--ui-tracking-hud)",
           }}
         >
           LOADING DECKS...
@@ -125,8 +125,8 @@ export function DeckSelector({ onDeckSelected }: DeckSelectorProps) {
         <div
           style={{
             color: "var(--neon-pink)",
-            fontFamily: "'Orbitron', sans-serif",
-            fontSize: "0.8rem",
+            fontFamily: "var(--ui-font-display)",
+            fontSize: "var(--ui-text-md)",
           }}
         >
           {error}
@@ -148,10 +148,10 @@ export function DeckSelector({ onDeckSelected }: DeckSelectorProps) {
         <h1
           className="text-4xl font-black mb-2"
           style={{
-            fontFamily: "'Orbitron', sans-serif",
+            fontFamily: "var(--ui-font-display)",
             color: "var(--neon-cyan)",
             textShadow: "0 0 20px var(--neon-cyan), 0 0 60px var(--neon-cyan)",
-            letterSpacing: "0.15em",
+            letterSpacing: "var(--ui-tracking-hud)",
           }}
         >
           SELECT DECKS
@@ -160,7 +160,7 @@ export function DeckSelector({ onDeckSelected }: DeckSelectorProps) {
           className="text-sm opacity-50"
           style={{
             color: "var(--text-secondary)",
-            fontFamily: "'Rajdhani', sans-serif",
+            fontFamily: "var(--ui-font-body)",
           }}
         >
           Choose a deck for each player
@@ -211,10 +211,10 @@ export function DeckSelector({ onDeckSelected }: DeckSelectorProps) {
         <div
           className="text-xs font-bold mb-3 tracking-widest text-center"
           style={{
-            fontFamily: "'Orbitron', sans-serif",
+            fontFamily: "var(--ui-font-display)",
             color: "var(--neon-cyan)",
-            fontSize: "0.65rem",
-            letterSpacing: "0.15em",
+            fontSize: "var(--ui-text-sm)",
+            letterSpacing: "var(--ui-tracking-hud)",
           }}
         >
           TURN ORDER
@@ -243,8 +243,8 @@ export function DeckSelector({ onDeckSelected }: DeckSelectorProps) {
           className="mt-1 opacity-40"
           style={{
             color: "var(--text-secondary)",
-            fontFamily: "'Share Tech Mono', monospace",
-            fontSize: "0.5rem",
+            fontFamily: "var(--ui-font-mono)",
+            fontSize: "var(--ui-text-xs)",
           }}
         >
           {TURN_ORDER_CAPTION[turnOrder]}
@@ -293,8 +293,8 @@ export function DeckSelector({ onDeckSelected }: DeckSelectorProps) {
         }}
         className="px-8 py-3 rounded font-bold text-sm transition-all"
         style={{
-          fontFamily: "'Orbitron', sans-serif",
-          letterSpacing: "0.15em",
+          fontFamily: "var(--ui-font-display)",
+          letterSpacing: "var(--ui-tracking-hud)",
           background: canStart
             ? "rgba(0,245,255,0.1)"
             : "rgba(255,255,255,0.03)",
@@ -302,7 +302,7 @@ export function DeckSelector({ onDeckSelected }: DeckSelectorProps) {
           color: canStart ? "var(--neon-cyan)" : "var(--text-muted)",
           boxShadow: canStart ? "0 0 20px rgba(0,245,255,0.3)" : "none",
           cursor: canStart ? "pointer" : "not-allowed",
-          fontSize: "0.75rem",
+          fontSize: "var(--ui-text-md)",
         }}
       >
         {canStart ? "ENTER THE DUEL \u25B6" : "SELECT BOTH DECKS"}
@@ -390,9 +390,9 @@ function ToggleButton({
         title={title}
         className="flex items-center gap-2 px-4 py-2 rounded transition-all"
         style={{
-          fontFamily: "'Orbitron', sans-serif",
-          fontSize: "0.6rem",
-          letterSpacing: "0.1em",
+          fontFamily: "var(--ui-font-display)",
+          fontSize: "var(--ui-text-sm)",
+          letterSpacing: "var(--ui-tracking-wide)",
           background: on ? accent.background : "rgba(255,255,255,0.03)",
           border: `1px solid ${on ? accent.color : "var(--border-dim)"}`,
           color: on ? accent.color : "var(--text-muted)",
@@ -401,15 +401,15 @@ function ToggleButton({
           cursor: disabled ? "not-allowed" : "pointer",
         }}
       >
-        <span style={{ fontSize: "0.85rem" }}>{icon}</span>
+        <span style={{ fontSize: "var(--ui-text-md)" }}>{icon}</span>
         {label}: {on ? "ON" : "OFF"}
       </button>
       <span
         className="mt-1 opacity-40"
         style={{
           color: "var(--text-secondary)",
-          fontFamily: "'Share Tech Mono', monospace",
-          fontSize: "0.5rem",
+          fontFamily: "var(--ui-font-mono)",
+          fontSize: "var(--ui-text-xs)",
         }}
       >
         {caption}
@@ -439,9 +439,9 @@ function TurnOrderButton({
       aria-checked={selected}
       className="px-4 py-2 rounded transition-all"
       style={{
-        fontFamily: "'Orbitron', sans-serif",
-        fontSize: "0.6rem",
-        letterSpacing: "0.1em",
+        fontFamily: "var(--ui-font-display)",
+        fontSize: "var(--ui-text-sm)",
+        letterSpacing: "var(--ui-tracking-wide)",
         background: selected
           ? NEON_CYAN_ACCENT.background
           : "rgba(255,255,255,0.03)",
@@ -481,9 +481,9 @@ function SlotSection({
       <div
         className="text-xs font-bold mb-4 tracking-widest text-center"
         style={{
-          fontFamily: "'Orbitron', sans-serif",
+          fontFamily: "var(--ui-font-display)",
           color: labelColor,
-          fontSize: "0.65rem",
+          fontSize: "var(--ui-text-sm)",
         }}
       >
         {label}
@@ -499,9 +499,9 @@ function SlotSection({
           className="w-full"
           style={{
             padding: "12px 36px 12px 16px",
-            fontFamily: "'Orbitron', sans-serif",
-            fontSize: "0.8rem",
-            letterSpacing: "0.08em",
+            fontFamily: "var(--ui-font-display)",
+            fontSize: "var(--ui-text-md)",
+            letterSpacing: "var(--ui-tracking-wide)",
             color: selected ? labelColor : "var(--text-muted)",
             background: "var(--bg-panel)",
             border: `1px solid ${selected ? labelColor : "var(--border-dim)"}`,
@@ -526,9 +526,9 @@ function SlotSection({
               value={deck.filename}
               className="hover:bg-white/5"
               style={{
-                fontFamily: "'Orbitron', sans-serif",
-                fontSize: "0.75rem",
-                letterSpacing: "0.06em",
+                fontFamily: "var(--ui-font-display)",
+                fontSize: "var(--ui-text-md)",
+                letterSpacing: "var(--ui-tracking-tight)",
                 color:
                   selected?.filename === deck.filename
                     ? labelColor
@@ -540,9 +540,9 @@ function SlotSection({
               <span
                 style={{
                   marginLeft: "6px",
-                  fontSize: "0.6rem",
+                  fontSize: "var(--ui-text-sm)",
                   opacity: 0.5,
-                  fontFamily: "'Share Tech Mono', monospace",
+                  fontFamily: "var(--ui-font-mono)",
                 }}
               >
                 {deckSuffix(deck)}
@@ -578,9 +578,9 @@ function DeckPreview({
         <div
           className="text-xs opacity-30"
           style={{
-            fontFamily: "'Orbitron', sans-serif",
+            fontFamily: "var(--ui-font-display)",
             color: labelColor,
-            letterSpacing: "0.1em",
+            letterSpacing: "var(--ui-tracking-wide)",
           }}
         >
           SELECT A DECK
@@ -642,9 +642,9 @@ function CardSection({
       <div
         className="text-xs font-bold mb-2 tracking-wider"
         style={{
-          fontFamily: "'Orbitron', sans-serif",
+          fontFamily: "var(--ui-font-display)",
           color,
-          fontSize: "0.55rem",
+          fontSize: "var(--ui-text-xs)",
           opacity: 0.7,
         }}
       >
@@ -681,8 +681,8 @@ function CardSection({
                 background: "rgba(0,0,0,0.9)",
                 border: `1px solid ${color}44`,
                 color: "var(--text-primary)",
-                fontFamily: "'Rajdhani', sans-serif",
-                fontSize: "0.65rem",
+                fontFamily: "var(--ui-font-body)",
+                fontSize: "var(--ui-text-sm)",
                 maxWidth: "160px",
                 overflow: "hidden",
                 textOverflow: "ellipsis",

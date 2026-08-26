@@ -7,16 +7,10 @@ interface PanelPlaceholderProps {
 export function PanelPlaceholder({ icon, label }: PanelPlaceholderProps) {
   return (
     <div
-      className="h-full flex flex-col items-center justify-center gap-2 opacity-30"
-      style={{
-        fontFamily: "'Orbitron', sans-serif",
-        fontSize: "0.65rem",
-        color: "var(--neon-cyan)",
-        letterSpacing: "0.1em",
-        textAlign: "center",
-      }}
+      className="hud-label h-full flex flex-col items-center justify-center gap-2 opacity-30"
+      style={{ textAlign: "center" }}
     >
-      {icon && <div style={{ fontSize: "1.5rem" }}>{icon}</div>}
+      {icon && <div style={{ fontSize: "var(--ui-text-2xl)" }}>{icon}</div>}
       <div>{label}</div>
     </div>
   );

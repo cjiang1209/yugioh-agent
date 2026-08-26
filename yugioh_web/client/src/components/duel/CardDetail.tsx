@@ -11,11 +11,11 @@ interface CardDetailProps {
 const IMAGE_BASE = "https://images.ygoprodeck.com/images/cards";
 
 const TEXT_STYLE = {
-  fontFamily: "'Rajdhani', sans-serif",
-  fontSize: "0.82rem",
+  fontFamily: "var(--ui-font-body)",
+  fontSize: "var(--ui-text-md)",
   color: "#8aaec8",
   lineHeight: 1.5,
-  fontWeight: 500,
+  fontWeight: "var(--ui-weight-medium)",
 } as const;
 
 // 3x3 rosette; the centre cell is the card itself.
@@ -50,7 +50,7 @@ function LinkArrowRosette({ arrows }: { arrows: string[] }) {
       style={{
         gridTemplateColumns: "repeat(3, 1rem)",
         gap: "1px",
-        fontSize: "0.7rem",
+        fontSize: "var(--ui-text-sm)",
         lineHeight: 1,
       }}
     >
@@ -121,12 +121,12 @@ export function CardDetail({ card }: CardDetailProps) {
 
       <div
         style={{
-          fontFamily: "'Orbitron', sans-serif",
-          fontSize: "0.75rem",
-          fontWeight: 700,
+          fontFamily: "var(--ui-font-display)",
+          fontSize: "var(--ui-text-md)",
+          fontWeight: "var(--ui-weight-bold)",
           color: "#e8f4ff",
           lineHeight: 1.4,
-          letterSpacing: "0.03em",
+          letterSpacing: "var(--ui-tracking-tight)",
         }}
       >
         {info?.name ?? card.name}
@@ -151,7 +151,7 @@ export function CardDetail({ card }: CardDetailProps) {
           <span
             style={{
               ...TEXT_STYLE,
-              fontWeight: 700,
+              fontWeight: "var(--ui-weight-bold)",
               color: "var(--neon-cyan)",
             }}
           >
@@ -161,7 +161,7 @@ export function CardDetail({ card }: CardDetailProps) {
             <span
               style={{
                 ...TEXT_STYLE,
-                fontWeight: 700,
+                fontWeight: "var(--ui-weight-bold)",
                 color: "var(--neon-yellow, #ffe066)",
               }}
             >
@@ -175,7 +175,7 @@ export function CardDetail({ card }: CardDetailProps) {
         <p
           style={{
             ...TEXT_STYLE,
-            fontWeight: 400,
+            fontWeight: "var(--ui-weight-normal)",
             lineHeight: 1.6,
             // cards.cdb line breaks are meaningful — Pendulum cards carry two
             // labelled sections. Default collapsing would merge them.

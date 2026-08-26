@@ -37,7 +37,7 @@ export function RecommendedBadge() {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        fontSize: "0.6rem",
+        fontSize: "var(--ui-text-sm)",
         lineHeight: 1,
         background: RECOMMENDED_COLOR,
         color: "#1a1200",

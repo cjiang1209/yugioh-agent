@@ -52,10 +52,10 @@ export function LifePoints({
         <span
           className="font-bold truncate"
           style={{
-            fontFamily: "'Orbitron', sans-serif",
+            fontFamily: "var(--ui-font-display)",
             color: isOpponent ? "var(--neon-pink)" : "var(--neon-cyan)",
-            fontSize: "0.9rem",
-            letterSpacing: "0.1em",
+            fontSize: "var(--ui-text-lg)",
+            letterSpacing: "var(--ui-tracking-wide)",
             textShadow: isOpponent
               ? "0 0 6px rgba(255,45,120,0.6)"
               : "0 0 6px rgba(0,245,255,0.6)",
@@ -67,10 +67,10 @@ export function LifePoints({
         <span
           className="font-bold ml-2"
           style={{
-            fontFamily: "'Share Tech Mono', monospace",
+            fontFamily: "var(--ui-font-mono)",
             color,
             textShadow: `0 0 10px ${color}, 0 0 20px ${color}66`,
-            fontSize: "1.2rem",
+            fontSize: "var(--ui-text-lg)",
           }}
         >
           {lp.toLocaleString()}

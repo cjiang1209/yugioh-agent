@@ -22,9 +22,9 @@ const RESULTS: Record<DuelOutcome, { title: string; color: string }> = {
 };
 
 const BUTTON_BASE = {
-  fontFamily: "'Orbitron', sans-serif",
-  fontSize: "0.6rem",
-  letterSpacing: "0.1em",
+  fontFamily: "var(--ui-font-display)",
+  fontSize: "var(--ui-text-sm)",
+  letterSpacing: "var(--ui-tracking-wide)",
 } as const;
 
 /** Full-screen end-of-duel result with the follow-up actions. */
@@ -60,7 +60,7 @@ export function DuelResultOverlay({
         <div
           className="text-6xl font-black mb-4"
           style={{
-            fontFamily: "'Orbitron', sans-serif",
+            fontFamily: "var(--ui-font-display)",
             color,
             textShadow: glow(color),
           }}
@@ -98,7 +98,7 @@ export function DuelResultOverlay({
             className="mt-4 px-2 py-1 opacity-50 hover:opacity-90 transition-opacity"
             style={{
               ...BUTTON_BASE,
-              fontSize: "0.5rem",
+              fontSize: "var(--ui-text-xs)",
               color: "var(--text-secondary)",
             }}
           >

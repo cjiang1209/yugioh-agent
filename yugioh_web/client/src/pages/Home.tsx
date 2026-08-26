@@ -78,7 +78,7 @@ export default function Home() {
           <div
             className="text-xs tracking-[0.5em] mb-3 opacity-50"
             style={{
-              fontFamily: "'Share Tech Mono', monospace",
+              fontFamily: "var(--ui-font-mono)",
               color: "var(--neon-cyan)",
             }}
           >
@@ -87,11 +87,11 @@ export default function Home() {
           <h1
             className="text-7xl font-black mb-1 animate-flicker"
             style={{
-              fontFamily: "'Orbitron', sans-serif",
+              fontFamily: "var(--ui-font-display)",
               color: "var(--neon-pink)",
               textShadow:
                 "0 0 20px var(--neon-pink), 0 0 60px var(--neon-pink), 0 0 100px rgba(255,45,120,0.3)",
-              letterSpacing: "0.15em",
+              letterSpacing: "var(--ui-tracking-hud)",
               lineHeight: 1,
             }}
           >
@@ -100,7 +100,7 @@ export default function Home() {
           <h2
             className="text-3xl font-bold tracking-[0.4em]"
             style={{
-              fontFamily: "'Orbitron', sans-serif",
+              fontFamily: "var(--ui-font-display)",
               color: "var(--neon-cyan)",
               textShadow:
                 "0 0 15px var(--neon-cyan), 0 0 40px var(--neon-cyan)",
@@ -124,7 +124,7 @@ export default function Home() {
             className="text-xs"
             style={{
               color: "var(--neon-cyan)",
-              fontFamily: "'Share Tech Mono', monospace",
+              fontFamily: "var(--ui-font-mono)",
               opacity: 0.7,
             }}
           >
@@ -157,9 +157,9 @@ export default function Home() {
                 background: "rgba(0,245,255,0.05)",
                 border: "1px solid rgba(0,245,255,0.2)",
                 color: "var(--neon-cyan)",
-                fontFamily: "'Rajdhani', sans-serif",
-                fontWeight: 600,
-                letterSpacing: "0.05em",
+                fontFamily: "var(--ui-font-body)",
+                fontWeight: "var(--ui-weight-medium)",
+                letterSpacing: "var(--ui-tracking-tight)",
               }}
             >
               {feat}
@@ -172,15 +172,15 @@ export default function Home() {
           <button
             className="px-12 py-4 rounded font-black text-lg transition-all"
             style={{
-              fontFamily: "'Orbitron', sans-serif",
-              letterSpacing: "0.2em",
+              fontFamily: "var(--ui-font-display)",
+              letterSpacing: "var(--ui-tracking-display)",
               background:
                 "linear-gradient(135deg, rgba(255,45,120,0.15), rgba(0,245,255,0.15))",
               border: "1px solid var(--neon-cyan)",
               color: "var(--neon-cyan)",
               boxShadow:
                 "0 0 30px rgba(0,245,255,0.3), inset 0 0 30px rgba(0,245,255,0.05)",
-              fontSize: "0.9rem",
+              fontSize: "var(--ui-text-lg)",
             }}
             onMouseEnter={e => {
               (e.currentTarget as HTMLButtonElement).style.boxShadow =
@@ -203,7 +203,7 @@ export default function Home() {
           className="mt-8 text-xs opacity-40 max-w-sm mx-auto leading-relaxed"
           style={{
             color: "var(--text-secondary)",
-            fontFamily: "'Rajdhani', sans-serif",
+            fontFamily: "var(--ui-font-body)",
           }}
         >
           Click START DUEL to choose your deck and challenge the AI opponent.

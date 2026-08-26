@@ -93,8 +93,8 @@ export function PositionPanel({
       {/* Header */}
       <div
         style={{
-          fontFamily: "'Share Tech Mono', monospace",
-          fontSize: "0.6rem",
+          fontFamily: "var(--ui-font-body)",
+          fontSize: "var(--ui-text-md)",
           color: "#c8d8e8",
           textAlign: "center",
         }}
@@ -130,9 +130,9 @@ export function PositionPanel({
                 boxShadow: isRecommended ? RECOMMENDED_SHADOW : undefined,
                 background: colors.bg,
                 color: colors.text,
-                fontFamily: "'Orbitron', sans-serif",
-                fontSize: "0.5rem",
-                letterSpacing: "0.08em",
+                fontFamily: "var(--ui-font-display)",
+                fontSize: "var(--ui-text-xs)",
+                letterSpacing: "var(--ui-tracking-wide)",
                 cursor: "pointer",
                 textAlign: "center",
               }}
@@ -148,7 +148,7 @@ export function PositionPanel({
             >
               {isRecommended && <RecommendedBadge />}
               <ActionProbability value={actionProbs?.[action.index]} />
-              <span style={{ fontSize: "0.8rem" }}>{icon}</span>
+              <span style={{ fontSize: "var(--ui-text-md)" }}>{icon}</span>
               <span>{posName.toUpperCase()}</span>
             </button>
           );

@@ -76,8 +76,8 @@ export function SelectCardPanel({
       >
         <span
           style={{
-            fontFamily: "'Share Tech Mono', monospace",
-            fontSize: "0.6rem",
+            fontFamily: "var(--ui-font-body)",
+            fontSize: "var(--ui-text-md)",
             color: "#c8d8e8",
           }}
         >
@@ -86,9 +86,9 @@ export function SelectCardPanel({
         {progressText && (
           <span
             style={{
-              fontFamily: "'Orbitron', sans-serif",
-              fontSize: "0.45rem",
-              letterSpacing: "0.05em",
+              fontFamily: "var(--ui-font-display)",
+              fontSize: "var(--ui-text-md)",
+              letterSpacing: "var(--ui-tracking-tight)",
               color: "var(--neon-cyan)",
               opacity: 0.8,
             }}
@@ -111,7 +111,11 @@ export function SelectCardPanel({
         className="flex-1 overflow-y-auto"
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(2, 1fr)",
+          // minmax(0, 1fr), not 1fr: a bare 1fr floors each track at its
+          // content's min-content width, and the tile captions are one
+          // unbroken line, so a long card name would widen the track and push
+          // the grid past the panel instead of ellipsing.
+          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
           gap: "6px",
           padding: "8px",
           alignContent: "start",
@@ -154,9 +158,9 @@ export function SelectCardPanel({
               boxShadow: finishRecommended ? RECOMMENDED_SHADOW : undefined,
               background: "rgba(0,245,255,0.12)",
               color: "var(--neon-cyan)",
-              fontFamily: "'Orbitron', sans-serif",
-              fontSize: "0.5rem",
-              letterSpacing: "0.1em",
+              fontFamily: "var(--ui-font-display)",
+              fontSize: "var(--ui-text-xs)",
+              letterSpacing: "var(--ui-tracking-wide)",
               cursor: "pointer",
             }}
             onMouseEnter={e => {

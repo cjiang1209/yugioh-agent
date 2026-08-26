@@ -26,8 +26,8 @@ export function ActionProbability({ value }: { value?: number | null }) {
         padding: "0 3px",
         borderRadius: "2px",
         background: "rgba(6,10,20,0.75)",
-        fontFamily: "'Share Tech Mono', monospace",
-        fontSize: "0.55rem",
+        fontFamily: "var(--ui-font-mono)",
+        fontSize: "var(--ui-text-xs)",
         lineHeight: 1.3,
         color: "#c8d8e8",
       }}

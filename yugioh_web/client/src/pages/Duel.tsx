@@ -7,9 +7,9 @@ import { resolveTurnOrder, type TurnOrder } from "./turnOrder";
 import type { DeckPayload } from "../../../shared/deckTypes";
 
 const MODE_BUTTON_BASE = {
-  fontFamily: "'Orbitron', sans-serif",
-  fontSize: "clamp(0.42rem, 0.75vw, 0.65rem)",
-  letterSpacing: "0.1em",
+  fontFamily: "var(--ui-font-display)",
+  fontSize: "clamp(var(--ui-text-2xs), 0.75vw, var(--ui-text-sm))",
+  letterSpacing: "var(--ui-tracking-wide)",
   backdropFilter: "blur(4px)",
 } as const;
 
@@ -142,8 +142,8 @@ function AIModeDuel({
           <div
             style={{
               color: "var(--neon-pink)",
-              fontFamily: "'Orbitron', sans-serif",
-              fontSize: "0.8rem",
+              fontFamily: "var(--ui-font-display)",
+              fontSize: "var(--ui-text-md)",
               marginBottom: "1rem",
             }}
           >
@@ -152,8 +152,8 @@ function AIModeDuel({
           <div
             style={{
               color: "var(--text-secondary)",
-              fontFamily: "'Share Tech Mono', monospace",
-              fontSize: "0.6rem",
+              fontFamily: "var(--ui-font-mono)",
+              fontSize: "var(--ui-text-sm)",
               marginBottom: "1.5rem",
               maxWidth: "30rem",
             }}
@@ -235,10 +235,10 @@ function LoadingSpinner({ message }: { message: string }) {
         <div
           className="text-sm mb-1"
           style={{
-            fontFamily: "'Orbitron', sans-serif",
+            fontFamily: "var(--ui-font-display)",
             color: "var(--neon-cyan)",
-            fontSize: "0.7rem",
-            letterSpacing: "0.15em",
+            fontSize: "var(--ui-text-sm)",
+            letterSpacing: "var(--ui-tracking-hud)",
             textShadow: "0 0 8px var(--neon-cyan)",
           }}
         >
@@ -248,8 +248,8 @@ function LoadingSpinner({ message }: { message: string }) {
           className="text-xs opacity-40"
           style={{
             color: "var(--text-secondary)",
-            fontFamily: "'Share Tech Mono', monospace",
-            fontSize: "0.55rem",
+            fontFamily: "var(--ui-font-mono)",
+            fontSize: "var(--ui-text-xs)",
           }}
         >
           {message}

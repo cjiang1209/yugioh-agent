@@ -40,8 +40,8 @@ export function SortCardPanel({
       >
         <span
           style={{
-            fontFamily: "'Share Tech Mono', monospace",
-            fontSize: "0.6rem",
+            fontFamily: "var(--ui-font-body)",
+            fontSize: "var(--ui-text-md)",
             color: "#c8d8e8",
           }}
         >
@@ -49,9 +49,9 @@ export function SortCardPanel({
         </span>
         <span
           style={{
-            fontFamily: "'Orbitron', sans-serif",
-            fontSize: "0.45rem",
-            letterSpacing: "0.05em",
+            fontFamily: "var(--ui-font-display)",
+            fontSize: "var(--ui-text-md)",
+            letterSpacing: "var(--ui-tracking-tight)",
             color: "var(--neon-cyan)",
             opacity: 0.8,
           }}
@@ -71,7 +71,9 @@ export function SortCardPanel({
         className="flex-1 overflow-y-auto"
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(2, 1fr)",
+          // See SelectCardPanel: minmax(0, 1fr) keeps a long card name from
+          // widening its track instead of ellipsing.
+          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
           gap: "6px",
           padding: "8px",
           alignContent: "start",

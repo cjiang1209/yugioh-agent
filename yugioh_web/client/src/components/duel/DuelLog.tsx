@@ -28,10 +28,13 @@ function DuelLogInner({ logs, isReplaying }: DuelLogProps) {
             key={i}
             className={`leading-relaxed${isReplaying && i >= animateFrom ? " log-entry-reveal" : ""}`}
             style={{
-              fontFamily: "'Rajdhani', sans-serif",
-              fontSize: "0.82rem",
+              fontFamily: "var(--ui-font-body)",
+              fontSize: "var(--ui-text-md)",
               color: i === logs.length - 1 ? "#e8f4ff" : "#8aaec8",
-              fontWeight: i === logs.length - 1 ? 600 : 400,
+              fontWeight:
+                i === logs.length - 1
+                  ? "var(--ui-weight-medium)"
+                  : "var(--ui-weight-normal)",
               marginBottom: "2px",
             }}
           >

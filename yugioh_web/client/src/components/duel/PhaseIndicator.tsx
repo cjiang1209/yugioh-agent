@@ -32,24 +32,24 @@ export function PhaseIndicator({
       <div className="flex items-center" style={{ gap: "10px" }}>
         <span
           style={{
-            fontFamily: "'Orbitron', sans-serif",
-            fontSize: "0.65rem",
+            fontFamily: "var(--ui-font-display)",
+            fontSize: "var(--ui-text-sm)",
             color: "rgba(0,245,255,0.7)",
-            letterSpacing: "0.1em",
+            letterSpacing: "var(--ui-tracking-wide)",
           }}
         >
           TURN {turnNumber}
         </span>
         <span
           style={{
-            fontFamily: "'Orbitron', sans-serif",
-            fontSize: "0.78rem",
-            fontWeight: "bold",
+            fontFamily: "var(--ui-font-display)",
+            fontSize: "var(--ui-text-md)",
+            fontWeight: "var(--ui-weight-bold)",
             color: isMyTurn ? "var(--neon-cyan)" : "var(--neon-pink)",
             textShadow: isMyTurn
               ? "0 0 10px var(--neon-cyan), 0 0 20px rgba(0,245,255,0.4)"
               : "0 0 10px var(--neon-pink), 0 0 20px rgba(255,45,120,0.4)",
-            letterSpacing: "0.12em",
+            letterSpacing: "var(--ui-tracking-wide)",
           }}
         >
           {isMyTurn ? "YOUR TURN" : `${activePlayerName.toUpperCase()}'S TURN`}
@@ -66,11 +66,7 @@ export function PhaseIndicator({
                 ? "active"
                 : "future";
           return (
-            <span
-              key={p}
-              className={`phase-step ${cls}`}
-              style={{ fontSize: "0.52rem" }}
-            >
+            <span key={p} className={`phase-step ${cls}`}>
               {PHASE_LABELS[p]
                 .replace(" Phase", "")
                 .replace("Main Phase ", "MP")}
@@ -95,12 +91,12 @@ export function PhaseIndicator({
             className="rounded font-bold transition-all"
             style={{
               padding: "3px 14px",
-              fontFamily: "'Orbitron', sans-serif",
-              fontSize: "0.62rem",
+              fontFamily: "var(--ui-font-display)",
+              fontSize: "var(--ui-text-sm)",
               background: "rgba(0,245,255,0.08)",
               border: "1px solid var(--neon-cyan)",
               color: "var(--neon-cyan)",
-              letterSpacing: "0.08em",
+              letterSpacing: "var(--ui-tracking-wide)",
               height: "100%",
             }}
             onMouseEnter={e => {
@@ -131,11 +127,11 @@ export function PhaseIndicator({
             ))}
             <span
               style={{
-                fontFamily: "'Orbitron', sans-serif",
-                fontSize: "0.72rem",
-                fontWeight: "bold",
+                fontFamily: "var(--ui-font-display)",
+                fontSize: "var(--ui-text-md)",
+                fontWeight: "var(--ui-weight-bold)",
                 color: "var(--neon-pink)",
-                letterSpacing: "0.16em",
+                letterSpacing: "var(--ui-tracking-hud)",
                 textShadow:
                   "0 0 10px var(--neon-pink), 0 0 20px rgba(255,45,120,0.5)",
               }}

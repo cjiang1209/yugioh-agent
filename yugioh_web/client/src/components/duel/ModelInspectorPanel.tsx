@@ -10,11 +10,11 @@ import { Sparkline } from "./Sparkline";
 
 /**
  * The one size for this panel's own text -- label, value, prompt count -- set
- * on the container and inherited. Matches the sibling panels in the same
- * column rather than the denser action list, so the left column reads as one
- * scale. Colour, not size, is what marks the value out from the text around it.
+ * on the container and inherited. A step up from what .data-readout gives by
+ * default, so the left column reads as one scale. Colour, not size, is what
+ * marks the value out from the text around it.
  */
-const TEXT_SIZE = "0.75rem";
+const TEXT_SIZE = "var(--ui-text-md)";
 
 const VALUE_CAVEAT =
   "Value head output for your side: the model's estimate of the discounted " +
@@ -34,11 +34,8 @@ export function ModelInspectorPanel({ trace }: ModelInspectorPanelProps) {
 
   return (
     <div
-      className="h-full overflow-y-auto p-2 flex flex-col gap-1"
-      style={{
-        fontFamily: "'Share Tech Mono', monospace",
-        fontSize: TEXT_SIZE,
-      }}
+      className="data-readout h-full overflow-y-auto p-2 flex flex-col gap-1"
+      style={{ fontSize: TEXT_SIZE }}
     >
       <div
         title={VALUE_CAVEAT}

@@ -160,7 +160,7 @@ function ZoneLabel({
     <div className="w-full h-full flex flex-col items-center justify-center gap-0.5">
       <span
         style={{
-          fontSize: "clamp(0.7rem, 1.4vw, 1.2rem)",
+          fontSize: "clamp(var(--ui-text-sm), 1.4vw, var(--ui-text-xl))",
           opacity: 0.5,
           color: color ?? "var(--neon-cyan)",
           display: "inline-flex",
@@ -172,11 +172,11 @@ function ZoneLabel({
       </span>
       <span
         style={{
-          fontFamily: "'Orbitron', sans-serif",
-          fontSize: "clamp(0.3rem, 0.55vw, 0.45rem)",
+          fontFamily: "var(--ui-font-display)",
+          fontSize: "clamp(var(--ui-text-2xs), 0.55vw, var(--ui-text-xs))",
           color: color ?? "var(--neon-cyan)",
           opacity: 0.6,
-          letterSpacing: "0.05em",
+          letterSpacing: "var(--ui-tracking-tight)",
           textAlign: "center",
           lineHeight: 1.2,
         }}
@@ -220,16 +220,28 @@ const EMZ_BADGE = (
       background: "rgba(255,215,0,0.85)",
       borderRadius: "2px",
       padding: "1px 3px",
-      fontSize: "0.35rem",
-      fontFamily: "'Orbitron', sans-serif",
+      fontSize: "var(--ui-text-2xs)",
+      fontFamily: "var(--ui-font-display)",
       color: "#000",
-      fontWeight: 700,
-      letterSpacing: "0.03em",
+      fontWeight: "var(--ui-weight-bold)",
+      letterSpacing: "var(--ui-tracking-tight)",
     }}
   >
     EMZ
   </div>
 );
+
+/**
+ * The card count printed along the bottom of a pile zone. Mono because these
+ * tick up and down all duel and the digits should not shift sideways as they
+ * do; each zone supplies its own colour.
+ */
+const ZONE_COUNT_STYLE = {
+  fontFamily: "var(--ui-font-mono)",
+  fontSize: "var(--ui-text-sm)",
+  paddingBlock: "2px",
+  background: "rgba(0,0,0,0.8)",
+} as const;
 
 // ─── Control strip pills ─────────────────────────────────────────────────────
 
@@ -255,7 +267,7 @@ function ControlPill({
       aria-pressed={on}
       className="px-2 py-0.5 text-[0.5rem] rounded opacity-70 hover:opacity-100 transition-all"
       style={{
-        fontFamily: "'Orbitron', sans-serif",
+        fontFamily: "var(--ui-font-display)",
         background: on ? RECOMMENDED_BACKGROUND : "transparent",
         border: `1px solid ${on ? RECOMMENDED_COLOR : "var(--border-dim)"}`,
         color: on ? RECOMMENDED_COLOR : "var(--text-muted)",
@@ -1293,7 +1305,7 @@ export function DuelBoard({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: "clamp(1rem, 2.2vw, 1.6rem)",
+              fontSize: "clamp(var(--ui-text-lg), 2.2vw, var(--ui-text-2xl))",
               color: "var(--neon-cyan)",
               pointerEvents: "none",
             }}
@@ -1304,9 +1316,7 @@ export function DuelBoard({
         <div
           className="absolute bottom-0 left-0 right-0 text-center font-bold"
           style={{
-            fontSize: "0.65rem",
-            paddingBlock: "2px",
-            background: "rgba(0,0,0,0.8)",
+            ...ZONE_COUNT_STYLE,
             color: "var(--neon-cyan)",
           }}
         >
@@ -1365,9 +1375,7 @@ export function DuelBoard({
         <div
           className="absolute bottom-0 left-0 right-0 text-center font-bold"
           style={{
-            fontSize: "0.65rem",
-            paddingBlock: "2px",
-            background: "rgba(0,0,0,0.8)",
+            ...ZONE_COUNT_STYLE,
             color: "var(--neon-pink)",
           }}
         >
@@ -1429,9 +1437,7 @@ export function DuelBoard({
         <div
           className="absolute bottom-0 left-0 right-0 text-center font-bold"
           style={{
-            fontSize: "0.65rem",
-            paddingBlock: "2px",
-            background: "rgba(0,0,0,0.8)",
+            ...ZONE_COUNT_STYLE,
             color: "#b44fff",
           }}
         >
@@ -1482,9 +1488,7 @@ export function DuelBoard({
         <div
           className="absolute bottom-0 left-0 right-0 text-center font-bold"
           style={{
-            fontSize: "0.65rem",
-            paddingBlock: "2px",
-            background: "rgba(0,0,0,0.8)",
+            ...ZONE_COUNT_STYLE,
             color: "#ffd700",
           }}
         >
@@ -1715,7 +1719,7 @@ export function DuelBoard({
                   <span
                     className="text-[0.5rem]"
                     style={{
-                      fontFamily: "'Orbitron', sans-serif",
+                      fontFamily: "var(--ui-font-display)",
                       color: "var(--neon-yellow)",
                     }}
                   >
@@ -1733,7 +1737,7 @@ export function DuelBoard({
                           background: "rgba(0,245,255,0.15)",
                           border: "1px solid var(--neon-cyan)",
                           color: "var(--neon-cyan)",
-                          fontFamily: "'Orbitron', sans-serif",
+                          fontFamily: "var(--ui-font-display)",
                         }}
                       >
                         SUMMON
@@ -1748,7 +1752,7 @@ export function DuelBoard({
                           background: "rgba(245,230,66,0.1)",
                           border: "1px solid var(--neon-yellow)",
                           color: "var(--neon-yellow)",
-                          fontFamily: "'Orbitron', sans-serif",
+                          fontFamily: "var(--ui-font-display)",
                         }}
                       >
                         SET
@@ -1763,7 +1767,7 @@ export function DuelBoard({
                           background: "rgba(255,45,120,0.1)",
                           border: "1px solid var(--neon-pink)",
                           color: "var(--neon-pink)",
-                          fontFamily: "'Orbitron', sans-serif",
+                          fontFamily: "var(--ui-font-display)",
                         }}
                       >
                         CANCEL
@@ -1835,7 +1839,7 @@ export function DuelBoard({
                     style={{
                       border: `1px solid ${pill.border}`,
                       color: pill.color,
-                      fontFamily: "'Orbitron', sans-serif",
+                      fontFamily: "var(--ui-font-display)",
                     }}
                   >
                     {pill.label}
@@ -1940,10 +1944,10 @@ export function DuelBoard({
                     <span
                       className="text-[0.55rem]"
                       style={{
-                        fontFamily: "'Orbitron', sans-serif",
+                        fontFamily: "var(--ui-font-display)",
                         color: "var(--neon-cyan)",
                         opacity: 0.5,
-                        letterSpacing: "0.1em",
+                        letterSpacing: "var(--ui-tracking-wide)",
                       }}
                     >
                       NO CARDS IN HAND
@@ -2065,15 +2069,17 @@ export function DuelBoard({
             onClick={e => e.stopPropagation()}
           >
             {/* Icon */}
-            <div style={{ fontSize: "2rem", lineHeight: 1 }}>↺</div>
+            <div style={{ fontSize: "var(--ui-text-3xl)", lineHeight: 1 }}>
+              ↺
+            </div>
 
             {/* Title */}
             <div
               style={{
-                fontFamily: "'Orbitron', sans-serif",
-                fontSize: "0.75rem",
+                fontFamily: "var(--ui-font-display)",
+                fontSize: "var(--ui-text-md)",
                 color: "var(--neon-pink)",
-                letterSpacing: "0.12em",
+                letterSpacing: "var(--ui-tracking-wide)",
                 textShadow: "0 0 10px rgba(255,45,120,0.6)",
                 textAlign: "center",
               }}
@@ -2084,8 +2090,8 @@ export function DuelBoard({
             {/* Body */}
             <div
               style={{
-                fontFamily: "'Rajdhani', sans-serif",
-                fontSize: "0.82rem",
+                fontFamily: "var(--ui-font-body)",
+                fontSize: "var(--ui-text-md)",
                 color: "#8aaec8",
                 textAlign: "center",
                 lineHeight: 1.5,
@@ -2099,9 +2105,9 @@ export function DuelBoard({
               <button
                 className="flex-1 py-1.5 rounded transition-all hover:opacity-90"
                 style={{
-                  fontFamily: "'Orbitron', sans-serif",
-                  fontSize: "0.6rem",
-                  letterSpacing: "0.1em",
+                  fontFamily: "var(--ui-font-display)",
+                  fontSize: "var(--ui-text-sm)",
+                  letterSpacing: "var(--ui-tracking-wide)",
                   background: "rgba(255,45,120,0.15)",
                   border: "1px solid var(--neon-pink)",
                   color: "var(--neon-pink)",
@@ -2117,9 +2123,9 @@ export function DuelBoard({
               <button
                 className="flex-1 py-1.5 rounded transition-all hover:opacity-90"
                 style={{
-                  fontFamily: "'Orbitron', sans-serif",
-                  fontSize: "0.6rem",
-                  letterSpacing: "0.1em",
+                  fontFamily: "var(--ui-font-display)",
+                  fontSize: "var(--ui-text-sm)",
+                  letterSpacing: "var(--ui-tracking-wide)",
                   background: "rgba(0,245,255,0.08)",
                   border: "1px solid rgba(0,245,255,0.4)",
                   color: "var(--neon-cyan)",

@@ -61,9 +61,9 @@ export function CoinFlipOverlay({ result, onComplete }: CoinFlipOverlayProps) {
 
       <div
         style={{
-          fontFamily: "'Orbitron', sans-serif",
-          fontSize: "1.2rem",
-          letterSpacing: "0.2em",
+          fontFamily: "var(--ui-font-display)",
+          fontSize: "var(--ui-text-xl)",
+          letterSpacing: "var(--ui-tracking-display)",
           color: accent,
           textShadow: `0 0 12px ${accent}`,
           opacity: 0,
@@ -76,8 +76,8 @@ export function CoinFlipOverlay({ result, onComplete }: CoinFlipOverlayProps) {
       <div
         className="mt-2"
         style={{
-          fontFamily: "'Share Tech Mono', monospace",
-          fontSize: "0.6rem",
+          fontFamily: "var(--ui-font-mono)",
+          fontSize: "var(--ui-text-sm)",
           color: "var(--text-secondary)",
           opacity: 0,
           animation: `coin-reveal ${REVEAL_MS}ms ease-out ${SPIN_MS}ms forwards`,

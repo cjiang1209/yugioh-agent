@@ -74,7 +74,11 @@ export function SelectableCardTile({
           alt={action.card_name}
           fallback={
             <span
-              style={{ fontSize: "0.7rem", color: "#b44fff", opacity: 0.5 }}
+              style={{
+                fontSize: "var(--ui-text-sm)",
+                color: "#b44fff",
+                opacity: 0.5,
+              }}
             >
               ?
             </span>
@@ -85,8 +89,8 @@ export function SelectableCardTile({
       </div>
       <span
         style={{
-          fontFamily: "'Share Tech Mono', monospace",
-          fontSize: "0.45rem",
+          fontFamily: "var(--ui-font-body)",
+          fontSize: "var(--ui-text-md)",
           color: "#c8d8e8",
           lineHeight: 1.2,
           textAlign: "center",

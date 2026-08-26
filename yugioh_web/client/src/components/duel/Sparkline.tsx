@@ -9,6 +9,12 @@
 /** Smallest bound to scale against, so a flat-zero series still projects. */
 const MIN_BOUND = 0.01;
 
+/**
+ * The drawing's own coordinate space, not its rendered size. The element
+ * stretches to whatever width the panel gives it and the viewBox maps these
+ * x-coordinates onto that, so the trace always spans the full panel. Height is
+ * rendered one-to-one, so only the x-axis stretches.
+ */
 const WIDTH = 200;
 const HEIGHT = 88;
 
@@ -35,12 +41,15 @@ export function Sparkline({ values }: SparklineProps) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
       <svg
-        width={WIDTH}
+        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+        preserveAspectRatio="none"
         height={HEIGHT}
         role="img"
         aria-label={`Value trace, ${values.length} points, scale plus or minus ${bound.toFixed(2)}`}
-        style={{ flexShrink: 0 }}
+        style={{ flex: "1 1 0", minWidth: 0 }}
       >
+        {/* The x-axis stretch would thin these out with it, so the strokes opt
+            out of the viewBox scaling and stay the width they ask for. */}
         <line
           x1={0}
           y1={midY}
@@ -48,6 +57,7 @@ export function Sparkline({ values }: SparklineProps) {
           y2={midY}
           stroke="rgba(255,255,255,0.15)"
           strokeWidth={1}
+          vectorEffect="non-scaling-stroke"
         />
         {values.length > 0 && (
           <polyline
@@ -56,13 +66,14 @@ export function Sparkline({ values }: SparklineProps) {
             stroke="var(--neon-cyan)"
             strokeWidth={1.5}
             strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
           />
         )}
       </svg>
       <span
         style={{
-          fontFamily: "'Share Tech Mono', monospace",
-          fontSize: "0.75rem",
+          fontFamily: "var(--ui-font-mono)",
+          fontSize: "var(--ui-text-md)",
           color: "var(--text-muted)",
           whiteSpace: "nowrap",
         }}

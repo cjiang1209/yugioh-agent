@@ -17,14 +17,8 @@ export function PanelSection({ title, children, style }: PanelSectionProps) {
   return (
     <div className="flex flex-col" style={{ minHeight: 0, ...style }}>
       <div
-        className="px-3 py-2 flex-shrink-0"
-        style={{
-          borderBottom: "1px solid rgba(0,245,255,0.15)",
-          fontFamily: "'Orbitron', sans-serif",
-          fontSize: "0.75rem",
-          letterSpacing: "0.1em",
-          color: "var(--neon-cyan)",
-        }}
+        className="panel-title px-3 py-2 flex-shrink-0"
+        style={{ borderBottom: "1px solid rgba(0,245,255,0.15)" }}
       >
         {title}
       </div>

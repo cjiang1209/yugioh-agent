@@ -21,14 +21,19 @@ export function ChainWidget({ entries }: ChainWidgetProps) {
         border: "1px solid rgba(0,245,255,0.35)",
         borderRadius: "6px",
         zIndex: 40,
-        fontFamily: "'Share Tech Mono', monospace",
-        fontSize: "0.7rem",
+        fontFamily: "var(--ui-font-body)",
+        fontSize: "var(--ui-text-md)",
         color: "var(--text-primary, #e0f7ff)",
         maxWidth: "260px",
       }}
     >
       <div
-        style={{ opacity: 0.7, fontSize: "0.6rem", letterSpacing: "0.05em" }}
+        style={{
+          opacity: 0.7,
+          fontFamily: "var(--ui-font-display)",
+          fontSize: "var(--ui-text-sm)",
+          letterSpacing: "var(--ui-tracking-tight)",
+        }}
       >
         CURRENT CHAIN
       </div>
@@ -37,7 +42,9 @@ export function ChainWidget({ entries }: ChainWidgetProps) {
           key={e.chain_link}
           style={{ display: "flex", alignItems: "center", gap: "8px" }}
         >
-          <span style={{ opacity: 0.7 }}>L{e.chain_link}</span>
+          <span style={{ opacity: 0.7, fontFamily: "var(--ui-font-mono)" }}>
+            L{e.chain_link}
+          </span>
           <CardThumbnail
             cardCode={e.card_code}
             width={28}

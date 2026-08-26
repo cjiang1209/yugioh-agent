@@ -83,10 +83,10 @@ export function ZoneViewer({
           <span
             className="font-bold shrink-0"
             style={{
-              fontFamily: "'Orbitron', sans-serif",
+              fontFamily: "var(--ui-font-display)",
               color: accentColor,
-              fontSize: "0.6rem",
-              letterSpacing: "0.1em",
+              fontSize: "var(--ui-text-sm)",
+              letterSpacing: "var(--ui-tracking-wide)",
             }}
           >
             {playerName.toUpperCase()}
@@ -101,7 +101,7 @@ export function ZoneViewer({
               }}
               className="px-3 py-0.5 text-[0.55rem] rounded transition-all"
               style={{
-                fontFamily: "'Orbitron', sans-serif",
+                fontFamily: "var(--ui-font-display)",
                 background:
                   tab === "extra" ? "rgba(255,215,0,0.15)" : "transparent",
                 border: `1px solid ${tab === "extra" ? "#ffd700" : "rgba(255,255,255,0.1)"}`,
@@ -119,7 +119,7 @@ export function ZoneViewer({
               }}
               className="px-3 py-0.5 text-[0.55rem] rounded transition-all"
               style={{
-                fontFamily: "'Orbitron', sans-serif",
+                fontFamily: "var(--ui-font-display)",
                 background:
                   tab === "graveyard" ? "rgba(255,45,120,0.15)" : "transparent",
                 border: `1px solid ${tab === "graveyard" ? "var(--neon-pink)" : "rgba(255,255,255,0.1)"}`,
@@ -140,7 +140,7 @@ export function ZoneViewer({
               }}
               className="px-3 py-0.5 text-[0.55rem] rounded transition-all"
               style={{
-                fontFamily: "'Orbitron', sans-serif",
+                fontFamily: "var(--ui-font-display)",
                 background:
                   tab === "banished" ? "rgba(180,79,255,0.15)" : "transparent",
                 border: `1px solid ${tab === "banished" ? "#b44fff" : "rgba(255,255,255,0.1)"}`,
@@ -160,7 +160,7 @@ export function ZoneViewer({
             className="text-sm opacity-40 hover:opacity-100 transition-opacity shrink-0"
             style={{
               color: "var(--neon-pink)",
-              fontFamily: "'Orbitron', sans-serif",
+              fontFamily: "var(--ui-font-display)",
             }}
           >
             ✕
@@ -173,9 +173,9 @@ export function ZoneViewer({
             <div
               className="w-full text-center py-8 opacity-25"
               style={{
-                fontFamily: "'Orbitron', sans-serif",
+                fontFamily: "var(--ui-font-display)",
                 color: accentColor,
-                fontSize: "0.6rem",
+                fontSize: "var(--ui-text-sm)",
               }}
             >
               {isGY
@@ -238,10 +238,10 @@ export function ZoneViewer({
           className="px-4 py-1.5 flex-shrink-0 text-center"
           style={{
             borderTop: "1px solid rgba(255,255,255,0.05)",
-            fontSize: "0.5rem",
+            fontSize: "var(--ui-text-xs)",
             color: "rgba(255,255,255,0.25)",
-            fontFamily: "'Orbitron', sans-serif",
-            letterSpacing: "0.08em",
+            fontFamily: "var(--ui-font-display)",
+            letterSpacing: "var(--ui-tracking-wide)",
           }}
         >
           CLICK A CARD TO VIEW DETAILS

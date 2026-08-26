@@ -43,8 +43,8 @@ export function ActionMenu({ items, x, y, onClose }: ActionMenuProps) {
             }}
             className="w-full text-left px-3 py-2 text-xs transition-all flex items-center gap-2"
             style={{
-              fontFamily: "'Rajdhani', sans-serif",
-              fontWeight: 600,
+              fontFamily: "var(--ui-font-body)",
+              fontWeight: "var(--ui-weight-medium)",
               color: item.disabled
                 ? "rgba(150,200,230,0.2)"
                 : (item.color ?? "var(--text-primary)"),

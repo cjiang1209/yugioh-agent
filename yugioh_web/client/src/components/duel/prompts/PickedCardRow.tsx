@@ -66,8 +66,8 @@ export function PickedCardRow({
                 alignItems: "center",
                 justifyContent: "center",
                 color: "rgba(180,79,255,0.5)",
-                fontFamily: "'Share Tech Mono', monospace",
-                fontSize: "1.0rem",
+                fontFamily: "var(--ui-font-mono)",
+                fontSize: "var(--ui-text-lg)",
               }}
             >
               ?
@@ -75,8 +75,8 @@ export function PickedCardRow({
           )}
           <span
             style={{
-              fontFamily: "'Share Tech Mono', monospace",
-              fontSize: "0.4rem",
+              fontFamily: "var(--ui-font-mono)",
+              fontSize: "var(--ui-text-md)",
               color: card ? "var(--neon-cyan)" : "#7a8a9a",
             }}
           >
