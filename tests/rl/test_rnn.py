@@ -328,13 +328,17 @@ def test_rollout_loop_resets_hx_per_rollout():
 # ---------------------------------------------------------------------------
 
 
-def _make_tbptt_trainer(*, rollout_steps: int, num_envs: int, **overrides):
+def _make_tbptt_trainer(*, rollout_steps: int, num_envs: int, tmp_path, **overrides):
     """Build a PPOTrainer in RNN mode with a populated random rollout buffer.
 
     Used by tests that exercise ``_run_update_tbptt`` directly without
     spinning up a vec env.  Default overrides give ``minibatch_size ==
     rollout_steps`` (one minibatch per env) and ``num_epochs=1``; pass
     them in ``overrides`` to change either.
+
+    ``tmp_path`` is required because PPOTrainer opens a TensorBoard writer
+    under ``save_dir`` during __init__; left at its default the trainer
+    would write an event file into the repository's ``checkpoints/logs``.
     """
     from yugioh_rl.ppo import PPOTrainer
 
@@ -348,6 +352,7 @@ def _make_tbptt_trainer(*, rollout_steps: int, num_envs: int, **overrides):
         "minibatch_size": rollout_steps,
         "num_epochs": 1,
         "device": "cpu",
+        "save_dir": str(tmp_path),
     }
     config = TrainingConfig(**{**defaults, **overrides})
     trainer = PPOTrainer(config)
@@ -397,11 +402,11 @@ def test_recurrent_minibatch_shape_and_count():
         assert c.shape == (1, 1, 64)
 
 
-def test_recurrent_chunk_walk_calls_forward_T_over_L_times(monkeypatch):
+def test_recurrent_chunk_walk_calls_forward_T_over_L_times(monkeypatch, tmp_path):
     """Plan test #4 (chunk-walk half).  The TBPTT update should call
     network.forward exactly T/L times per minibatch, each with the
     chunk's seq_shape and dones."""
-    trainer = _make_tbptt_trainer(rollout_steps=32, num_envs=4)
+    trainer = _make_tbptt_trainer(rollout_steps=32, num_envs=4, tmp_path=tmp_path)
 
     seen: list[tuple[int, tuple[int, int]]] = []
     real_forward = trainer.network.forward
@@ -450,14 +455,14 @@ def test_tbptt_per_chunk_backward_matches_single_backward():
     assert torch.allclose(w_ref.grad, w_tbp.grad)
 
 
-def test_tbptt_releases_chunk_graph_each_iteration(monkeypatch):
+def test_tbptt_releases_chunk_graph_each_iteration(monkeypatch, tmp_path):
     """The TBPTT loop must call .backward() inside the chunk for-loop so
     each chunk's autograd graph is freed before the next forward.
     Accumulating grad-tracking tensors and only calling .backward() at
     the end keeps every chunk's activations alive simultaneously,
     defeating the TBPTT memory bound.
     """
-    trainer = _make_tbptt_trainer(rollout_steps=32, num_envs=4)
+    trainer = _make_tbptt_trainer(rollout_steps=32, num_envs=4, tmp_path=tmp_path)
 
     # Record the order of forward / backward calls.  A correct TBPTT loop
     # interleaves them: forward, backward, forward, backward, ...  A wrong
@@ -498,7 +503,7 @@ def test_tbptt_update_changes_network_weights(tmp_path):
     """Plan test #5 (real training half).  Run one TBPTT update and verify
     network parameters actually move — exercises the full chunk loop with
     backward + optimizer.step."""
-    trainer = _make_tbptt_trainer(rollout_steps=16, num_envs=2)
+    trainer = _make_tbptt_trainer(rollout_steps=16, num_envs=2, tmp_path=tmp_path)
 
     before = {k: v.clone() for k, v in trainer.network.state_dict().items()}
     trainer._run_update_tbptt()
@@ -512,7 +517,7 @@ def test_tbptt_update_changes_network_weights(tmp_path):
 def test_tbptt_checkpoint_roundtrip_after_training(tmp_path):
     """Plan test #5 (round-trip half).  Train two TBPTT updates, save, reload
     via from_state_dict, forward on the same input — outputs must match."""
-    trainer = _make_tbptt_trainer(rollout_steps=16, num_envs=2, num_epochs=2)
+    trainer = _make_tbptt_trainer(rollout_steps=16, num_envs=2, num_epochs=2, tmp_path=tmp_path)
     trainer._run_update_tbptt()
     trainer.network.eval()
 
@@ -732,6 +737,7 @@ def test_ppo_trainer_allows_mps_gru_and_mps_none(tmp_path):
             deck_paths=["assets/decks/blue_eyes.ydk"],
             rnn_type=rnn_type,
             device="mps",
+            save_dir=str(tmp_path / rnn_type),
         )
         # Should not raise.
         PPOTrainer(cfg)

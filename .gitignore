@@ -5,6 +5,7 @@ build/
 *.egg-info/
 .DS_Store
 .pytest_cache/
+checkpoints/
 *.so
 *.dylib
 third_party/yugioh-game/
