@@ -38,7 +38,7 @@ def db_path(assets_dir) -> Path:
 @pytest.fixture
 def card_db(db_path):
     """Create a CardDatabase instance."""
-    from yugioh_core.card_database import CardDatabase
+    from core.card_database import CardDatabase
 
     db = CardDatabase(db_path)
     yield db

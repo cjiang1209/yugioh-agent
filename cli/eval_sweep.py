@@ -5,7 +5,7 @@ Evaluates a training run's checkpoints against fixed opponent specs
 against a second run's checkpoints matched by update number N. Writes win-rate
 curves keyed by each checkpoint's global_step — classic sweeps to
 <run-dir>/logs/eval/, step-matched evaluation to <run-dir>/logs/eval_vs_<opponent>/.
-Thin driver over yugioh_rl.eval.evaluate; the trainer is never modified.
+Thin driver over rl.eval.evaluate; the trainer is never modified.
 """
 
 from __future__ import annotations
@@ -19,12 +19,12 @@ from pathlib import Path
 
 import torch
 
-from yugioh_rl.eval import (
+from rl.eval import (
     eval_result_to_row,
     evaluate,
     opponent_label_from_spec,
 )
-from yugioh_rl.metrics_logging import (
+from rl.metrics_logging import (
     CheckpointEvent,
     CheckpointRef,
     build_eval_sinks,
@@ -332,7 +332,7 @@ def main(argv=None) -> int:
     # Deferred imports (torch/env) so arg errors are cheap.
     from cli.utils import validate_deck_paths, validate_opponent_spec
 
-    from yugioh_rl.env_wrapper import parse_deck_pool
+    from rl.env_wrapper import parse_deck_pool
 
     step_matched = args.opponent_dir is not None
     try:

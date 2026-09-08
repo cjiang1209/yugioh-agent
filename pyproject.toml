@@ -3,7 +3,7 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "yugioh-env"
+name = "yugioh-agent"
 version = "0.1.0"
 description = "Yu-Gi-Oh! RL environment powered by ygopro-core"
 requires-python = ">=3.10"
@@ -38,7 +38,16 @@ mud = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["yugioh_core*", "yugioh_env*", "yugioh_rl*", "yugioh_mud*", "yugioh_leaderboard*"]
+# Each package and its subpackages, named exactly. setuptools matches these by
+# prefix, and leaderboard_data/ holds run output beside a package sharing its
+# stem, so a bare "leaderboard*" reaches a directory that is not ours to ship.
+include = [
+    "core", "core.*",
+    "env", "env.*",
+    "rl", "rl.*",
+    "mud", "mud.*",
+    "leaderboard", "leaderboard.*",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -46,12 +55,12 @@ addopts = "--timeout=240 --timeout-method=thread"
 
 [tool.ruff]
 line-length = 100
-src = ["yugioh_core", "yugioh_env", "yugioh_rl", "yugioh_mud", "yugioh_leaderboard", "cli"]
+src = ["core", "env", "rl", "mud", "leaderboard", "cli"]
 extend-exclude = [
     "build",
     "third_party",
     ".venv",
-    "yugioh_web",
+    "web",
     "*.egg-info",
 ]
 
@@ -68,8 +77,8 @@ ignore = [
 "scripts/**" = ["E402"]        # scripts often set sys.path before imports
 # message_parser/action_space import the engine constants table by `import *`;
 # the surface is too large to enumerate and would churn on every engine update.
-"yugioh_env/message_parser.py" = ["F405"]
-"yugioh_env/action_space.py" = ["F405"]
+"env/message_parser.py" = ["F405"]
+"env/action_space.py" = ["F405"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["yugioh_core", "yugioh_env", "yugioh_rl", "yugioh_mud", "yugioh_leaderboard"]
+known-first-party = ["core", "env", "rl", "mud", "leaderboard"]

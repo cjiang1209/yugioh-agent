@@ -24,7 +24,7 @@ import struct
 
 import pytest
 
-from yugioh_core.constants import (
+from core.constants import (
     POS_FACEUP_ATTACK,
     QUERY_CODE,
     QUERY_END,
@@ -37,7 +37,7 @@ from yugioh_core.constants import (
     TYPE_EFFECT,
     TYPE_MONSTER,
 )
-from yugioh_core.query_buffer import parse_query_location
+from core.query_buffer import parse_query_location
 
 # ─── Wire-format builders ───────────────────────────────────────────────
 

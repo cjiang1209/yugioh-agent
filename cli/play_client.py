@@ -3,7 +3,7 @@
 
 Usage:
     # Start the server first:
-    #   uvicorn yugioh_env.server.app:app --host 0.0.0.0 --port 8000
+    #   uvicorn env.server.app:app --host 0.0.0.0 --port 8000
 
     # Then run this client:
     python scripts/play_client.py                    # interactive mode (default)
@@ -22,14 +22,14 @@ import sys
 import time
 from pathlib import Path
 
-from yugioh_core.card_database import CardDatabase
-from yugioh_core.constants import PHASE_NAMES
-from yugioh_core.string_resolver import load_sys_strings
-from yugioh_env.action_describer import ActionDescriber
-from yugioh_env.client import YuGiOhEnv
-from yugioh_env.deck_parser import parse_ydk
-from yugioh_env.event_logger import EventDescriber
-from yugioh_env.models import YuGiOhAction, YuGiOhObservation
+from core.card_database import CardDatabase
+from core.constants import PHASE_NAMES
+from core.string_resolver import load_sys_strings
+from env.action_describer import ActionDescriber
+from env.client import YuGiOhEnv
+from env.deck_parser import parse_ydk
+from env.event_logger import EventDescriber
+from env.models import YuGiOhAction, YuGiOhObservation
 
 
 def display_events(event_log: list[str]) -> None:
@@ -423,7 +423,7 @@ def main():
     except ConnectionError as e:
         print(f"Error: {e}", file=sys.stderr)
         print("Is the server running? Start it with:", file=sys.stderr)
-        print("  uvicorn yugioh_env.server.app:app --host 0.0.0.0 --port 8000", file=sys.stderr)
+        print("  uvicorn env.server.app:app --host 0.0.0.0 --port 8000", file=sys.stderr)
         sys.exit(1)
     except KeyboardInterrupt:
         print("\nInterrupted.")

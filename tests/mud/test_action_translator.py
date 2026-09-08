@@ -5,9 +5,9 @@ No MUD server required.
 
 from __future__ import annotations
 
-from yugioh_mud.action_translator import ActionTranslator
-from yugioh_mud.agent import BACK, END_PHASE
-from yugioh_mud.text_parser import ParsedPrompt, PromptType
+from mud.action_translator import ActionTranslator
+from mud.agent import BACK, END_PHASE
+from mud.text_parser import ParsedPrompt, PromptType
 
 
 class TestIdleBattleTranslation:

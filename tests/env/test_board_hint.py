@@ -17,15 +17,15 @@ import random
 
 import pytest
 
-from yugioh_core.encoding import (
+from core.encoding import (
     CHAIN_ENTRY_FEATURES,
     EVENT_ENTRY_FEATURES,
     MAX_EVENT_HISTORY,
     MAX_PENDING_CHAIN,
 )
-from yugioh_env.models import GlobalState, YuGiOhAction
-from yugioh_env.opponent import Inference, ModelOpponent, Opponent, RandomOpponent
-from yugioh_env.replay import GameRecording, RecordingOpponent
+from env.models import GlobalState, YuGiOhAction
+from env.opponent import Inference, ModelOpponent, Opponent, RandomOpponent
+from env.replay import GameRecording, RecordingOpponent
 
 # ---------------------------------------------------------------------------
 # 1. include_board=False shapes the board fields as zeros
@@ -35,7 +35,7 @@ from yugioh_env.replay import GameRecording, RecordingOpponent
 def test_include_board_false_zeros_board_but_fully_populates_prompt(
     lib, db_path, script_dirs
 ) -> None:
-    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+    from env.server.environment import YuGiOhEnvironment
 
     env = YuGiOhEnvironment({})
     try:
@@ -110,7 +110,7 @@ def _play_until_done_or(env, max_steps: int = 60) -> None:
 def test_core_passes_installed_opponents_hint_as_include_board(
     lib, db_path, script_dirs, needs_board
 ) -> None:
-    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+    from env.server.environment import YuGiOhEnvironment
 
     env = YuGiOhEnvironment({})
     try:

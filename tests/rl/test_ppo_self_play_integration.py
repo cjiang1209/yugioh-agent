@@ -5,16 +5,16 @@ from __future__ import annotations
 import pytest
 
 torch = pytest.importorskip("torch")
-pytest.importorskip("yugioh_env.server.yugioh_environment")
+pytest.importorskip("env.server.environment")
 
 from tests.rl.conftest import requires_engine
 
 
 @requires_engine
 def test_ppo_with_self_play_constructs_pool(tmp_path) -> None:
-    from yugioh_env.opponent import GreedyOpponent
-    from yugioh_rl.config import TrainingConfig
-    from yugioh_rl.ppo import PPOTrainer
+    from env.opponent import GreedyOpponent
+    from rl.config import TrainingConfig
+    from rl.ppo import PPOTrainer
 
     config = TrainingConfig(
         self_play=True,
@@ -33,8 +33,8 @@ def test_ppo_with_self_play_constructs_pool(tmp_path) -> None:
 
 @requires_engine
 def test_ppo_without_self_play_has_no_pool(tmp_path) -> None:
-    from yugioh_rl.config import TrainingConfig
-    from yugioh_rl.ppo import PPOTrainer
+    from rl.config import TrainingConfig
+    from rl.ppo import PPOTrainer
 
     config = TrainingConfig(
         self_play=False,

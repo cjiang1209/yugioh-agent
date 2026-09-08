@@ -127,43 +127,43 @@ scripts/mud_bot.sh --profile guest
                        └──────────┬──────────┘
                                   │ ctypes
                        ┌──────────▼──────────┐
-                       │  yugioh_core        │  shared primitives:
-                       │  + yugioh_env       │  duel state, observations,
+                       │  core               │  shared primitives:
+                       │  + env              │  duel state, observations,
                        └──────────┬──────────┘  action mapping
                                   │
-       ┌──────────────┬───────────┼────────────┬──────────────┐
-       │              │           │            │              │
-┌──────▼─────┐ ┌──────▼─────┐ ┌───▼────┐ ┌─────▼──────┐ ┌─────▼──────┐
-│ FastAPI    │ │ yugioh_rl  │ │yugioh_ │ │ yugioh_mud │ │ yugioh_web │
-│ server     │ │ (PPO)      │ │leader- │ │ (MUD bot)  │ │ (React +   │
-│ + clients  │ │            │ │board   │ │            │ │  tRPC)     │
-└────────────┘ └────────────┘ └────────┘ └────────────┘ └────────────┘
-                                              │
-                                   ┌──────────▼──────────┐
-                                   │ third_party/        │
-                                   │ yugioh-game         │
-                                   │ (separate ygopro    │
-                                   │  fork, MUD server)  │
-                                   └─────────────────────┘
+       ┌──────────────┬───────────┼─────────────────┬──────────────┐
+       │              │           │                 │              │
+┌──────▼─────┐ ┌──────▼─────┐ ┌───▼─────────┐ ┌─────▼──────┐ ┌─────▼──────┐
+│ FastAPI    │ │ rl         │ │ leaderboard │ │ mud        │ │ web        │
+│ server     │ │ (PPO)      │ │             │ │ (MUD bot)  │ │ (React +   │
+│ + clients  │ │            │ │             │ │            │ │  tRPC)     │
+└────────────┘ └────────────┘ └─────────────┘ └────────────┘ └────────────┘
+                                                    │
+                                         ┌──────────▼──────────┐
+                                         │ third_party/        │
+                                         │ yugioh-game         │
+                                         │ (separate ygopro    │
+                                         │  fork, MUD server)  │
+                                         └─────────────────────┘
 ```
 
-`yugioh_core` and `yugioh_env` are the foundation: the C++ engine wrapped
+`core` and `env` are the foundation: the C++ engine wrapped
 in Python with an observation/action space suitable for RL. Everything
 else builds on top — training and leaderboard call the env directly
 in-process, the FastAPI server exposes it over HTTP for the play client
 and web UI, and the MUD bot is the one outlier (it talks to a separate,
 third-party MUD server that uses a different ygopro fork).
 
-| Module                | What it is                                                   |
-| --------------------- | ------------------------------------------------------------ |
-| `yugioh_core`         | Shared primitives: card DB, observation encoding, constants  |
-| `yugioh_env`          | Duel wrapper around ygopro-core + FastAPI server             |
-| `yugioh_rl`           | PPO trainer, network, vec-env, eval primitives               |
-| `yugioh_leaderboard`  | Versioned panel scoring + paired-bootstrap comparisons       |
-| `yugioh_mud`          | Async WebSocket bot for the third-party MUD server           |
-| `yugioh_web`          | React + tRPC web UI, HTTP bridge to the FastAPI env          |
-| `cli/`                | Argparse entry points behind the `scripts/*.sh` wrappers     |
-| `third_party/`        | ygopro-core (submodule), CardScripts (submodule), yugioh-game (cloned on demand) |
+| Module          | What it is                                                                       |
+| --------------- | -------------------------------------------------------------------------------- |
+| `core`          | Shared primitives: card DB, observation encoding, constants                      |
+| `env`           | Duel wrapper around ygopro-core + FastAPI server                                 |
+| `rl`            | PPO trainer, network, vec-env, eval primitives                                   |
+| `leaderboard`   | Versioned panel scoring + paired-bootstrap comparisons                           |
+| `mud`           | Async WebSocket bot for the third-party MUD server                               |
+| `web`           | React + tRPC web UI, HTTP bridge to the FastAPI env                              |
+| `cli/`          | Argparse entry points behind the `scripts/*.sh` wrappers                         |
+| `third_party/`  | ygopro-core (submodule), CardScripts (submodule), yugioh-game (cloned on demand) |
 
 ## Prerequisites
 

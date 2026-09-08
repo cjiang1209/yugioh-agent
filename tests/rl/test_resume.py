@@ -8,16 +8,16 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from yugioh_core.encoding import (
+from core.encoding import (
     ACTION_FEATURES,
     CARD_FEATURES,
     GLOBAL_FEATURES,
     MAX_ACTIONS,
     MAX_CARDS,
 )
-from yugioh_rl.config import TrainingConfig
-from yugioh_rl.network import YuGiOhNet
-from yugioh_rl.ppo import PPOTrainer
+from rl.config import TrainingConfig
+from rl.network import YuGiOhNet
+from rl.ppo import PPOTrainer
 
 
 def _make_checkpoint(
@@ -464,7 +464,7 @@ def test_resume_legacy_missing_field_silently_backfilled(tmp_path, monkeypatch):
     resume cleanly, with the missing field back-filled to its dataclass default.
 
     Replaces the old strict schema-drift check on additive fields — see
-    yugioh_rl/config.normalize_legacy_config.
+    rl/config.normalize_legacy_config.
     """
     from cli.train import _build_resume_config, parse_args
 

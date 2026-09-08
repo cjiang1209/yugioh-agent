@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from yugioh_mud.agent import (
+from mud.agent import (
     BACK,
     CANCEL,
     DECLINE,
@@ -14,8 +14,8 @@ from yugioh_mud.agent import (
     RandomAgent,
     map_model_action,
 )
-from yugioh_mud.cmd_handler import StructuredAction
-from yugioh_mud.text_parser import ParsedPrompt, PromptType
+from mud.cmd_handler import StructuredAction
+from mud.text_parser import ParsedPrompt, PromptType
 
 # ---------------------------------------------------------------------------
 # Helpers

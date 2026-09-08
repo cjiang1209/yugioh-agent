@@ -1,10 +1,10 @@
-"""Tests for yugioh_env.server.yugioh_environment._resolve_opponent_device."""
+"""Tests for env.server.environment._resolve_opponent_device."""
 
 from __future__ import annotations
 
 import pytest
 
-from yugioh_env.server.yugioh_environment import _resolve_opponent_device
+from env.server.environment import _resolve_opponent_device
 
 
 @pytest.fixture(autouse=True)
@@ -35,8 +35,7 @@ def test_config_key_used_when_env_var_missing():
 def test_empty_config_key_falls_back_to_env_var(monkeypatch):
     """An empty string in config should not mask the env var (or: caller passed empty, treat as unset)."""
     monkeypatch.setenv("YUGIOH_OPPONENT_DEVICE", "cuda")
-    # The ``or`` operator treats "" as falsy, so env var wins — this matches the
-    # pre-refactor behavior at yugioh_environment.py:135.
+    # The ``or`` operator treats "" as falsy, so the env var wins.
     assert _resolve_opponent_device({"opponent_device": ""}) == "cuda"
 
 

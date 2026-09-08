@@ -12,11 +12,11 @@ from dataclasses import replace
 
 import pytest
 
-from yugioh_mud.action_translator import ActionTranslator
-from yugioh_mud.agent import PassiveAgent, RandomAgent
-from yugioh_mud.config import GUEST_CONFIG, HOST_CONFIG
-from yugioh_mud.protocol import MUDProtocol, State
-from yugioh_mud.text_parser import MUDTextParser
+from mud.action_translator import ActionTranslator
+from mud.agent import PassiveAgent, RandomAgent
+from mud.config import GUEST_CONFIG, HOST_CONFIG
+from mud.protocol import MUDProtocol, State
+from mud.text_parser import MUDTextParser
 
 
 class FakeConnection:

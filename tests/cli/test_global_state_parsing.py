@@ -12,9 +12,9 @@ from __future__ import annotations
 
 from cli.play_client import display_state
 
-from yugioh_core.constants import PHASE_END, PHASE_MAIN2
-from yugioh_env.action_describer import ActionDescriber
-from yugioh_env.models import GlobalState, YuGiOhObservation
+from core.constants import PHASE_END, PHASE_MAIN2
+from env.action_describer import ActionDescriber
+from env.models import GlobalState, YuGiOhObservation
 
 # No active prompt and no legal actions, so ActionDescriber never touches its
 # card_db -- a stand-in is safe here.

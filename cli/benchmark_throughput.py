@@ -27,7 +27,7 @@ from pathlib import Path
 
 from cli.utils import DEVICE_CHOICES
 
-from yugioh_rl.config import VEC_ENV_TYPES
+from rl.config import VEC_ENV_TYPES
 
 ROOT = Path(__file__).resolve().parent.parent
 RESULTS_ROOT = ROOT / "benchmarks"

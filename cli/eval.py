@@ -129,7 +129,7 @@ def _validate(args: argparse.Namespace) -> None:
 
 def _build_rows(results: list, deck_stems: list[str]) -> list[dict]:
     """Normalize EvalResults into plain dicts for both console + JSON output."""
-    from yugioh_rl.eval import eval_result_to_row
+    from rl.eval import eval_result_to_row
 
     return [{"label": r.opponent_label, **eval_result_to_row(r, deck_stems)} for r in results]
 
@@ -153,9 +153,9 @@ def main(argv: list[str] | None = None) -> int:
 
     device = resolve_device(args.device)
 
-    # Deferred so a bad spec exits before paying torch / yugioh_env import cost.
-    from yugioh_rl.env_wrapper import parse_deck_pool
-    from yugioh_rl.eval import evaluate
+    # Deferred so a bad spec exits before paying torch / env import cost.
+    from rl.env_wrapper import parse_deck_pool
+    from rl.eval import evaluate
 
     deck_pool = parse_deck_pool(args.deck_paths)
 

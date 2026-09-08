@@ -8,14 +8,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from yugioh_mud.agent import (
+from mud.agent import (
     CANCEL,
     DECLINE,
     END_PHASE,
     FINISH,
     map_model_action,
 )
-from yugioh_mud.text_parser import ParsedPrompt, PromptType
+from mud.text_parser import ParsedPrompt, PromptType
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -225,21 +225,21 @@ class TestFallbackWithoutGameState:
         # map_model_action is the raw mapper; PassiveAgent fallback is tested
         # via ModelAgent.choose() which requires torch. Here we verify the
         # PassiveAgent default directly for the key prompt types.
-        from yugioh_mud.agent import PassiveAgent
+        from mud.agent import PassiveAgent
 
         agent = PassiveAgent()
         prompt = ParsedPrompt(prompt_type=PromptType.IDLE_CMD)
         assert agent.choose(prompt) == END_PHASE
 
     def test_effectyn_returns_decline(self):
-        from yugioh_mud.agent import PassiveAgent
+        from mud.agent import PassiveAgent
 
         agent = PassiveAgent()
         prompt = _options_prompt(PromptType.SELECT_EFFECTYN, 2)
         assert agent.choose(prompt) == DECLINE
 
     def test_chain_returns_cancel(self):
-        from yugioh_mud.agent import PassiveAgent
+        from mud.agent import PassiveAgent
 
         agent = PassiveAgent()
         prompt = _options_prompt(PromptType.SELECT_CHAIN, 3, cancelable=True)

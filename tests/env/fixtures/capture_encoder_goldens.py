@@ -29,7 +29,7 @@ sys.path.insert(0, str(ROOT))
 
 from tests.env.conftest import MINIMAL_MSGS, ROUTE_CASES, obs_from_msg  # noqa: E402
 
-from yugioh_rl.obs_encoder import encode_observation  # noqa: E402
+from rl.obs_encoder import encode_observation  # noqa: E402
 
 DECKS = sorted(ROOT.glob("assets/decks/*.ydk"))
 
@@ -51,8 +51,8 @@ def _xyz_decks() -> set[str]:
     """
     import sqlite3
 
-    from yugioh_core.constants import TYPE_XYZ
-    from yugioh_env.deck_parser import parse_ydk
+    from core.constants import TYPE_XYZ
+    from env.deck_parser import parse_ydk
 
     out: set[str] = set()
     with sqlite3.connect(ROOT / "assets" / "cards.cdb") as con:
@@ -106,10 +106,10 @@ def capture_observations() -> dict[str, np.ndarray]:
     monsters at all, so no amount of extra depth can ever produce that row;
     they run only `_SHALLOW_STEPS`.
     """
-    from yugioh_env.deck_parser import parse_ydk
-    from yugioh_env.models import YuGiOhAction
-    from yugioh_env.opponent import RandomOpponent
-    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+    from env.deck_parser import parse_ydk
+    from env.models import YuGiOhAction
+    from env.opponent import RandomOpponent
+    from env.server.environment import YuGiOhEnvironment
 
     deep = _xyz_decks()
     out: dict[str, np.ndarray] = {}

@@ -5,9 +5,9 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
+from core.encoding import MAX_ACTIONS  # noqa: E402
+from env.opponent import Inference, NetworkOpponent  # noqa: E402
 from tests.env.conftest import obs_from_action_count
-from yugioh_core.encoding import MAX_ACTIONS  # noqa: E402
-from yugioh_env.opponent import Inference, NetworkOpponent  # noqa: E402
 
 
 class FakeNet:

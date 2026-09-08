@@ -8,9 +8,9 @@ torch = pytest.importorskip("torch")
 
 import torch.nn as nn
 
+from core.encoding import MAX_ACTIONS
+from env.opponent import NetworkOpponent
 from tests.env.conftest import obs_from_action_count
-from yugioh_core.encoding import MAX_ACTIONS
-from yugioh_env.opponent import NetworkOpponent
 
 
 class _FakeNet(nn.Module):

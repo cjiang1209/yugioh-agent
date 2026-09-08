@@ -5,7 +5,7 @@ cause silent runtime bugs. Per-key label correctness is intentionally NOT tested
 the dict literal in `constants.py` is its own spec; a typo-test would be redundant.
 """
 
-from yugioh_core.constants import (
+from core.constants import (
     ATTRIBUTE_NAMES,
     IGNORED_TYPE_BITS,
     LINK_MARKER_NAMES,
@@ -79,7 +79,7 @@ def test_structural_bits_are_never_labels():
 def test_ritual_is_labelled_in_both_contexts():
     """Ritual Monsters and Ritual Spells share bit 0x80. Dropping either entry
     silently renders every Ritual Monster, or every Ritual Spell, without the word."""
-    from yugioh_core.constants import TYPE_RITUAL
+    from core.constants import TYPE_RITUAL
 
     assert TYPE_RITUAL in _masks(MONSTER_TYPE_LABELS)
     assert TYPE_RITUAL in _masks(SPELL_TRAP_TYPE_LABELS)

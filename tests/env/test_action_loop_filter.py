@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from yugioh_core.constants import (
+from core.constants import (
     LOCATION_GRAVE,
     LOCATION_MZONE,
     LOCATION_SZONE,
@@ -13,10 +13,10 @@ from yugioh_core.constants import (
     MSG_SELECT_IDLECMD,
     STATUS_DISABLED,
 )
-from yugioh_env.action_loop_filter import _ZONES, SAMPLING_START, ActionLoopFilter
-from yugioh_env.models import YuGiOhAction
-from yugioh_env.replay import GameRecording, ScriptedOpponent
-from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+from env.action_loop_filter import _ZONES, SAMPLING_START, ActionLoopFilter
+from env.models import YuGiOhAction
+from env.replay import GameRecording, ScriptedOpponent
+from env.server.environment import YuGiOhEnvironment
 
 # `_N_SUPPRESS` is the *selection* index at which a period-1 (unchanging-state)
 # loop is suppressed: its state is first sampled (the baseline) at selection

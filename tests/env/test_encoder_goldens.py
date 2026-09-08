@@ -14,8 +14,8 @@ import pathlib
 import numpy as np
 import pytest
 
-from yugioh_core.constants import LOCATION_OVERLAY
-from yugioh_core.encoding import ACTION_LAYOUT, EVENT_LAYOUT
+from core.constants import LOCATION_OVERLAY
+from core.encoding import ACTION_LAYOUT, EVENT_LAYOUT
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 

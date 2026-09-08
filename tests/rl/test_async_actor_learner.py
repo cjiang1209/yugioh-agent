@@ -10,12 +10,12 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
+from env.deck_parser import parse_ydk
+from rl.actor_learner import _async_actor_learner_worker
+from rl.config import VEC_ENV_TYPES, TrainingConfig
+from rl.network import YuGiOhNet
+from rl.shared_weights import SharedPolicyWeights
 from tests.rl.conftest import requires_engine
-from yugioh_env.deck_parser import parse_ydk
-from yugioh_rl.actor_learner import _async_actor_learner_worker
-from yugioh_rl.config import VEC_ENV_TYPES, TrainingConfig
-from yugioh_rl.network import YuGiOhNet
-from yugioh_rl.shared_weights import SharedPolicyWeights
 
 _DECK = "assets/decks/blue_eyes.ydk"
 
@@ -143,7 +143,7 @@ def test_async_worker_refreshes_on_new_version():
 
 def _make_async_vec(deck_path, **overrides):
     """Create an AsyncActorLearnerVecEnv for testing."""
-    from yugioh_rl.actor_learner import AsyncActorLearnerVecEnv
+    from rl.actor_learner import AsyncActorLearnerVecEnv
 
     defaults = dict(num_envs=2, vec_env_type="async_actor_learner")
     defaults.update(overrides)

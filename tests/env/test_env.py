@@ -2,9 +2,9 @@
 
 import pytest
 
-from yugioh_env.deck_parser import parse_ydk
-from yugioh_env.models import YuGiOhAction
-from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+from env.deck_parser import parse_ydk
+from env.models import YuGiOhAction
+from env.server.environment import YuGiOhEnvironment
 
 
 @pytest.fixture
@@ -219,7 +219,7 @@ def test_obs_events_normal_step_matches_cycle(env):
 
 
 def test_obs_events_empty_on_multi_select_substep(env):
-    from yugioh_core.constants import MSG_SELECT_IDLECMD, MSG_SELECT_TRIBUTE
+    from core.constants import MSG_SELECT_IDLECMD, MSG_SELECT_TRIBUTE
 
     puzzle = {
         "player0": {
@@ -243,7 +243,7 @@ def test_make_observation_raises_on_zero_actions(env):
     """An agent-facing prompt with no legal actions (e.g. an unenumerable
     MSG_ANNOUNCE_CARD general-predicate filter) must fail with a diagnosable
     error naming the msg_type, not an opaque NaN downstream."""
-    from yugioh_core.constants import MSG_ANNOUNCE_CARD
+    from core.constants import MSG_ANNOUNCE_CARD
 
     env.reset(seed=42)
 
@@ -264,7 +264,7 @@ def test_make_observation_raises_on_zero_actions(env):
 
 def test_duelview_no_duel():
     """The properties still answer without a duel; query_location refuses."""
-    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+    from env.server.environment import YuGiOhEnvironment
 
     env = YuGiOhEnvironment.__new__(YuGiOhEnvironment)  # no engine boot
     env._duel = None

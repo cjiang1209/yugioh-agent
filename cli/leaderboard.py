@@ -14,7 +14,8 @@ from pathlib import Path
 
 from cli.utils import fatal, validate_deck_paths
 
-LEADERBOARD_DIR = Path("leaderboard")
+# Not ``leaderboard/`` — that's the package. This is untracked run output.
+LEADERBOARD_DIR = Path("leaderboard_data")
 ENTRIES_DIR = LEADERBOARD_DIR / "entries"
 INDEX_PATH = LEADERBOARD_DIR / "index.md"
 PANEL_PATH = LEADERBOARD_DIR / "leaderboard.config.json"
@@ -128,7 +129,7 @@ def build_parser() -> argparse.ArgumentParser:
         "Single opponent → all parallelism is episode-shard.",
     )
 
-    sub.add_parser("refresh-index", help="Regenerate leaderboard/index.md from entry files.")
+    sub.add_parser("refresh-index", help="Regenerate leaderboard_data/index.md from entry files.")
 
     return parser
 
@@ -154,7 +155,7 @@ def _validate_subcommand_args(ns: argparse.Namespace) -> None:
             if not k.strip() or not v.strip():
                 fatal(f"--filter: KEY and VALUE must be non-empty, got {f!r}")
         if ns.by is not None:
-            from yugioh_leaderboard.features import GROUPING_FIELDS
+            from leaderboard.features import GROUPING_FIELDS
 
             if ns.by not in GROUPING_FIELDS:
                 fatal(
@@ -172,7 +173,7 @@ def _validate_subcommand_args(ns: argparse.Namespace) -> None:
 
 
 def _load_panel():
-    from yugioh_leaderboard.panel import load_panel_config
+    from leaderboard.panel import load_panel_config
 
     if not PANEL_PATH.exists():
         fatal(
@@ -183,7 +184,7 @@ def _load_panel():
 
 
 def _load_all_entries():
-    from yugioh_leaderboard.entry import read_entry
+    from leaderboard.entry import read_entry
 
     if not ENTRIES_DIR.exists():
         return []
@@ -191,7 +192,7 @@ def _load_all_entries():
 
 
 def _refresh_index_file(panel=None):
-    from yugioh_leaderboard.index import write_index_file
+    from leaderboard.index import write_index_file
 
     if panel is None:
         panel = _load_panel()
@@ -200,13 +201,13 @@ def _refresh_index_file(panel=None):
 
 
 def _cmd_add(ns: argparse.Namespace) -> int:
-    from yugioh_leaderboard.entry import (
+    from leaderboard.entry import (
         compute_checkpoint_hash,
         entry_id_for,
         read_entry,
         write_entry,
     )
-    from yugioh_leaderboard.score import score_checkpoint
+    from leaderboard.score import score_checkpoint
 
     panel = _load_panel()
     eid = entry_id_for(ns.checkpoint_path)
@@ -253,7 +254,7 @@ def _cmd_add(ns: argparse.Namespace) -> int:
 def _cmd_compare(ns: argparse.Namespace) -> int:
     import json as _json
 
-    from yugioh_leaderboard.compare import compare_groups, format_comparison_table, matches_filter
+    from leaderboard.compare import compare_groups, format_comparison_table, matches_filter
 
     panel = _load_panel()
     entries = _load_all_entries()
@@ -309,8 +310,8 @@ def _cmd_compare(ns: argparse.Namespace) -> int:
 
 
 def _cmd_pairwise(ns: argparse.Namespace) -> int:
-    from yugioh_leaderboard.entry import read_entry, write_entry
-    from yugioh_leaderboard.pairwise import NoSharedDecksError, run_pairwise
+    from leaderboard.entry import read_entry, write_entry
+    from leaderboard.pairwise import NoSharedDecksError, run_pairwise
 
     panel = _load_panel()
     a_path = ENTRIES_DIR / f"{ns.entry_a_id}.json"

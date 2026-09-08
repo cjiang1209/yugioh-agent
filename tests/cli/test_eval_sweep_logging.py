@@ -2,8 +2,8 @@
 
 from cli.eval_sweep import Manifest, run_sweep
 
-from yugioh_rl.eval import EvalResult
-from yugioh_rl.metrics_logging import CheckpointEvent
+from rl.eval import EvalResult
+from rl.metrics_logging import CheckpointEvent
 
 
 class _FakeSink:

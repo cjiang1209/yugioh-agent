@@ -1,7 +1,7 @@
 """Tests for the trainer-side eval wrapper.
 
 These pin the contract that ``PPOTrainer._evaluate`` is a faithful, thin
-wrapper around ``yugioh_rl.eval.evaluate``: forwarding the right kwargs,
+wrapper around ``rl.eval.evaluate``: forwarding the right kwargs,
 constructing a ``NetworkOpponent`` from ``self.network``, emitting eval
 scalars through ``self._sinks``, and toggling ``network.eval()`` /
 ``.train()`` around the call.
@@ -19,13 +19,13 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from yugioh_rl.config import TrainingConfig
-from yugioh_rl.eval import EvalResult
-from yugioh_rl.metrics_logging import MultiSink, ScalarMetrics
-from yugioh_rl.ppo import PPOTrainer
+from rl.config import TrainingConfig
+from rl.eval import EvalResult
+from rl.metrics_logging import MultiSink, ScalarMetrics
+from rl.ppo import PPOTrainer
 
 # ---------------------------------------------------------------------------
-# Trainer wrapper integration — patch yugioh_rl.ppo.evaluate_with_agent
+# Trainer wrapper integration — patch rl.ppo.evaluate_with_agent
 # ---------------------------------------------------------------------------
 
 
@@ -72,7 +72,7 @@ class TestEvaluateWrapper:
             captured.update(kwargs)
             return []
 
-        with patch("yugioh_rl.ppo.evaluate_with_agent", _fake_evaluate):
+        with patch("rl.ppo.evaluate_with_agent", _fake_evaluate):
             trainer._evaluate(num_episodes=5, global_step=1000)
 
         assert captured["deck_pool"] is trainer._deck_pool
@@ -100,8 +100,8 @@ class TestEvaluateWrapper:
                 ctor_calls.append((network, device))
 
         with (
-            patch("yugioh_rl.ppo.NetworkOpponent", _FakeNetworkOpponent),
-            patch("yugioh_rl.ppo.evaluate_with_agent", return_value=[]),
+            patch("rl.ppo.NetworkOpponent", _FakeNetworkOpponent),
+            patch("rl.ppo.evaluate_with_agent", return_value=[]),
         ):
             trainer._evaluate(num_episodes=1, global_step=0)
 
@@ -119,7 +119,7 @@ class TestEvaluateWrapper:
         )
         trainer = _make_trainer_stub(config)
 
-        with patch("yugioh_rl.ppo.evaluate_with_agent", return_value=[]):
+        with patch("rl.ppo.evaluate_with_agent", return_value=[]):
             trainer._evaluate(num_episodes=1, global_step=0)
 
         # network.eval() called before, .train() called after.
@@ -138,7 +138,7 @@ class TestEvaluateWrapper:
         )
         trainer = _make_trainer_stub(config)
         results = [EvalResult("greedy", 1, 1, {0: [1.0]})]
-        with patch("yugioh_rl.ppo.evaluate_with_agent", return_value=results):
+        with patch("rl.ppo.evaluate_with_agent", return_value=results):
             trainer._evaluate(num_episodes=1, global_step=42)
 
         recording = trainer._sinks._sinks[0]

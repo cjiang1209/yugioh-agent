@@ -37,8 +37,8 @@ def _spy_encode(monkeypatch, module) -> list[object]:
 
 @requires_engine
 def test_training_env_encodes_through_the_shared_encoder(monkeypatch) -> None:
-    import yugioh_rl.env_wrapper as ew
-    from yugioh_rl.env_wrapper import TrainingEnv
+    import rl.env_wrapper as ew
+    from rl.env_wrapper import TrainingEnv
 
     calls = _spy_encode(monkeypatch, ew)
 
@@ -56,12 +56,12 @@ def test_training_env_encodes_through_the_shared_encoder(monkeypatch) -> None:
 def test_network_opponent_encodes_through_the_shared_encoder(monkeypatch) -> None:
     pytest.importorskip("torch")
 
-    import yugioh_rl.obs_encoder as oe
+    import rl.obs_encoder as oe
+    from core.constants import MSG_SELECT_YESNO
+    from env.opponent import NetworkOpponent
+    from rl.config import TrainingConfig
+    from rl.network import YuGiOhNet
     from tests.env.conftest import MINIMAL_MSGS, obs_from_msg
-    from yugioh_core.constants import MSG_SELECT_YESNO
-    from yugioh_env.opponent import NetworkOpponent
-    from yugioh_rl.config import TrainingConfig
-    from yugioh_rl.network import YuGiOhNet
 
     calls = _spy_encode(monkeypatch, oe)
 

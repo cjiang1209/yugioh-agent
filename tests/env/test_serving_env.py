@@ -2,27 +2,27 @@ from unittest.mock import patch
 
 import pytest
 
-from yugioh_core.constants import (
+from core.constants import (
     LOCATION_MZONE,
     MSG_SELECT_CHAIN,
     MSG_SELECT_IDLECMD,
     MSG_SELECT_PLACE,
     TYPE_MONSTER,
 )
-from yugioh_env.server.serving_env import (
+from env.server.serving_env import (
     FrameCollector,
     ServingEnv,
     capture_board,
     capture_game_state,
 )
 
-_ENV_CLASS = "yugioh_env.server.yugioh_environment.YuGiOhEnvironment"
+_ENV_CLASS = "env.server.environment.YuGiOhEnvironment"
 
 
 @pytest.fixture
 def env(lib, db_path, script_dirs, deck_path):
     """Create a real YuGiOhEnvironment instance for observer-seam integration tests."""
-    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+    from env.server.environment import YuGiOhEnvironment
 
     config = {
         "lib_path": None,  # auto-detect
@@ -132,7 +132,7 @@ def test_pending_chain_from_live_game_state_when_no_events():
 
 
 def test_pending_chain_from_chunk_events_overrides_live():
-    from yugioh_core.constants import MSG_CHAINING
+    from core.constants import MSG_CHAINING
 
     class _Link:
         chain_link, code, desc, controller = 9, 999, 0, 0  # live — ignored
@@ -174,7 +174,7 @@ def test_serving_env_step_returns_frames():
 
 
 def test_serving_frames_capture_per_chunk(env):
-    from yugioh_env.replay import GameRecording, ScriptedOpponent
+    from env.replay import GameRecording, ScriptedOpponent
 
     recording = GameRecording(
         setup={
@@ -203,8 +203,8 @@ def test_serving_frames_capture_per_chunk(env):
 
 
 def test_serving_multi_select_substep_returns_no_frames(env):
-    from yugioh_core.constants import MSG_SELECT_IDLECMD, MSG_SELECT_TRIBUTE
-    from yugioh_env.models import YuGiOhAction
+    from core.constants import MSG_SELECT_IDLECMD, MSG_SELECT_TRIBUTE
+    from env.models import YuGiOhAction
 
     puzzle = {
         "player0": {

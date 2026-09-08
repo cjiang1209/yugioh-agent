@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from yugioh_leaderboard.panel import (
+from leaderboard.panel import (
     load_panel_config,
 )
 

@@ -8,11 +8,11 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
+from env.deck_parser import parse_ydk
+from rl.actor_learner import ActorLearnerVecEnv
+from rl.config import TrainingConfig
+from rl.network import YuGiOhNet
 from tests.rl.conftest import requires_engine
-from yugioh_env.deck_parser import parse_ydk
-from yugioh_rl.actor_learner import ActorLearnerVecEnv
-from yugioh_rl.config import TrainingConfig
-from yugioh_rl.network import YuGiOhNet
 
 
 @pytest.fixture

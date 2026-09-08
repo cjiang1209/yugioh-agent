@@ -20,13 +20,13 @@ from cli.utils import (
     was_provided,
 )
 
-from yugioh_rl.config import (
+from rl.config import (
     POOLING_CHOICES,
     VEC_ENV_TYPES,
     TrainingConfig,
     normalize_legacy_config,
 )
-from yugioh_rl.opponent_pool import SAMPLING_CHOICES
+from rl.opponent_pool import SAMPLING_CHOICES
 
 # Flags whose values may override the checkpoint's stored config on --resume.
 # Map CLI flag → TrainingConfig field name.
@@ -703,7 +703,7 @@ def main() -> None:
 
     import torch
 
-    from yugioh_rl.ppo import PPOTrainer
+    from rl.ppo import PPOTrainer
 
     # Create run directory and write a timestamped config snapshot; update
     # `config.json` symlink to point at it.

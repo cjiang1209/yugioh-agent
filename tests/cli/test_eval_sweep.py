@@ -13,7 +13,7 @@ from cli.eval_sweep import (
     run_sweep,
 )
 
-from yugioh_rl.eval import EvalResult
+from rl.eval import EvalResult
 
 
 def _touch(p: Path):

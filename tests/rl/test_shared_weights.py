@@ -8,7 +8,7 @@ torch = pytest.importorskip("torch")
 
 import torch.nn as nn
 
-from yugioh_rl.shared_weights import SharedPolicyWeights
+from rl.shared_weights import SharedPolicyWeights
 
 
 class _Tiny(nn.Module):
@@ -68,7 +68,7 @@ def test_version_increments_monotonically() -> None:
 
 
 def test_nan_publish_rejected() -> None:
-    from yugioh_rl.shared_weights import NonFiniteWeightsError
+    from rl.shared_weights import NonFiniteWeightsError
 
     m = _Tiny()
     shared = SharedPolicyWeights(m)
@@ -84,7 +84,7 @@ def _child_refresh(handles, pipe):
     # handles, refreshes a fresh model, and sends the result via pipe.
     import torch.nn as nn
 
-    from yugioh_rl.shared_weights import SharedPolicyWeights
+    from rl.shared_weights import SharedPolicyWeights
 
     class _Tiny(nn.Module):
         def __init__(self):

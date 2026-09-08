@@ -6,7 +6,7 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from yugioh_rl.metrics_logging import CheckpointEvent, MultiSink
+from rl.metrics_logging import CheckpointEvent, MultiSink
 
 
 class _FakeSink:
@@ -22,7 +22,7 @@ class _FakeSink:
 
 def _make_trainer_stub(config, sinks):
     """Build a PPOTrainer-like object with just what _save_checkpoint reads."""
-    from yugioh_rl.ppo import PPOTrainer
+    from rl.ppo import PPOTrainer
 
     trainer = object.__new__(PPOTrainer)
     trainer.config = config
@@ -39,7 +39,7 @@ def _make_trainer_stub(config, sinks):
 
 
 def test_save_checkpoint_emits_registration_event(tmp_path):
-    from yugioh_rl.config import TrainingConfig
+    from rl.config import TrainingConfig
 
     fake = _FakeSink()
     config = TrainingConfig(

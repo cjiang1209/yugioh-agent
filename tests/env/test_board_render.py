@@ -1,7 +1,7 @@
-from yugioh_core.constants import (
+from core.constants import (
     TYPE_MONSTER,
 )
-from yugioh_env.server.board_state import render_board
+from env.server.board_state import render_board
 
 
 class _FakeCardDB:

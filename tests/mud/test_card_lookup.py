@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from yugioh_mud.card_lookup import CardNameLookup
+from mud.card_lookup import CardNameLookup
 
 
 @pytest.fixture(scope="module")

@@ -16,7 +16,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from yugioh_core.constants import (
+from core.constants import (
     MSG_CHAINING,
     MSG_FLIPSUMMONING,
     MSG_SPSUMMONING,
@@ -25,9 +25,9 @@ from yugioh_core.constants import (
     TYPE_SPELL,
     TYPE_TRAP,
 )
-from yugioh_env import message_parser as _mp
-from yugioh_env.deck_parser import parse_ydk
-from yugioh_rl.env_wrapper import TrainingEnv, parse_deck_pool
+from env import message_parser as _mp
+from env.deck_parser import parse_ydk
+from rl.env_wrapper import TrainingEnv, parse_deck_pool
 
 SUMMON_MSGS = (MSG_SUMMONING, MSG_SPSUMMONING, MSG_FLIPSUMMONING)
 ACTIVATE_MSG = MSG_CHAINING
@@ -65,7 +65,7 @@ def _install_tap_for(sum_count: Counter, act_count: Counter) -> None:
 
     _mp.parse_messages = tapped
     # Also patch the already-imported reference in duel.py
-    import yugioh_env.duel as _duel
+    import env.duel as _duel
 
     _duel.parse_messages = tapped
 
@@ -102,7 +102,7 @@ def _run_chunk_to_pipe(
 ) -> None:
     """Worker entry point: run [start, end) and send a _CoverageResult through the pipe.
 
-    Using a Pipe-based handoff (matches yugioh_rl/eval.py) avoids
+    Using a Pipe-based handoff (matches rl/eval.py) avoids
     multiprocessing.Pool's SemLock requirement, which is blocked under
     sandboxed environments on macOS.
     """

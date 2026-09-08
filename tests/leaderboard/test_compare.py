@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from yugioh_leaderboard.compare import (
+from leaderboard.compare import (
     ComparisonResult,
     bootstrap_ci,
     compare_groups,

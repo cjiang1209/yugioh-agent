@@ -3,8 +3,8 @@ readouts from the forward pass that chose it."""
 
 import pytest
 
+from env.opponent import GreedyOpponent, RandomOpponent
 from tests.env.conftest import obs_from_action_count
-from yugioh_env.opponent import GreedyOpponent, RandomOpponent
 
 
 @pytest.mark.parametrize(
@@ -26,8 +26,8 @@ def test_opponents_return_an_index_and_an_optional_inference(opponent):
 def test_the_recording_wrapper_forwards_both_elements():
     """RecordingOpponent must not swallow the inference: recording a duel
     cannot change what the caller sees."""
-    from yugioh_env.opponent import Inference
-    from yugioh_env.replay import GameRecording, RecordingOpponent
+    from env.opponent import Inference
+    from env.replay import GameRecording, RecordingOpponent
 
     class FakeInner:
         needs_board_state = False

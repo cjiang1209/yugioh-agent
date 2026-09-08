@@ -37,7 +37,7 @@ sys.path.insert(0, str(ROOT))
 
 from tests.env.conftest import MINIMAL_MSGS, MULTI_STEP_CASES, obs_from_msg
 
-from yugioh_env.ygo_agent.bridge import _ACTION_MSG_TRANSLATORS, build_predict_input
+from env.ygo_agent.bridge import _ACTION_MSG_TRANSLATORS, build_predict_input
 
 OUT = Path(__file__).with_name("ygo_agent_predict_requests.json")
 

@@ -8,7 +8,7 @@ torch = pytest.importorskip("torch")
 
 import numpy as np
 
-from yugioh_core.encoding import (
+from core.encoding import (
     ACTION_FEATURES,
     CARD_FEATURES,
     CHAIN_ENTRY_FEATURES,
@@ -19,7 +19,7 @@ from yugioh_core.encoding import (
     MAX_EVENT_HISTORY,
     MAX_PENDING_CHAIN,
 )
-from yugioh_rl.policy_inputs import build_forward_inputs
+from rl.policy_inputs import build_forward_inputs
 
 _EXPECTED_KEYS = {
     "obs_cards",

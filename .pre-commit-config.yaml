@@ -16,22 +16,22 @@ repos:
         entry: .venv/bin/ruff format
         types_or: [python, pyi]
 
-  # Prettier and ESLint run against yugioh_web/'s pinned devDependencies (hook
+  # Prettier and ESLint run against web/'s pinned devDependencies (hook
   # and project versions can't drift), via scripts/pnpm_web.sh (which puts
   # node/pnpm on PATH). pass_filenames: false because the tools' own --cache
   # handles change detection and pre-commit's paths would be repo-rooted.
   - repo: local
     hooks:
       - id: prettier
-        name: prettier (yugioh_web)
+        name: prettier (web)
         language: system
         entry: scripts/pnpm_web.sh exec prettier --write --cache .
-        files: ^yugioh_web/.*\.(ts|tsx|js|jsx|json|css|md|html|ya?ml)$
+        files: ^web/.*\.(ts|tsx|js|jsx|json|css|md|html|ya?ml)$
         pass_filenames: false
 
       - id: eslint
-        name: eslint (yugioh_web)
+        name: eslint (web)
         language: system
         entry: scripts/pnpm_web.sh exec eslint --fix --cache .
-        files: ^yugioh_web/.*\.(ts|tsx|js|jsx)$
+        files: ^web/.*\.(ts|tsx|js|jsx)$
         pass_filenames: false

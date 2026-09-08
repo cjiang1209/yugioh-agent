@@ -13,16 +13,16 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from yugioh_core.encoding import (
+from core.encoding import (
     ACTION_FEATURES,
     CARD_FEATURES,
     GLOBAL_FEATURES,
     MAX_ACTIONS,
     MAX_CARDS,
 )
-from yugioh_env.models import Pass, YuGiOhObservation
-from yugioh_rl.config import TrainingConfig
-from yugioh_rl.network import YuGiOhNet
+from env.models import Pass, YuGiOhObservation
+from rl.config import TrainingConfig
+from rl.network import YuGiOhNet
 
 _RNN_FIELDS = ("rnn_type", "rnn_hidden_dim", "rnn_num_layers", "bptt_chunk_len")
 
@@ -71,7 +71,7 @@ def test_legacy_checkpoint_resume_backfills_rnn_fields(tmp_path, monkeypatch):
 def test_legacy_checkpoint_inference_via_model_opponent(tmp_path):
     """Plan test #8 (ModelOpponent half).  Legacy ckpt should load and run
     inference without AttributeError on the new RNN fields."""
-    from yugioh_env.opponent import ModelOpponent
+    from env.opponent import ModelOpponent
 
     ckpt_path = str(tmp_path / "legacy.pt")
     _make_legacy_checkpoint(ckpt_path)
@@ -85,7 +85,7 @@ def test_legacy_checkpoint_inference_via_model_opponent(tmp_path):
 def test_legacy_checkpoint_inference_via_model_agent(tmp_path, db_path):
     """Plan test #8 (ModelAgent half).  Legacy ckpt should load via the
     MUD-bot ModelAgent without AttributeError."""
-    from yugioh_mud.agent import ModelAgent
+    from mud.agent import ModelAgent
 
     ckpt_path = str(tmp_path / "legacy.pt")
     _make_legacy_checkpoint(ckpt_path)
@@ -246,7 +246,7 @@ def test_model_opponent_hx_lifecycle(tmp_path):
     """Plan test #6.  Instantiate ModelOpponent on an RNN ckpt, run a few
     select_action calls; assert _hx is non-None and changes between calls.
     """
-    from yugioh_env.opponent import ModelOpponent
+    from env.opponent import ModelOpponent
 
     ckpt_path = str(tmp_path / "rnn.pt")
     _make_rnn_checkpoint(ckpt_path, rnn_type="lstm")
@@ -286,7 +286,7 @@ def test_model_opponent_hx_lifecycle(tmp_path):
 
 def test_model_opponent_feed_forward_hx_is_none(tmp_path):
     """Default rnn_type='none' ckpt: _hx must remain None across calls."""
-    from yugioh_env.opponent import ModelOpponent
+    from env.opponent import ModelOpponent
 
     ckpt_path = str(tmp_path / "ff.pt")
     _save_minimal_checkpoint(ckpt_path, TrainingConfig())
@@ -308,7 +308,7 @@ def test_rollout_loop_resets_hx_per_rollout():
     import inspect
     import re
 
-    from yugioh_rl.ppo import PPOTrainer
+    from rl.ppo import PPOTrainer
 
     src = inspect.getsource(PPOTrainer.train)
     # Locate the per-rollout for loop and the init_hx assignment.
@@ -340,7 +340,7 @@ def _make_tbptt_trainer(*, rollout_steps: int, num_envs: int, tmp_path, **overri
     under ``save_dir`` during __init__; left at its default the trainer
     would write an event file into the repository's ``checkpoints/logs``.
     """
-    from yugioh_rl.ppo import PPOTrainer
+    from rl.ppo import PPOTrainer
 
     defaults = {
         "rnn_type": "lstm",
@@ -384,7 +384,7 @@ def test_recurrent_minibatch_shape_and_count():
     """Plan test #4 (shape half).  With T=32, L=8, num_envs=4,
     minibatch_size=32: envs_per_minibatch=1, four minibatches per epoch,
     each shape (T=32, env_mb=1, ...)."""
-    from yugioh_rl.ppo import RolloutBuffer
+    from rl.ppo import RolloutBuffer
 
     buffer = RolloutBuffer(rollout_steps=32, num_envs=4)
     hx_initial = (torch.zeros(1, 4, 64), torch.zeros(1, 4, 64))
@@ -545,7 +545,7 @@ def test_checkpoint_compat_rejects_rnn_type_mismatch(tmp_path):
     """Plan test #2.  Loading a 'none' ckpt with CLI rnn_type='lstm' (or
     vice versa) must raise — RNN cannot be hot-added or hot-removed
     relative to trained weights."""
-    from yugioh_rl.ppo import PPOTrainer
+    from rl.ppo import PPOTrainer
 
     none_ckpt = str(tmp_path / "none.pt")
     _save_minimal_checkpoint(none_ckpt, TrainingConfig())
@@ -572,7 +572,7 @@ def test_checkpoint_compat_rejects_rnn_type_mismatch(tmp_path):
 
 def test_checkpoint_compat_rejects_rnn_hidden_dim_mismatch(tmp_path):
     """When both sides instantiate an RNN, hidden-dim mismatch must reject."""
-    from yugioh_rl.ppo import PPOTrainer
+    from rl.ppo import PPOTrainer
 
     ckpt_path = str(tmp_path / "lstm64.pt")
     _make_rnn_checkpoint(ckpt_path, rnn_type="lstm")  # rnn_hidden_dim=64 from helper
@@ -592,7 +592,7 @@ def test_checkpoint_compat_ignores_rnn_dims_when_both_feed_forward(tmp_path):
     when rnn_hidden_dim / rnn_num_layers placeholder values disagree —
     those fields don't shape any tensor in feed-forward mode.
     """
-    from yugioh_rl.ppo import PPOTrainer
+    from rl.ppo import PPOTrainer
 
     ckpt_config = TrainingConfig(rnn_type="none", rnn_hidden_dim=512, rnn_num_layers=3)
     ckpt_path = str(tmp_path / "ff_with_drift.pt")
@@ -704,7 +704,7 @@ def test_ppo_trainer_rejects_mps_lstm_combo():
     The guard checks ``device.type``, which works regardless of whether MPS
     hardware is actually available — `torch.device("mps")` is just a label.
     """
-    from yugioh_rl.ppo import PPOTrainer
+    from rl.ppo import PPOTrainer
 
     cfg = TrainingConfig(
         num_envs=2,
@@ -722,7 +722,7 @@ def test_ppo_trainer_allows_mps_gru_and_mps_none(tmp_path):
     materializes an actual MPS tensor (CI may not have MPS hardware), only
     exercises the device-type branch in __init__.
     """
-    from yugioh_rl.ppo import PPOTrainer
+    from rl.ppo import PPOTrainer
 
     # Pre-make a tiny CPU checkpoint so PPOTrainer can run __init__ without
     # actually allocating on MPS — `init_checkpoint` loads with map_location

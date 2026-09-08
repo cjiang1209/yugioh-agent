@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from yugioh_core.constants import (
+from core.constants import (
     LOCATION_BANISHED,
     LOCATION_DECK,
     LOCATION_GRAVE,
@@ -21,7 +21,7 @@ from yugioh_core.constants import (
     POS_FACEUP_DEFENSE,
     STATUS_DISABLED,
 )
-from yugioh_env.puzzle import (
+from env.puzzle import (
     generate_disable_lua,
     load_puzzle,
     parse_position,
@@ -235,7 +235,7 @@ class TestCreatePuzzle:
 
     @pytest.fixture
     def duel(self, lib, card_db, script_dirs):
-        from yugioh_env.duel import Duel
+        from env.duel import Duel
 
         d = Duel(lib, card_db, script_dirs)
         yield d

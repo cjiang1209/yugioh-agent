@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from yugioh_leaderboard.entry import Entry, PanelMatchResult
+from leaderboard.entry import Entry, PanelMatchResult
 
 
 def _make_entry(

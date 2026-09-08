@@ -1,4 +1,4 @@
-from yugioh_rl.eval import _make_eval_env_kwargs
+from rl.eval import _make_eval_env_kwargs
 
 
 def test_make_eval_env_kwargs_includes_selection_params():

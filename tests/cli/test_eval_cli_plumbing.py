@@ -14,7 +14,7 @@ from unittest.mock import patch
 import pytest
 from cli import eval as cli_eval
 
-from yugioh_rl.eval import EvalResult
+from rl.eval import EvalResult
 
 
 @pytest.fixture
@@ -41,8 +41,8 @@ def stub_eval_pipeline():
         return captured["results"]
 
     with (
-        patch("yugioh_rl.env_wrapper.parse_deck_pool", fake_parse_deck_pool),
-        patch("yugioh_rl.eval.evaluate", fake_evaluate),
+        patch("rl.env_wrapper.parse_deck_pool", fake_parse_deck_pool),
+        patch("rl.eval.evaluate", fake_evaluate),
     ):
         yield captured
 

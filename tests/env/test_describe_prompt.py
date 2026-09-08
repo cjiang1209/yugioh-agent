@@ -5,8 +5,7 @@ Uses ActionMapper.update() with synthetic parsed messages — no live duel neede
 
 import pytest
 
-from tests.env.conftest import obs_from_msg as _obs_from_msg
-from yugioh_core.constants import (
+from core.constants import (
     ATTRIBUTE_EARTH,
     LOCATION_DECK,
     LOCATION_MZONE,
@@ -27,8 +26,9 @@ from yugioh_core.constants import (
     POS_FACEUP_ATTACK,
     RACE_WARRIOR,
 )
-from yugioh_env.action_describer import ActionDescriber
-from yugioh_env.server.yugioh_environment import _build_prompt_meta
+from env.action_describer import ActionDescriber
+from env.server.environment import _build_prompt_meta
+from tests.env.conftest import obs_from_msg as _obs_from_msg
 
 
 class FakeCardDB:
@@ -396,7 +396,7 @@ def test_disfield_maps_to_place(card_db):
 def test_prompt_type_map_includes_announce_kinds():
     """describe_prompt returns the correct `type` strings for the five prompts
     that previously fell through to 'unknown'."""
-    from yugioh_core.constants import (
+    from core.constants import (
         MSG_ANNOUNCE_ATTRIB,
         MSG_ANNOUNCE_NUMBER,
         MSG_ANNOUNCE_RACE,
@@ -727,7 +727,7 @@ def test_effectyn_prompt_meta_has_relativized_controller() -> None:
 def test_picked_cards_relativizes_controller() -> None:
     """A picked card's `controller` in `picked_cards` must be relativized to
     the agent's seat, matching every other controller field the observation
-    exposes (see `_picked_cards` in yugioh_environment.py).
+    exposes (see `_picked_cards` in environment.py).
 
     Every other `picked_cards` test in this module uses the default
     `agent_player=0` with `controller: 0` cards, where relativization

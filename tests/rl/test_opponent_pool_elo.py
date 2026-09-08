@@ -10,8 +10,8 @@ import pytest
 torch = pytest.importorskip("torch")
 import torch.nn as nn
 
+from rl.opponent_pool import OpponentPool, SharedPoolState
 from tests.rl.conftest import requires_engine
-from yugioh_rl.opponent_pool import OpponentPool, SharedPoolState
 
 
 class _Tiny(nn.Module):
@@ -68,7 +68,7 @@ def test_shared_pool_state_increment_n_games() -> None:
 
 
 def _child_read_elo(handles, send_pipe):
-    from yugioh_rl.opponent_pool import SharedPoolState
+    from rl.opponent_pool import SharedPoolState
 
     state = SharedPoolState.from_handles(handles)
     send_pipe.send((state.agent_rating, state.get_rating(1), state.get_n_games(1)))
@@ -251,10 +251,10 @@ def test_self_play_pool_elo_updates_during_real_episode() -> None:
     if not deck_path.exists():
         pytest.skip(f"missing deck: {deck_path}")
 
-    from yugioh_rl.config import TrainingConfig
-    from yugioh_rl.env_wrapper import TrainingEnv, parse_deck_pool
-    from yugioh_rl.network import YuGiOhNet
-    from yugioh_rl.opponent_pool import OpponentPool
+    from rl.config import TrainingConfig
+    from rl.env_wrapper import TrainingEnv, parse_deck_pool
+    from rl.network import YuGiOhNet
+    from rl.opponent_pool import OpponentPool
 
     config = TrainingConfig(self_play=True)
     pool = OpponentPool.create_trainer(
@@ -311,7 +311,7 @@ def test_self_play_pool_elo_updates_during_real_episode() -> None:
 
 def test_elo_summary_dict_shape_pinned_for_ppo_logging() -> None:
     """PPO logging code expects these exact keys; if you rename one, you
-    must also update yugioh_rl/ppo.py — this test is the canary."""
+    must also update rl/ppo.py — this test is the canary."""
     pool = OpponentPool.create_trainer(
         pool_size=2,
         initial_opponent_spec="random",

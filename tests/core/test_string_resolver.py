@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from yugioh_core.card_database import CardDatabase
-from yugioh_core.string_resolver import StringResolver, load_sys_strings, parse_sys_strings
+from core.card_database import CardDatabase
+from core.string_resolver import StringResolver, load_sys_strings, parse_sys_strings
 
 
 @pytest.fixture
@@ -136,13 +136,13 @@ def test_load_sys_strings_parses_file(tmp_path):
     assert load_sys_strings(strings_path=conf) == {1: "Test system string"}
 
 
-from yugioh_core.string_resolver import CardTextResolver
+from core.string_resolver import CardTextResolver
 
 
 def test_card_text_resolver_name_and_effect(tmp_path):
     conf = tmp_path / "strings.conf"
     conf.write_text("!system 3 Negate the summon\n", encoding="utf-8")
-    from yugioh_core.string_resolver import load_sys_strings
+    from core.string_resolver import load_sys_strings
 
     class _DB:
         def get_card_name(self, code):

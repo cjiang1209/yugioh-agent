@@ -1,4 +1,4 @@
-"""Tests for yugioh_env.ygo_agent.bridge — observation to ygo-agent translation.
+"""Tests for env.ygo_agent.bridge — observation to ygo-agent translation.
 
 The bridge builds its request from ``YuGiOhObservation.action_descriptors`` and
 ``prompt_meta``. Outbound bodies are pinned byte-for-byte against
@@ -17,15 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.env.conftest import (
-    CARD_A,
-    CARD_B,
-    CARD_C,
-    MINIMAL_MSGS,
-    MULTI_STEP_CASES,
-    obs_from_msg,
-)
-from yugioh_core.action_categories import (
+from core.action_categories import (
     BATTLE_ACTIVATE,
     BATTLE_ATTACK,
     BATTLE_TO_EP,
@@ -35,7 +27,7 @@ from yugioh_core.action_categories import (
     IDLE_TO_BP,
     IDLE_TO_EP,
 )
-from yugioh_core.constants import (
+from core.constants import (
     ATTRIBUTE_ALL,
     ATTRIBUTE_LIGHT,
     LOCATION_BANISHED,
@@ -66,14 +58,22 @@ from yugioh_core.constants import (
     RACE_DRAGON,
     STAT_UNKNOWN,
 )
-from yugioh_env.models import CardState, GlobalState, YuGiOhObservation
-from yugioh_env.ygo_agent.bridge import (
+from env.models import CardState, GlobalState, YuGiOhObservation
+from env.ygo_agent.bridge import (
     _ACTION_MSG_TRANSLATORS,
     build_predict_input,
     match_response,
     translate_action_msg,
     translate_cards,
     translate_global,
+)
+from tests.env.conftest import (
+    CARD_A,
+    CARD_B,
+    CARD_C,
+    MINIMAL_MSGS,
+    MULTI_STEP_CASES,
+    obs_from_msg,
 )
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"

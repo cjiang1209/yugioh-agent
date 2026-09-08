@@ -1,4 +1,4 @@
-"""Tests for yugioh_rl.eval — core behavior of the standalone eval module."""
+"""Tests for rl.eval — core behavior of the standalone eval module."""
 
 from __future__ import annotations
 
@@ -7,17 +7,16 @@ from unittest.mock import patch
 
 import pytest
 
-from tests.rl.conftest import make_deck_pool, requires_engine
-from yugioh_core.encoding import (
+from core.encoding import (
     MAX_ACTIONS,
 )
-from yugioh_env.models import Pass, YuGiOhObservation
-from yugioh_env.opponent import (
+from env.models import Pass, YuGiOhObservation
+from env.opponent import (
     GreedyOpponent,
     Opponent,
     RandomOpponent,
 )
-from yugioh_rl.eval import (
+from rl.eval import (
     EvalResult,
     _aggregate_one,
     _EpisodeRecord,
@@ -27,6 +26,7 @@ from yugioh_rl.eval import (
     opponent_label_from_spec,
     run_match,
 )
+from tests.rl.conftest import make_deck_pool, requires_engine
 
 _DECK_PATH = Path("assets/decks/blue_eyes.ydk")
 
@@ -77,8 +77,8 @@ class TestMakeEvalAgent:
                 captured["device"] = device
 
         # make_eval_agent delegates to make_opponent, which constructs
-        # ModelOpponent from yugioh_env.opponent — that's the patch target.
-        with patch("yugioh_env.opponent.ModelOpponent", _FakeModelOpponent):
+        # ModelOpponent from env.opponent — that's the patch target.
+        with patch("env.opponent.ModelOpponent", _FakeModelOpponent):
             make_eval_agent("model:/p/ckpt.pt", device="cuda")
 
         assert captured == {"path": "/p/ckpt.pt", "device": "cuda"}
@@ -101,7 +101,7 @@ class TestMakeEvalAgent:
                 captured["device"] = device
 
         sentinel_net = object()
-        with patch("yugioh_rl.eval.NetworkOpponent", _FakeNetworkOpponent):
+        with patch("rl.eval.NetworkOpponent", _FakeNetworkOpponent):
             make_eval_agent("greedy", network=sentinel_net, device="cuda")
 
         assert captured == {"network": sentinel_net, "device": "cuda"}
@@ -348,7 +348,7 @@ class TestEvaluate:
     def test_constructs_one_env_per_spec_with_correct_kwargs(self, fake_training_env_factory):
         FakeEnv, instances = fake_training_env_factory
         agent = _RecordingAgent()
-        with patch("yugioh_rl.eval.EvalEnv", FakeEnv):
+        with patch("rl.eval.EvalEnv", FakeEnv):
             results = evaluate_with_agent(
                 agent,
                 deck_pool=[{"main": list(range(40)), "extra": []}],
@@ -376,7 +376,7 @@ class TestEvaluate:
     def test_opponent_device_forwarded_only_when_provided(self, fake_training_env_factory):
         FakeEnv, instances = fake_training_env_factory
         agent = _RecordingAgent()
-        with patch("yugioh_rl.eval.EvalEnv", FakeEnv):
+        with patch("rl.eval.EvalEnv", FakeEnv):
             evaluate_with_agent(
                 agent,
                 deck_pool=[{"main": list(range(40)), "extra": []}],
@@ -390,7 +390,7 @@ class TestEvaluate:
     def test_results_carry_label_and_per_deck(self, fake_training_env_factory):
         FakeEnv, _ = fake_training_env_factory
         agent = _RecordingAgent()
-        with patch("yugioh_rl.eval.EvalEnv", FakeEnv):
+        with patch("rl.eval.EvalEnv", FakeEnv):
             results = evaluate_with_agent(
                 agent,
                 deck_pool=[{"main": list(range(40)), "extra": []}],
@@ -411,7 +411,7 @@ class TestEvaluate:
         """Episode 1 of opponent A and episode 1 of opponent B both reseed agent to seed+1."""
         FakeEnv, _ = fake_training_env_factory
         agent = _RecordingAgent()
-        with patch("yugioh_rl.eval.EvalEnv", FakeEnv):
+        with patch("rl.eval.EvalEnv", FakeEnv):
             evaluate_with_agent(
                 agent,
                 deck_pool=[{"main": list(range(40)), "extra": []}],
@@ -433,7 +433,7 @@ class TestEvaluate:
 
 class TestBuildTasks:
     def test_tasks_are_opponent_major(self):
-        from yugioh_rl.eval import _build_tasks
+        from rl.eval import _build_tasks
 
         tasks = _build_tasks(["a", "b"], 3)
         # Opponent A's 3 tasks come first, then opponent B's 3.
@@ -447,20 +447,20 @@ class TestBuildTasks:
         ]
 
     def test_episodes_are_one_indexed(self):
-        from yugioh_rl.eval import _build_tasks
+        from rl.eval import _build_tasks
 
         tasks = _build_tasks(["x"], 3)
         assert [t.episode_idx for t in tasks] == [1, 2, 3]
 
     def test_zero_episodes_yields_empty(self):
-        from yugioh_rl.eval import _build_tasks
+        from rl.eval import _build_tasks
 
         assert _build_tasks(["a", "b"], 0) == []
 
 
 class TestAggregatePartials:
     def test_groups_by_opp_idx_in_spec_order(self):
-        from yugioh_rl.eval import _aggregate_partials, _PartialResult
+        from rl.eval import _aggregate_partials, _PartialResult
 
         partials = [
             _PartialResult(
@@ -509,7 +509,7 @@ class TestAggregatePartials:
         lists, breaking byte-equal parity assertions in the integration
         test.
         """
-        from yugioh_rl.eval import _aggregate_partials, _PartialResult
+        from rl.eval import _aggregate_partials, _PartialResult
 
         # Build 4 partials for one opponent, in episode_idx order: 1,2,3,4.
         # Episodes 1, 3 used deck 0 (win, lose); episodes 2, 4 used deck 1 (lose, win).
@@ -534,7 +534,7 @@ class TestAggregatePartials:
         )
 
     def test_computes_win_rate(self):
-        from yugioh_rl.eval import _aggregate_partials, _PartialResult
+        from rl.eval import _aggregate_partials, _PartialResult
 
         partials = [
             _PartialResult(0, 1, True, 0, 1, 1, True),
@@ -549,7 +549,7 @@ class TestAggregatePartials:
 
     def test_empty_partials_for_opp(self):
         """An opponent with zero partials still appears with episodes=0, win_rate=0."""
-        from yugioh_rl.eval import _aggregate_partials
+        from rl.eval import _aggregate_partials
 
         results = _aggregate_partials([], ["lonely"])
         assert len(results) == 1
@@ -633,7 +633,7 @@ def test_eval_env_returns_the_canonical_observation() -> None:
     """EvalEnv feeds an Opponent-protocol agent, so reset/step hand over the
     observation model itself -- unlike TrainingEnv, which returns the numpy
     arrays the network consumes."""
-    from yugioh_rl.env_wrapper import EvalEnv
+    from rl.env_wrapper import EvalEnv
 
     env = EvalEnv(deck_pool=make_deck_pool(), opponent="random", seed=0)
     try:
@@ -647,7 +647,7 @@ def test_eval_env_returns_the_canonical_observation() -> None:
 
 @requires_engine
 def test_evalenv_terminal_info_has_turn_and_player() -> None:
-    from yugioh_rl.env_wrapper import EvalEnv
+    from rl.env_wrapper import EvalEnv
 
     deck_pool = make_deck_pool()
     env = EvalEnv(deck_pool=deck_pool, opponent="random", seed=0, agent_player="first")
@@ -665,7 +665,7 @@ def test_evalenv_terminal_info_has_turn_and_player() -> None:
 
 @requires_engine
 def test_parallel_matches_sequential_new_fields() -> None:
-    from yugioh_rl.eval import evaluate
+    from rl.eval import evaluate
 
     kw = dict(
         deck_pool=make_deck_pool(),
@@ -691,7 +691,7 @@ def test_parallel_matches_sequential_new_fields() -> None:
 
 @requires_engine
 def test_evaluate_counts_timeouts() -> None:
-    from yugioh_rl.eval import evaluate
+    from rl.eval import evaluate
 
     # max_steps=5 forces both short episodes to time out (draw) before any
     # natural end, so the per-checkpoint timeout count is deterministic.

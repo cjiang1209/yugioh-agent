@@ -167,7 +167,7 @@ def test_add_forwards_workers_to_score_checkpoint(tmp_path, monkeypatch):
 
     from cli.leaderboard import _cmd_add
 
-    from yugioh_leaderboard.entry import Entry
+    from leaderboard.entry import Entry
 
     fake_ckpt = tmp_path / "checkpoint_latest.pt"
     fake_ckpt.write_bytes(b"")
@@ -193,11 +193,11 @@ def test_add_forwards_workers_to_score_checkpoint(tmp_path, monkeypatch):
     parser = build_parser()
     ns = parser.parse_args(["add", str(fake_ckpt), "--workers", "4", "--force"])
     with (
-        patch("yugioh_leaderboard.score.score_checkpoint", fake_score_checkpoint),
+        patch("leaderboard.score.score_checkpoint", fake_score_checkpoint),
         patch("cli.leaderboard._load_panel"),
-        patch("yugioh_leaderboard.entry.compute_checkpoint_hash", return_value="sha256:x"),
-        patch("yugioh_leaderboard.entry.entry_id_for", return_value="fake"),
-        patch("yugioh_leaderboard.entry.write_entry"),
+        patch("leaderboard.entry.compute_checkpoint_hash", return_value="sha256:x"),
+        patch("leaderboard.entry.entry_id_for", return_value="fake"),
+        patch("leaderboard.entry.write_entry"),
         patch("cli.leaderboard._refresh_index_file"),
     ):
         _cmd_add(ns)
@@ -210,7 +210,7 @@ def test_pairwise_forwards_workers_to_run_pairwise(tmp_path, monkeypatch):
 
     from cli.leaderboard import _cmd_pairwise
 
-    from yugioh_leaderboard.entry import Entry
+    from leaderboard.entry import Entry
 
     # Redirect the leaderboard's entries dir to tmp_path so we can drop in
     # fake entry files that pass the existence check in _cmd_pairwise.
@@ -236,7 +236,7 @@ def test_pairwise_forwards_workers_to_run_pairwise(tmp_path, monkeypatch):
             pairwise_results=[],
         )
 
-    from yugioh_leaderboard.entry import PairwiseMatchResult
+    from leaderboard.entry import PairwiseMatchResult
 
     captured: dict = {}
 
@@ -274,10 +274,10 @@ def test_pairwise_forwards_workers_to_run_pairwise(tmp_path, monkeypatch):
     parser = build_parser()
     ns = parser.parse_args(["pairwise", "a", "b", "--workers", "2"])
     with (
-        patch("yugioh_leaderboard.pairwise.run_pairwise", fake_run_pairwise),
+        patch("leaderboard.pairwise.run_pairwise", fake_run_pairwise),
         patch("cli.leaderboard._load_panel"),
-        patch("yugioh_leaderboard.entry.read_entry", fake_read_entry),
-        patch("yugioh_leaderboard.entry.write_entry"),
+        patch("leaderboard.entry.read_entry", fake_read_entry),
+        patch("leaderboard.entry.write_entry"),
         patch("cli.leaderboard._refresh_index_file"),
     ):
         _cmd_pairwise(ns)

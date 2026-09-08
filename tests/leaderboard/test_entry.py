@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from yugioh_leaderboard.entry import (
+from leaderboard.entry import (
     Entry,
     PairwiseMatchResult,
     PanelMatchResult,

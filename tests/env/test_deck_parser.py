@@ -1,6 +1,6 @@
 """Test .ydk deck file parser."""
 
-from yugioh_env.deck_parser import parse_ydk
+from env.deck_parser import parse_ydk
 
 
 def test_parse_default_deck(deck_path):

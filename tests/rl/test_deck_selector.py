@@ -1,6 +1,6 @@
 import random
 
-from yugioh_rl.deck_selector import DeckSelector
+from rl.deck_selector import DeckSelector
 
 
 def _legacy_random(seed, episode_idx, n):

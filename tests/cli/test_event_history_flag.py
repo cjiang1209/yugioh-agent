@@ -1,6 +1,6 @@
 import sys
 
-from yugioh_rl.config import TrainingConfig
+from rl.config import TrainingConfig
 
 
 def test_event_history_flag_reaches_config(tmp_path, monkeypatch):

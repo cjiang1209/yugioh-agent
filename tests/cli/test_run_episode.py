@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 from cli.play_client import run_episode
 
-from yugioh_env.models import GlobalState, Pass, YuGiOhObservation
+from env.models import GlobalState, Pass, YuGiOhObservation
 
 
 @dataclass

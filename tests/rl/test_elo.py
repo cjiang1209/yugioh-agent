@@ -1,10 +1,10 @@
-"""Tests for pure Elo math (yugioh_rl.elo)."""
+"""Tests for pure Elo math (rl.elo)."""
 
 from __future__ import annotations
 
 import pytest
 
-from yugioh_rl.elo import expected_score, update
+from rl.elo import expected_score, update
 
 
 def test_expected_score_equal_ratings_is_half() -> None:

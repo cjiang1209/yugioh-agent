@@ -7,14 +7,14 @@ from pathlib import Path
 import pytest
 
 torch = pytest.importorskip("torch")
-pytest.importorskip("yugioh_env.server.yugioh_environment")
+pytest.importorskip("env.server.environment")
 
+from rl.actor_learner import ActorLearnerVecEnv
+from rl.config import TrainingConfig
+from rl.env_wrapper import parse_deck_pool
+from rl.network import YuGiOhNet
+from rl.opponent_pool import OpponentPool
 from tests.rl.conftest import requires_engine
-from yugioh_rl.actor_learner import ActorLearnerVecEnv
-from yugioh_rl.config import TrainingConfig
-from yugioh_rl.env_wrapper import parse_deck_pool
-from yugioh_rl.network import YuGiOhNet
-from yugioh_rl.opponent_pool import OpponentPool
 
 
 @requires_engine

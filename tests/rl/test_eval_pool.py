@@ -16,8 +16,8 @@ import time
 
 import pytest
 
-from yugioh_rl.actor_learner import WorkerDiedError, WorkerTimeoutError
-from yugioh_rl.eval import EvalWorkerError, _PartialResult, _run_eval_pool
+from rl.actor_learner import WorkerDiedError, WorkerTimeoutError
+from rl.eval import EvalWorkerError, _PartialResult, _run_eval_pool
 
 # ---------------------------------------------------------------------------
 # Fake worker entrypoints — all match the _eval_worker signature.
@@ -112,7 +112,7 @@ def test_eval_worker_signature_stable():
     """
     import inspect
 
-    from yugioh_rl.eval import _eval_worker
+    from rl.eval import _eval_worker
 
     params = inspect.signature(_eval_worker).parameters
     expected = {

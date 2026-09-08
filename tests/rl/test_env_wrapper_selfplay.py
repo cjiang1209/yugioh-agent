@@ -5,18 +5,18 @@ from __future__ import annotations
 import pytest
 
 torch = pytest.importorskip("torch")
-pytest.importorskip("yugioh_env.server.yugioh_environment")
+pytest.importorskip("env.server.environment")
 
 from tests.rl.conftest import make_deck_pool, requires_engine
 
 
 @requires_engine
 def test_training_env_swaps_opponent_per_episode() -> None:
-    from yugioh_env.opponent import RandomOpponent
-    from yugioh_rl.config import TrainingConfig
-    from yugioh_rl.env_wrapper import TrainingEnv
-    from yugioh_rl.network import YuGiOhNet
-    from yugioh_rl.opponent_pool import OpponentPool
+    from env.opponent import RandomOpponent
+    from rl.config import TrainingConfig
+    from rl.env_wrapper import TrainingEnv
+    from rl.network import YuGiOhNet
+    from rl.opponent_pool import OpponentPool
 
     config = TrainingConfig(self_play=True)
     pool = OpponentPool.create_trainer(
@@ -44,11 +44,11 @@ def test_training_env_swaps_opponent_per_episode() -> None:
 def test_training_env_snapshot_opponent_uses_yugioh_net() -> None:
     """With pool_size=1, the first add_snapshot evicts the scripted seed,
     so sample() deterministically returns the snapshot NetworkOpponent."""
-    from yugioh_env.opponent import NetworkOpponent
-    from yugioh_rl.config import TrainingConfig
-    from yugioh_rl.env_wrapper import TrainingEnv
-    from yugioh_rl.network import YuGiOhNet
-    from yugioh_rl.opponent_pool import OpponentPool
+    from env.opponent import NetworkOpponent
+    from rl.config import TrainingConfig
+    from rl.env_wrapper import TrainingEnv
+    from rl.network import YuGiOhNet
+    from rl.opponent_pool import OpponentPool
 
     config = TrainingConfig(self_play=True)
     pool = OpponentPool.create_trainer(

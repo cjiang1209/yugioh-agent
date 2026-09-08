@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from yugioh_rl.config import TrainingConfig
+from rl.config import TrainingConfig
 
 
 def test_self_play_defaults_off() -> None:

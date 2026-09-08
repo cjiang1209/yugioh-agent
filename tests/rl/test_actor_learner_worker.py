@@ -9,16 +9,16 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from yugioh_core.encoding import GLOBAL_FEATURES
+from core.encoding import GLOBAL_FEATURES
 
 torch = pytest.importorskip("torch")
 
+from env.deck_parser import parse_ydk
+from rl.actor_learner import _actor_learner_worker
+from rl.config import TrainingConfig
+from rl.network import YuGiOhNet
+from rl.shared_weights import SharedPolicyWeights
 from tests.rl.conftest import requires_engine
-from yugioh_env.deck_parser import parse_ydk
-from yugioh_rl.actor_learner import _actor_learner_worker
-from yugioh_rl.config import TrainingConfig
-from yugioh_rl.network import YuGiOhNet
-from yugioh_rl.shared_weights import SharedPolicyWeights
 
 
 def _spawn_worker(deck_paths, config: TrainingConfig, rollout_steps: int):

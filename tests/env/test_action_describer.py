@@ -2,9 +2,7 @@
 
 import pytest
 
-from tests.env.conftest import MINIMAL_MSGS
-from tests.env.conftest import obs_from_msg as _obs_from_msg
-from yugioh_core.constants import (
+from core.constants import (
     ATTRIBUTE_DARK,
     LOCATION_DECK,
     LOCATION_GRAVE,
@@ -26,9 +24,11 @@ from yugioh_core.constants import (
     MSG_SORT_CARD,
     RACE_WARRIOR,
 )
-from yugioh_core.encoding import MAX_ACTIONS
-from yugioh_env.action_describer import ActionDescriber
-from yugioh_env.action_space import ActionMapper
+from core.encoding import MAX_ACTIONS
+from env.action_describer import ActionDescriber
+from env.action_space import ActionMapper
+from tests.env.conftest import MINIMAL_MSGS
+from tests.env.conftest import obs_from_msg as _obs_from_msg
 
 
 class _StubCardDB:
@@ -118,7 +118,7 @@ def test_describer_uses_meta_label_for_simple_kinds(msg, expected_desc, expected
 def test_describer_rewrites_counter_with_card_name():
     """Counter description combines meta.extras.counter_count (from extractor)
     with card_name (from DB, only available in describer)."""
-    from yugioh_core.constants import MSG_SELECT_COUNTER
+    from core.constants import MSG_SELECT_COUNTER
 
     obs = _obs_from_msg(
         {
@@ -156,7 +156,7 @@ class _StubResolver:
 def test_describer_option_uses_resolver_when_provided():
     """When a resolver returns a real string for the option's raw_value, the
     describer prefers it over the placeholder `effect 0x...` label."""
-    from yugioh_core.constants import MSG_SELECT_OPTION
+    from core.constants import MSG_SELECT_OPTION
 
     obs = _obs_from_msg(
         {
@@ -177,7 +177,7 @@ def test_describer_option_uses_resolver_when_provided():
 def test_describer_chain_appends_resolved_effect_text():
     """When chain meta resolves AND a card_name is known, append the effect text;
     otherwise fall back to today's `Chain {card_name}` form."""
-    from yugioh_core.constants import MSG_SELECT_CHAIN
+    from core.constants import MSG_SELECT_CHAIN
 
     obs = _obs_from_msg(
         {
@@ -205,7 +205,7 @@ def test_describer_chain_appends_resolved_effect_text():
 
 def test_describer_chain_falls_back_when_resolver_returns_none():
     """Unresolved chain desc keeps today's `Chain {card_name}` form (no trailing colon)."""
-    from yugioh_core.constants import MSG_SELECT_CHAIN
+    from core.constants import MSG_SELECT_CHAIN
 
     obs = _obs_from_msg(
         {
@@ -235,7 +235,7 @@ def test_describer_chain_drops_resolved_text_when_card_name_missing():
     """When card_name is empty (e.g. anonymous chain entry), the describer
     intentionally drops the resolved effect text rather than emit awkward
     `Chain : <effect>`. Chain falls back to the index form `Chain #N`."""
-    from yugioh_core.constants import MSG_SELECT_CHAIN
+    from core.constants import MSG_SELECT_CHAIN
 
     class _NoNameDB:
         def get_card_name(self, code: int) -> str:
@@ -270,7 +270,7 @@ def test_describer_chain_drops_resolved_text_when_card_name_missing():
 def test_describer_idle_activate_appends_resolved_effect_text():
     """When an idle ACTIVATE action's meta resolves, append `: {effect}` to
     the existing `Activate {card_name}` label."""
-    from yugioh_core.constants import MSG_SELECT_IDLECMD
+    from core.constants import MSG_SELECT_IDLECMD
 
     obs = _obs_from_msg(
         {
@@ -330,7 +330,7 @@ def test_idle_summon_zero_code_card_has_no_trailing_space():
 def test_describer_effectyn_yes_is_plain_yes():
     """EFFECTYN action labels are plain Yes/No; card name and resolved
     effect text live on the prompt header, not on the action label."""
-    from yugioh_core.constants import MSG_SELECT_EFFECTYN
+    from core.constants import MSG_SELECT_EFFECTYN
 
     obs = _obs_from_msg(
         {
@@ -427,7 +427,7 @@ def test_describe_raises_past_the_last_legal_action():
 
 def test_describer_announce_card_uses_card_name():
     """MSG_ANNOUNCE_CARD action resolves the declared card's name from the DB."""
-    from yugioh_core.constants import MSG_ANNOUNCE_CARD, OPCODE_ISCODE
+    from core.constants import MSG_ANNOUNCE_CARD, OPCODE_ISCODE
 
     obs = _obs_from_msg(
         {
@@ -574,7 +574,7 @@ def test_action_details_to_dict_has_no_meta_key():
 def test_announce_race_falls_back_to_hex_for_unknown_race():
     """An unmapped race bit must produce a hex placeholder rather than crash or
     silently drop the action. Ygopro-core may add new races over time."""
-    from yugioh_core.constants import MSG_ANNOUNCE_RACE
+    from core.constants import MSG_ANNOUNCE_RACE
 
     # bit 50 — well outside any current RACE_NAMES entry
     obs = _obs_from_msg({"msg_type": MSG_ANNOUNCE_RACE, "player": 0, "available": 1 << 50})
@@ -598,7 +598,7 @@ def test_idle_phase_change_labels():
     would otherwise still produce internally-consistent (category,
     description) pairs and slip through a category-keyed assertion.
     """
-    from yugioh_env.models import PhaseChange
+    from env.models import PhaseChange
 
     obs = _obs_from_msg(
         {
@@ -634,8 +634,8 @@ def test_idle_phase_change_labels():
 def test_battle_phase_change_labels():
     """Battle-side sibling of test_idle_phase_change_labels: a to_m2<->to_ep
     transposition would ship "To End Phase" on the to_m2 slot undetected."""
-    from yugioh_core.constants import MSG_SELECT_BATTLECMD
-    from yugioh_env.models import PhaseChange
+    from core.constants import MSG_SELECT_BATTLECMD
+    from env.models import PhaseChange
 
     obs = _obs_from_msg(
         {

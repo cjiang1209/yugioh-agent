@@ -1,4 +1,4 @@
-"""Tests for yugioh_env.ygo_agent.opponent.YGOAgentOpponent."""
+"""Tests for env.ygo_agent.opponent.YGOAgentOpponent."""
 
 from __future__ import annotations
 
@@ -6,14 +6,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from tests.env.conftest import MINIMAL_MSGS, obs_from_msg
-from yugioh_core.constants import MSG_SELECT_YESNO, SELECT_MSGS
-from yugioh_env.ygo_agent.bridge import _ACTION_MSG_TRANSLATORS
-from yugioh_env.ygo_agent.opponent import (
+from core.constants import MSG_SELECT_YESNO, SELECT_MSGS
+from env.ygo_agent.bridge import _ACTION_MSG_TRANSLATORS
+from env.ygo_agent.opponent import (
     _SERVER_UNSUPPORTED_MSGS,
     DEFAULT_URL,
     YGOAgentOpponent,
 )
+from tests.env.conftest import MINIMAL_MSGS, obs_from_msg
 
 
 class TestYGOAgentOpponent:
@@ -30,7 +30,7 @@ class TestYGOAgentOpponent:
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"duelId": "abc-123", "index": 0}
         mock_resp.raise_for_status = MagicMock()
-        with patch("yugioh_env.ygo_agent.opponent.requests") as mock_req:
+        with patch("env.ygo_agent.opponent.requests") as mock_req:
             mock_req.post.return_value = mock_resp
             mock_req.delete.return_value = MagicMock()
             opp.reseed(42)
@@ -43,7 +43,7 @@ class TestYGOAgentOpponent:
         mock_post_resp = MagicMock()
         mock_post_resp.json.return_value = {"duelId": "new-id", "index": 0}
         mock_post_resp.raise_for_status = MagicMock()
-        with patch("yugioh_env.ygo_agent.opponent.requests") as mock_req:
+        with patch("env.ygo_agent.opponent.requests") as mock_req:
             mock_req.post.return_value = mock_post_resp
             mock_req.delete.return_value = MagicMock()
             opp.reseed(0)
@@ -76,7 +76,7 @@ class TestYGOAgentOpponent:
             "index": 1,
         }
         mock_resp.raise_for_status = MagicMock()
-        with patch("yugioh_env.ygo_agent.opponent.requests") as mock_req:
+        with patch("env.ygo_agent.opponent.requests") as mock_req:
             mock_req.post.return_value = mock_resp
             action, _ = opp.select_action(obs)
         # response=0 ("no") matches the Confirm(yes=False) descriptor, which is
@@ -106,7 +106,7 @@ class TestYGOAgentOpponent:
         opp = YGOAgentOpponent()
         opp._duel_id = "test-duel"
         obs = obs_from_msg({**MINIMAL_MSGS[msg_type], "msg_type": msg_type})
-        with patch("yugioh_env.ygo_agent.opponent.requests") as mock_req:
+        with patch("env.ygo_agent.opponent.requests") as mock_req:
             result, _ = opp.select_action(obs)
         assert result == 0
         mock_req.post.assert_not_called()
@@ -123,12 +123,12 @@ class TestYGOAgentOpponent:
 
 class TestYGOAgentOpponentFactory:
     def test_parse_ygo_agent_no_url(self):
-        from yugioh_env.opponent import parse_opponent_spec
+        from env.opponent import parse_opponent_spec
 
         assert parse_opponent_spec("ygo-agent") == ("ygo-agent", "")
 
     def test_parse_ygo_agent_with_url(self):
-        from yugioh_env.opponent import parse_opponent_spec
+        from env.opponent import parse_opponent_spec
 
         assert parse_opponent_spec("ygo-agent:http://host:3000") == (
             "ygo-agent",
@@ -136,14 +136,14 @@ class TestYGOAgentOpponentFactory:
         )
 
     def test_make_ygo_agent_default(self):
-        from yugioh_env.opponent import make_opponent
+        from env.opponent import make_opponent
 
         opp = make_opponent("ygo-agent")
         assert isinstance(opp, YGOAgentOpponent)
         assert opp._base_url == DEFAULT_URL
 
     def test_make_ygo_agent_custom_url(self):
-        from yugioh_env.opponent import make_opponent
+        from env.opponent import make_opponent
 
         opp = make_opponent("ygo-agent:http://myhost:5000")
         assert isinstance(opp, YGOAgentOpponent)

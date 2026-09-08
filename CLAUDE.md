@@ -18,7 +18,7 @@ usage, see `README.md`.
 
 6. **Seed handling**: Seeds are spread across 4 `uint64` slots (xoshiro256** RNG) via LCG mixing. Zero seeds are mapped to 1 (engine requires non-zero).
 
-7. **Terminal observations carry the real final board**: `_make_terminal_observation` (`yugioh_env/server/yugioh_environment.py`) passes `query_fn` into `build_observation` just as `_make_observation` does, so with a live duel `cards` holds the end-of-duel board; `action_descriptors` is empty, since a terminal step has no active prompt, and the mask `encode_observation` derives from it is therefore all zeros. Everything zeroes when there is no duel at all. Detect terminal from `done`, never from an empty or all-zero observation field.
+7. **Terminal observations carry the real final board**: `_make_terminal_observation` (`env/server/environment.py`) passes `query_fn` into `build_observation` just as `_make_observation` does, so with a live duel `cards` holds the end-of-duel board; `action_descriptors` is empty, since a terminal step has no active prompt, and the mask `encode_observation` derives from it is therefore all zeros. Everything zeroes when there is no duel at all. Detect terminal from `done`, never from an empty or all-zero observation field.
 
 ## ygopro-core Wire Format Reference
 
@@ -59,7 +59,7 @@ Messages that write `loc_info`: `MSG_MOVE`, `MSG_SET`, `MSG_SUMMONING`, `MSG_SPS
 
 ## Subsystem Gotchas
 
-### RL Training (`yugioh_rl/`)
+### RL Training (`rl/`)
 
 - **In-process environment**: `TrainingEnv` wraps `YuGiOhEnvironment` directly, bypassing HTTP serialization overhead. Observations are kept as numpy arrays.
 - **Subprocess vectorization**: `SubprocVecEnv` spawns N worker processes (one `TrainingEnv` each) using `multiprocessing.spawn` context, respecting the single-session constraint.
@@ -70,15 +70,15 @@ Messages that write `loc_info`: `MSG_MOVE`, `MSG_SET`, `MSG_SUMMONING`, `MSG_SPS
 - **Resume episode-seed divergence**: On `--resume`, `SubprocVecEnv` is created with the original `config.seed` and `vec_env.reset()` replays the episode seed sequence from the beginning, not from where the interrupted run left off. Training is unaffected (the model still learns), but the exact episode ordering will differ from a single uninterrupted run. Saving and restoring per-env RNG state is impractical given the multi-process architecture.
 - **Multi-deck training**: `--deck-paths` accepts multiple `.ydk` files. Each episode, agent and opponent decks are sampled independently from the pool using a per-worker `random.Random(seed)` RNG (separate from the duel RNG). `TrainingEnv.reset()` pre-resolves the `agent_player` coin flip before assigning decks to engine player 0/1, so per-deck metrics are correctly attributed to the agent's deck regardless of turn order.
 - **Snapshot-pool self-play**: `--self-play` enables a FIFO ring buffer of past agent snapshots as opponents (default size 10 via `--self-play-pool-size`, snapshots taken at `--save-interval` boundaries). Snapshot opponents use `NetworkOpponent(stochastic=True, temperature=--self-play-temperature)` — softmax sampling rather than greedy argmax. Cross-process sharing via `SharedPolicyWeights` (shared tensors + monotonic version-counter seqlock): trainer calls `publish(net)`; workers `refresh_into(local_net)` lazily on `pool.sample()` and retry on mid-read version bumps. On `--resume`, the pool is reconstructed by replaying interval-aligned numbered checkpoints (`OpponentPool.from_resume`); off-interval crash saves are skipped.
-- **Self-play Elo (logging only)**: `OpponentPool` tracks a per-pool Elo rating for the trainer and per-slot ratings (`yugioh_rl/elo.py`, default K=16). On episode end, `TrainingEnv.step()` calls `pool.report_result(slot, agent_won=reward>0)`. Ratings live in shared memory and `PPOTrainer` reads them at log time to emit `selfplay/elo_*` scalars. Updates are intentionally non-atomic across workers (no seqlock): two workers ending episodes simultaneously can race on `agent_rating` and `n_games`, but per-update drift is bounded by K and self-corrects on the next match. Do **not** gate any correctness-sensitive behavior (e.g. snapshotting cadence) on `n_games`. **Resume discontinuity**: `OpponentPool.from_resume` does not restore Elo state — `agent_rating` resets to 1500 on each resume, so the TensorBoard curve jumps at resume boundaries. Same trade-off as the episode-seed divergence above: training is unaffected, only the logged metric.
-- **Self-play opponent sampling**: `--self-play-sampling` chooses how the trainer picks an opponent from the snapshot pool. `uniform` (default) preserves prior behavior — every occupied slot equally likely. `pfsp` enables Prioritized Fictitious Self-Play: each slot is weighted by `(1 - P(agent beats slot))^2` using the live Elo ratings, with a uniform-exploration mix and an automatic uniform fallback when the agent dominates every slot. Constants `_PFSP_P` and `_PFSP_EPSILON` at the top of `yugioh_rl/opponent_pool.py` are not exposed as CLI flags — tune by editing them. PFSP reads `agent_rating` and `ratings[]` non-atomically (same trade-off as the Elo update path); drift is bounded by K per update and self-corrects, so sampling pressure is noisy but unbiased.
+- **Self-play Elo (logging only)**: `OpponentPool` tracks a per-pool Elo rating for the trainer and per-slot ratings (`rl/elo.py`, default K=16). On episode end, `TrainingEnv.step()` calls `pool.report_result(slot, agent_won=reward>0)`. Ratings live in shared memory and `PPOTrainer` reads them at log time to emit `selfplay/elo_*` scalars. Updates are intentionally non-atomic across workers (no seqlock): two workers ending episodes simultaneously can race on `agent_rating` and `n_games`, but per-update drift is bounded by K and self-corrects on the next match. Do **not** gate any correctness-sensitive behavior (e.g. snapshotting cadence) on `n_games`. **Resume discontinuity**: `OpponentPool.from_resume` does not restore Elo state — `agent_rating` resets to 1500 on each resume, so the TensorBoard curve jumps at resume boundaries. Same trade-off as the episode-seed divergence above: training is unaffected, only the logged metric.
+- **Self-play opponent sampling**: `--self-play-sampling` chooses how the trainer picks an opponent from the snapshot pool. `uniform` (default) preserves prior behavior — every occupied slot equally likely. `pfsp` enables Prioritized Fictitious Self-Play: each slot is weighted by `(1 - P(agent beats slot))^2` using the live Elo ratings, with a uniform-exploration mix and an automatic uniform fallback when the agent dominates every slot. Constants `_PFSP_P` and `_PFSP_EPSILON` at the top of `rl/opponent_pool.py` are not exposed as CLI flags — tune by editing them. PFSP reads `agent_rating` and `ratings[]` non-atomically (same trade-off as the Elo update path); drift is bounded by K per update and self-corrects, so sampling pressure is noisy but unbiased.
 - **Async actor-learner**: `--vec-env-type async_actor_learner` runs workers continuously without sync barriers. Workers push completed rollouts to a `multiprocessing.Queue`; the trainer drains K qualifying rollouts per update. `--max-version-lag N` (default 5) discards rollouts more than N updates behind the trainer's current weights. V-trace (Espeholt et al., 2018) replaces GAE for advantage estimation, correcting for off-policy data via truncated importance sampling (`--vtrace-rho-bar`, `--vtrace-c-bar`, both default 1.0). Workers refresh weights from `SharedPolicyWeights` at rollout boundaries only when the version has changed; otherwise they carry hx forward. Monitor `async/version_lag_mean`, `async/rollouts_discarded`, and `async/queue_depth` in TensorBoard.
 - **Async vs sync actor-learner**: Both use `SharedPolicyWeights` for weight transport. Sync (`sync_actor_learner`) has a barrier: trainer sends `("go", v)`, waits for all N rollouts, then updates. Async (`async_actor_learner`) eliminates the barrier: fast workers start their next rollout immediately instead of idling while the slowest worker finishes (wall-clock time per rollout varies with game-state complexity even though step count is fixed).
 - **`--config` JSON loading**: `cli/train.py --config PATH` loads partial `TrainingConfig` fields from JSON; CLI flags always override JSON. `save_dir` and `resume_checkpoint` are dropped on load (derived from `--base-dir` and `--resume`). `--config` is mutex with `--resume` (resume loads config from the checkpoint).
 - **Eval determinism**: `--workers N` for `cli/eval.py` is deterministic — workers fan out across `(opponent, episode_idx)` tuples; results aggregated sorted by `episode_idx` per opponent so `--workers 1`, `2`, `4` produce byte-equal `EvalResult`s on the same checkpoint.
 - **Pending chain buffer**: `--chain-embed-dim N` (default 32) adds a `(8, 16)` uint8 buffer to the observation that shows the current pending chain links during chain building. Each entry encodes the card code, effect descriptor, controller, location, sequence, and chain link number. When the agent is asked to chain (MSG_SELECT_CHAIN), it can see exactly what it's chaining onto. The buffer is maintained in `GameState`, cleared on MSG_CHAIN_END, and encoded through the standard observation pipeline. The network embeds chain entries using the existing card embedding table and a small encoder MLP, mean-pools across entries, and concatenates with the board representation. Set to 0 to disable.
 
-### Leaderboard (`yugioh_leaderboard/`)
+### Leaderboard (`leaderboard/`)
 
 - **Single user, single process.** No file locks. Don't run two `add` commands in parallel — entries are safe (unique filenames) but the index regen is last-writer-wins.
 - **Entry deletion is `rm`.** No `delete` subcommand — by design (per-file storage chosen specifically to make `rm` natural).
@@ -100,19 +100,19 @@ Messages that write `loc_info`: `MSG_MOVE`, `MSG_SET`, `MSG_SUMMONING`, `MSG_SPS
   - `gsb/command.py`: `re._pattern_type` was removed in 3.7. Patched to use `re.Pattern`.
   - `gsb/intercept.py`: `Reader.done` attribute reordering under attrs>=22. When `done` is overridden with a default, it moves to the end of the attribute list, causing positional args to be misrouted. Patched with `__attrs_post_init__` to detect and fix the misrouted callable.
 
-### MUD Bot Client (`yugioh_mud/`)
+### MUD Bot Client (`mud/`)
 
 **Known limitations:**
 
 - **Action rows carry less than the engine's**: MUD's action rows are packed
-  through `yugioh_core.encoding.encode_action`, so every field lands where
+  through `core.encoding.encode_action`, so every field lands where
   `ACTION_LAYOUT` says, and `tests/mud/test_action_layout_parity.py` compares a
   MUD row against the in-process row for the same action. Alignment is not
   parity — the text protocol reaches far less than the engine. Card-selection
   prompts carry no card identity at all, and `desc`, `direct_attackable` and
   `position` are zero on every path, so every activation and yes/no prompt
   collapses to the same embedding. A checkpoint's MUD play is therefore not
-  comparable to in-process eval until `yugioh_mud/text_parser.py` extracts card
+  comparable to in-process eval until `mud/text_parser.py` extracts card
   codes and coordinates.
 - **Multi-effect cards**: Cards with multiple activatable effects (va/vb) get a
   single `StructuredAction` with `sub_action="v"`; the handler always picks the
@@ -126,7 +126,7 @@ Messages that write `loc_info`: `MSG_MOVE`, `MSG_SET`, `MSG_SUMMONING`, `MSG_SPS
   Restructuring would require a new agent-return shape for sort, deferred until
   needed.
 
-### Puzzle State Initialization (`yugioh_env/puzzle.py`)
+### Puzzle State Initialization (`env/puzzle.py`)
 
 - **Engine-native disable**: Cards marked `disabled: True` are disabled via a Lua `EFFECT_DISABLE` effect loaded through `OCG_LoadScript`, not by bit manipulation. The engine's `refresh_disable_status()` handles all propagation.
 - **`starting_draw=0`**: `create_puzzle()` sets both players' `startingDrawCount` to 0 so the Startup processor doesn't draw cards — all hand contents come from the puzzle spec.
@@ -134,7 +134,7 @@ Messages that write `loc_info`: `MSG_MOVE`, `MSG_SET`, `MSG_SUMMONING`, `MSG_SPS
 - **Deck order**: Deck cards are inserted in specification order (no shuffle). The engine stores decks bottom-to-top internally, so the first card in the spec's `deck` list is drawn first.
 - **`disabled` on field only**: The `disabled` flag is only valid on `monster_zone` and `spell_zone` entries. The schema validator rejects it on non-field zones.
 
-### ygo-agent Bridge (`yugioh_env/ygo_agent/`)
+### ygo-agent Bridge (`env/ygo_agent/`)
 
 - **`selected` is positions into the list sent; `response` is the engine
   index.** They coincide unless sum pruning or `MAX_ACTIONS` truncation drops
@@ -145,7 +145,7 @@ Messages that write `loc_info`: `MSG_MOVE`, `MSG_SET`, `MSG_SUMMONING`, `MSG_SPS
   `_SERVER_UNSUPPORTED_MSGS`; one in neither that nor the translator table
   raises mid-duel.
 
-### Deterministic Replay (`yugioh_env/replay.py`)
+### Deterministic Replay (`env/replay.py`)
 
 - **Non-intrusive**: Recording and replay wrap `YuGiOhEnvironment` and the opponent without modifying either class.
 - **Interleaved action log**: Both players' actions are stored in game order as `(msg_type, player, action, num_actions)` entries. The interleaved order is the source of truth for drift detection.
@@ -184,7 +184,7 @@ ygo-agent bridge `3000`, MUD websocket `8080`.
 
 Tests are organized into subdirectories by module (`tests/core/`, `tests/env/`, `tests/mud/`, `tests/rl/`, `tests/cli/`, `tests/leaderboard/`). Run a single module's tests with e.g. `python -m pytest tests/mud/ -v`.
 
-The web suite (`yugioh_web/`, 16 vitest files) runs via `make test-web`, which
+The web suite (`web/`, 16 vitest files) runs via `make test-web`, which
 `make test` includes. It **soft-skips** with a loud banner when node, pnpm or
 `node_modules` is missing, so a toolchain-free checkout still reports success;
 `STRICT_WEB=1 make test-web` turns that skip into a failure.

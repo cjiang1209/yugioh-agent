@@ -7,7 +7,7 @@ The bit-partition guard in this file is the counterpart: it queries the live
 database to prove the label tables the fakes exercise still cover every card.
 """
 
-from yugioh_env.server.card_info import build_card_info
+from env.server.card_info import build_card_info
 
 
 def _row(**over):
@@ -357,7 +357,7 @@ def test_structural_less_row_has_empty_typeline():
 # from SPELL_TRAP_TYPE_LABELS would still pass while every Ritual Spell silently
 # rendered as bare ["Spell"].
 
-from yugioh_core.constants import (
+from core.constants import (
     ATTRIBUTE_DARK,
     ATTRIBUTE_EARTH,
     ATTRIBUTE_FIRE,

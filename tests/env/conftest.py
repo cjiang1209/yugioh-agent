@@ -15,7 +15,7 @@ def obs_from_action_count(num_legal: int = 3):
     row without needing a prompt. For tests that drive an opponent's choice
     without needing a real board.
     """
-    from yugioh_env.models import Pass, YuGiOhObservation
+    from env.models import Pass, YuGiOhObservation
 
     return YuGiOhObservation(action_descriptors=[Pass()] * num_legal)
 
@@ -26,9 +26,9 @@ def action_features(mapper):
     Produced from a structured observation the way the server produces them,
     so callers exercise the one encoder there is.
     """
-    from yugioh_env.models import YuGiOhObservation
-    from yugioh_env.server.yugioh_environment import _build_action_descriptors, _build_prompt_meta
-    from yugioh_rl.obs_encoder import encode_observation
+    from env.models import YuGiOhObservation
+    from env.server.environment import _build_action_descriptors, _build_prompt_meta
+    from rl.obs_encoder import encode_observation
 
     obs = YuGiOhObservation(
         action_descriptors=_build_action_descriptors(mapper.actions),
@@ -47,9 +47,9 @@ def obs_from_msg(msg: dict, *, _selected: list[int] | None = None, agent_player:
     actions). agent_player relativizes seat-dependent fields (e.g.
     controller) the same way the live server does.
     """
-    from yugioh_env.action_space import ActionMapper
-    from yugioh_env.models import YuGiOhObservation
-    from yugioh_env.server.yugioh_environment import (
+    from env.action_space import ActionMapper
+    from env.models import YuGiOhObservation
+    from env.server.environment import (
         _build_action_descriptors,
         _build_prompt_meta,
     )
@@ -85,7 +85,7 @@ def script_dirs(project_root) -> list[Path]:
 def lib():
     """Load the OCG core library."""
     try:
-        from yugioh_env.lib_loader import load_library
+        from env.lib_loader import load_library
 
         return load_library()
     except FileNotFoundError:
@@ -95,7 +95,7 @@ def lib():
 @pytest.fixture
 def duel(lib, card_db, script_dirs, deck_path):
     """Create a Duel instance ready to use."""
-    from yugioh_env.duel import Duel
+    from env.duel import Duel
 
     d = Duel(lib, card_db, script_dirs)
     yield d
@@ -112,7 +112,7 @@ def duel(lib, card_db, script_dirs, deck_path):
 # values are deliberately non-zero so a hardcoded 0 in the descriptor builders
 # is caught rather than coinciding with a correct result.
 
-from yugioh_core.constants import (
+from core.constants import (
     COUNTER_NEED_ENABLE,
     LOCATION_MZONE,
     LOCATION_OVERLAY,

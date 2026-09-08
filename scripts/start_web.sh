@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-WEB_DIR="$PROJECT_ROOT/yugioh_web"
+WEB_DIR="$PROJECT_ROOT/web"
 
 if [ ! -d "$WEB_DIR/dist" ]; then
     echo "Error: dist/ not found. Run scripts/build_web.sh first."

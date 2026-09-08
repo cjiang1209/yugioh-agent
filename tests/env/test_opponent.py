@@ -5,12 +5,12 @@ import tempfile
 
 import pytest
 
+from core.constants import MSG_SELECT_BATTLECMD, MSG_SELECT_IDLECMD, MSG_SELECT_YESNO
+from env.deck_parser import parse_ydk
+from env.models import CardCommand, Pass, YuGiOhAction, YuGiOhObservation
+from env.opponent import GreedyOpponent, Opponent, RandomOpponent
+from env.server.environment import YuGiOhEnvironment
 from tests.env.conftest import MINIMAL_MSGS, obs_from_msg
-from yugioh_core.constants import MSG_SELECT_BATTLECMD, MSG_SELECT_IDLECMD, MSG_SELECT_YESNO
-from yugioh_env.deck_parser import parse_ydk
-from yugioh_env.models import CardCommand, Pass, YuGiOhAction, YuGiOhObservation
-from yugioh_env.opponent import GreedyOpponent, Opponent, RandomOpponent
-from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
 
 # ---------------------------------------------------------------------------
 # RandomOpponent
@@ -298,7 +298,7 @@ def test_opponent_receives_full_observation(lib, db_path, script_dirs, deck_path
 
 
 # ---------------------------------------------------------------------------
-# ModelOpponent tests (require torch + yugioh_rl)
+# ModelOpponent tests (require torch + rl)
 # ---------------------------------------------------------------------------
 
 torch = pytest.importorskip("torch")
@@ -306,8 +306,8 @@ torch = pytest.importorskip("torch")
 
 def _make_synthetic_checkpoint(path: str) -> None:
     """Create a minimal valid checkpoint file with default config."""
-    from yugioh_rl.config import TrainingConfig
-    from yugioh_rl.network import YuGiOhNet
+    from rl.config import TrainingConfig
+    from rl.network import YuGiOhNet
 
     config = TrainingConfig()
     net = YuGiOhNet.from_config(config)
@@ -330,7 +330,7 @@ def _dummy_obs() -> YuGiOhObservation:
 
 def test_model_opponent_construction():
     """ModelOpponent loads a checkpoint and enters eval mode."""
-    from yugioh_env.opponent import ModelOpponent
+    from env.opponent import ModelOpponent
 
     with tempfile.NamedTemporaryFile(suffix=".pt") as f:
         _make_synthetic_checkpoint(f.name)
@@ -340,7 +340,7 @@ def test_model_opponent_construction():
 
 def test_model_opponent_select_action():
     """ModelOpponent returns a valid action index within bounds."""
-    from yugioh_env.opponent import ModelOpponent
+    from env.opponent import ModelOpponent
 
     with tempfile.NamedTemporaryFile(suffix=".pt") as f:
         _make_synthetic_checkpoint(f.name)
@@ -353,7 +353,7 @@ def test_model_opponent_select_action():
 
 def test_model_opponent_deterministic():
     """Same checkpoint and observation should produce the same action."""
-    from yugioh_env.opponent import ModelOpponent
+    from env.opponent import ModelOpponent
 
     with tempfile.NamedTemporaryFile(suffix=".pt") as f:
         _make_synthetic_checkpoint(f.name)
@@ -367,7 +367,7 @@ def test_model_opponent_deterministic():
 
 def test_model_opponent_reseed_noop():
     """ModelOpponent.reseed() should not raise."""
-    from yugioh_env.opponent import ModelOpponent
+    from env.opponent import ModelOpponent
 
     with tempfile.NamedTemporaryFile(suffix=".pt") as f:
         _make_synthetic_checkpoint(f.name)
@@ -377,9 +377,9 @@ def test_model_opponent_reseed_noop():
 
 def test_model_opponent_semantic_checkpoint():
     """ModelOpponent works with a semantic-mode checkpoint (no embeddings file on disk)."""
-    from yugioh_env.opponent import ModelOpponent
-    from yugioh_rl.config import TrainingConfig
-    from yugioh_rl.network import TextEmbeddingLookup, YuGiOhNet
+    from env.opponent import ModelOpponent
+    from rl.config import TrainingConfig
+    from rl.network import TextEmbeddingLookup, YuGiOhNet
 
     # Build a semantic-mode network from a synthetic embeddings file
     codes = list(range(1, 21))
@@ -424,7 +424,7 @@ def test_model_opponent_semantic_checkpoint():
 
 def test_model_opponent_env_config_missing_checkpoint():
     """opponent_type='model' without checkpoint should raise ValueError."""
-    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+    from env.server.environment import YuGiOhEnvironment
 
     with pytest.raises(ValueError, match="checkpoint path"):
         YuGiOhEnvironment(config={"opponent": "model:"})

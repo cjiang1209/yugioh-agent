@@ -36,7 +36,7 @@ sys.path.insert(0, str(ROOT))
 
 from tests.rl.conftest import hash_obs_field
 
-from yugioh_rl.env_wrapper import SubprocVecEnv, parse_deck_pool
+from rl.env_wrapper import SubprocVecEnv, parse_deck_pool
 
 # ----- fixture configuration (pin all knobs so the baseline is reproducible) -----
 

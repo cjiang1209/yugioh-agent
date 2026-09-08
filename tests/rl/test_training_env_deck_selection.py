@@ -6,11 +6,11 @@ POOL = [{"main": list(range(1, 41)), "extra": []} for _ in range(31)]
 
 
 def test_mirror_gives_both_sides_same_deck():
-    with patch("yugioh_env.server.yugioh_environment.YuGiOhEnvironment") as MockEnv:
+    with patch("env.server.environment.YuGiOhEnvironment") as MockEnv:
         mock = MockEnv.return_value
         mock.reset.return_value = make_fake_obs()
         mock._agent_player = 0
-        from yugioh_rl.env_wrapper import TrainingEnv
+        from rl.env_wrapper import TrainingEnv
 
         env = TrainingEnv(
             deck_pool=POOL, seed=42, agent_player="first", mirror_decks=True, reward_shaping=False
@@ -21,11 +21,11 @@ def test_mirror_gives_both_sides_same_deck():
 
 
 def test_balanced_agent_deck_is_round_robin():
-    with patch("yugioh_env.server.yugioh_environment.YuGiOhEnvironment") as MockEnv:
+    with patch("env.server.environment.YuGiOhEnvironment") as MockEnv:
         mock = MockEnv.return_value
         mock.reset.return_value = make_fake_obs()
         mock._agent_player = 0
-        from yugioh_rl.env_wrapper import TrainingEnv
+        from rl.env_wrapper import TrainingEnv
 
         env = TrainingEnv(
             deck_pool=POOL,

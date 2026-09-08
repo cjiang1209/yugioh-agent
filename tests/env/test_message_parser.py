@@ -4,7 +4,7 @@ import struct
 
 import pytest
 
-from yugioh_core.constants import (
+from core.constants import (
     LOCATION_DECK,
     LOCATION_GRAVE,
     LOCATION_HAND,
@@ -35,7 +35,7 @@ from yugioh_core.constants import (
     POS_FACEUP_ATTACK,
     POS_FACEUP_DEFENSE,
 )
-from yugioh_env.message_parser import BinaryReader, parse_messages
+from env.message_parser import BinaryReader, parse_messages
 
 
 def _pack_loc_info(controller, location, sequence, position):
@@ -523,7 +523,7 @@ def test_parser_emits_absolute_player_ids():
     This invariant is load-bearing: every relativized `controller` field in
     the observation depends on the parser side staying engine-absolute.
     """
-    from yugioh_env.message_parser import _parse_select_chain, _parse_select_yesno
+    from env.message_parser import _parse_select_chain, _parse_select_yesno
 
     # SELECT_YESNO with player=1 + a known desc.
     # Wire format: u8 player + u64 desc.

@@ -9,3 +9,4 @@ checkpoints/
 *.so
 *.dylib
 third_party/yugioh-game/
+leaderboard_data/

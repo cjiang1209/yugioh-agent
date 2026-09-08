@@ -9,15 +9,15 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from yugioh_core.encoding import (
+from core.encoding import (
     ACTION_FEATURES,
     CARD_FEATURES,
     GLOBAL_FEATURES,
     MAX_ACTIONS,
     MAX_CARDS,
 )
-from yugioh_rl.config import TrainingConfig
-from yugioh_rl.network import TextEmbeddingLookup, YuGiOhNet
+from rl.config import TrainingConfig
+from rl.network import TextEmbeddingLookup, YuGiOhNet
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -230,7 +230,7 @@ class TestSemanticMode:
         net = YuGiOhNet.from_config(config)
 
         # Card encoder input should be text_embed_dim + learned_embed_dim + CARD_FEAT_DIM
-        from yugioh_rl.features import CARD_FEAT_DIM
+        from rl.features import CARD_FEAT_DIM
 
         expected_input_dim = 48 + 12 + CARD_FEAT_DIM
         assert net.card_encoder[0].in_features == expected_input_dim

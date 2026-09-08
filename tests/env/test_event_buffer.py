@@ -1,4 +1,4 @@
-from yugioh_core.constants import (
+from core.constants import (
     HINT_CODE,
     LOCATION_MZONE,
     MSG_HINT,
@@ -7,12 +7,12 @@ from yugioh_core.constants import (
     PHASE_MAIN1,
     PHASE_MAIN2,
 )
-from yugioh_core.encoding import (
+from core.encoding import (
     EVENT_ENTRY_FEATURES,
     EVENT_LAYOUT,
     MAX_EVENT_HISTORY,
 )
-from yugioh_env.event_buffer import EventHistoryBuffer
+from env.event_buffer import EventHistoryBuffer
 
 
 def _summon(code, controller, seq):

@@ -167,7 +167,7 @@ def test_label_dict_covers_every_describer_prompt_type():
     """
     from cli.play_client import _PROMPT_TYPE_LABELS
 
-    from yugioh_env.action_describer import _PROMPT_TYPE_MAP
+    from env.action_describer import _PROMPT_TYPE_MAP
 
     describer_types = set(_PROMPT_TYPE_MAP.values())
     label_keys = set(_PROMPT_TYPE_LABELS)

@@ -10,9 +10,9 @@ from collections import deque
 
 import pytest
 
-from yugioh_core.constants import LOCATION_BANISHED
-from yugioh_mud.agent import PassiveAgent, RandomAgent
-from yugioh_mud.cmd_handler import (
+from core.constants import LOCATION_BANISHED
+from mud.agent import PassiveAgent, RandomAgent
+from mud.cmd_handler import (
     LOCATION_EXTRA,
     LOCATION_GRAVE,
     LOCATION_HAND,
@@ -22,8 +22,8 @@ from yugioh_mud.cmd_handler import (
     IdleCmdHandler,
     parse_cardspec,
 )
-from yugioh_mud.game_state import CardEntry, MUDGameState
-from yugioh_mud.text_parser import MUDTextParser, ParsedPrompt, PromptType
+from mud.game_state import CardEntry, MUDGameState
+from mud.text_parser import MUDTextParser, ParsedPrompt, PromptType
 
 
 class FakeConnection:

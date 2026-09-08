@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import multiprocessing as mp
 
+from rl.eval import _eval_worker, _EvalTask, _PartialResult
 from tests.rl.conftest import make_deck_pool, requires_engine
-from yugioh_rl.eval import _eval_worker, _EvalTask, _PartialResult
 
 
 def _spawn_eval_worker(

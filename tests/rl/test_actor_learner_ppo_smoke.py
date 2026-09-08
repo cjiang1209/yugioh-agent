@@ -8,9 +8,9 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
+from rl.config import TrainingConfig
+from rl.ppo import PPOTrainer
 from tests.rl.conftest import requires_engine
-from yugioh_rl.config import TrainingConfig
-from yugioh_rl.ppo import PPOTrainer
 
 
 @requires_engine

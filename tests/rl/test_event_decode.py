@@ -1,13 +1,13 @@
 import numpy as np
 import torch
 
-from yugioh_core.constants import (
+from core.constants import (
     ATTRIBUTE_DIVINE,
     LOCATION_GRAVE,
     MSG_CHAINING,
 )
-from yugioh_core.encoding import EVENT_ENTRY_FEATURES, MAX_EVENT_HISTORY, encode_event_entry
-from yugioh_rl.features import EVENT_FEAT_DIM, decode_event_history
+from core.encoding import EVENT_ENTRY_FEATURES, MAX_EVENT_HISTORY, encode_event_entry
+from rl.features import EVENT_FEAT_DIM, decode_event_history
 
 # feats column layout (see decode_event_history): scalars first, then blocks.
 # [controller, turn_player, sequence, target_sequence, hint_value, turn_delta,
@@ -50,7 +50,7 @@ def test_location_is_onehot_not_scalar():
     # location byte is a zone bitmask; decode must bit-expand it (grave=0x10),
     # not feed the raw value 16 as a scalar. A card is in exactly one zone, so
     # the expansion is one-hot.
-    from yugioh_core.constants import MSG_SUMMONING
+    from core.constants import MSG_SUMMONING
 
     # feats layout: [ctrl, turn, seq, tgt_seq, hint_value, turn_delta,
     #                location(7), target_location(7), hint_onehot(4)]
@@ -66,7 +66,7 @@ def test_location_is_onehot_not_scalar():
 
 
 def test_controller_turn_player_are_scalars():
-    from yugioh_core.constants import MSG_SUMMONING
+    from core.constants import MSG_SUMMONING
 
     row = encode_event_entry(msg_type=MSG_SUMMONING, card_code=1, controller=1, turn_player=0)
     _, _, _, _, _, feats = decode_event_history(_raw_one(row))
@@ -75,7 +75,7 @@ def test_controller_turn_player_are_scalars():
 
 
 def test_hint_type_is_onehot():
-    from yugioh_core.constants import HINT_ATTRIB, MSG_HINT
+    from core.constants import HINT_ATTRIB, MSG_HINT
 
     # hint one-hot occupies the last 4 columns; _EVENT_HINT_IDS order
     # [race, attrib, code, number] → ATTRIB at idx 1.

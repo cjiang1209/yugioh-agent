@@ -1,6 +1,6 @@
 import torch
 
-from yugioh_core.encoding import (
+from core.encoding import (
     ACTION_FEATURES,
     CARD_FEATURES,
     EVENT_ENTRY_FEATURES,
@@ -9,8 +9,8 @@ from yugioh_core.encoding import (
     MAX_CARDS,
     MAX_EVENT_HISTORY,
 )
-from yugioh_rl.config import TrainingConfig
-from yugioh_rl.network import YuGiOhNet
+from rl.config import TrainingConfig
+from rl.network import YuGiOhNet
 
 
 def _dummy_obs(B=2):

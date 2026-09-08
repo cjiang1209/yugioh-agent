@@ -1,4 +1,4 @@
-"""Tests for OpponentPool and SharedPoolState (yugioh_rl.opponent_pool)."""
+"""Tests for OpponentPool and SharedPoolState (rl.opponent_pool)."""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ torch = pytest.importorskip("torch")
 
 import torch.nn as nn
 
-from yugioh_env.opponent import GreedyOpponent, NetworkOpponent, RandomOpponent
-from yugioh_rl.opponent_pool import OpponentPool, SharedPoolState
+from env.opponent import GreedyOpponent, NetworkOpponent, RandomOpponent
+from rl.opponent_pool import OpponentPool, SharedPoolState
 
 
 class _Tiny(nn.Module):
@@ -48,7 +48,7 @@ def test_shared_pool_state_total_adds_round_trips() -> None:
 
 def _child_read_total_adds(handles, send_pipe):
     """Runs in spawned process. Reads total_adds via from_handles."""
-    from yugioh_rl.opponent_pool import SharedPoolState
+    from rl.opponent_pool import SharedPoolState
 
     state = SharedPoolState.from_handles(handles)
     send_pipe.send(state.total_adds)

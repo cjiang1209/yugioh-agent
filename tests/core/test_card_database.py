@@ -1,6 +1,6 @@
 """Test the SQLite card database reader."""
 
-from yugioh_core.constants import TYPE_LINK
+from core.constants import TYPE_LINK
 
 
 def test_blue_eyes(card_db):

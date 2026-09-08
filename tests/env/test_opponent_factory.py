@@ -1,4 +1,4 @@
-"""Tests for yugioh_env.opponent.make_opponent / parse_opponent_spec."""
+"""Tests for env.opponent.make_opponent / parse_opponent_spec."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ from unittest.mock import patch
 
 import pytest
 
-from yugioh_env.models import Pass, YuGiOhObservation
-from yugioh_env.opponent import (
+from env.models import Pass, YuGiOhObservation
+from env.opponent import (
     GreedyOpponent,
     RandomOpponent,
     make_opponent,
@@ -81,7 +81,7 @@ class TestMakeOpponent:
                 captured["checkpoint_path"] = checkpoint_path
                 captured["device"] = device
 
-        with patch("yugioh_env.opponent.ModelOpponent", _FakeModelOpponent):
+        with patch("env.opponent.ModelOpponent", _FakeModelOpponent):
             make_opponent("model:/some/ckpt.pt", device="cuda")
 
         assert captured == {"checkpoint_path": "/some/ckpt.pt", "device": "cuda"}

@@ -2,7 +2,7 @@ import numpy as np
 
 
 def _make_env(db_path, script_dirs, deck_path):
-    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+    from env.server.environment import YuGiOhEnvironment
 
     config = {
         "db_path": str(db_path),
@@ -15,7 +15,7 @@ def _make_env(db_path, script_dirs, deck_path):
 
 
 def test_event_history_shape_in_obs(lib, db_path, script_dirs, deck_path):
-    from yugioh_core.encoding import EVENT_ENTRY_FEATURES, MAX_EVENT_HISTORY
+    from core.encoding import EVENT_ENTRY_FEATURES, MAX_EVENT_HISTORY
 
     env = _make_env(db_path, script_dirs, deck_path)
     obs = env.reset(seed=42, agent_player=0)
@@ -25,8 +25,8 @@ def test_event_history_shape_in_obs(lib, db_path, script_dirs, deck_path):
 
 
 def test_event_buffer_resets_between_episodes(lib, db_path, script_dirs, deck_path):
-    from yugioh_core.encoding import MAX_EVENT_HISTORY
-    from yugioh_env.models import YuGiOhAction
+    from core.encoding import MAX_EVENT_HISTORY
+    from env.models import YuGiOhAction
 
     env = _make_env(db_path, script_dirs, deck_path)
     obs = env.reset(seed=1, agent_player=0)

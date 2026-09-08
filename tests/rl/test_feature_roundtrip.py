@@ -9,8 +9,7 @@ import numpy as np
 import pytest
 import torch
 
-from tests.env.conftest import action_features
-from yugioh_core.constants import (
+from core.constants import (
     ATTRIBUTE_DARK,
     LOCATION_HAND,
     LOCATION_MZONE,
@@ -22,17 +21,17 @@ from yugioh_core.constants import (
     RACE_DRAGON,
     RACE_MACHINE,
 )
-from yugioh_core.encoding import (
+from core.encoding import (
     CARD_FEATURES,
     MAX_ACTIONS,
     MAX_CARDS,
     encode_card,
 )
-from yugioh_env.action_space import ActionMapper
-from yugioh_env.game_state import GameState
-from yugioh_env.models import YuGiOhObservation
-from yugioh_env.observation import build_observation
-from yugioh_rl.features import (
+from env.action_space import ActionMapper
+from env.game_state import GameState
+from env.models import YuGiOhObservation
+from env.observation import build_observation
+from rl.features import (
     _ATTR_BITS,
     _LINK_BITS,
     _LOC_BITS,
@@ -46,7 +45,8 @@ from yugioh_rl.features import (
     decode_cards,
     decode_global,
 )
-from yugioh_rl.obs_encoder import encode_observation
+from rl.obs_encoder import encode_observation
+from tests.env.conftest import action_features
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -809,7 +809,7 @@ class TestDecodeActionsContract:
 
     def _yesno_tensor(self, desc: int) -> torch.Tensor:
         """Build an action tensor for SELECT_YESNO with a custom desc."""
-        from yugioh_core.constants import MSG_SELECT_YESNO
+        from core.constants import MSG_SELECT_YESNO
 
         mapper = ActionMapper()
         mapper.update(
@@ -826,7 +826,7 @@ class TestDecodeActionsContract:
         """Pin the (codes, desc_passcodes, desc_ns, action_feats) signature
         so accidental return-shape changes get caught here, not deep in the
         network forward pass."""
-        from yugioh_core.constants import MSG_SELECT_YESNO
+        from core.constants import MSG_SELECT_YESNO
 
         mapper = ActionMapper()
         mapper.update(
@@ -848,7 +848,7 @@ class TestDecodeActionsContract:
 
     def test_decode_actions_action_feat_dim(self):
         """ACTION_FEAT_DIM is part of the network input contract; pin it."""
-        from yugioh_core.constants import MSG_SELECT_YESNO
+        from core.constants import MSG_SELECT_YESNO
 
         mapper = ActionMapper()
         mapper.update(
@@ -885,6 +885,6 @@ class TestDecodeActionsContract:
         assert pcs_pc[0, 0].item() == 12345
         assert ns_pc[0, 0].item() == 3
         # Per-card desc_n scalar must carry the n value, normalized by vocab-1
-        from yugioh_core.encoding import PER_CARD_DESC_N_VOCAB
+        from core.encoding import PER_CARD_DESC_N_VOCAB
 
         assert feats_pc[0, 0, -1].item() == pytest.approx(3.0 / (PER_CARD_DESC_N_VOCAB - 1))

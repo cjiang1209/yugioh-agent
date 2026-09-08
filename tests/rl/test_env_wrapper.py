@@ -22,8 +22,8 @@ from tests.rl.conftest import make_deck_pool, requires_engine
 def test_training_env_max_steps_default_and_forwarding() -> None:
     """TrainingConfig defaults max_steps to 2000 and TrainingEnv forwards it to
     the underlying engine env."""
-    from yugioh_rl.config import TrainingConfig
-    from yugioh_rl.env_wrapper import TrainingEnv
+    from rl.config import TrainingConfig
+    from rl.env_wrapper import TrainingEnv
 
     assert TrainingConfig().max_steps == 2000
     env = TrainingEnv(make_deck_pool(2), opponent="random", seed=42, max_steps=777)
@@ -36,7 +36,7 @@ def test_training_env_max_steps_default_and_forwarding() -> None:
 @requires_engine
 def test_step_no_auto_reset_on_done() -> None:
     """``step()`` on done returns terminal obs and leaves ``_episode_count`` unchanged."""
-    from yugioh_rl.env_wrapper import TrainingEnv
+    from rl.env_wrapper import TrainingEnv
 
     deck_pool = make_deck_pool(2)
     env = TrainingEnv(
@@ -72,7 +72,7 @@ def test_step_no_auto_reset_on_done() -> None:
 @requires_engine
 def test_reset_explicit_advances_counter() -> None:
     """Sequential ``reset()`` increments _episode_count by 1 each call."""
-    from yugioh_rl.env_wrapper import TrainingEnv
+    from rl.env_wrapper import TrainingEnv
 
     deck_pool = make_deck_pool(2)
     env = TrainingEnv(
@@ -96,7 +96,7 @@ def test_reset_explicit_advances_counter() -> None:
 @requires_engine
 def test_reset_with_episode_idx_addresses_specific_episode() -> None:
     """``reset(episode_idx=3)`` produces the same deck draw as 3 sequential resets."""
-    from yugioh_rl.env_wrapper import TrainingEnv
+    from rl.env_wrapper import TrainingEnv
 
     deck_pool = make_deck_pool(2)
 
@@ -140,7 +140,7 @@ def test_reset_with_episode_idx_addresses_specific_episode() -> None:
 @requires_engine
 def test_reset_with_episode_idx_resequences() -> None:
     """``reset(episode_idx=N)`` is order-independent — same deck draw regardless of call history."""
-    from yugioh_rl.env_wrapper import TrainingEnv
+    from rl.env_wrapper import TrainingEnv
 
     deck_pool = make_deck_pool(2)
     env = TrainingEnv(
@@ -169,7 +169,7 @@ def test_reset_with_episode_idx_resequences() -> None:
 @requires_engine
 def test_deck_rng_reseeded_per_episode() -> None:
     """Deck pair at episode N matches ``random.Random(seed + N)`` — pure function of (seed, N)."""
-    from yugioh_rl.env_wrapper import TrainingEnv
+    from rl.env_wrapper import TrainingEnv
 
     deck_pool = make_deck_pool(2)
     seed = 42
@@ -207,9 +207,9 @@ def test_compute_advantage_reads_hand_counts_not_deck_counts() -> None:
     Deck and hand counts are given distinct values in both directions, so
     reading a deck field cannot coincidentally produce the right answer.
     """
-    from yugioh_env.game_state import GameState
-    from yugioh_env.observation import build_observation
-    from yugioh_rl.env_wrapper import TrainingEnv
+    from env.game_state import GameState
+    from env.observation import build_observation
+    from rl.env_wrapper import TrainingEnv
 
     gs = GameState()
     gs.deck_count = [30, 20]

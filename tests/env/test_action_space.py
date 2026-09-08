@@ -5,14 +5,13 @@ import struct
 import numpy as np
 import pytest
 
-from tests.env.conftest import MINIMAL_MSGS, action_features
-from yugioh_core.action_categories import (
+from core.action_categories import (
     BATTLE_TO_EP,
     BATTLE_TO_M2,
     IDLE_TO_BP,
     IDLE_TO_EP,
 )
-from yugioh_core.constants import (
+from core.constants import (
     ATTRIBUTE_EARTH,
     COUNTER_NEED_ENABLE,
     LOCATION_DECK,
@@ -45,14 +44,15 @@ from yugioh_core.constants import (
     POS_FACEUP_DEFENSE,
     RACE_WARRIOR,
 )
-from yugioh_core.encoding import (
+from core.encoding import (
     ACTION_FEATURES,
     ACTION_LAYOUT,
     MAX_ACTIONS,
 )
-from yugioh_env import response_builder as rb
-from yugioh_env.action_space import _ACTION_EXTRACTORS, ActionMapper
-from yugioh_env.server.yugioh_environment import _build_action_descriptors
+from env import response_builder as rb
+from env.action_space import _ACTION_EXTRACTORS, ActionMapper
+from env.server.environment import _build_action_descriptors
+from tests.env.conftest import MINIMAL_MSGS, action_features
 
 
 def test_yesno_actions():
@@ -834,7 +834,7 @@ def test_announce_race_unknown_race_still_emits_value():
     concern (see test_announce_race_falls_back_to_hex_for_unknown_race in
     test_action_describer.py); the extractor just needs to pass the value
     through without crashing or silently dropping the action."""
-    from yugioh_core.constants import MSG_ANNOUNCE_RACE
+    from core.constants import MSG_ANNOUNCE_RACE
 
     mapper = ActionMapper()
     # bit 50 — well outside any current RACE_NAMES entry
@@ -848,7 +848,7 @@ def test_chain_pass_action_has_distinct_kind_from_chain_link():
     """The pass action (category=1) must be tagged kind='pass', distinct from
     the chain action's kind='activate_effect' — the describer dispatches
     wording based on this tag, not on a meta dict."""
-    from yugioh_core.constants import MSG_SELECT_CHAIN
+    from core.constants import MSG_SELECT_CHAIN
 
     mapper = ActionMapper()
     mapper.update(
@@ -878,7 +878,7 @@ def test_chain_pass_action_has_distinct_kind_from_chain_link():
 def test_counter_skips_cards_with_zero_counters():
     """Cards with counter_count=0 must NOT produce actions — they have nothing to remove.
     Existing extractor already filters these; this test guards against future regression."""
-    from yugioh_core.constants import MSG_SELECT_COUNTER
+    from core.constants import MSG_SELECT_COUNTER
 
     mapper = ActionMapper()
     mapper.update(
@@ -1061,7 +1061,7 @@ def test_announce_number_response_is_index_not_value():
     and emit MSG_RETRY → silent forfeit. This regression test pins the index semantics."""
     import struct
 
-    from yugioh_core.constants import MSG_ANNOUNCE_NUMBER
+    from core.constants import MSG_ANNOUNCE_NUMBER
 
     mapper = ActionMapper()
     mapper.update({"msg_type": MSG_ANNOUNCE_NUMBER, "player": 0, "numbers": [3, 2, 1]})
@@ -1076,7 +1076,7 @@ def test_announce_attrib_multi_step_two_picks_produces_or_mask():
     via _selected; the second pick's response packs the OR'd mask."""
     import struct
 
-    from yugioh_core.constants import (
+    from core.constants import (
         ATTRIBUTE_DARK,
         ATTRIBUTE_LIGHT,
         ATTRIBUTE_WIND,
@@ -1116,7 +1116,7 @@ def test_announce_attrib_count_one_emits_terminal_picks():
     not an intermediate pick."""
     import struct
 
-    from yugioh_core.constants import ATTRIBUTE_DARK
+    from core.constants import ATTRIBUTE_DARK
 
     mapper = ActionMapper()
     mapper.update(
@@ -1507,15 +1507,15 @@ def test_sort_card_multi_step_dispatch():
 
 
 def test_parse_announce_codes_single():
-    from yugioh_core.constants import OPCODE_ISCODE
-    from yugioh_env.action_space import _parse_announce_codes
+    from core.constants import OPCODE_ISCODE
+    from env.action_space import _parse_announce_codes
 
     assert _parse_announce_codes([111, OPCODE_ISCODE]) == [111]
 
 
 def test_parse_announce_codes_multi():
-    from yugioh_core.constants import OPCODE_ISCODE, OPCODE_OR
-    from yugioh_env.action_space import _parse_announce_codes
+    from core.constants import OPCODE_ISCODE, OPCODE_OR
+    from env.action_space import _parse_announce_codes
 
     # Real Lua ordering: first card [code, ISCODE], each subsequent [code, ISCODE, OR]
     opcodes = [111, OPCODE_ISCODE, 222, OPCODE_ISCODE, OPCODE_OR, 333, OPCODE_ISCODE, OPCODE_OR]
@@ -1523,23 +1523,23 @@ def test_parse_announce_codes_multi():
 
 
 def test_parse_announce_codes_masks_to_uint32():
-    from yugioh_core.constants import OPCODE_ISCODE
-    from yugioh_env.action_space import _parse_announce_codes
+    from core.constants import OPCODE_ISCODE
+    from env.action_space import _parse_announce_codes
 
     # A code with high bits set is masked to 32 bits.
     assert _parse_announce_codes([0x1_0000_0457, OPCODE_ISCODE]) == [0x0457]
 
 
 def test_parse_announce_codes_general_filter_returns_empty():
-    from yugioh_env.action_space import _parse_announce_codes
+    from env.action_space import _parse_announce_codes
 
     # First entry is an opcode (>= 0x4000000000000000), not a card code -> no codes.
     assert _parse_announce_codes([0x4000020000000000, 0x10, 0x4000030000000000]) == []
 
 
 def test_extract_announce_card_actions():
-    from yugioh_core.constants import MSG_ANNOUNCE_CARD, OPCODE_ISCODE, OPCODE_OR
-    from yugioh_env.action_space import ActionMapper
+    from core.constants import MSG_ANNOUNCE_CARD, OPCODE_ISCODE, OPCODE_OR
+    from env.action_space import ActionMapper
 
     msg = {
         "msg_type": MSG_ANNOUNCE_CARD,
@@ -1801,7 +1801,7 @@ def test_idle_card_commands_carry_category_per_branch() -> None:
     both the engine's command tag `t` (sent via
     build_select_idlecmd_response) and what CardCommand.command is built
     from."""
-    from yugioh_core.action_categories import (
+    from core.action_categories import (
         IDLE_MSET,
         IDLE_REPOSITION,
         IDLE_SP_SUMMON,
@@ -1829,7 +1829,7 @@ def test_idle_card_commands_carry_category_per_branch() -> None:
 def test_battle_actions_carry_expected_category() -> None:
     """`category` is the field downstream consumers key on for battle
     activate/attack, same as for the idle branches."""
-    from yugioh_core.action_categories import BATTLE_ACTIVATE, BATTLE_ATTACK
+    from core.action_categories import BATTLE_ACTIVATE, BATTLE_ATTACK
 
     msg = {
         **MINIMAL_MSGS[MSG_SELECT_BATTLECMD],

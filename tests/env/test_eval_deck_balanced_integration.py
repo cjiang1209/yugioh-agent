@@ -7,14 +7,14 @@ torch = pytest.importorskip("torch")
 
 
 def _pool(assets_dir, n=4):
-    from yugioh_rl.env_wrapper import parse_deck_pool
+    from rl.env_wrapper import parse_deck_pool
 
     names = ["blue_eyes", "dark_magician", "hero", "utopia"][:n]
     return parse_deck_pool([str(assets_dir / "decks" / f"{x}.ydk") for x in names])
 
 
 def test_balanced_uniform_coverage(lib, db_path, script_dirs, assets_dir):
-    from yugioh_rl.eval import evaluate
+    from rl.eval import evaluate
 
     pool = _pool(assets_dir, 4)
     res = evaluate(
@@ -32,7 +32,7 @@ def test_balanced_uniform_coverage(lib, db_path, script_dirs, assets_dir):
 
 
 def test_worker_determinism_preserved(lib, db_path, script_dirs, assets_dir):
-    from yugioh_rl.eval import evaluate
+    from rl.eval import evaluate
 
     pool = _pool(assets_dir, 4)
     kw = dict(

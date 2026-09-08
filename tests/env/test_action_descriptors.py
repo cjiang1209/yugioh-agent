@@ -5,16 +5,16 @@ from dataclasses import fields
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from tests.env.conftest import MINIMAL_MSGS
-from yugioh_core.constants import (
+from core.constants import (
     LOCATION_MZONE,
     MSG_SELECT_CARD,
     MSG_SELECT_CHAIN,
     MSG_SELECT_IDLECMD,
 )
-from yugioh_env.action_space import _ACTION_EXTRACTORS, ActionMapper
-from yugioh_env.models import ActionDescriptor, ActivateEffect, CardRef, Pass, PickCard
-from yugioh_env.server.yugioh_environment import _build_action_descriptors
+from env.action_space import _ACTION_EXTRACTORS, ActionMapper
+from env.models import ActionDescriptor, ActivateEffect, CardRef, Pass, PickCard
+from env.server.environment import _build_action_descriptors
+from tests.env.conftest import MINIMAL_MSGS
 
 ADAPTER = TypeAdapter(ActionDescriptor)
 
@@ -270,6 +270,6 @@ def test_descriptors_are_dense() -> None:
 def test_observation_has_no_action_mask() -> None:
     """Legality is the descriptor list's length; a second representation of
     the same count could disagree with it."""
-    from yugioh_env.models import YuGiOhObservation
+    from env.models import YuGiOhObservation
 
     assert "action_mask" not in YuGiOhObservation.model_fields

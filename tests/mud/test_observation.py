@@ -11,8 +11,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from tests.mud.conftest import build_cards_db
-from yugioh_core.action_categories import (
+from core.action_categories import (
     BATTLE_ATTACK,
     BATTLE_TO_EP,
     IDLE_ACTIVATE,
@@ -20,8 +19,8 @@ from yugioh_core.action_categories import (
     IDLE_TO_BP,
     IDLE_TO_EP,
 )
-from yugioh_core.card_database import CardDatabase
-from yugioh_core.constants import (
+from core.card_database import CardDatabase
+from core.constants import (
     LOCATION_HAND,
     LOCATION_MZONE,
     LOCATION_SZONE,
@@ -35,7 +34,7 @@ from yugioh_core.constants import (
     POS_FACEDOWN_DEFENSE,
     POS_FACEUP_ATTACK,
 )
-from yugioh_core.encoding import (
+from core.encoding import (
     ACTION_FEATURES,
     ACTION_LAYOUT,
     CARD_FEATURES,
@@ -44,17 +43,18 @@ from yugioh_core.encoding import (
     MAX_ACTIONS,
     MAX_CARDS,
 )
-from yugioh_env.models import YuGiOhObservation
-from yugioh_mud.cmd_handler import StructuredAction
-from yugioh_mud.game_state import CardEntry, MUDGameState
-from yugioh_mud.observation import (
+from env.models import YuGiOhObservation
+from mud.cmd_handler import StructuredAction
+from mud.game_state import CardEntry, MUDGameState
+from mud.observation import (
     PHASE_MAP,
     POSITION_MAP,
     PROMPT_MSG_MAP,
     MUDObservationBuilder,
 )
-from yugioh_mud.text_parser import ParsedPrompt, PromptType
-from yugioh_rl.obs_encoder import encode_observation
+from mud.text_parser import ParsedPrompt, PromptType
+from rl.obs_encoder import encode_observation
+from tests.mud.conftest import build_cards_db
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -148,8 +148,8 @@ class TestGlobalState:
         cannot observe them and always writes 0 -- so the engine state below
         sets both to their zero value to keep the arrays comparable.
         """
-        from yugioh_env.game_state import GameState
-        from yugioh_env.observation import build_observation
+        from env.game_state import GameState
+        from env.observation import build_observation
 
         gs.my_lp, gs.opp_lp = 7500, 6000
         gs.turn = 3
@@ -503,7 +503,7 @@ class TestNonIdlePromptActions:
         assert ACTION_LAYOUT.read(a[1], "index") == 0
 
     def test_effectyn_extracts_card_code(self, builder, tmp_db):
-        from yugioh_mud.card_lookup import CardNameLookup
+        from mud.card_lookup import CardNameLookup
 
         lookup = CardNameLookup(tmp_db)
         gs_with_lookup = MUDGameState(card_lookup=lookup)

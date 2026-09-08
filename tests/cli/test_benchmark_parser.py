@@ -14,8 +14,7 @@ def _write_log(path: Path, rows: list[tuple[int, int, int]]) -> None:
     for upd, steps, sec in rows:
         h, m, s = sec // 3600, (sec % 3600) // 60, sec % 60
         lines.append(
-            f"{h:02d}:{m:02d}:{s:02d} [INFO] yugioh_rl.ppo: "
-            f"Update {upd}/100 | steps={steps} | FPS=999"
+            f"{h:02d}:{m:02d}:{s:02d} [INFO] rl.ppo: Update {upd}/100 | steps={steps} | FPS=999"
         )
     path.write_text("\n".join(lines) + "\n")
 

@@ -25,7 +25,7 @@ def assets_dir():
 
 def test_parse_deck_pool(assets_dir):
     """parse_deck_pool returns correct dicts for .ydk files."""
-    from yugioh_rl.env_wrapper import parse_deck_pool
+    from rl.env_wrapper import parse_deck_pool
 
     deck = str(assets_dir / "decks" / "blue_eyes.ydk")
     pool = parse_deck_pool([deck])
@@ -37,7 +37,7 @@ def test_parse_deck_pool(assets_dir):
 
 def test_parse_deck_pool_multiple(assets_dir):
     """parse_deck_pool handles multiple deck files."""
-    from yugioh_rl.env_wrapper import parse_deck_pool
+    from rl.env_wrapper import parse_deck_pool
 
     paths = [
         str(assets_dir / "decks" / "blue_eyes.ydk"),
@@ -51,7 +51,7 @@ def test_parse_deck_pool_multiple(assets_dir):
 
 def test_parse_deck_pool_picklable(assets_dir):
     """Pre-parsed deck dicts must be picklable for multiprocessing."""
-    from yugioh_rl.env_wrapper import parse_deck_pool
+    from rl.env_wrapper import parse_deck_pool
 
     pool = parse_deck_pool([str(assets_dir / "decks" / "blue_eyes.ydk")])
     roundtripped = pickle.loads(pickle.dumps(pool))
@@ -72,12 +72,12 @@ POOL = [
 
 def test_training_env_passes_deck_dicts():
     """reset() should pass deck0/deck1 dicts from the pool to env.reset()."""
-    with patch("yugioh_env.server.yugioh_environment.YuGiOhEnvironment") as MockEnv:
+    with patch("env.server.environment.YuGiOhEnvironment") as MockEnv:
         mock_env = MockEnv.return_value
         mock_env.reset.return_value = make_fake_obs()
         mock_env._agent_player = 0
 
-        from yugioh_rl.env_wrapper import TrainingEnv
+        from rl.env_wrapper import TrainingEnv
 
         env = TrainingEnv(deck_pool=POOL, seed=42)
         env.reset()
@@ -91,12 +91,12 @@ def test_training_env_passes_deck_dicts():
 
 def test_training_env_agent_deck_idx_when_first():
     """When agent is player 0, deck0 should be the agent's deck."""
-    with patch("yugioh_env.server.yugioh_environment.YuGiOhEnvironment") as MockEnv:
+    with patch("env.server.environment.YuGiOhEnvironment") as MockEnv:
         mock_env = MockEnv.return_value
         mock_env.reset.return_value = make_fake_obs()
         mock_env._agent_player = 0
 
-        from yugioh_rl.env_wrapper import TrainingEnv
+        from rl.env_wrapper import TrainingEnv
 
         env = TrainingEnv(deck_pool=POOL, seed=42, agent_player="first")
         env.reset()
@@ -110,12 +110,12 @@ def test_training_env_agent_deck_idx_when_first():
 
 def test_training_env_agent_deck_idx_when_second():
     """When agent is player 1, deck1 should be the agent's deck."""
-    with patch("yugioh_env.server.yugioh_environment.YuGiOhEnvironment") as MockEnv:
+    with patch("env.server.environment.YuGiOhEnvironment") as MockEnv:
         mock_env = MockEnv.return_value
         mock_env.reset.return_value = make_fake_obs()
         mock_env._agent_player = 1
 
-        from yugioh_rl.env_wrapper import TrainingEnv
+        from rl.env_wrapper import TrainingEnv
 
         env = TrainingEnv(deck_pool=POOL, seed=42, agent_player="second")
         env.reset()
@@ -129,7 +129,7 @@ def test_training_env_agent_deck_idx_when_second():
 
 def test_training_env_deck_info_on_done():
     """On episode end, info should contain agent_deck_idx."""
-    with patch("yugioh_env.server.yugioh_environment.YuGiOhEnvironment") as MockEnv:
+    with patch("env.server.environment.YuGiOhEnvironment") as MockEnv:
         mock_env = MockEnv.return_value
         mock_env.reset.return_value = make_fake_obs()
         mock_env._agent_player = 0
@@ -140,7 +140,7 @@ def test_training_env_deck_info_on_done():
         mock_env.step.return_value = done_obs
         mock_env._step_count = 5
 
-        from yugioh_rl.env_wrapper import TrainingEnv
+        from rl.env_wrapper import TrainingEnv
 
         env = TrainingEnv(deck_pool=POOL, seed=42)
         env.reset()
@@ -152,12 +152,12 @@ def test_training_env_deck_info_on_done():
 
 def test_training_env_samples_vary_across_resets():
     """Multiple resets should produce different deck combinations."""
-    with patch("yugioh_env.server.yugioh_environment.YuGiOhEnvironment") as MockEnv:
+    with patch("env.server.environment.YuGiOhEnvironment") as MockEnv:
         mock_env = MockEnv.return_value
         mock_env.reset.return_value = make_fake_obs()
         mock_env._agent_player = 0
 
-        from yugioh_rl.env_wrapper import TrainingEnv
+        from rl.env_wrapper import TrainingEnv
 
         env = TrainingEnv(deck_pool=POOL, seed=42)
         agent_indices = set()

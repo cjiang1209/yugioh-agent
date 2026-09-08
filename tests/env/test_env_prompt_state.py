@@ -20,20 +20,20 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-from yugioh_core.constants import (
+from core.constants import (
     MSG_SELECT_CARD,
     MSG_SELECT_IDLECMD,
 )
-from yugioh_core.encoding import (
+from core.encoding import (
     CHAIN_ENTRY_FEATURES,
     EVENT_ENTRY_FEATURES,
     MAX_EVENT_HISTORY,
     MAX_PENDING_CHAIN,
 )
-from yugioh_env.action_space import ActionMapper
-from yugioh_env.event_buffer import EventHistoryBuffer
-from yugioh_env.models import GlobalState, YuGiOhAction
-from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+from env.action_space import ActionMapper
+from env.event_buffer import EventHistoryBuffer
+from env.models import GlobalState, YuGiOhAction
+from env.server.environment import YuGiOhEnvironment
 
 
 @pytest.fixture(autouse=True)
@@ -41,7 +41,7 @@ def _stub_build_observation(monkeypatch):
     """Replace build_observation with a fast stub — we don't care about obs
     contents here, only about prompt-state bookkeeping around step() and
     _make_terminal_observation."""
-    import yugioh_env.server.yugioh_environment as env_mod
+    import env.server.environment as env_mod
 
     monkeypatch.setattr(
         env_mod,
@@ -87,7 +87,7 @@ def test_num_actions_matches_mapper_when_prompt_active():
     env = _bare_env()
     # Simulate a fresh prompt the way _process_to_agent_choice would: set msg
     # and update mapper. Use MSG_SELECT_YESNO for a simple 2-action prompt.
-    from yugioh_core.constants import MSG_SELECT_YESNO
+    from core.constants import MSG_SELECT_YESNO
 
     msg = {"msg_type": MSG_SELECT_YESNO, "player": 0, "desc": 0}
     env._current_msg = msg

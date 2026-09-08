@@ -11,7 +11,7 @@ import dataclasses
 
 import pytest
 
-from yugioh_core.encoding import (
+from core.encoding import (
     ACTION_FEATURES,
     ACTION_LAYOUT,
     CARD_FEATURES,
@@ -28,7 +28,7 @@ from yugioh_core.encoding import (
     encode_event_entry,
     encode_global,
 )
-from yugioh_env.models import CardState, GlobalState, YuGiOhObservation
+from env.models import CardState, GlobalState, YuGiOhObservation
 
 _ACTION_ARGS = [n for n, _ in ACTION_LAYOUT if not n.startswith("extra_idx")]
 
@@ -66,7 +66,7 @@ def test_every_card_field_lands_at_its_own_offset() -> None:
     `negated`, which a real board varies; they cannot pin `is_overlay`, which
     has no producer and stays zero like the extra_idx slots.
     """
-    from yugioh_rl.obs_encoder import _encode_cards
+    from rl.obs_encoder import _encode_cards
 
     values = {
         "code": 0x01020304,
@@ -117,7 +117,7 @@ def test_every_global_field_lands_at_its_own_offset() -> None:
     `is_my_turn` and `is_finished` are the flags here, so no other field may
     carry 0 or 1.
     """
-    from yugioh_rl.obs_encoder import _encode_global
+    from rl.obs_encoder import _encode_global
 
     values = {
         "my_lp": 8000,
@@ -195,7 +195,7 @@ def test_layouts_fit_their_rows() -> None:
 
 @pytest.fixture
 def env(lib, db_path, script_dirs):
-    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+    from env.server.environment import YuGiOhEnvironment
 
     environment = YuGiOhEnvironment({})
     try:
@@ -207,7 +207,7 @@ def env(lib, db_path, script_dirs):
 @pytest.fixture
 def obs(env, deck_path):
     """The opening observation of a freshly dealt duel."""
-    from yugioh_env.deck_parser import parse_ydk
+    from env.deck_parser import parse_ydk
 
     deck = parse_ydk(deck_path)
     return env.reset(seed=7, deck0=deck, deck1=deck, agent_player=0)
@@ -216,7 +216,7 @@ def obs(env, deck_path):
 def test_cards_carry_the_engine_coordinates(env, obs) -> None:
     """Every entry names a real zone, and the codes the engine reports for the
     agent's own hand all appear."""
-    from yugioh_core.constants import LOCATION_HAND
+    from core.constants import LOCATION_HAND
 
     assert obs.cards, "no structured cards produced"
     # location == 0 is not a valid zone bitmask and renders as "deck".

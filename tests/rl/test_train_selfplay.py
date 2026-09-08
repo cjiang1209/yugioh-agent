@@ -12,8 +12,8 @@ from tests.rl.conftest import requires_engine
 @requires_engine
 def test_short_selfplay_run_completes(tmp_path) -> None:
     """Run a tiny PPO loop with self-play and verify the pool accumulates snapshots."""
-    from yugioh_rl.config import TrainingConfig
-    from yugioh_rl.ppo import PPOTrainer
+    from rl.config import TrainingConfig
+    from rl.ppo import PPOTrainer
 
     config = TrainingConfig(
         self_play=True,

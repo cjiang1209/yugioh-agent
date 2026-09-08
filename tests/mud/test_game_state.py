@@ -11,9 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from yugioh_mud.card_lookup import CardNameLookup
-from yugioh_mud.game_state import CardEntry, MUDGameState, _parse_card_line
-from yugioh_mud.text_parser import EventType, ParsedEvent
+from mud.card_lookup import CardNameLookup
+from mud.game_state import CardEntry, MUDGameState, _parse_card_line
+from mud.text_parser import EventType, ParsedEvent
 
 # ---------------------------------------------------------------------------
 # Fixtures

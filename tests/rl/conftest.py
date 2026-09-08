@@ -24,7 +24,7 @@ def lib():
     own copy.
     """
     try:
-        from yugioh_env.lib_loader import load_library
+        from env.lib_loader import load_library
 
         return load_library()
     except FileNotFoundError:
@@ -52,7 +52,7 @@ def make_deck_pool(count: int = 1) -> list[dict[str, list[int]]]:
     the deck-sampling determinism tests. The deck is checked in, so a missing
     file is a broken checkout and `parse_deck_pool` should say so.
     """
-    from yugioh_rl.env_wrapper import parse_deck_pool
+    from rl.env_wrapper import parse_deck_pool
 
     path = Path(__file__).resolve().parents[2] / "assets" / "decks" / "blue_eyes.ydk"
     return parse_deck_pool([str(path)] * count)
@@ -67,7 +67,7 @@ def make_fake_obs():
     packed field defaults to its zero array, so only `reward` has to be given
     -- its own default is None, which callers do arithmetic on.
     """
-    from yugioh_env.models import YuGiOhObservation
+    from env.models import YuGiOhObservation
 
     return YuGiOhObservation(reward=0.0)
 

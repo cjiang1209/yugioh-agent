@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from yugioh_leaderboard.entry import PairwiseMatchResult
-from yugioh_leaderboard.pairwise import (
+from leaderboard.entry import PairwiseMatchResult
+from leaderboard.pairwise import (
     NoSharedDecksError,
     _pair_seed,
     replace_or_append_pairwise,
@@ -57,7 +57,7 @@ def _engine_available() -> bool:
     if not Path("assets/cards.cdb").exists():
         return False
     try:
-        from yugioh_env.lib_loader import load_library
+        from env.lib_loader import load_library
 
         load_library()
     except Exception:
@@ -72,16 +72,16 @@ def _engine_available() -> bool:
 def test_pairwise_mirrors_symmetrically(tmp_path):
     pytest.importorskip("torch")
 
-    from tests.rl.test_resume import _make_checkpoint
-    from yugioh_leaderboard.entry import Entry
-    from yugioh_leaderboard.features import extract_features
-    from yugioh_leaderboard.pairwise import run_pairwise
-    from yugioh_leaderboard.panel import (
+    from leaderboard.entry import Entry
+    from leaderboard.features import extract_features
+    from leaderboard.pairwise import run_pairwise
+    from leaderboard.panel import (
         PanelConfig,
         PanelEntry,
         PanelMatchOptions,
     )
-    from yugioh_rl.config import TrainingConfig
+    from rl.config import TrainingConfig
+    from tests.rl.test_resume import _make_checkpoint
 
     def _stub_entry(ckpt: Path, eid: str, cfg: TrainingConfig) -> Entry:
         return Entry(
@@ -139,16 +139,16 @@ def test_pairwise_parity_across_worker_counts(tmp_path):
     — both for the agent-side record and its mirror."""
     pytest.importorskip("torch")
 
-    from tests.rl.test_resume import _make_checkpoint
-    from yugioh_leaderboard.entry import Entry
-    from yugioh_leaderboard.features import extract_features
-    from yugioh_leaderboard.pairwise import run_pairwise
-    from yugioh_leaderboard.panel import (
+    from leaderboard.entry import Entry
+    from leaderboard.features import extract_features
+    from leaderboard.pairwise import run_pairwise
+    from leaderboard.panel import (
         PanelConfig,
         PanelEntry,
         PanelMatchOptions,
     )
-    from yugioh_rl.config import TrainingConfig
+    from rl.config import TrainingConfig
+    from tests.rl.test_resume import _make_checkpoint
 
     cfg = TrainingConfig(num_envs=1, deck_paths=["assets/decks/blue_eyes.ydk"], seed=42)
     a_dir = tmp_path / "a_run"

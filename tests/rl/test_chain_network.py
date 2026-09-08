@@ -4,10 +4,10 @@ from __future__ import annotations
 
 torch = __import__("pytest").importorskip("torch")
 
-from yugioh_core.constants import (
+from core.constants import (
     LOCATION_MZONE,
 )
-from yugioh_core.encoding import (
+from core.encoding import (
     ACTION_FEATURES,
     CARD_FEATURES,
     CHAIN_ENTRY_FEATURES,
@@ -17,8 +17,8 @@ from yugioh_core.encoding import (
     MAX_PENDING_CHAIN,
     encode_chain_entry,
 )
-from yugioh_rl.config import TrainingConfig
-from yugioh_rl.features import CHAIN_FEAT_DIM, decode_pending_chain
+from rl.config import TrainingConfig
+from rl.features import CHAIN_FEAT_DIM, decode_pending_chain
 
 
 def test_decode_pending_chain_shapes():
@@ -56,7 +56,7 @@ def test_decode_pending_chain_values():
 def test_network_forward_with_chain_disabled():
     """chain_embed_dim=0: network forward works without obs_chain."""
     config = TrainingConfig(chain_embed_dim=0)
-    from yugioh_rl.network import YuGiOhNet
+    from rl.network import YuGiOhNet
 
     net = YuGiOhNet.from_config(config)
     B = 2
@@ -72,7 +72,7 @@ def test_network_forward_with_chain_disabled():
 def test_network_forward_with_chain_enabled():
     """chain_embed_dim>0: network forward uses obs_chain."""
     config = TrainingConfig(chain_embed_dim=32)
-    from yugioh_rl.network import YuGiOhNet
+    from rl.network import YuGiOhNet
 
     net = YuGiOhNet.from_config(config)
     B = 2
@@ -89,7 +89,7 @@ def test_network_forward_with_chain_enabled():
 def test_network_chain_changes_output():
     """Non-zero chain entries produce different logits than all-zero chain."""
     config = TrainingConfig(chain_embed_dim=32)
-    from yugioh_rl.network import YuGiOhNet
+    from rl.network import YuGiOhNet
 
     net = YuGiOhNet.from_config(config)
     net.eval()

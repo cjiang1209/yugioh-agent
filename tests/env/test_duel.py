@@ -1,7 +1,7 @@
 """Test the high-level Duel class."""
 
-from yugioh_core.constants import LOCATION_HAND, SELECT_MSGS
-from yugioh_env.duel import Duel
+from core.constants import LOCATION_HAND, SELECT_MSGS
+from env.duel import Duel
 
 
 def test_create_and_start(duel, deck_path):
@@ -48,7 +48,7 @@ def test_query_count(duel, deck_path):
     duel.create(deck0=deck_path, deck1=deck_path, seed=42)
     duel.process_until_choice()
 
-    from yugioh_core.constants import LOCATION_HAND
+    from core.constants import LOCATION_HAND
 
     # After initial draw, each player should have some cards in hand
     hand0 = duel.query_count(0, LOCATION_HAND)

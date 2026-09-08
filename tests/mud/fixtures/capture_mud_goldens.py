@@ -1,5 +1,5 @@
 # tests/mud/fixtures/capture_mud_goldens.py
-"""Freeze yugioh_mud's observation arrays.
+"""Freeze mud's observation arrays.
 
 Run deliberately, never automatically:
     .venv/bin/python tests/mud/fixtures/capture_mud_goldens.py

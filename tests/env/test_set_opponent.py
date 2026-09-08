@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from yugioh_env.opponent import GreedyOpponent, RandomOpponent
+from env.opponent import GreedyOpponent, RandomOpponent
 
 
 def test_set_opponent_replaces_instance(lib, db_path, script_dirs) -> None:
-    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+    from env.server.environment import YuGiOhEnvironment
 
     env = YuGiOhEnvironment(config={"opponent": "greedy"})
     try:

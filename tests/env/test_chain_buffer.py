@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from yugioh_core.constants import (
+from core.constants import (
     LOCATION_HAND,
     LOCATION_MZONE,
     LOCATION_SZONE,
@@ -16,8 +16,8 @@ from yugioh_core.constants import (
     MSG_CHAINED,
     MSG_CHAINING,
 )
-from yugioh_core.encoding import MAX_PENDING_CHAIN
-from yugioh_env.game_state import ChainLink, ChainStatus, GameState
+from core.encoding import MAX_PENDING_CHAIN
+from env.game_state import ChainLink, ChainStatus, GameState
 
 
 def _chaining(code, controller, location, sequence, desc=0):

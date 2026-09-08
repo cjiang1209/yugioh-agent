@@ -9,12 +9,12 @@ import os.path
 import sys
 from copy import copy
 
-from yugioh_mud.action_translator import ActionTranslator
-from yugioh_mud.agent import PassiveAgent, RandomAgent
-from yugioh_mud.config import GUEST_CONFIG, HOST_CONFIG, MUDBotConfig
-from yugioh_mud.connection import MUDConnection
-from yugioh_mud.protocol import MUDProtocol
-from yugioh_mud.text_parser import MUDTextParser
+from mud.action_translator import ActionTranslator
+from mud.agent import PassiveAgent, RandomAgent
+from mud.config import GUEST_CONFIG, HOST_CONFIG, MUDBotConfig
+from mud.connection import MUDConnection
+from mud.protocol import MUDProtocol
+from mud.text_parser import MUDTextParser
 
 
 def parse_args() -> argparse.Namespace:
@@ -122,7 +122,7 @@ async def run(config: MUDBotConfig) -> None:
             if not os.path.exists(config.db_path):
                 logging.error("--mode model requires cards.cdb at %s", config.db_path)
                 return
-            from yugioh_mud.agent import ModelAgent
+            from mud.agent import ModelAgent
 
             agent = ModelAgent(config.checkpoint, config.db_path, config.device)
         elif config.mode == "random":
@@ -134,8 +134,8 @@ async def run(config: MUDBotConfig) -> None:
         # Wire game state if cards.cdb is available
         game_state = None
         if os.path.exists(config.db_path):
-            from yugioh_mud.card_lookup import CardNameLookup
-            from yugioh_mud.game_state import MUDGameState
+            from mud.card_lookup import CardNameLookup
+            from mud.game_state import MUDGameState
 
             lookup = CardNameLookup(config.db_path)
             game_state = MUDGameState(card_lookup=lookup)

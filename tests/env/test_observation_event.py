@@ -1,8 +1,8 @@
 import numpy as np
 
-from yugioh_core.encoding import EVENT_ENTRY_FEATURES, EVENT_LAYOUT, MAX_EVENT_HISTORY
-from yugioh_env.game_state import GameState
-from yugioh_env.observation import build_observation
+from core.encoding import EVENT_ENTRY_FEATURES, EVENT_LAYOUT, MAX_EVENT_HISTORY
+from env.game_state import GameState
+from env.observation import build_observation
 
 
 def test_event_history_key_present_and_shaped():

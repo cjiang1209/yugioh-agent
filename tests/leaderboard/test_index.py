@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from yugioh_leaderboard.index import render_index
-from yugioh_leaderboard.panel import (
+from leaderboard.index import render_index
+from leaderboard.panel import (
     PanelConfig,
     PanelEntry,
     PanelMatchOptions,

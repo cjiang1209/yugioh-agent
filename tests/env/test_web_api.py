@@ -14,7 +14,7 @@ def web_client(lib, db_path, script_dirs, deck_path):
     from fastapi import FastAPI
     from starlette.testclient import TestClient
 
-    from yugioh_env.server.web_api import (
+    from env.server.web_api import (
         create_action_describer,
         create_card_text_resolver,
         create_event_describer,
@@ -339,7 +339,7 @@ def test_list_decks(web_client):
 def test_reset_with_custom_deck(web_client):
     """Reset with explicit deck0/deck1 should succeed."""
     # Use a real deck's card IDs inline
-    from yugioh_env.deck_parser import parse_ydk
+    from env.deck_parser import parse_ydk
 
     deck = parse_ydk("assets/decks/blue_eyes.ydk")
     payload = {"main": deck["main"], "extra": deck.get("extra", [])}
@@ -637,7 +637,7 @@ def _make_app_with_recommender(db_path, script_dirs, deck_path, recommender):
     from fastapi import FastAPI
     from starlette.testclient import TestClient
 
-    from yugioh_env.server.web_api import (
+    from env.server.web_api import (
         create_action_describer,
         create_card_text_resolver,
         create_event_describer,
@@ -843,7 +843,7 @@ def test_state_endpoint_never_recommends(web_client):
 def test_recommendation_carries_the_readout_when_the_recommender_has_one(web_client):
     """With AI Assist armed and a recommender that reports a value, the field
     mirrors it onto the wire alongside the recommended index."""
-    from yugioh_env.opponent import Inference
+    from env.opponent import Inference
 
     class _WithValueHead(_FakeRec):
         def select_action(self, obs):

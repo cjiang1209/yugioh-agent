@@ -59,7 +59,7 @@ Before writing the `.ydk`, **always start with external research** (you will mis
 
 ## File format
 
-`.ydk` files use one card per line, with `#main` / `#extra` / `!side` section markers. Inline comments after `#` are stripped by `yugioh_env/deck_parser.py`:
+`.ydk` files use one card per line, with `#main` / `#extra` / `!side` section markers. Inline comments after `#` are stripped by `env/deck_parser.py`:
 
 ```
 #created by yugioh-env
@@ -89,7 +89,7 @@ After writing the `.ydk`:
 
 ```bash
 .venv/bin/python -c "
-from yugioh_env.deck_parser import parse_ydk
+from env.deck_parser import parse_ydk
 d = parse_ydk('assets/decks/<name>.ydk')
 print(f'main={len(d[\"main\"])} extra={len(d[\"extra\"])} side={len(d[\"side\"])}')"
 ```
@@ -157,7 +157,7 @@ A `sed` or hand-edit that drops a line silently turns a 40-card deck into a 39-c
 
 **MSG_RETRY almost always indicates a harness defect, not a deck-building error.** The engine sends MSG_RETRY when the response bytes it received don't match what the prompt expected — that's a contract between the engine and our response-builder / random policy, and the card itself is usually legal Yu-Gi-Oh! that a real human or a trained agent would handle without issue.
 
-**The harness fix is out of scope for deck building.** This skill stops at "isolate the trigger card, work around it, report it." Don't dig into `yugioh_env/duel.py`, `message_parser.py`, or `response_builder.py` — that's a separate task for whoever owns the harness.
+**The harness fix is out of scope for deck building.** This skill stops at "isolate the trigger card, work around it, report it." Don't dig into `env/duel.py`, `message_parser.py`, or `response_builder.py` — that's a separate task for whoever owns the harness.
 
 ### 1. Bisect to find the trigger card
 
@@ -202,7 +202,7 @@ That's enough for whoever owns the response-builder to investigate.
 
 Source: `cli/deck_coverage.py` (invoked via the `scripts/deck_coverage.sh` wrapper, which activates the venv and sets `PYTHONPATH`).
 
-The harness monkey-patches `yugioh_env.message_parser.parse_messages` to tap every parsed message, records `code` from `MSG_SUMMONING / SPSUMMONING / FLIPSUMMONING` (counted as "summoned") and `MSG_CHAINING` (counted as "activated"), then runs N self-play episodes with a random-vs-random policy via `TrainingEnv`. Spells/traps are never "summoned" — the report shows `/` in the summoned column for them.
+The harness monkey-patches `env.message_parser.parse_messages` to tap every parsed message, records `code` from `MSG_SUMMONING / SPSUMMONING / FLIPSUMMONING` (counted as "summoned") and `MSG_CHAINING` (counted as "activated"), then runs N self-play episodes with a random-vs-random policy via `TrainingEnv`. Spells/traps are never "summoned" — the report shows `/` in the summoned column for them.
 
 ## Red flags
 

@@ -93,4 +93,4 @@ clean:           ## Remove build/
 	rm -rf build/
 
 clean-all: clean ## Also remove venv, JS deps, web bundle, MUD server
-	rm -rf .venv yugioh_web/node_modules yugioh_web/dist third_party/yugioh-game
+	rm -rf .venv web/node_modules web/dist third_party/yugioh-game

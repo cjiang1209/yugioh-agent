@@ -1,25 +1,25 @@
-"""Tests for yugioh_env.replay — GameRecording, RecordingOpponent, RecordingEnvironment."""
+"""Tests for env.replay — GameRecording, RecordingOpponent, RecordingEnvironment."""
 
 from __future__ import annotations
 
 import pytest
 
-from tests.env.conftest import MINIMAL_MSGS, obs_from_msg
-from yugioh_core.constants import (
+from core.constants import (
     MSG_SELECT_BATTLECMD,
     MSG_SELECT_CHAIN,
     MSG_SELECT_IDLECMD,
     MSG_SELECT_TRIBUTE,
     MSG_SELECT_YESNO,
 )
-from yugioh_env.opponent import GreedyOpponent, RandomOpponent
-from yugioh_env.replay import (
+from env.opponent import GreedyOpponent, RandomOpponent
+from env.replay import (
     GameRecording,
     RecordingEnvironment,
     RecordingOpponent,
     ReplayCursor,
     ScriptedOpponent,
 )
+from tests.env.conftest import MINIMAL_MSGS, obs_from_msg
 
 # ---------------------------------------------------------------------------
 # Unit tests — no engine required
@@ -131,7 +131,7 @@ class TestRecordingOpponent:
 
 def _make_recording_env(db_path, script_dirs, deck_path):
     """Create a YuGiOhEnvironment + RecordingEnvironment for testing."""
-    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+    from env.server.environment import YuGiOhEnvironment
 
     config = {
         "db_path": str(db_path),
@@ -363,8 +363,8 @@ class TestRecordAndReplay:
 
     def _replay_game(self, lib, db_path, script_dirs, deck_path, recording):
         """Replay a recording, driving agent actions from the cursor."""
-        from yugioh_env.models import YuGiOhAction
-        from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+        from env.models import YuGiOhAction
+        from env.server.environment import YuGiOhEnvironment
 
         cursor = recording.cursor()
         scripted = ScriptedOpponent(cursor)

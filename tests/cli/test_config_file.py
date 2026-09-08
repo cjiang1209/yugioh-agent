@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from cli.train import _load_config_file
 
-from yugioh_rl.config import TrainingConfig
+from rl.config import TrainingConfig
 
 
 def _write_config(path: Path, fields: dict) -> Path:

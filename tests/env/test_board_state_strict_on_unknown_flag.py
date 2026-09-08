@@ -9,8 +9,8 @@ import struct
 
 import pytest
 
-from yugioh_core.constants import QUERY_CODE, QUERY_END
-from yugioh_core.query_buffer import parse_query_location
+from core.constants import QUERY_CODE, QUERY_END
+from core.query_buffer import parse_query_location
 
 
 def _u32_field(flag: int, value: int) -> bytes:

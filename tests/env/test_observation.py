@@ -8,8 +8,8 @@ the decoder (e.g. query_fn integration, visibility rules).
 
 def test_action_descriptors_cover_exactly_the_legal_actions(lib, db_path, script_dirs):
     """One descriptor per legal action and nothing else, on a live prompt."""
-    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
-    from yugioh_rl.obs_encoder import encode_observation
+    from env.server.environment import YuGiOhEnvironment
+    from rl.obs_encoder import encode_observation
 
     env = YuGiOhEnvironment({})
     obs = env.reset(seed=42)
@@ -23,10 +23,10 @@ def test_terminal_observation_actions_zeroed(lib, db_path, script_dirs):
     the arrays the network reads encode to shaped zeros."""
     import random
 
-    from yugioh_core.encoding import ACTION_FEATURES, MAX_ACTIONS
-    from yugioh_env.models import YuGiOhAction
-    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
-    from yugioh_rl.obs_encoder import encode_observation
+    from core.encoding import ACTION_FEATURES, MAX_ACTIONS
+    from env.models import YuGiOhAction
+    from env.server.environment import YuGiOhEnvironment
+    from rl.obs_encoder import encode_observation
 
     env = YuGiOhEnvironment({})
     obs = env.reset(seed=42)
@@ -51,11 +51,11 @@ def test_terminal_obs_keeps_real_board_but_zeroes_actions(
     """
     import numpy as np
 
-    from yugioh_core.encoding import ACTION_FEATURES, MAX_ACTIONS
-    from yugioh_env.deck_parser import parse_ydk
-    from yugioh_env.models import YuGiOhAction
-    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
-    from yugioh_rl.obs_encoder import encode_observation
+    from core.encoding import ACTION_FEATURES, MAX_ACTIONS
+    from env.deck_parser import parse_ydk
+    from env.models import YuGiOhAction
+    from env.server.environment import YuGiOhEnvironment
+    from rl.obs_encoder import encode_observation
 
     deck = parse_ydk(deck_path)
     env = YuGiOhEnvironment(
@@ -85,8 +85,8 @@ def test_terminal_obs_keeps_real_board_but_zeroes_actions(
 def _build_obs_with_card_on_engine_player_1(agent_player: int):
     """Synthesize an observation with one face-up monster on engine player 1's
     field, using a fake query_fn. Returns the structured card list."""
-    from yugioh_env.game_state import GameState
-    from yugioh_env.observation import build_observation
+    from env.game_state import GameState
+    from env.observation import build_observation
 
     gs = GameState()  # default LP/zones/phase
 
@@ -143,8 +143,8 @@ def test_board_and_action_controller_agree_on_real_episode(lib, db_path, script_
     """
     import random
 
-    from yugioh_env.models import YuGiOhAction
-    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+    from env.models import YuGiOhAction
+    from env.server.environment import YuGiOhEnvironment
 
     env = YuGiOhEnvironment({})
     obs = env.reset(seed=1234)
@@ -197,8 +197,8 @@ def test_prompt_meta_populated_on_select_msg(lib, db_path, script_dirs):
     the expected keys."""
     import random
 
-    from yugioh_env.models import YuGiOhAction
-    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+    from env.models import YuGiOhAction
+    from env.server.environment import YuGiOhEnvironment
 
     env = YuGiOhEnvironment({})
     obs = env.reset(seed=1234)
@@ -233,8 +233,8 @@ def test_prompt_meta_none_on_terminal(lib, db_path, script_dirs):
     """After the duel ends, obs.prompt_meta is None."""
     import random
 
-    from yugioh_env.models import YuGiOhAction
-    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+    from env.models import YuGiOhAction
+    from env.server.environment import YuGiOhEnvironment
 
     env = YuGiOhEnvironment({})
     obs = env.reset(seed=1234)
@@ -253,13 +253,13 @@ def test_prompt_meta_none_on_terminal(lib, db_path, script_dirs):
 # ─── Chain encoder gap tests ────────────────────────────────────────────────
 
 
-from yugioh_core.constants import (
+from core.constants import (
     LOCATION_MZONE,
     POS_FACEUP_ATTACK,
 )
-from yugioh_core.encoding import CHAIN_LAYOUT, MAX_PENDING_CHAIN
-from yugioh_env.game_state import ChainLink, GameState
-from yugioh_env.observation import build_observation
+from core.encoding import CHAIN_LAYOUT, MAX_PENDING_CHAIN
+from env.game_state import ChainLink, GameState
+from env.observation import build_observation
 
 
 def _gs_with_links(n, controller):

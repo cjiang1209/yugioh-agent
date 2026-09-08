@@ -2,7 +2,7 @@
 # Node/pnpm discovery + the web-suite skip contract, in one place. Source this
 # file; on failure the functions set WEB_SKIP_REASON.
 
-WEB_DIR="${WEB_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/yugioh_web}"
+WEB_DIR="${WEB_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/web}"
 WEB_SKIP_REASON=""
 
 # Put node + pnpm on PATH, sourcing nvm if node isn't already there (nvm does

@@ -1,13 +1,13 @@
 import numpy as np
 
-from yugioh_core.constants import (
+from core.constants import (
     HINT_NUMBER,
     LOCATION_MZONE,
     MSG_ATTACK,
     MSG_CHAINING,
     MSG_HINT,
 )
-from yugioh_core.encoding import (
+from core.encoding import (
     EVENT_ENTRY_FEATURES,
     EVENT_LAYOUT,
     encode_event_entry,

@@ -47,14 +47,14 @@ def mud_observation_cases() -> dict[str, Callable[[], dict]]:
     Builds its own tiny cards.cdb rather than taking a pytest fixture, since
     the capture script that also calls this runs outside pytest.
     """
-    from yugioh_core.action_categories import BATTLE_ATTACK, BATTLE_TO_EP, IDLE_SUMMON, IDLE_TO_EP
-    from yugioh_core.card_database import CardDatabase
-    from yugioh_core.constants import LOCATION_HAND, LOCATION_MZONE
-    from yugioh_mud.card_lookup import CardNameLookup
-    from yugioh_mud.cmd_handler import StructuredAction
-    from yugioh_mud.game_state import CardEntry, MUDGameState
-    from yugioh_mud.observation import MUDObservationBuilder
-    from yugioh_mud.text_parser import ParsedPrompt, PromptType
+    from core.action_categories import BATTLE_ATTACK, BATTLE_TO_EP, IDLE_SUMMON, IDLE_TO_EP
+    from core.card_database import CardDatabase
+    from core.constants import LOCATION_HAND, LOCATION_MZONE
+    from mud.card_lookup import CardNameLookup
+    from mud.cmd_handler import StructuredAction
+    from mud.game_state import CardEntry, MUDGameState
+    from mud.observation import MUDObservationBuilder
+    from mud.text_parser import ParsedPrompt, PromptType
 
     db_path = build_cards_db(
         Path(tempfile.mkdtemp()) / "cards.cdb",

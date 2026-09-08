@@ -14,12 +14,12 @@ POOL = [{"main": list(range(1, 41)), "extra": []} for _ in range(31)]
 
 
 def test_eval_env_deck_idx_in_terminal_info():
-    with patch("yugioh_env.server.yugioh_environment.YuGiOhEnvironment") as MockEnv:
+    with patch("env.server.environment.YuGiOhEnvironment") as MockEnv:
         mock = MockEnv.return_value
         mock.reset.return_value = _obs()
         mock.step.return_value = _obs(done=True, reward=1.0)
         mock._step_count = 7
-        from yugioh_rl.env_wrapper import EvalEnv
+        from rl.env_wrapper import EvalEnv
 
         env = EvalEnv(
             deck_pool=POOL,
@@ -37,9 +37,9 @@ def test_eval_env_deck_idx_in_terminal_info():
 
 
 def test_eval_env_has_no_shaping_or_pool():
-    with patch("yugioh_env.server.yugioh_environment.YuGiOhEnvironment") as MockEnv:
+    with patch("env.server.environment.YuGiOhEnvironment") as MockEnv:
         MockEnv.return_value.reset.return_value = _obs()
-        from yugioh_rl.env_wrapper import EvalEnv
+        from rl.env_wrapper import EvalEnv
 
         env = EvalEnv(deck_pool=POOL, opponent="random", seed=42)
         assert not hasattr(env, "_opponent_pool")
@@ -47,10 +47,10 @@ def test_eval_env_has_no_shaping_or_pool():
 
 
 def test_eval_env_mirror_same_deck_object():
-    with patch("yugioh_env.server.yugioh_environment.YuGiOhEnvironment") as MockEnv:
+    with patch("env.server.environment.YuGiOhEnvironment") as MockEnv:
         mock = MockEnv.return_value
         mock.reset.return_value = _obs()
-        from yugioh_rl.env_wrapper import EvalEnv
+        from rl.env_wrapper import EvalEnv
 
         env = EvalEnv(
             deck_pool=POOL, opponent="random", seed=42, agent_player="first", mirror_decks=True

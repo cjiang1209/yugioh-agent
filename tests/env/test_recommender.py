@@ -2,7 +2,7 @@
 
 import pytest
 
-from yugioh_env.server.recommender import (
+from env.server.recommender import (
     make_recommender,
     recommend,
     recommender_device_from_env,
@@ -16,7 +16,7 @@ def test_make_recommender_none_when_spec_falsy():
 
 
 def test_make_recommender_builds_non_model_opponents():
-    from yugioh_env.opponent import GreedyOpponent, RandomOpponent
+    from env.opponent import GreedyOpponent, RandomOpponent
 
     assert isinstance(make_recommender("random"), RandomOpponent)
     assert isinstance(make_recommender("greedy"), GreedyOpponent)
@@ -51,7 +51,7 @@ def test_device_from_env_default(monkeypatch):
 def test_recommend_passes_obs_through():
     """The recommender receives the observation directly, and its choice
     flows straight through as the returned action index."""
-    from yugioh_env.models import Pass, YuGiOhObservation
+    from env.models import Pass, YuGiOhObservation
 
     class FakeRecommender:
         def __init__(self):
@@ -73,7 +73,7 @@ def test_recommend_passes_obs_through():
 def test_recommend_returns_recommenders_choice():
     """recommend is a thin pass-through: whatever index the recommender picks
     is returned unchanged, for any recommender kind."""
-    from yugioh_env.models import Pass, YuGiOhObservation
+    from env.models import Pass, YuGiOhObservation
 
     class FakeGreedy:
         def select_action(self, obs):
@@ -86,8 +86,8 @@ def test_recommend_returns_recommenders_choice():
 
 
 def test_recommend_carries_the_value_head_readout_when_present():
-    from yugioh_env.models import Pass, YuGiOhObservation
-    from yugioh_env.opponent import Inference
+    from env.models import Pass, YuGiOhObservation
+    from env.opponent import Inference
 
     class FakeNetworkRecommender:
         def select_action(self, obs):
@@ -104,7 +104,7 @@ def test_recommend_carries_the_value_head_readout_when_present():
 def test_recommend_reports_no_readout_without_a_value_head():
     """random / greedy / ygo-agent pick an index but have nothing to inspect,
     so both readouts must be None rather than zero."""
-    from yugioh_env.models import Pass, YuGiOhObservation
+    from env.models import Pass, YuGiOhObservation
 
     class FakeGreedy:
         def select_action(self, obs):
@@ -127,8 +127,8 @@ def test_recommender_declines_when_there_are_no_actions(monkeypatch) -> None:
     """
     from types import SimpleNamespace
 
-    from yugioh_env.models import YuGiOhObservation
-    from yugioh_env.server import web_api
+    from env.models import YuGiOhObservation
+    from env.server import web_api
 
     called = []
     monkeypatch.setattr(

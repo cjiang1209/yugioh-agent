@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from yugioh_mud.text_parser import (
+from mud.text_parser import (
     EventType,
     MUDTextParser,
     ParsedEvent,

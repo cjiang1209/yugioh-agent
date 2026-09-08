@@ -14,10 +14,10 @@ test Pydantic, not our code. We only assert non-trivial contracts:
 import pytest
 from pydantic import ValidationError
 
-from yugioh_core.constants import (
+from core.constants import (
     LOCATION_MZONE,
 )
-from yugioh_env.models import AnnounceNumber, CardRef, SelectCounter, YuGiOhObservation
+from env.models import AnnounceNumber, CardRef, SelectCounter, YuGiOhObservation
 
 
 def test_action_descriptor_rejects_bad_kind():

@@ -4,13 +4,13 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from yugioh_core.encoding import (
+from core.encoding import (
     CHAIN_ENTRY_FEATURES,
     EVENT_ENTRY_FEATURES,
     MAX_EVENT_HISTORY,
     MAX_PENDING_CHAIN,
 )
-from yugioh_env.models import YuGiOhObservation
+from env.models import YuGiOhObservation
 
 # The observation's only packed buffers; every other field is structured.
 FIELDS = {

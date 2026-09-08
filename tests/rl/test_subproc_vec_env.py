@@ -55,8 +55,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from rl.env_wrapper import SubprocVecEnv, parse_deck_pool
 from tests.rl.conftest import hash_obs_field, requires_engine
-from yugioh_rl.env_wrapper import SubprocVecEnv, parse_deck_pool
 
 BASELINE_PATH = Path(__file__).parent / "baselines" / "subproc_rollout_baseline.npz"
 
@@ -248,10 +248,10 @@ def test_reset_done_no_op_when_no_dones() -> None:
 
 @requires_engine
 def test_subproc_vec_env_forwards_pool_handles_to_workers() -> None:
-    from yugioh_rl.config import TrainingConfig
-    from yugioh_rl.env_wrapper import SubprocVecEnv
-    from yugioh_rl.network import YuGiOhNet
-    from yugioh_rl.opponent_pool import OpponentPool
+    from rl.config import TrainingConfig
+    from rl.env_wrapper import SubprocVecEnv
+    from rl.network import YuGiOhNet
+    from rl.opponent_pool import OpponentPool
 
     config = TrainingConfig(self_play=True)
     pool = OpponentPool.create_trainer(

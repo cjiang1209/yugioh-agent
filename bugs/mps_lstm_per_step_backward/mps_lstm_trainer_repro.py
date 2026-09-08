@@ -20,8 +20,8 @@ import torch
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT)
 
-from yugioh_rl.config import TrainingConfig  # noqa: E402
-from yugioh_rl.network import YuGiOhNet  # noqa: E402
+from rl.config import TrainingConfig  # noqa: E402
+from rl.network import YuGiOhNet  # noqa: E402
 
 
 def log(msg: str) -> None:

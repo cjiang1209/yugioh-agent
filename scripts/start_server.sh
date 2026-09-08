@@ -51,4 +51,4 @@ if [[ -n "$recommender_device" ]]; then
     export YUGIOH_RECOMMENDER_DEVICE="$recommender_device"
 fi
 
-exec uvicorn yugioh_env.server.app:app --host 0.0.0.0 --port "${PORT:-8000}"
+exec uvicorn env.server.app:app --host 0.0.0.0 --port "${PORT:-8000}"

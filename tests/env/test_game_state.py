@@ -1,6 +1,6 @@
 """Test GameState message-driven updates."""
 
-from yugioh_core.constants import (
+from core.constants import (
     LOCATION_DECK,
     LOCATION_GRAVE,
     LOCATION_HAND,
@@ -17,7 +17,7 @@ from yugioh_core.constants import (
     MSG_WIN,
     PHASE_BATTLE_START,
 )
-from yugioh_env.game_state import GameState
+from env.game_state import GameState
 
 
 def test_initial_state():

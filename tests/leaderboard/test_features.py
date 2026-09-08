@@ -6,8 +6,8 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from yugioh_leaderboard.features import extract_features
-from yugioh_rl.config import TrainingConfig
+from leaderboard.features import extract_features
+from rl.config import TrainingConfig
 
 
 def test_extract_includes_grouping_keys():

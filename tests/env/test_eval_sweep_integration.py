@@ -10,8 +10,8 @@ torch = pytest.importorskip("torch")
 
 def _write_checkpoint(path: Path, update: int, global_step: int, deck_path: str):
     """Write a minimal real checkpoint the sweep can eval (symbolic net)."""
-    from yugioh_rl.config import TrainingConfig
-    from yugioh_rl.network import YuGiOhNet
+    from rl.config import TrainingConfig
+    from rl.network import YuGiOhNet
 
     config = TrainingConfig(deck_paths=[deck_path])
     net = YuGiOhNet(config)

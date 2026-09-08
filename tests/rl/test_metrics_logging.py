@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from yugioh_rl.metrics_logging import (
+from rl.metrics_logging import (
     CheckpointEvent,
     CheckpointRef,
     MLflowSink,
@@ -173,8 +173,8 @@ def test_flatten_eval_new_scheme():
 
 
 def test_in_training_eval_scalars_prefixed_new_scheme():
-    from yugioh_rl.eval import EvalResult
-    from yugioh_rl.ppo import _eval_scalars
+    from rl.eval import EvalResult
+    from rl.ppo import _eval_scalars
 
     r = EvalResult(
         opponent_label="random",
@@ -367,7 +367,7 @@ def test_mlflow_sink_close_ends_run():
 
 
 def test_build_training_sinks_tensorboard_only(tmp_path):
-    from yugioh_rl.metrics_logging import build_training_sinks
+    from rl.metrics_logging import build_training_sinks
 
     sink = build_training_sinks(
         log_to=["tensorboard"],
@@ -381,7 +381,7 @@ def test_build_training_sinks_tensorboard_only(tmp_path):
 
 
 def test_build_training_sinks_mlflow_missing_uri_hard_fails(tmp_path, monkeypatch):
-    from yugioh_rl import metrics_logging
+    from rl import metrics_logging
 
     fake = _FakeMlflow()  # _require_tracking_uri raises before any fake method is reached
     monkeypatch.setattr(metrics_logging, "_import_mlflow", lambda: fake)
@@ -396,7 +396,7 @@ def test_build_training_sinks_mlflow_missing_uri_hard_fails(tmp_path, monkeypatc
 
 
 def test_build_training_sinks_mlflow_writes_run_id(tmp_path, monkeypatch):
-    from yugioh_rl import metrics_logging
+    from rl import metrics_logging
 
     started = {}
     fake = _FakeMlflow()
@@ -431,7 +431,7 @@ def test_build_training_sinks_mlflow_writes_run_id(tmp_path, monkeypatch):
 
 
 def test_build_training_sinks_reattaches_existing_run_id(tmp_path, monkeypatch):
-    from yugioh_rl import metrics_logging
+    from rl import metrics_logging
 
     (tmp_path / "mlflow_run_id.txt").write_text("prev-run")
     started = {}
@@ -461,7 +461,7 @@ def test_build_training_sinks_reattaches_existing_run_id(tmp_path, monkeypatch):
 
 
 def test_build_eval_sinks_opens_named_run(tmp_path, monkeypatch):
-    from yugioh_rl import metrics_logging
+    from rl import metrics_logging
 
     started = {}
     fake = _FakeMlflow()
@@ -491,7 +491,7 @@ def test_build_eval_sinks_opens_named_run(tmp_path, monkeypatch):
 
 def test_build_eval_sinks_custom_subdir_and_run_name(tmp_path, monkeypatch):
     """Step-matched evaluation lands in its own TB board + MLflow run."""
-    from yugioh_rl import metrics_logging
+    from rl import metrics_logging
 
     started = {}
     fake = _FakeMlflow()

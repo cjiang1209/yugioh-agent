@@ -2,7 +2,7 @@
 
 import logging
 
-from yugioh_core.constants import (
+from core.constants import (
     LOCATION_BANISHED,
     LOCATION_DECK,
     LOCATION_EXTRA,
@@ -40,7 +40,7 @@ from yugioh_core.constants import (
     POS_FACEUP_ATTACK,
     POS_FACEUP_DEFENSE,
 )
-from yugioh_env.event_logger import (
+from env.event_logger import (
     CardInfo,
     EventDescriber,
     FieldTracker,
@@ -679,7 +679,7 @@ class TestFormatEventsAttack:
         preserved, so the line still shows the attacker's zone. The drift is
         logged as a warning, not let go silently."""
         tracker = FieldTracker()
-        with caplog.at_level(logging.WARNING, logger="yugioh_env.event_logger"):
+        with caplog.at_level(logging.WARNING, logger="env.event_logger"):
             events = _fmt(
                 [
                     {
@@ -709,7 +709,7 @@ class TestFormatEventsAttack:
                 "position": POS_FACEUP_ATTACK,
             }
         )
-        with caplog.at_level(logging.WARNING, logger="yugioh_env.event_logger"):
+        with caplog.at_level(logging.WARNING, logger="env.event_logger"):
             _fmt(
                 [
                     {

@@ -20,9 +20,9 @@ import pathlib
 import numpy as np
 import pytest
 
+from core.encoding import ACTION_LAYOUT
+from rl.obs_encoder import encode_observation
 from tests.env.conftest import MINIMAL_MSGS, ROUTE_CASES, obs_from_msg
-from yugioh_core.encoding import ACTION_LAYOUT
-from yugioh_rl.obs_encoder import encode_observation
 
 FIXTURES = pathlib.Path(__file__).resolve().parents[1] / "env" / "fixtures"
 ACTION_GOLDENS = json.loads((FIXTURES / "encoder_goldens_actions.json").read_text())
@@ -110,10 +110,10 @@ def test_matches_the_frozen_observation_goldens(lib, db_path, script_dirs, asset
     `cards` mismatch in the opening steps points at those having moved --
     recapture the fixture rather than hunting the encoder.
     """
-    from yugioh_env.deck_parser import parse_ydk
-    from yugioh_env.models import YuGiOhAction
-    from yugioh_env.opponent import RandomOpponent
-    from yugioh_env.server.yugioh_environment import YuGiOhEnvironment
+    from env.deck_parser import parse_ydk
+    from env.models import YuGiOhAction
+    from env.opponent import RandomOpponent
+    from env.server.environment import YuGiOhEnvironment
 
     goldens = np.load(FIXTURES / "encoder_goldens_observations.npz")
     depth: dict[str, int] = {}

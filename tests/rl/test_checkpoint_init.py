@@ -6,16 +6,16 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from yugioh_core.encoding import (
+from core.encoding import (
     ACTION_FEATURES,
     CARD_FEATURES,
     GLOBAL_FEATURES,
     MAX_ACTIONS,
     MAX_CARDS,
 )
-from yugioh_rl.config import TrainingConfig
-from yugioh_rl.network import YuGiOhNet
-from yugioh_rl.ppo import PPOTrainer
+from rl.config import TrainingConfig
+from rl.network import YuGiOhNet
+from rl.ppo import PPOTrainer
 
 
 def _make_checkpoint(

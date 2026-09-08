@@ -8,11 +8,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from yugioh_core.constants import (
+from core.constants import (
     LOCATION_HAND,
     LOCATION_MZONE,
 )
-from yugioh_core.encoding import (
+from core.encoding import (
     ACTION_FEATURES,
     CARD_FEATURES,
     CARD_LAYOUT,
@@ -20,9 +20,9 @@ from yugioh_core.encoding import (
     MAX_ACTIONS,
     MAX_CARDS,
 )
-from yugioh_rl.config import TrainingConfig, normalize_legacy_config
-from yugioh_rl.network import _NUM_ZONES, YuGiOhNet
-from yugioh_rl.ppo import PPOTrainer
+from rl.config import TrainingConfig, normalize_legacy_config
+from rl.network import _NUM_ZONES, YuGiOhNet
+from rl.ppo import PPOTrainer
 
 _D = 64  # default card_embed_dim
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 torch = __import__("pytest").importorskip("torch")
 
-from yugioh_rl.vtrace import compute_vtrace
+from rl.vtrace import compute_vtrace
 
 
 def _gae_lambda1(values, rewards, dones, last_values, gamma):

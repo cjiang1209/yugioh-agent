@@ -9,7 +9,7 @@ import pytest
 torch = pytest.importorskip("torch")
 import torch.nn as nn
 
-from yugioh_rl.opponent_pool import OpponentPool
+from rl.opponent_pool import OpponentPool
 
 
 class _Tiny(nn.Module):
@@ -165,8 +165,8 @@ def test_training_env_propagates_sampling_to_pool() -> None:
     if not deck_path.exists():
         pytest.skip(f"missing deck: {deck_path}")
 
-    from yugioh_rl.config import TrainingConfig
-    from yugioh_rl.env_wrapper import TrainingEnv, parse_deck_pool
+    from rl.config import TrainingConfig
+    from rl.env_wrapper import TrainingEnv, parse_deck_pool
 
     config = TrainingConfig(self_play=True, self_play_sampling="pfsp")
     pool = OpponentPool.create_trainer(
