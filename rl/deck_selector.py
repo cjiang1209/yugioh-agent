@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import random
 
+from core.seeding import DECK_CHOICE, episode_master_seed, substream
+
 
 class DeckSelector:
     def __init__(
@@ -25,7 +27,7 @@ class DeckSelector:
 
     def select(self, episode_idx: int) -> tuple[int, int]:
         """Return (agent_deck_idx, opp_deck_idx) for a 1-indexed episode."""
-        rng = random.Random(self._seed + episode_idx)
+        rng = random.Random(substream(episode_master_seed(self._seed, episode_idx), DECK_CHOICE))
         if self._allocation == "balanced":
             agent = (episode_idx - 1) % self._n
         else:  # "random"

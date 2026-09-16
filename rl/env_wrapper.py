@@ -20,6 +20,7 @@ from core.encoding import (
     MAX_EVENT_HISTORY,
     MAX_PENDING_CHAIN,
 )
+from core.seeding import SEAT, SNAPSHOT_CHOICE, episode_master_seed, substream
 from env.models import GlobalState, YuGiOhAction, YuGiOhObservation
 
 from .obs_encoder import encode_observation
@@ -135,7 +136,7 @@ class TrainingEnv:
                 network_factory=lambda: YuGiOhNet.from_config(opponent_pool_config),
                 temperature=opponent_pool_temperature,
                 sampling=opponent_pool_sampling,
-                rng=stdlib_random.Random(seed + 1),
+                rng=stdlib_random.Random(substream(seed, SNAPSHOT_CHOICE)),
             )
 
     def reset(self, *, episode_idx: int | None = None) -> dict[str, np.ndarray]:
@@ -151,12 +152,12 @@ class TrainingEnv:
             self._episode_count = episode_idx
         else:
             self._episode_count += 1
-        episode_seed = self._seed + self._episode_count
+        episode_seed = episode_master_seed(self._seed, self._episode_count)
 
         # Pre-resolve agent_player so we can map decks to correct engine
         # positions (must match the environment's resolution logic).
         if self._agent_player_setting == "random":
-            self._player_rng.seed(episode_seed)
+            self._player_rng.seed(substream(episode_seed, SEAT))
             resolved_player = self._player_rng.randint(0, 1)
         else:
             resolved_player = int(self._agent_player_setting)
@@ -319,9 +320,9 @@ class EvalEnv:
         self._last_agent_player = -1
 
     def reset(self, *, episode_idx: int) -> YuGiOhObservation:
-        episode_seed = self._seed + episode_idx
+        episode_seed = episode_master_seed(self._seed, episode_idx)
         if self._agent_player_setting == "random":
-            self._player_rng.seed(episode_seed)
+            self._player_rng.seed(substream(episode_seed, SEAT))
             resolved_player = self._player_rng.randint(0, 1)
         else:
             resolved_player = int(self._agent_player_setting)

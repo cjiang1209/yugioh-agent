@@ -8,6 +8,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from core.seeding import RECOMMENDER, substream
 from core.string_resolver import CardTextResolver, load_sys_strings
 
 from ..action_describer import ActionDescriber
@@ -226,7 +227,7 @@ def reset_duel(body: ResetRequest, request: Request) -> dict:
     request.app.state.recommend_enabled = bool(body.recommend and recommender is not None)
     if request.app.state.recommend_enabled:
         try:
-            recommender.reseed(body.seed or 0)
+            recommender.reseed(substream(body.seed or 0, RECOMMENDER))
         except Exception:
             logger.warning(
                 "Recommender reseed failed; disabling recommendation for this duel",

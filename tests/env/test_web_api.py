@@ -558,8 +558,12 @@ def test_action_controller_relativizes_per_agent_player(agent_player, web_client
     assert response.status_code == 200, response.text
     state = response.json()
 
+    # Enough prompts to reach a card-bearing one from either seat. The opening
+    # run of a turn is card-less (phase changes), and going second pushes it out
+    # further, so a short window makes this inconclusive on deck order alone.
+    max_prompts = 40
     card_actions_seen = 0
-    for _ in range(8):
+    for _ in range(max_prompts):
         actions = state["actions"]
         for a in actions:
             if a.get("card_code", 0) == 0:
@@ -581,7 +585,7 @@ def test_action_controller_relativizes_per_agent_player(agent_player, web_client
         state = step_response.json()
 
     assert card_actions_seen >= 1, (
-        "Test inconclusive: no card-bearing action observed in 8 prompts."
+        f"Test inconclusive: no card-bearing action observed in {max_prompts} prompts."
     )
 
 

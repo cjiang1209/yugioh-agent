@@ -129,8 +129,8 @@ def test_board_controller_relativizes_when_agent_player_is_1():
 
 def test_board_and_action_controller_agree_on_real_episode(lib, db_path, script_dirs):
     """Cross-source consistency: every legal card-bearing action over a real
-    episode whose card is present in the board encoding must carry the same
-    controller byte on both sides.
+    episode must name the card the board holds at the slot the action points to,
+    so the two sources cannot disagree about whose card it is.
 
     Restricted to non-hidden cards: opponent's face-down cards are
     intentionally redacted in the board encoding (`is_public == 0`,
@@ -158,26 +158,29 @@ def test_board_and_action_controller_agree_on_real_episode(lib, db_path, script_
         if obs.num_actions == 0:
             break
 
-        # Build a (code, location, sequence) → controller lookup from the
-        # board. Skip entries without a real code (face-down opponent cards).
-        board_by_id: dict[tuple[int, int, int], int] = {}
+        # Key the board by the physical slot a card occupies. Both seats run the
+        # same decklist, so (code, location, sequence) is held by both players
+        # often enough to matter -- keying on it reads one player's card as the
+        # other's. The seat is what makes a slot unique.
+        board_by_slot: dict[tuple[int, int, int], int] = {}
         for c in obs.cards:
             if c.code == 0:
                 continue
-            board_by_id.setdefault((c.code, c.location, c.sequence), c.controller)
+            board_by_slot[(c.controller, c.location, c.sequence)] = c.code
 
-        # Walk the card-bearing actions and cross-check the controller.
+        # Walk the card-bearing actions and cross-check against that slot.
         for ai, d in enumerate(obs.action_descriptors):
             card = getattr(d, "card", None)
             if card is None or card.code == 0 or card.location == 0:
                 continue
-            board_ctrl = board_by_id.get((card.code, card.location, card.sequence))
-            if board_ctrl is None:
+            slot = (card.controller, card.location, card.sequence)
+            board_code = board_by_slot.get(slot)
+            if board_code is None:
                 continue  # action references a card that isn't on the board
-            assert card.controller == board_ctrl, (
-                f"controller drift: action[{ai}] (code={card.code}, "
-                f"loc=0x{card.location:02x}, seq={card.sequence}) "
-                f"ctrl={card.controller} but board_ctrl={board_ctrl}"
+            assert card.code == board_code, (
+                f"controller drift: action[{ai}] names card {card.code} at "
+                f"(ctrl={card.controller}, loc=0x{card.location:02x}, "
+                f"seq={card.sequence}) but the board holds {board_code} there"
             )
             card_actions_checked += 1
 

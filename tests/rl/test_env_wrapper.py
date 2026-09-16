@@ -10,8 +10,6 @@ These tests are engine-gated (they instantiate a real ``TrainingEnv``).
 
 from __future__ import annotations
 
-import random
-
 import numpy as np
 import pytest
 
@@ -168,7 +166,12 @@ def test_reset_with_episode_idx_resequences() -> None:
 
 @requires_engine
 def test_deck_rng_reseeded_per_episode() -> None:
-    """Deck pair at episode N matches ``random.Random(seed + N)`` — pure function of (seed, N)."""
+    """The deck pair is a pure function of (seed, episode), not of call order.
+
+    Asserted against DeckSelector rather than against a reimplementation of the
+    derivation, so the two cannot agree on a formula that is wrong.
+    """
+    from rl.deck_selector import DeckSelector
     from rl.env_wrapper import TrainingEnv
 
     deck_pool = make_deck_pool(2)
@@ -181,20 +184,14 @@ def test_deck_rng_reseeded_per_episode() -> None:
         agent_player="first",
     )
     try:
-        env.reset(episode_idx=7)
-        actual_deck = env._last_agent_deck_idx
-
-        # Reproduce what reset() should have done internally.
-        episode_seed = seed + 7
-        rng = random.Random(episode_seed)
-        expected_agent_deck = rng.randrange(len(deck_pool))
-        # rng.randrange for opp_deck consumed too — but we only stored agent
-        _ = rng.randrange(len(deck_pool))
-
-        assert actual_deck == expected_agent_deck, (
-            f"deck draw {actual_deck} != expected {expected_agent_deck} "
-            f"from random.Random({episode_seed})"
-        )
+        expected = DeckSelector(pool_size=len(deck_pool), seed=seed, allocation="random")
+        # Out of order, and revisiting an episode, to pin that neither matters.
+        for episode in (7, 3, 7):
+            env.reset(episode_idx=episode)
+            assert env._last_agent_deck_idx == expected.select(episode)[0], (
+                f"episode {episode}: deck {env._last_agent_deck_idx} does not match "
+                f"the selector's {expected.select(episode)[0]}"
+            )
     finally:
         env.close()
 

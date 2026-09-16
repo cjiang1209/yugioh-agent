@@ -43,6 +43,7 @@ from core.constants import (
     SELECT_MSGS,
 )
 from core.encoding import MAX_ACTIONS
+from core.seeding import OPPONENT, SEAT, substream
 
 from ..action_loop_filter import ActionLoopFilter
 from ..action_space import ActionMapper, _relativize_controller
@@ -498,12 +499,13 @@ class YuGiOhEnvironment(Environment):
         # Resolve agent player for this episode
         setting = agent_player if agent_player is not None else self._agent_player_setting
         if setting == "random":
-            self._agent_player = stdlib_random.Random(duel_seed).randint(0, 1)
+            seat_seed = substream(duel_seed, SEAT)
+            self._agent_player = stdlib_random.Random(seat_seed).randint(0, 1)
         else:
             self._agent_player = int(setting)
 
         # Re-seed opponent for reproducibility
-        self._opponent.reseed(duel_seed)
+        self._opponent.reseed(substream(duel_seed, OPPONENT))
 
         # Resolve decks: use provided inline dicts or fall back to configured paths
         if deck0 is not None:

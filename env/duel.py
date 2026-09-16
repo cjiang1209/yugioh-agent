@@ -30,6 +30,7 @@ from core.constants import (
     SELECT_MSGS,
 )
 from core.query_buffer import parse_query_location
+from core.seeding import DECK_ORDER, ENGINE, state_words, substream
 
 from .callbacks import DuelCallbacks
 from .core_types import (
@@ -111,8 +112,8 @@ class Duel:
             flags=flags,
         )
 
-        # Add cards (shuffle main decks using the seed for determinism)
-        rng = random.Random(seed)
+        # Add cards (shuffle main decks from the deck-order stream for determinism)
+        rng = random.Random(substream(seed, DECK_ORDER))
         self._add_deck_cards(0, deck0, rng)
         self._add_deck_cards(1, deck1, rng)
 
@@ -214,13 +215,10 @@ class Duel:
 
         # Build duel options
         options = OCG_DuelOptions()
-        # seed[4] must not be all-zero (OCG_DUEL_CREATION_NULL_RNG_SEED).
-        # Spread the seed across all 4 uint64 slots using simple mixing.
-        s = seed if seed != 0 else 1
-        options.seed[0] = s & 0xFFFFFFFFFFFFFFFF
-        options.seed[1] = ((s * 6364136223846793005 + 1) & 0xFFFFFFFFFFFFFFFF) or 1
-        options.seed[2] = ((s * 1103515245 + 12345) & 0xFFFFFFFFFFFFFFFF) or 1
-        options.seed[3] = ((s ^ 0xDEADBEEFCAFEBABE) & 0xFFFFFFFFFFFFFFFF) or 1
+        # The engine reads seed[4] as xoshiro256** state, which must not be
+        # all-zero (OCG_DUEL_CREATION_NULL_RNG_SEED).
+        for i, word in enumerate(state_words(seed, ENGINE, 4)):
+            options.seed[i] = word or 1
         options.flags = flags
         options.team1 = OCG_Player(
             startingLP=lp0,
