@@ -166,6 +166,8 @@ class NetworkOpponent(Opponent):
     avoiding a per-cycle checkpoint load) and by ``ModelOpponent`` (which loads
     a checkpoint from disk and delegates here).
 
+    Inference runs on whatever device the network's parameters live on.
+
     Requires torch and rl to be installed (``pip install -e ".[train]"``).
     """
 
@@ -176,15 +178,12 @@ class NetworkOpponent(Opponent):
     def __init__(
         self,
         network,
-        device: str = "cpu",
         *,
         stochastic: bool = False,
         temperature: float = 1.0,
     ) -> None:
-        import torch
-
         self._network = network
-        self._device = torch.device(device)
+        self._device = next(network.parameters()).device
         self._stochastic = stochastic
         self._temperature = temperature
         if temperature <= 0:
@@ -242,20 +241,23 @@ class ModelOpponent(Opponent):
     """Opponent that loads a trained ``YuGiOhNet`` checkpoint and delegates to ``NetworkOpponent``.
 
     Requires torch and rl to be installed (``pip install -e ".[train]"``).
+    ``device`` may be ``"auto"``.
     """
 
     def __init__(self, checkpoint_path: str, device: str = "cpu") -> None:
         import torch
 
         from rl.config import normalize_legacy_config
+        from rl.device import resolve_device
         from rl.network import YuGiOhNet
 
+        device = resolve_device(device)
         checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
         config = normalize_legacy_config(checkpoint["config"])
         network = YuGiOhNet.from_state_dict(config, checkpoint["model_state_dict"])
         network.to(device)
         network.eval()
-        self._impl = NetworkOpponent(network, device=device)
+        self._impl = NetworkOpponent(network)
 
     @property
     def needs_board_state(self) -> bool:

@@ -46,7 +46,6 @@ def score_checkpoint(
     worker counts (deterministic aggregation).
     """
     import torch
-    from cli.utils import resolve_device
 
     from rl.config import TrainingConfig, normalize_legacy_config
     from rl.env_wrapper import parse_deck_pool
@@ -59,7 +58,6 @@ def score_checkpoint(
         if precomputed_hash is not None
         else compute_checkpoint_hash(checkpoint_path)
     )
-    device = resolve_device(panel.match.device)
 
     ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     cfg: TrainingConfig = normalize_legacy_config(ckpt["config"])
@@ -81,8 +79,8 @@ def score_checkpoint(
         num_episodes=episodes,
         seed=base_seed,
         agent_player=panel.match.agent_player,
-        opponent_device=device,
-        agent_device=device,
+        opponent_device=panel.match.device,
+        agent_device=panel.match.device,
         workers=workers,
     )
 

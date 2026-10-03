@@ -12,6 +12,8 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from rl.device import DEVICE_CHOICES
+
 
 @dataclass
 class PanelEntry:
@@ -23,7 +25,7 @@ class PanelEntry:
 class PanelMatchOptions:
     episodes: int
     agent_player: str  # "first" | "second" | "random"
-    device: str  # "cpu" | "cuda" | "auto"
+    device: str  # one of DEVICE_CHOICES
 
 
 @dataclass
@@ -36,7 +38,6 @@ class PanelConfig:
 
 
 _VALID_AGENT_PLAYER = ("first", "second", "random")
-_VALID_DEVICE = ("cpu", "cuda", "auto")
 
 
 def _validate_spec(spec: str) -> None:
@@ -83,8 +84,8 @@ def load_panel_config(path: Path | str) -> PanelConfig:
             f"panel.match.agent_player must be one of {_VALID_AGENT_PLAYER}, got {agent_player!r}"
         )
     device = str(match_raw["device"])
-    if device not in _VALID_DEVICE:
-        raise ValueError(f"panel.match.device must be one of {_VALID_DEVICE}, got {device!r}")
+    if device not in DEVICE_CHOICES:
+        raise ValueError(f"panel.match.device must be one of {DEVICE_CHOICES}, got {device!r}")
     match = PanelMatchOptions(
         episodes=int(match_raw["episodes"]),
         agent_player=agent_player,

@@ -25,6 +25,8 @@ class _FakeNet(nn.Module):
         super().__init__()
         padded = list(logits) + [0.0] * (MAX_ACTIONS - len(logits))
         self._logits = torch.tensor([padded], dtype=torch.float32)
+        # NetworkOpponent reads its device from the network's parameters.
+        self._anchor = nn.Parameter(torch.zeros(0))
 
     def init_hx(self, batch_size: int, device):
         return None

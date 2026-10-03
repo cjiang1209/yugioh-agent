@@ -158,14 +158,14 @@ Messages that write `loc_info`: `MSG_MOVE`, `MSG_SET`, `MSG_SUMMONING`, `MSG_SPS
 - `YUGIOH_LIB_PATH` — path to `libocgcore.dylib/.so` (auto-detected from `build/` if unset)
 - `YUGIOH_DB_PATH` — path to `cards.cdb` (default: `assets/cards.cdb`)
 - `YUGIOH_OPPONENT` — opponent spec: `random`, `greedy`, or `model:path/to/checkpoint.pt` (default: `random`)
-- `YUGIOH_OPPONENT_DEVICE` — device for model opponent inference: `cpu` or `cuda` (default: `cpu`). Read by the FastAPI server (`scripts/start_server.sh`), the training rollout (`SubprocVecEnv` workers), and in-training eval (`PPOTrainer._evaluate`). **Not** read by the standalone eval CLI — `scripts/eval.sh --device` is the explicit override there.
+- `YUGIOH_OPPONENT_DEVICE` — device for model opponent inference: `cpu`, `cuda`, `mps` or `auto` (default: `cpu`). Read by the FastAPI server (`scripts/start_server.sh`), the training rollout (`SubprocVecEnv` workers), and in-training eval (`PPOTrainer._evaluate`). **Not** read by the standalone eval CLI — `scripts/eval.sh --device` is the explicit override there.
 - `YUGIOH_RECOMMENDER` — action recommender for the web UI's "AI Assist"
   feature. Accepts the full opponent grammar: `random`, `greedy`,
   `model:path/to/checkpoint.pt`, or `ygo-agent[:url]` (unset = feature
   unavailable). Loaded once at FastAPI startup, independent of
   `YUGIOH_OPPONENT`; suggests moves for the *human* player.
 - `YUGIOH_RECOMMENDER_DEVICE` — device for `model:` recommender inference:
-  `cpu` or `cuda` (default: `cpu`).
+  `cpu`, `cuda`, `mps` or `auto` (default: `cpu`).
 - `VITE_API_BASE` — backend base URL baked into the web bundle at build time
   (default `http://localhost:8000`). Only needed when the FastAPI server runs
   somewhere other than the local `scripts/start_server.sh`.

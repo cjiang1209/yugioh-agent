@@ -233,10 +233,12 @@ class ModelAgent:
 
         from core.card_database import CardDatabase
         from rl.config import TrainingConfig, normalize_legacy_config
+        from rl.device import resolve_device
         from rl.network import YuGiOhNet
 
         from .observation import MUDObservationBuilder
 
+        device = resolve_device(device)
         checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
         config: TrainingConfig = normalize_legacy_config(checkpoint["config"])
         self._network = YuGiOhNet.from_state_dict(config, checkpoint["model_state_dict"])

@@ -72,13 +72,10 @@ def run_pairwise(
     ``workers`` controls eval parallelism; defaults to sequential (1).
     Pairwise has a single opponent, so all parallelism is episode-shard.
     """
-    from cli.utils import resolve_device
-
     from rl.env_wrapper import parse_deck_pool
     from rl.eval import evaluate
 
     base_seed = seed if seed is not None else _pair_seed(entry_a.entry_id, entry_b.entry_id)
-    device = resolve_device(panel.match.device)
 
     if decks_override is not None:
         decks = decks_override
@@ -102,8 +99,8 @@ def run_pairwise(
         num_episodes=episodes,
         seed=base_seed,
         agent_player=panel.match.agent_player,
-        opponent_device=device,
-        agent_device=device,
+        opponent_device=panel.match.device,
+        agent_device=panel.match.device,
         workers=workers,
     )
     r = raw[0]

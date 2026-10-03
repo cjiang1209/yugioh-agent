@@ -13,7 +13,6 @@ from pathlib import Path
 
 import numpy as np
 from cli.utils import (
-    DEVICE_CHOICES,
     fatal,
     validate_deck_paths,
     validate_opponent_spec,
@@ -26,6 +25,7 @@ from rl.config import (
     TrainingConfig,
     normalize_legacy_config,
 )
+from rl.device import DEVICE_CHOICES
 from rl.opponent_pool import SAMPLING_CHOICES
 
 # Flags whose values may override the checkpoint's stored config on --resume.

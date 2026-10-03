@@ -96,15 +96,14 @@ class TestMakeEvalAgent:
         captured: dict = {}
 
         class _FakeNetworkOpponent:
-            def __init__(self, network, device: str = "cpu"):
+            def __init__(self, network):
                 captured["network"] = network
-                captured["device"] = device
 
         sentinel_net = object()
         with patch("rl.eval.NetworkOpponent", _FakeNetworkOpponent):
             make_eval_agent("greedy", network=sentinel_net, device="cuda")
 
-        assert captured == {"network": sentinel_net, "device": "cuda"}
+        assert captured == {"network": sentinel_net}
 
 
 # ---------------------------------------------------------------------------

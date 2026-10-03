@@ -27,6 +27,7 @@ from core.encoding import (
 from env.opponent import NetworkOpponent
 
 from .config import TrainingConfig
+from .device import resolve_device
 from .env_wrapper import SubprocVecEnv, parse_deck_pool
 from .eval import eval_result_to_row, evaluate_with_agent
 from .metrics_logging import (
@@ -331,11 +332,7 @@ class PPOTrainer:
     def __init__(self, config: TrainingConfig) -> None:
         self.config = config
 
-        # Resolve device
-        if config.device == "auto":
-            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        else:
-            self.device = torch.device(config.device)
+        self.device = torch.device(resolve_device(config.device))
 
         # PyTorch 2.11 MPS LSTM backward kernel asserts during the per-step
         # TBPTT replay (forward succeeds, backward trips a uint32 underflow in
@@ -345,8 +342,9 @@ class PPOTrainer:
         # rather than crashing several minutes into a run with a cryptic
         # Metal driver assertion. See bugs/mps_lstm_per_step_backward/ for repros.
         if self.device.type == "mps" and config.rnn_type == "lstm":
+            resolved_from = " (resolved from --device auto)" if config.device == "auto" else ""
             raise RuntimeError(
-                "rnn_type='lstm' on device='mps' triggers a PyTorch MPS "
+                f"rnn_type='lstm' on device='mps'{resolved_from} triggers a PyTorch MPS "
                 "backward-kernel crash during PPO updates. Workarounds: "
                 "use --rnn-type gru, or --device cpu. "
                 "(See bugs/mps_lstm_per_step_backward/mps_lstm_minimal.py for the minimal repro.)"
@@ -1063,7 +1061,7 @@ class PPOTrainer:
         """Evaluate the live network against configured opponents."""
         self.network.eval()
         try:
-            agent = NetworkOpponent(self.network, device=str(self.device))
+            agent = NetworkOpponent(self.network)
             # opponent_device left None so YUGIOH_OPPONENT_DEVICE / "cpu" default
             # still wins for eval-side model opponents. Forcing the trainer's
             # GPU here would silently override an explicit env-var opt-out and

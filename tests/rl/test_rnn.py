@@ -7,6 +7,7 @@ legacy-checkpoint inference. Tests #1–#6, #10, #11 land in later phases.
 from __future__ import annotations
 
 import sys
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -553,6 +554,7 @@ def test_checkpoint_compat_rejects_rnn_type_mismatch(tmp_path):
     cli_with_rnn = TrainingConfig(
         rnn_type="lstm",
         rnn_hidden_dim=64,
+        device="cpu",  # "auto" could pick mps and trip the LSTM guard
         init_checkpoint=none_ckpt,
         save_dir=str(tmp_path / "run1"),
     )
@@ -580,6 +582,7 @@ def test_checkpoint_compat_rejects_rnn_hidden_dim_mismatch(tmp_path):
     cli = TrainingConfig(
         rnn_type="lstm",
         rnn_hidden_dim=128,
+        device="cpu",  # "auto" could pick mps and trip the LSTM guard
         init_checkpoint=ckpt_path,
         save_dir=str(tmp_path / "run"),
     )
@@ -696,7 +699,8 @@ def test_rnn_state_dict_mismatch_rejected_by_from_state_dict():
         YuGiOhNet.from_state_dict(rnn_config, none_net.state_dict())
 
 
-def test_ppo_trainer_rejects_mps_lstm_combo():
+@pytest.mark.parametrize("device", ["mps", "auto"])
+def test_ppo_trainer_rejects_mps_lstm_combo(device):
     """PyTorch 2.11 MPS LSTM backward kernel asserts during the per-step
     TBPTT replay (uint32 underflow in MPSNDArrayDescriptor — see
     bugs/mps_lstm_per_step_backward/mps_lstm_minimal.py). Trainer should fail fast so
@@ -710,9 +714,13 @@ def test_ppo_trainer_rejects_mps_lstm_combo():
         num_envs=2,
         deck_paths=["assets/decks/blue_eyes.ydk"],
         rnn_type="lstm",
-        device="mps",
+        device=device,
     )
-    with pytest.raises(RuntimeError, match="rnn_type='lstm' on device='mps'"):
+    with (
+        patch("torch.cuda.is_available", return_value=False),
+        patch("torch.backends.mps.is_available", return_value=True),
+        pytest.raises(RuntimeError, match="rnn_type='lstm' on device='mps'"),
+    ):
         PPOTrainer(cfg)
 
 

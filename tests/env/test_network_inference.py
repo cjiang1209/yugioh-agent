@@ -10,7 +10,7 @@ from env.opponent import Inference, NetworkOpponent  # noqa: E402
 from tests.env.conftest import obs_from_action_count
 
 
-class FakeNet:
+class FakeNet(torch.nn.Module):
     """Returns fixed logits and a fixed value, ignoring its inputs.
 
     Logits favour slot 1. The value is distinctive so a test can tell it apart
@@ -18,12 +18,15 @@ class FakeNet:
     """
 
     def __init__(self, value=0.375):
+        super().__init__()
         self._value = value
+        # NetworkOpponent reads its device from the network's parameters.
+        self._anchor = torch.nn.Parameter(torch.zeros(0))
 
     def init_hx(self, batch_size, device):
         return None
 
-    def __call__(self, *, hx=None, **inputs):
+    def forward(self, *, hx=None, **inputs):
         logits = torch.full((1, MAX_ACTIONS), -1.0)
         logits[0, 1] = 3.0
         values = torch.tensor([self._value])

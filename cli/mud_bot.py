@@ -15,6 +15,7 @@ from mud.config import GUEST_CONFIG, HOST_CONFIG, MUDBotConfig
 from mud.connection import MUDConnection
 from mud.protocol import MUDProtocol
 from mud.text_parser import MUDTextParser
+from rl.device import DEVICE_CHOICES
 
 
 def parse_args() -> argparse.Namespace:
@@ -63,7 +64,11 @@ def parse_args() -> argparse.Namespace:
         "--seed", type=int, default=None, help="RNG seed (default: host=42, guest=137)"
     )
     play.add_argument(
-        "--device", type=str, default="cpu", help="Torch device for model inference (default: cpu)"
+        "--device",
+        type=str,
+        default="cpu",
+        choices=DEVICE_CHOICES,
+        help="Torch device for model inference (default: cpu)",
     )
 
     debug = parser.add_argument_group("debug")
@@ -98,8 +103,7 @@ def build_config(args: argparse.Namespace) -> MUDBotConfig:
             overrides["mode"] = mode_spec
     if args.seed is not None:
         overrides["seed"] = args.seed
-    if args.device != "cpu":
-        overrides["device"] = args.device
+    overrides["device"] = args.device
     if args.verbose:
         overrides["verbose"] = True
 

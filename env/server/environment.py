@@ -306,14 +306,16 @@ class YuGiOhEnvironment(Environment):
         deck1_path: Path to player 1 deck
         opponent: Opponent spec — "random", "greedy", or "model:path/to/ckpt.pt"
         opponent_seed: Random seed for opponent
-        opponent_device: Device for model opponent ("cpu" or "cuda", default "cpu")
+        opponent_device: Device for model opponent ("cpu", "cuda", "mps" or "auto",
+                         default "cpu")
         starting_lp: Starting life points (default 8000)
         agent_player: Which player the agent controls (0, 1, or "random").
                       Player 0 always goes first. Default 0.
 
     Environment variables (used as fallbacks when config keys are absent):
         YUGIOH_OPPONENT: Opponent spec (e.g. "greedy", "model:path/to/ckpt.pt")
-        YUGIOH_OPPONENT_DEVICE: Device for model opponent (default "cpu")
+        YUGIOH_OPPONENT_DEVICE: Device for model opponent, same values as
+                                opponent_device (default "cpu")
     """
 
     SUPPORTS_CONCURRENT_SESSIONS = False

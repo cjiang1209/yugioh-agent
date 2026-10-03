@@ -248,7 +248,7 @@ def make_eval_agent(
     """Build an ``Opponent`` instance for the agent-side of an eval.
 
     When ``network`` is provided, returns a ``NetworkOpponent`` and ignores
-    ``spec`` — this is the in-training path that avoids a checkpoint reload.
+    ``spec`` and ``device`` — this is the in-training path that avoids a checkpoint reload.
     Otherwise delegates to ``env.opponent.make_opponent`` so the
     spec-string contract (parsing + error messages) stays in one place.
 
@@ -256,7 +256,7 @@ def make_eval_agent(
     here only sets the initial state.
     """
     if network is not None:
-        return NetworkOpponent(network, device=device)
+        return NetworkOpponent(network)
     return make_opponent(spec, seed=seed, device=device)
 
 

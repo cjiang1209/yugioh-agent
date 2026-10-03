@@ -24,12 +24,12 @@ import sys
 from pathlib import Path
 
 from cli.utils import (
-    DEVICE_CHOICES,
     fatal,
-    resolve_device,
     validate_deck_paths,
     validate_opponent_spec,
 )
+
+from rl.device import DEVICE_CHOICES
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -151,8 +151,6 @@ def main(argv: list[str] | None = None) -> int:
         datefmt="%H:%M:%S",
     )
 
-    device = resolve_device(args.device)
-
     # Deferred so a bad spec exits before paying torch / env import cost.
     from rl.env_wrapper import parse_deck_pool
     from rl.eval import evaluate
@@ -166,8 +164,8 @@ def main(argv: list[str] | None = None) -> int:
         num_episodes=args.episodes,
         seed=args.seed,
         agent_player=args.agent_player,
-        opponent_device=device,
-        agent_device=device,
+        opponent_device=args.device,
+        agent_device=args.device,
         workers=args.workers,
         deck_allocation=args.deck_allocation,
         mirror_decks=args.mirror_decks,

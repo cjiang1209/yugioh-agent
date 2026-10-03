@@ -2,8 +2,8 @@
 
 These tests run cli.eval.main() in-process with sys.argv mocked, patching
 the heavy dependencies (parse_deck_pool, make_eval_agent, evaluate) to
-verify only the CLI's plumbing — what kwargs get forwarded, how --device is
-resolved, and how --json output is shaped.
+verify only the CLI's plumbing — what kwargs get forwarded and how --json
+output is shaped.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from unittest.mock import patch
 import pytest
 from cli import eval as cli_eval
 
+from rl.device import DEVICE_CHOICES
 from rl.eval import EvalResult
 
 
@@ -86,7 +87,10 @@ def test_forwards_args_to_evaluate(stub_eval_pipeline, deck_path_str):
 # ---------------------------------------------------------------------------
 
 
-def test_device_threads_to_both_agent_and_opponent(stub_eval_pipeline, deck_path_str):
+@pytest.mark.parametrize("device", DEVICE_CHOICES)
+def test_device_threads_to_both_agent_and_opponent(stub_eval_pipeline, deck_path_str, device):
+    """--device reaches evaluate() unchanged for both sides; the CLI does not
+    resolve it."""
     cli_eval.main(
         [
             "--agent",
@@ -98,36 +102,12 @@ def test_device_threads_to_both_agent_and_opponent(stub_eval_pipeline, deck_path
             "--episodes",
             "1",
             "--device",
-            "cpu",
+            device,
         ]
     )
     cap = stub_eval_pipeline
-    assert cap["agent_device"] == "cpu"
-    assert cap["opponent_device"] == "cpu"
-
-
-def test_device_auto_resolved_before_forwarding(stub_eval_pipeline, deck_path_str):
-    """--device auto must be resolved to a concrete cpu/cuda string."""
-    with patch("cli.eval.resolve_device") as resolve_mock:
-        resolve_mock.return_value = "cuda"
-        cli_eval.main(
-            [
-                "--agent",
-                "greedy",
-                "--opponents",
-                "greedy",
-                "--deck-paths",
-                deck_path_str,
-                "--episodes",
-                "1",
-                "--device",
-                "auto",
-            ]
-        )
-    resolve_mock.assert_called_once_with("auto")
-    cap = stub_eval_pipeline
-    assert cap["agent_device"] == "cuda"
-    assert cap["opponent_device"] == "cuda"
+    assert cap["agent_device"] == device
+    assert cap["opponent_device"] == device
 
 
 # ---------------------------------------------------------------------------

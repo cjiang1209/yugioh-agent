@@ -67,7 +67,7 @@ def test_network_opponent_encodes_through_the_shared_encoder(monkeypatch) -> Non
 
     net = YuGiOhNet.from_config(TrainingConfig())
     net.eval()
-    opponent = NetworkOpponent(net, device="cpu")
+    opponent = NetworkOpponent(net)
     obs = obs_from_msg({**MINIMAL_MSGS[MSG_SELECT_YESNO], "msg_type": MSG_SELECT_YESNO})
     opponent.select_action(obs)
     assert calls, "NetworkOpponent.select_action did not encode through encode_observation"

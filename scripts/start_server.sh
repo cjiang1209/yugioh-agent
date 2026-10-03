@@ -32,7 +32,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo "Unknown option: $1" >&2
-            echo "Usage: $0 [--opponent random|greedy|model:PATH] [--opponent-device cpu|cuda] [--recommender random|greedy|model:PATH|ygo-agent] [--recommender-device cpu|cuda]" >&2
+            echo "Usage: $0 [--opponent random|greedy|model:PATH] [--opponent-device auto|cpu|cuda|mps] [--recommender random|greedy|model:PATH|ygo-agent] [--recommender-device auto|cpu|cuda|mps]" >&2
             exit 1
             ;;
     esac
