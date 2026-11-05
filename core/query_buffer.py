@@ -88,9 +88,10 @@ def parse_query_location(data: bytes) -> list[dict]:
                                  terminator: uint16(4) + uint32(QUERY_END)
 
     Empty slots only occur in MZONE/SZONE (fixed-size vector storage with
-    nullptr holes); other zones never emit them. Each non-empty card dict
-    carries a `sequence` key with the engine's slot index (counted across
-    empty slots, so MZONE slot 5 with slots 0-4 empty has sequence=5).
+    nullptr holes); other zones never emit them. An empty slot gets no
+    entry, so every returned dict is a card. Each carries a `sequence` key
+    with the engine's slot index (counted across empty slots, so MZONE slot
+    5 with slots 0-4 empty has sequence=5).
 
     Raises:
         ValueError: An unknown flag was emitted. Indicates engine submodule
@@ -114,7 +115,6 @@ def parse_query_location(data: bytes) -> list[dict]:
     while pos < end:
         first_u16 = struct.unpack_from("<H", data, pos)[0]
         if first_u16 == 0:
-            cards.append({})
             pos += 2
             seq += 1
             continue

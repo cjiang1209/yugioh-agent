@@ -95,6 +95,7 @@ def _build_obs_with_card_on_engine_player_1(agent_player: int):
         if player == 1 and loc == LOCATION_MZONE:
             return [
                 {
+                    "sequence": 0,
                     "code": 46986414,
                     "position": POS_FACEUP_ATTACK,  # POS_FACEUP_ATTACK
                     "is_public": 1,
@@ -256,11 +257,17 @@ def test_prompt_meta_none_on_terminal(lib, db_path, script_dirs):
 # ─── Chain encoder gap tests ────────────────────────────────────────────────
 
 
+import pytest
+
 from core.constants import (
+    LOCATION_GRAVE,
+    LOCATION_HAND,
     LOCATION_MZONE,
+    POS_FACEDOWN,
+    POS_FACEDOWN_DEFENSE,
     POS_FACEUP_ATTACK,
 )
-from core.encoding import CHAIN_LAYOUT, MAX_PENDING_CHAIN
+from core.encoding import CHAIN_LAYOUT, MAX_CARDS, MAX_PENDING_CHAIN
 from env.game_state import ChainLink, GameState
 from env.observation import build_observation
 
@@ -299,3 +306,72 @@ def test_encoder_truncates_beyond_max_pending_chain():
     assert pc.shape == (MAX_PENDING_CHAIN, pc.shape[1])
     for i in range(MAX_PENDING_CHAIN):
         assert CHAIN_LAYOUT.read(pc[i], "code") == 1000 + i
+
+
+# ─── Hidden cards and engine sequences ──────────────────────────────────────
+
+_OPP_FACEDOWN_MZONE = [
+    {"sequence": 2, "code": 89631139, "position": POS_FACEDOWN_DEFENSE, "is_public": 0},
+]
+
+
+def _cards_from(zones: dict[tuple[int, int], list[dict]], agent_player: int = 0):
+    """Run `build_observation` over a board given as (engine player, location)
+    -> the entries `parse_query_location` would return for that zone."""
+    obs = build_observation(
+        GameState(),
+        None,
+        agent_player=agent_player,
+        query_fn=lambda player, loc: zones.get((player, loc), []),
+    )
+    return obs["cards"]
+
+
+def test_opponent_facedown_field_card_keeps_position_hides_code():
+    (card,) = _cards_from({(1, LOCATION_MZONE): _OPP_FACEDOWN_MZONE})
+    assert card.code == 0
+    assert card.position == POS_FACEDOWN_DEFENSE
+    assert not card.is_public
+
+
+def test_card_after_empty_slots_keeps_engine_sequence():
+    (card,) = _cards_from({(1, LOCATION_MZONE): _OPP_FACEDOWN_MZONE})
+    assert card.sequence == 2
+
+
+def test_own_facedown_card_stays_visible():
+    own = [{"sequence": 0, "code": 89631139, "position": POS_FACEDOWN_DEFENSE, "is_public": 0}]
+    (card,) = _cards_from({(0, LOCATION_MZONE): own})
+    assert card.code == 89631139
+    assert card.position == POS_FACEDOWN_DEFENSE
+
+
+def test_hidden_cards_stay_interleaved_with_known_cards():
+    """Rows follow zone order, so the opponent's hidden hand comes before their
+    face-up monster. Dropping hidden cards or moving them last would break that."""
+    hand = [{"sequence": 0, "code": 89631139, "position": POS_FACEDOWN, "is_public": 0}]
+    monster = [{"sequence": 0, "code": 46986414, "position": POS_FACEUP_ATTACK, "is_public": 1}]
+    cards = _cards_from({(1, LOCATION_HAND): hand, (1, LOCATION_MZONE): monster})
+    assert [c.code for c in cards] == [0, 46986414]
+
+
+def test_hidden_hand_card_position_stays_zero():
+    hand = [{"sequence": 0, "code": 89631139, "position": POS_FACEDOWN, "is_public": 0}]
+    (card,) = _cards_from({(1, LOCATION_HAND): hand})
+    assert card.code == 0
+    assert card.position == 0
+
+
+# ─── Zone sizes ─────────────────────────────────────────────────────────────
+
+
+def _face_up_pile(n: int) -> list[dict]:
+    return [
+        {"sequence": s, "code": 1000 + s, "position": POS_FACEUP_ATTACK, "is_public": 1}
+        for s in range(n)
+    ]
+
+
+def test_more_than_max_cards_raises():
+    with pytest.raises(ValueError, match="MAX_CARDS"):
+        _cards_from({(0, LOCATION_GRAVE): _face_up_pile(MAX_CARDS + 1)})

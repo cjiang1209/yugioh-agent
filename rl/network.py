@@ -52,6 +52,9 @@ _ZONE_LOC_BITS = [
 ]
 _NUM_ZONES = len(_ZONE_LOC_BITS) * 2  # 6 zones × 2 players = 12
 
+_FIELD_ZONE_CAPACITY = {LOCATION_MZONE: 7, LOCATION_SZONE: 6}
+_NUM_FIELD_COUNTS = len(_FIELD_ZONE_CAPACITY) * 2
+
 # Card embedding vocabulary (card codes mod-hashed from uint32)
 _CARD_VOCAB = 131072
 _CARD_EMBED_DIM = 16
@@ -184,7 +187,7 @@ class YuGiOhNet(nn.Module):
         1. Card encoder: embedding + MLP per card → (B, MAX_CARDS, card_embed_dim)
         2. Zone pooling: mean-pool cards by (location, controller) → (B, 12, card_embed_dim)
         3. Global encoder: MLP on global features
-        4. Board representation: MLP on concat(zone_pool_flat, global)
+        4. Board representation: MLP on concat(zone_pool_flat, field-zone counts, global)
         5. Policy head: dot-product scoring of action embeddings vs board projection
         6. Value head: MLP on board representation → scalar
 
@@ -236,6 +239,7 @@ class YuGiOhNet(nn.Module):
         mult = _ZONE_WIDTH_MULT[config.pooling]
         board_input_dim = (
             _NUM_ZONES * config.card_embed_dim * mult
+            + _NUM_FIELD_COUNTS
             + config.global_embed_dim
             + config.chain_embed_dim
         )
@@ -503,19 +507,24 @@ class YuGiOhNet(nn.Module):
     ) -> torch.Tensor:
         """Collapse per-card encodings into a flat zone vector.
 
-        Returns (B, _NUM_ZONES * card_embed_dim * mult); mult=2 for
-        'mean_max' (per-zone [mean, max]), else 1.
+        Returns (B, _NUM_ZONES * card_embed_dim * mult + _NUM_FIELD_COUNTS);
+        mult=2 for 'mean_max' (per-zone [mean, max]), else 1. The last
+        _NUM_FIELD_COUNTS values are each player's field-zone row counts,
+        divided by the zone's capacity.
         """
         if self._pooling == "attn":
             card_enc = self._attend_cards(card_enc, card_ids)
         neg_inf = torch.finfo(card_enc.dtype).min  # masked-max sentinel (mean_max)
         zone_parts = []
+        field_counts = []
         for ctrl in (0, 1):
             ctrl_mask = raw_ctrl == ctrl  # (B, MAX_CARDS)
             for bit in _ZONE_LOC_BITS:
                 loc_mask = ((raw_loc & bit) != 0) & ctrl_mask  # (B, MAX_CARDS)
                 mask_f = loc_mask.float().unsqueeze(-1)  # (B, MAX_CARDS, 1)
                 zone_count = mask_f.sum(dim=1)  # (B, 1) cards in this zone
+                if bit in _FIELD_ZONE_CAPACITY:
+                    field_counts.append(zone_count / _FIELD_ZONE_CAPACITY[bit])
                 mean = (card_enc * mask_f).sum(dim=1) / zone_count.clamp(min=1.0)  # (B, D)
                 if self._pooling == "mean_max":
                     masked = card_enc.masked_fill(~loc_mask.unsqueeze(-1), neg_inf)
@@ -524,7 +533,7 @@ class YuGiOhNet(nn.Module):
                     zone_parts.append(torch.cat([mean, mx], dim=-1))  # (B, 2D)
                 else:
                     zone_parts.append(mean)  # (B, D)
-        return torch.cat(zone_parts, dim=-1)
+        return torch.cat(zone_parts + field_counts, dim=-1)
 
     def forward(
         self,

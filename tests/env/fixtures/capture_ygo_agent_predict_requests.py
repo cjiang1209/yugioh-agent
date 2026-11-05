@@ -21,8 +21,9 @@ committed alongside the code change that motivated it.
 
 The cases come from the same tables the tests use -- ``MINIMAL_MSGS`` for one
 prompt per translated msg type, ``MULTI_STEP_CASES`` for the mid-selection
-prompts -- so the requests written here and the requests asserted there
-cannot describe different prompts.
+prompts, ``BOARD_CASES`` for prompts asked over a board -- so the requests
+written here and the requests asserted there cannot describe different
+prompts.
 """
 
 from __future__ import annotations
@@ -35,7 +36,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
-from tests.env.conftest import MINIMAL_MSGS, MULTI_STEP_CASES, obs_from_msg
+from tests.env.conftest import BOARD_CASES, MINIMAL_MSGS, MULTI_STEP_CASES, obs_from_msg
 
 from env.ygo_agent.bridge import _ACTION_MSG_TRANSLATORS, build_predict_input
 
@@ -52,6 +53,10 @@ def main() -> None:
     for key, (msg, selected) in MULTI_STEP_CASES.items():
         obs = obs_from_msg(msg, _selected=selected)
         requests[key] = build_predict_input(obs, prev_action_idx=0)
+
+    for name, (msg_type, board) in BOARD_CASES.items():
+        obs = obs_from_msg({**MINIMAL_MSGS[msg_type], "msg_type": msg_type}, cards=board)
+        requests[f"board:{name}"] = build_predict_input(obs, prev_action_idx=0)
 
     OUT.write_text(json.dumps(requests, indent=2, sort_keys=True) + "\n")
     print(f"wrote {len(requests)} requests to {OUT.relative_to(ROOT)}")

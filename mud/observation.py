@@ -17,6 +17,7 @@ from core.constants import (
     LOCATION_GRAVE,
     LOCATION_HAND,
     LOCATION_MZONE,
+    LOCATION_ONFIELD,
     LOCATION_SZONE,
     MSG_SELECT_BATTLECMD,
     MSG_SELECT_CARD,
@@ -41,6 +42,7 @@ from core.constants import (
     PHASE_MAIN1,
     PHASE_MAIN2,
     PHASE_STANDBY,
+    POS_FACEDOWN,
     POS_FACEDOWN_ATTACK,
     POS_FACEDOWN_DEFENSE,
     POS_FACEUP_ATTACK,
@@ -51,7 +53,6 @@ from core.encoding import (
     CARD_FEATURES,
     MAX_ACTIONS,
     MAX_CARDS,
-    ZONE_SLOTS,
     encode_action,
     encode_card,
     encode_global,
@@ -92,7 +93,9 @@ POSITION_MAP: dict[str, int] = {
     "face-up defense": POS_FACEUP_DEFENSE,
     "face-down defense": POS_FACEDOWN_DEFENSE,
     "face-up": POS_FACEUP_ATTACK,
-    "face down": POS_FACEDOWN_DEFENSE,
+    # The MUD server's text for a set spell/trap, and for a face-down extra
+    # deck card.
+    "face down": POS_FACEDOWN,
 }
 
 # ---------------------------------------------------------------------------
@@ -153,59 +156,50 @@ class MUDObservationBuilder:
     # ------------------------------------------------------------------
 
     def _build_cards(self, gs: MUDGameState) -> np.ndarray:
-        cards = np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8)
-        idx = 0
+        rows: list[np.ndarray] = []
 
         # Agent zones (controller=0)
-        for loc, zone, slot_name in [
-            (LOCATION_HAND, gs.my_hand, "hand"),
-            (LOCATION_MZONE, gs.my_mzone, "mzone"),
-            (LOCATION_SZONE, gs.my_szone, "szone"),
-            (LOCATION_GRAVE, gs.my_graveyard, "grave"),
-            (LOCATION_BANISHED, gs.my_banished, "banished"),
-            (LOCATION_EXTRA, gs.my_extra, "extra"),
+        for loc, zone in [
+            (LOCATION_HAND, gs.my_hand),
+            (LOCATION_MZONE, gs.my_mzone),
+            (LOCATION_SZONE, gs.my_szone),
+            (LOCATION_GRAVE, gs.my_graveyard),
+            (LOCATION_BANISHED, gs.my_banished),
+            (LOCATION_EXTRA, gs.my_extra),
         ]:
-            max_slots = ZONE_SLOTS[slot_name]
-            for i, entry in enumerate(zone[:max_slots]):
-                if idx >= MAX_CARDS:
-                    break
-                cards[idx] = self._encode_entry(entry, loc, i, controller=0, is_public=True)
-                idx += 1
+            for i, entry in enumerate(zone):
+                rows.append(self._encode_entry(entry, loc, i, controller=0, is_public=True))
+
+        # Opponent hand: only its size is known
+        for i in range(gs.opp_hand_count):
+            rows.append(
+                encode_card(
+                    code=0,
+                    location=LOCATION_HAND,
+                    sequence=i,
+                    position=0,
+                    controller=1,
+                    is_public=False,
+                )
+            )
 
         # Opponent zones (controller=1)
-        for loc, zone, slot_name in [
-            (LOCATION_HAND, None, "hand"),  # special: count-only
-            (LOCATION_MZONE, gs.opp_mzone, "mzone"),
-            (LOCATION_SZONE, gs.opp_szone, "szone"),
-            (LOCATION_GRAVE, gs.opp_graveyard, "grave"),
-            (LOCATION_BANISHED, gs.opp_banished, "banished"),
-            (LOCATION_EXTRA, gs.opp_extra, "extra"),
+        for loc, zone in [
+            (LOCATION_MZONE, gs.opp_mzone),
+            (LOCATION_SZONE, gs.opp_szone),
+            (LOCATION_GRAVE, gs.opp_graveyard),
+            (LOCATION_BANISHED, gs.opp_banished),
+            (LOCATION_EXTRA, gs.opp_extra),
         ]:
-            max_slots = ZONE_SLOTS[slot_name]
-            if zone is None:
-                # Opponent hand — hidden entries
-                for i in range(min(gs.opp_hand_count, max_slots)):
-                    if idx >= MAX_CARDS:
-                        break
-                    cards[idx] = encode_card(
-                        code=0,
-                        location=LOCATION_HAND,
-                        sequence=i,
-                        position=0,
-                        controller=1,
-                        is_public=False,
-                    )
-                    idx += 1
-                continue
-
-            for i, entry in enumerate(zone[:max_slots]):
-                if idx >= MAX_CARDS:
-                    break
+            for i, entry in enumerate(zone):
                 is_faceup = self._is_faceup(entry)
                 is_public = is_faceup and entry.code != 0
-                cards[idx] = self._encode_entry(entry, loc, i, controller=1, is_public=is_public)
-                idx += 1
+                rows.append(self._encode_entry(entry, loc, i, controller=1, is_public=is_public))
 
+        cards = np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8)
+        rows = rows[:MAX_CARDS]
+        if rows:
+            cards[: len(rows)] = np.stack(rows)
         return cards
 
     def _encode_entry(
@@ -217,13 +211,15 @@ class MUDObservationBuilder:
         is_public: bool,
     ) -> np.ndarray:
         position = POSITION_MAP.get(entry.position, 0)
+        if position == POS_FACEDOWN and location == LOCATION_EXTRA:
+            position = POS_FACEDOWN_DEFENSE
 
         if not is_public or entry.code == 0:
             return encode_card(
                 code=0,
                 location=location,
                 sequence=sequence,
-                position=0 if not is_public else position,
+                position=position if is_public or location & LOCATION_ONFIELD else 0,
                 controller=controller,
                 is_public=False,
             )

@@ -242,17 +242,9 @@ def test_global_matches_the_game_state(env, obs) -> None:
 
 
 def test_hidden_cards_are_kept_in_place(obs) -> None:
-    """Hidden cards occupy a row like any other card: present, placed, and
-    interleaved with the known ones.
-    """
+    """Hidden cards occupy a row like any other card: present and placed."""
     hidden = [c for c in obs.cards if c.code == 0]
     assert hidden, "no hidden cards in a freshly dealt duel -- check the fixture"
     # A hidden card still names its zone and seat; only its identity is
     # withheld. Dropping them would shift every later row.
     assert all(c.location != 0 and not c.is_public for c in hidden)
-    # They are interleaved, not appended: at least one known card follows
-    # a hidden one.
-    codes = [c.code for c in obs.cards]
-    assert any(codes[i] == 0 and any(c != 0 for c in codes[i + 1 :]) for i in range(len(codes))), (
-        "hidden cards all sort last -- the list was filtered or reordered"
-    )

@@ -109,19 +109,14 @@ def test_single_card_multiple_fields():
     ]
 
 
-def test_empty_slot_emits_empty_dict():
-    """Three empty slots, then one populated card → sequence on the card is 3."""
+def test_empty_slots_emit_no_entry():
+    """Three empty slots, then one populated card → one entry, sequence 3."""
     body = (
         _empty_slot() + _empty_slot() + _empty_slot() + _u32_field(QUERY_CODE, 999) + _terminator()
     )
     data = _wrap(body)
     result = parse_query_location(data)
-    assert result == [
-        {},
-        {},
-        {},
-        {"sequence": 3, "code": 999},
-    ]
+    assert result == [{"sequence": 3, "code": 999}]
 
 
 def test_multiple_cards_no_empty_slots():

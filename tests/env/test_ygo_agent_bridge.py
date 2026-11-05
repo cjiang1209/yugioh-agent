@@ -51,6 +51,7 @@ from core.constants import (
     MSG_SELECT_UNSELECT_CARD,
     MSG_SELECT_YESNO,
     PHASE_MAIN1,
+    POS_FACEDOWN,
     POS_FACEDOWN_DEFENSE,
     POS_FACEUP,
     POS_FACEUP_ATTACK,
@@ -68,6 +69,7 @@ from env.ygo_agent.bridge import (
     translate_global,
 )
 from tests.env.conftest import (
+    BOARD_CASES,
     CARD_A,
     CARD_B,
     CARD_C,
@@ -167,42 +169,25 @@ class TestTranslateCards:
         cards = translate_cards(obs)
         assert cards[0]["overlay_sequence"] == 0
 
-    def test_multiple_cards_skips_empty_slots(self):
+    def test_keeps_facedown_field_cards(self):
+        # A code==0 monster or spell/trap row is a face-down card: the
+        # observation has no row for an empty slot.
         obs = self._make_obs_cards(
             [
                 {
-                    "code": 1,
-                    "location": LOCATION_HAND,
+                    "code": 0,
+                    "location": LOCATION_MZONE,
                     "sequence": 0,
-                    "position": POS_FACEUP_ATTACK,
-                    "controller": 0,
-                    "is_public": True,
+                    "position": POS_FACEDOWN_DEFENSE,
+                    "controller": 1,
                 },
-                {},  # empty slot
                 {
-                    "code": 2,
-                    "location": LOCATION_HAND,
-                    "sequence": 1,
-                    "position": POS_FACEUP_ATTACK,
-                    "controller": 0,
-                    "is_public": True,
+                    "code": 0,
+                    "location": LOCATION_SZONE,
+                    "sequence": 3,
+                    "position": POS_FACEDOWN,
+                    "controller": 1,
                 },
-            ]
-        )
-        cards = translate_cards(obs)
-        assert len(cards) == 2
-        assert cards[0]["code"] == 1
-        assert cards[1]["code"] == 2
-
-    def test_skips_empty_mzone_szone_slots(self):
-        # The engine reports empty monster/spell zone slots as code==0
-        # entries with a non-zero location. These are holes, not cards, and
-        # must not be sent to ygo-agent (which never sees empty zones
-        # natively).
-        obs = self._make_obs_cards(
-            [
-                {"code": 0, "location": LOCATION_MZONE, "sequence": 0, "controller": 0},
-                {"code": 0, "location": LOCATION_SZONE, "sequence": 3, "controller": 1},
                 {
                     "code": 89631139,
                     "location": LOCATION_MZONE,
@@ -214,8 +199,10 @@ class TestTranslateCards:
             ]
         )
         cards = translate_cards(obs)
-        assert len(cards) == 1
-        assert cards[0]["code"] == 89631139
+        assert len(cards) == 3
+        set_monster, set_spell, _ = cards
+        assert (set_monster["code"], set_monster["position"]) == (0, "facedown_defense")
+        assert (set_spell["code"], set_spell["position"]) == (0, "facedown")
 
     def test_unknown_stats_are_clamped_for_the_server(self):
         """No bundled deck holds a `?` ATK/DEF card, so nothing but this
@@ -668,6 +655,21 @@ def test_predict_body_byte_equal_after_resourcing(msg_type):
     assert body == GOLDEN[str(msg_type)]
 
 
+@pytest.mark.parametrize("name", BOARD_CASES)
+def test_predict_body_byte_equal_for_board_cases(name):
+    msg_type, board = BOARD_CASES[name]
+    obs = obs_from_msg({**MINIMAL_MSGS[msg_type], "msg_type": msg_type}, cards=board)
+    body = build_predict_input(obs, prev_action_idx=0)
+    assert body == GOLDEN[f"board:{name}"]
+    # The capture script records whatever the bridge sends, so the golden alone
+    # would accept a bridge that dropped the opponent's face-down monster.
+    assert any(
+        (c["controller"], c["location"], c["code"], c["position"])
+        == ("opponent", "mzone", 0, "facedown_defense")
+        for c in body["input"]["cards"]
+    )
+
+
 # ---------------------------------------------------------------------------
 # Response round-trip: match_response is the inverse direction of
 # translate_action_msg and is never exercised by the golden bodies above (the
@@ -980,7 +982,11 @@ def test_golden_case_set_matches_the_tables():
     KeyError in the parametrized test); an orphan entry -- a msg type moved
     into _SERVER_UNSUPPORTED_MSGS, say -- would linger unnoticed.
     """
-    expected = {str(m) for m in TRANSLATED_MSG_TYPES} | set(MULTI_STEP_CASES)
+    expected = (
+        {str(m) for m in TRANSLATED_MSG_TYPES}
+        | set(MULTI_STEP_CASES)
+        | {f"board:{k}" for k in BOARD_CASES}
+    )
     assert set(GOLDEN) == expected
 
 

@@ -12,6 +12,7 @@ from core.constants import (
     LOCATION_GRAVE,
     LOCATION_HAND,
     LOCATION_MZONE,
+    LOCATION_ONFIELD,
     LOCATION_SZONE,
     POS_FACEUP,
     STATUS_DISABLED,
@@ -22,7 +23,6 @@ from core.encoding import (
     MAX_CARDS,
     MAX_EVENT_HISTORY,
     MAX_PENDING_CHAIN,
-    ZONE_SLOTS,
     encode_chain_entry,
 )
 
@@ -81,21 +81,17 @@ def build_observation(
     if query_fn is not None:
         for player in [agent_player, opp_player]:
             is_agent = player == agent_player
-            for loc, slot_name in [
-                (LOCATION_HAND, "hand"),
-                (LOCATION_MZONE, "mzone"),
-                (LOCATION_SZONE, "szone"),
-                (LOCATION_GRAVE, "grave"),
-                (LOCATION_BANISHED, "banished"),
-                (LOCATION_EXTRA, "extra"),
-            ]:
-                max_slots = ZONE_SLOTS[slot_name]
-                queried = query_fn(player, loc)
-                for i, cdata in enumerate(queried[:max_slots]):
-                    # Filling stops silently once full, and every later zone
-                    # then stops on its first card.
+            for loc in (
+                LOCATION_HAND,
+                LOCATION_MZONE,
+                LOCATION_SZONE,
+                LOCATION_GRAVE,
+                LOCATION_BANISHED,
+                LOCATION_EXTRA,
+            ):
+                for cdata in query_fn(player, loc):
                     if len(cards) >= MAX_CARDS:
-                        break
+                        raise ValueError(f"board has more than MAX_CARDS={MAX_CARDS} cards")
 
                     is_public = bool(cdata.get("is_public", 0))
                     is_hidden = bool(cdata.get("is_hidden", 0))
@@ -112,7 +108,7 @@ def build_observation(
                             CardState(
                                 code=cdata.get("code", 0),
                                 location=loc,
-                                sequence=cdata.get("sequence", i),
+                                sequence=cdata["sequence"],
                                 position=position,
                                 controller=0 if is_agent else 1,
                                 is_public=is_public or faceup,
@@ -130,13 +126,13 @@ def build_observation(
                             )
                         )
                     else:
-                        # Hidden card: only location/controller visible
+                        # Hidden card: only location/position/controller visible
                         cards.append(
                             CardState(
                                 code=0,
                                 location=loc,
-                                sequence=cdata.get("sequence", i),
-                                position=0,
+                                sequence=cdata["sequence"],
+                                position=position if loc & LOCATION_ONFIELD else 0,
                                 controller=0 if is_agent else 1,
                                 is_public=False,
                             )

@@ -37,7 +37,13 @@ def action_features(mapper):
     return encode_observation(obs)["actions"]
 
 
-def obs_from_msg(msg: dict, *, _selected: list[int] | None = None, agent_player: int = 0):
+def obs_from_msg(
+    msg: dict,
+    *,
+    _selected: list[int] | None = None,
+    agent_player: int = 0,
+    cards: list[CardState] | None = None,
+):
     """Build a YuGiOhObservation from a single SELECT message.
 
     Mirrors what the server's _make_observation produces for that message,
@@ -45,7 +51,8 @@ def obs_from_msg(msg: dict, *, _selected: list[int] | None = None, agent_player:
     parallel meta fields. The optional _selected list seeds the mapper's
     multi-step selection state for tests that need it (e.g., tribute finish
     actions). agent_player relativizes seat-dependent fields (e.g.
-    controller) the same way the live server does.
+    controller) the same way the live server does. cards is the board, empty
+    unless given.
     """
     from env.action_space import ActionMapper
     from env.models import YuGiOhObservation
@@ -60,6 +67,7 @@ def obs_from_msg(msg: dict, *, _selected: list[int] | None = None, agent_player:
     if _selected is not None:
         mapper.update({**msg, "_selected": _selected})
     return YuGiOhObservation(
+        cards=cards or [],
         action_descriptors=_build_action_descriptors(mapper.actions),
         prompt_meta=_build_prompt_meta(mapper),
         events=[],
@@ -114,8 +122,10 @@ def duel(lib, card_db, script_dirs, deck_path):
 
 from core.constants import (
     COUNTER_NEED_ENABLE,
+    LOCATION_HAND,
     LOCATION_MZONE,
     LOCATION_OVERLAY,
+    LOCATION_SZONE,
     MSG_ANNOUNCE_ATTRIB,
     MSG_ANNOUNCE_CARD,
     MSG_ANNOUNCE_NUMBER,
@@ -138,10 +148,13 @@ from core.constants import (
     MSG_SORT_CARD,
     MSG_SORT_CHAIN,
     OPCODE_ISCODE,
+    POS_FACEDOWN,
+    POS_FACEDOWN_DEFENSE,
     POS_FACEUP,
     POS_FACEUP_ATTACK,
     POS_FACEUP_DEFENSE,
 )
+from env.models import CardState
 
 _CARD = {"code": 1234, "controller": 0, "location": LOCATION_MZONE, "sequence": 0}
 
@@ -408,5 +421,30 @@ MULTI_STEP_CASES: dict[str, tuple[dict, list[int]]] = {
             "cards": [CARD_A, CARD_B, CARD_C],
         },
         [2, 0],
+    ),
+}
+
+
+# Prompts asked over a board, for the bridge's card translation: the
+# MINIMAL_MSGS msg type to prompt with, plus the cards on the board. Shared
+# with the golden capture script, like the tables above.
+BOARD_CASES: dict[str, tuple[int, list[CardState]]] = {
+    "facedown_field": (
+        MSG_SELECT_IDLECMD,
+        [
+            CardState(
+                code=89631139,
+                location=LOCATION_MZONE,
+                sequence=0,
+                position=POS_FACEUP_ATTACK,
+                controller=0,
+                is_public=True,
+            ),
+            CardState(
+                location=LOCATION_MZONE, sequence=2, position=POS_FACEDOWN_DEFENSE, controller=1
+            ),
+            CardState(location=LOCATION_SZONE, sequence=1, position=POS_FACEDOWN, controller=1),
+            CardState(location=LOCATION_HAND, sequence=0, controller=1),
+        ],
     ),
 }

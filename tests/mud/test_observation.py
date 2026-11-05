@@ -21,6 +21,7 @@ from core.action_categories import (
 )
 from core.card_database import CardDatabase
 from core.constants import (
+    LOCATION_EXTRA,
     LOCATION_HAND,
     LOCATION_MZONE,
     LOCATION_SZONE,
@@ -31,6 +32,7 @@ from core.constants import (
     PHASE_DRAW,
     PHASE_MAIN1,
     PHASE_MAIN2,
+    POS_FACEDOWN,
     POS_FACEDOWN_DEFENSE,
     POS_FACEUP_ATTACK,
 )
@@ -67,6 +69,7 @@ _CARDS = [
     (46986414, "Dark Magician", 17, 2500, 2100, 7, 0x2, 0x20),
     (40640057, "Kuriboh", 17, 300, 200, 1, 0x10, 0x20),
     (44095762, "Mirror Force", 4, 0, 0, 0, 0, 0),
+    (23995346, "Blue-Eyes Ultimate Dragon", 65, 4500, 3800, 12, 0x2000, 0x10),
 ]
 
 
@@ -280,8 +283,55 @@ class TestOpponentFaceDown:
         assert len(opp_mon) == 1
         card = opp_mon[0]
         assert CARD_LAYOUT.read(card, "code") == 0  # hidden
-        assert CARD_LAYOUT.read(card, "position") == 0  # face-down
+        assert CARD_LAYOUT.read(card, "position") == POS_FACEDOWN_DEFENSE
         assert CARD_LAYOUT.read(card, "is_public") == 0
+
+    def test_opp_set_spell_trap(self, builder, gs):
+        gs.opp_szone = [CardEntry(name="", code=0, position="face down")]
+        prompt = ParsedPrompt(prompt_type=PromptType.IDLE_CMD, options=["e"])
+        c = builder.build(gs, prompt)["cards"]
+
+        (card,) = [
+            c[i]
+            for i in range(MAX_CARDS)
+            if CARD_LAYOUT.read(c[i], "location") == LOCATION_SZONE
+            and CARD_LAYOUT.read(c[i], "controller") == 1
+        ]
+        assert CARD_LAYOUT.read(card, "code") == 0
+        assert CARD_LAYOUT.read(card, "position") == POS_FACEDOWN
+        assert CARD_LAYOUT.read(card, "is_public") == 0
+
+    def test_opp_hidden_hand_position_zero(self, builder, gs):
+        gs.opp_hand_count = 2
+        prompt = ParsedPrompt(prompt_type=PromptType.IDLE_CMD, options=["e"])
+        c = builder.build(gs, prompt)["cards"]
+
+        hand = [
+            c[i]
+            for i in range(MAX_CARDS)
+            if CARD_LAYOUT.read(c[i], "location") == LOCATION_HAND
+            and CARD_LAYOUT.read(c[i], "controller") == 1
+        ]
+        assert len(hand) == 2
+        assert all(CARD_LAYOUT.read(card, "position") == 0 for card in hand)
+
+    def test_own_facedown_extra_deck_card_is_facedown_defense(self, builder, gs):
+        # The MUD server prints "face down" for a face-down extra deck card as
+        # well as a set spell/trap; the engine has the former in face-down
+        # defense.
+        gs.my_extra = [
+            CardEntry(name="Blue-Eyes Ultimate Dragon", code=23995346, position="face down")
+        ]
+        prompt = ParsedPrompt(prompt_type=PromptType.IDLE_CMD, options=["e"])
+        c = builder.build(gs, prompt)["cards"]
+
+        (card,) = [
+            c[i]
+            for i in range(MAX_CARDS)
+            if CARD_LAYOUT.read(c[i], "location") == LOCATION_EXTRA
+            and CARD_LAYOUT.read(c[i], "controller") == 0
+        ]
+        assert CARD_LAYOUT.read(card, "position") == POS_FACEDOWN_DEFENSE
 
 
 # ---------------------------------------------------------------------------

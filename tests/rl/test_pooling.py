@@ -21,7 +21,7 @@ from core.encoding import (
     MAX_CARDS,
 )
 from rl.config import TrainingConfig, normalize_legacy_config
-from rl.network import _NUM_ZONES, YuGiOhNet
+from rl.network import _NUM_FIELD_COUNTS, _NUM_ZONES, YuGiOhNet
 from rl.ppo import PPOTrainer
 
 _D = 64  # default card_embed_dim
@@ -101,7 +101,7 @@ def test_mean_pool_matches_reference():
     raw_loc[:, 2] = LOCATION_MZONE
 
     out = net._pool_zones(card_enc, raw_loc, raw_ctrl, card_ids)
-    assert out.shape == (B, _NUM_ZONES * _D)  # mult == 1
+    assert out.shape == (B, _NUM_ZONES * _D + _NUM_FIELD_COUNTS)  # mult == 1
 
     # Zone 0 = (ctrl 0, hand): mean of rows 0 and 1.
     expected_hand = (card_enc[:, 0] + card_enc[:, 1]) / 2
@@ -127,7 +127,7 @@ def test_mean_max_width_is_doubled():
     raw_ctrl = torch.zeros(B, MAX_CARDS, dtype=torch.long)
     card_ids = torch.zeros(B, MAX_CARDS, dtype=torch.long)  # unused by mean_max pooling
     out = net._pool_zones(card_enc, raw_loc, raw_ctrl, card_ids)
-    assert out.shape == (B, _NUM_ZONES * _D * 2)
+    assert out.shape == (B, _NUM_ZONES * _D * 2 + _NUM_FIELD_COUNTS)
 
 
 def test_mean_max_max_channel_junk_invariant():

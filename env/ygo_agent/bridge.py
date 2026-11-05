@@ -290,21 +290,13 @@ def _decode_phase(phase: int) -> str:
 
 
 def translate_cards(obs: YuGiOhObservation) -> list[dict]:
-    """Convert obs.cards to ygo-agent Card dicts.
+    """Convert obs.cards to ygo-agent Card dicts, one per card.
 
-    Monster and spell zones are fixed-size, so the engine reports an empty one
-    as a ``code == 0`` entry carrying only its location. ygo-agent never sees
-    an empty zone natively, so those are dropped, as is an entry naming no
-    zone at all. A ``code == 0`` entry elsewhere (hand/deck/extra) is a
-    hidden-but-real card and is kept -- the model relies on its presence for
-    location counts.
+    Every entry is a real card: an empty zone has no entry. A ``code == 0``
+    entry is a hidden card, which ygo-agent receives as an unknown card.
     """
     cards: list[dict] = []
     for card in obs.cards:
-        # Skip fully-empty entries and empty monster/spell zone holes.
-        if card.code == 0 and card.location in (0, LOCATION_MZONE, LOCATION_SZONE):
-            continue
-
         cards.append(
             {
                 "code": card.code,

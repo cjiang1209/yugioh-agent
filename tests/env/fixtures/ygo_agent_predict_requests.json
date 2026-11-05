@@ -654,6 +654,179 @@
     },
     "prev_action_idx": 0
   },
+  "board:facedown_field": {
+    "index": 0,
+    "input": {
+      "action_msg": {
+        "data": {
+          "idle_cmds": [
+            {
+              "cmd_type": "summon",
+              "data": {
+                "card_info": {
+                  "code": 1234,
+                  "controller": "me",
+                  "location": "mzone",
+                  "sequence": 0
+                },
+                "effect_description": 0,
+                "response": 0
+              }
+            },
+            {
+              "cmd_type": "sp_summon",
+              "data": {
+                "card_info": {
+                  "code": 1234,
+                  "controller": "me",
+                  "location": "mzone",
+                  "sequence": 0
+                },
+                "effect_description": 0,
+                "response": 1
+              }
+            },
+            {
+              "cmd_type": "reposition",
+              "data": {
+                "card_info": {
+                  "code": 1234,
+                  "controller": "me",
+                  "location": "mzone",
+                  "sequence": 0
+                },
+                "effect_description": 0,
+                "response": 2
+              }
+            },
+            {
+              "cmd_type": "mset",
+              "data": {
+                "card_info": {
+                  "code": 1234,
+                  "controller": "me",
+                  "location": "mzone",
+                  "sequence": 0
+                },
+                "effect_description": 0,
+                "response": 3
+              }
+            },
+            {
+              "cmd_type": "set",
+              "data": {
+                "card_info": {
+                  "code": 1234,
+                  "controller": "me",
+                  "location": "mzone",
+                  "sequence": 0
+                },
+                "effect_description": 0,
+                "response": 4
+              }
+            },
+            {
+              "cmd_type": "activate",
+              "data": {
+                "card_info": {
+                  "code": 1234,
+                  "controller": "me",
+                  "location": "mzone",
+                  "sequence": 0
+                },
+                "effect_description": 153,
+                "response": 5
+              }
+            },
+            {
+              "cmd_type": "to_bp",
+              "data": null
+            },
+            {
+              "cmd_type": "to_ep",
+              "data": null
+            }
+          ],
+          "msg_type": "select_idlecmd"
+        }
+      },
+      "cards": [
+        {
+          "attack": 0,
+          "attribute": "none",
+          "code": 89631139,
+          "controller": "me",
+          "counter": 0,
+          "defense": 0,
+          "level": 0,
+          "location": "mzone",
+          "negated": false,
+          "overlay_sequence": -1,
+          "position": "faceup_attack",
+          "race": "none",
+          "sequence": 0,
+          "types": []
+        },
+        {
+          "attack": 0,
+          "attribute": "none",
+          "code": 0,
+          "controller": "opponent",
+          "counter": 0,
+          "defense": 0,
+          "level": 0,
+          "location": "mzone",
+          "negated": false,
+          "overlay_sequence": -1,
+          "position": "facedown_defense",
+          "race": "none",
+          "sequence": 2,
+          "types": []
+        },
+        {
+          "attack": 0,
+          "attribute": "none",
+          "code": 0,
+          "controller": "opponent",
+          "counter": 0,
+          "defense": 0,
+          "level": 0,
+          "location": "szone",
+          "negated": false,
+          "overlay_sequence": -1,
+          "position": "facedown",
+          "race": "none",
+          "sequence": 1,
+          "types": []
+        },
+        {
+          "attack": 0,
+          "attribute": "none",
+          "code": 0,
+          "controller": "opponent",
+          "counter": 0,
+          "defense": 0,
+          "level": 0,
+          "location": "hand",
+          "negated": false,
+          "overlay_sequence": -1,
+          "position": "none",
+          "race": "none",
+          "sequence": 0,
+          "types": []
+        }
+      ],
+      "global": {
+        "is_first": true,
+        "is_my_turn": false,
+        "my_lp": 0,
+        "op_lp": 0,
+        "phase": "main1",
+        "turn": 0
+      }
+    },
+    "prev_action_idx": 0
+  },
   "card_mid_select": {
     "index": 0,
     "input": {

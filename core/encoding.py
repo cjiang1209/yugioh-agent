@@ -28,17 +28,6 @@ PER_CARD_DESC_N_VOCAB = 16
 # sysstring growth without code change.
 SYSSTRING_VOCAB = 65536
 
-# Zone slot allocations per player
-ZONE_SLOTS = {
-    "hand": 15,
-    "mzone": 7,
-    "szone": 6,
-    "grave": 30,
-    "banished": 20,
-    "extra": 15,
-}
-# Total per player = 15+7+6+30+20+15 = 93, times 2 = 186, leaves room for overflow
-
 
 class Layout:
     """A packed row: its fields, and everything derived from them.
