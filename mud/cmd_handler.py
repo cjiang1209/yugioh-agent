@@ -115,14 +115,15 @@ _BARE_SPEC_RE = re.compile(r"^([a-z]+?)(\d+)$")
 
 
 def parse_cardspec(spec: str) -> tuple[int, int]:
-    """Parse a cardspec like 'h1' into (LOCATION_*, 0-indexed sequence).
+    """Parse a cardspec like 'h1', or 'om1' for an opponent's card, into
+    (LOCATION_*, 0-indexed sequence).
 
     Returns (0, 0) if the spec doesn't match a known pattern.
     """
     m = _BARE_SPEC_RE.match(spec)
     if not m:
         return 0, 0
-    prefix, digit = m.group(1), int(m.group(2))
+    prefix, digit = m.group(1).removeprefix("o"), int(m.group(2))
     location = _SPEC_PREFIX_TO_LOCATION.get(prefix, 0)
     return location, max(digit - 1, 0)
 

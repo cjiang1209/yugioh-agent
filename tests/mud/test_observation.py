@@ -22,6 +22,7 @@ from core.action_categories import (
 from core.card_database import CardDatabase
 from core.constants import (
     LOCATION_EXTRA,
+    LOCATION_GRAVE,
     LOCATION_HAND,
     LOCATION_MZONE,
     LOCATION_SZONE,
@@ -34,7 +35,9 @@ from core.constants import (
     PHASE_MAIN2,
     POS_FACEDOWN,
     POS_FACEDOWN_DEFENSE,
+    POS_FACEUP,
     POS_FACEUP_ATTACK,
+    POS_FACEUP_DEFENSE,
 )
 from core.encoding import (
     ACTION_FEATURES,
@@ -70,6 +73,7 @@ _CARDS = [
     (40640057, "Kuriboh", 17, 300, 200, 1, 0x10, 0x20),
     (44095762, "Mirror Force", 4, 0, 0, 0, 0, 0),
     (23995346, "Blue-Eyes Ultimate Dragon", 65, 4500, 3800, 12, 0x2000, 0x10),
+    (16178681, "Odd-Eyes Pendulum Dragon", 0x1000021, 2500, 2000, 0x04040007, 0x2000, 0x20),
 ]
 
 
@@ -91,6 +95,18 @@ def builder(card_db: CardDatabase) -> MUDObservationBuilder:
 @pytest.fixture
 def gs() -> MUDGameState:
     return MUDGameState()
+
+
+def _rows(builder, gs, location, controller):
+    """The card rows an idle prompt's observation holds for one zone."""
+    prompt = ParsedPrompt(prompt_type=PromptType.IDLE_CMD, options=["e"])
+    c = builder.build(gs, prompt)["cards"]
+    return [
+        c[i]
+        for i in range(MAX_CARDS)
+        if CARD_LAYOUT.read(c[i], "location") == location
+        and CARD_LAYOUT.read(c[i], "controller") == controller
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -315,27 +331,76 @@ class TestOpponentFaceDown:
         assert len(hand) == 2
         assert all(CARD_LAYOUT.read(card, "position") == 0 for card in hand)
 
-    def test_own_facedown_extra_deck_card_is_facedown_defense(self, builder, gs):
-        # The MUD server prints "face down" for a face-down extra deck card as
-        # well as a set spell/trap; the engine has the former in face-down
-        # defense.
-        gs.my_extra = [
-            CardEntry(name="Blue-Eyes Ultimate Dragon", code=23995346, position="face down")
-        ]
-        prompt = ParsedPrompt(prompt_type=PromptType.IDLE_CMD, options=["e"])
-        c = builder.build(gs, prompt)["cards"]
-
-        (card,) = [
-            c[i]
-            for i in range(MAX_CARDS)
-            if CARD_LAYOUT.read(c[i], "location") == LOCATION_EXTRA
-            and CARD_LAYOUT.read(c[i], "controller") == 0
-        ]
-        assert CARD_LAYOUT.read(card, "position") == POS_FACEDOWN_DEFENSE
+    # The MUD server prints "face-up" and "face down" for both a spell/trap and
+    # an extra deck card; the engine has extra deck cards in defense position.
+    @pytest.mark.parametrize(
+        ("zone", "location", "entry", "expected"),
+        [
+            (
+                "my_extra",
+                LOCATION_EXTRA,
+                CardEntry(name="Blue-Eyes Ultimate Dragon", code=23995346, position="face down"),
+                POS_FACEDOWN_DEFENSE,
+            ),
+            (
+                "my_extra",
+                LOCATION_EXTRA,
+                CardEntry(name="Odd-Eyes Pendulum Dragon", code=16178681, position="face-up"),
+                POS_FACEUP_DEFENSE,
+            ),
+            (
+                "my_szone",
+                LOCATION_SZONE,
+                CardEntry(name="Mirror Force", code=44095762, position="face-up"),
+                POS_FACEUP,
+            ),
+            (
+                "my_graveyard",
+                LOCATION_GRAVE,
+                CardEntry(name="Kuriboh", code=40640057, position="face-up"),
+                POS_FACEUP,
+            ),
+        ],
+    )
+    def test_own_card_position(self, builder, gs, zone, location, entry, expected):
+        setattr(gs, zone, [entry])
+        (card,) = _rows(builder, gs, location, controller=0)
+        assert CARD_LAYOUT.read(card, "position") == expected
 
 
 # ---------------------------------------------------------------------------
-# 6. Zone fill order
+# 6. Field card sequences
+# ---------------------------------------------------------------------------
+
+
+class TestFieldSequence:
+    def test_own_monster_keeps_its_slot(self, builder, gs):
+        # Slots m1 and m2 are empty, so the card is first in the zone list
+        # but sits in engine slot 2.
+        gs.my_mzone = [
+            CardEntry(name="Dark Magician", code=46986414, position="face-up attack", spec="m3")
+        ]
+        (card,) = _rows(builder, gs, LOCATION_MZONE, controller=0)
+        assert CARD_LAYOUT.read(card, "sequence") == 2
+
+    def test_opponent_spec_prefix_is_read(self, builder, gs):
+        gs.opp_szone = [CardEntry(name="", code=0, position="face down", spec="os4")]
+        (card,) = _rows(builder, gs, LOCATION_SZONE, controller=1)
+        assert CARD_LAYOUT.read(card, "sequence") == 3
+
+    def test_card_without_spec_takes_lowest_unclaimed_slot(self, builder, gs):
+        # A summoned monster has no spec; it must not share m1's slot.
+        gs.my_mzone = [
+            CardEntry(name="Kuriboh", code=40640057, position="face-up attack"),
+            CardEntry(name="Dark Magician", code=46986414, position="face-up attack", spec="m1"),
+        ]
+        rows = _rows(builder, gs, LOCATION_MZONE, controller=0)
+        slots = {CARD_LAYOUT.read(r, "code"): CARD_LAYOUT.read(r, "sequence") for r in rows}
+        assert slots == {46986414: 0, 40640057: 1}
+
+
+# ---------------------------------------------------------------------------
+# 7. Zone fill order
 # ---------------------------------------------------------------------------
 
 
@@ -363,7 +428,7 @@ class TestZoneFillOrder:
 
 
 # ---------------------------------------------------------------------------
-# 7. Idle action features
+# 8. Idle action features
 # ---------------------------------------------------------------------------
 
 
@@ -465,7 +530,7 @@ class TestIdleActionFeatures:
 
 
 # ---------------------------------------------------------------------------
-# 8. Battle action features
+# 9. Battle action features
 # ---------------------------------------------------------------------------
 
 
@@ -498,7 +563,7 @@ class TestBattleActionFeatures:
 
 
 # ---------------------------------------------------------------------------
-# 9. Action mask
+# 10. Action mask
 # ---------------------------------------------------------------------------
 
 
@@ -530,7 +595,7 @@ class TestActionMask:
 
 
 # ---------------------------------------------------------------------------
-# 10. Non-idle prompt actions
+# 11. Non-idle prompt actions
 # ---------------------------------------------------------------------------
 
 

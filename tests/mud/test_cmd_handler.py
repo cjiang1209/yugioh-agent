@@ -76,6 +76,10 @@ class TestParseCardspec:
         assert parse_cardspec("r1") == (LOCATION_BANISHED, 0)
         assert parse_cardspec("r3") == (LOCATION_BANISHED, 2)
 
+    def test_opponent_prefix(self):
+        assert parse_cardspec("om3") == (LOCATION_MZONE, 2)
+        assert parse_cardspec("os1") == (LOCATION_SZONE, 0)
+
     def test_unknown(self):
         assert parse_cardspec("??") == (0, 0)
         assert parse_cardspec("") == (0, 0)

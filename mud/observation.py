@@ -6,6 +6,7 @@ the training environment's observation format.
 
 from __future__ import annotations
 
+import itertools
 import re
 
 import numpy as np
@@ -45,6 +46,7 @@ from core.constants import (
     POS_FACEDOWN,
     POS_FACEDOWN_ATTACK,
     POS_FACEDOWN_DEFENSE,
+    POS_FACEUP,
     POS_FACEUP_ATTACK,
     POS_FACEUP_DEFENSE,
 )
@@ -58,6 +60,7 @@ from core.encoding import (
     encode_global,
 )
 
+from .cmd_handler import parse_cardspec
 from .game_state import CardEntry, MUDGameState
 from .text_parser import ParsedPrompt, PromptType
 
@@ -92,11 +95,36 @@ POSITION_MAP: dict[str, int] = {
     "face-down attack": POS_FACEDOWN_ATTACK,
     "face-up defense": POS_FACEUP_DEFENSE,
     "face-down defense": POS_FACEDOWN_DEFENSE,
-    "face-up": POS_FACEUP_ATTACK,
+    # The MUD server's text for a face-up spell/trap, and for a face-up extra
+    # deck card.
+    "face-up": POS_FACEUP,
     # The MUD server's text for a set spell/trap, and for a face-down extra
     # deck card.
     "face down": POS_FACEDOWN,
 }
+
+# The in-process ygopro-core reports extra deck cards in defense position.
+_EXTRA_POSITION = {POS_FACEUP: POS_FACEUP_DEFENSE, POS_FACEDOWN: POS_FACEDOWN_DEFENSE}
+
+
+def _sequences(zone: list[CardEntry], location: int) -> list[int]:
+    """The sequence of each card in a zone.
+
+    Outside the field it is the card's place in the zone. On the field it is
+    the slot the card occupies: a card's MUD spec ("m3", or "om3" for an
+    opponent's card) is its slot plus one. The server's summon text names no
+    zone, so a card summoned since the last board re-read has no spec; it
+    takes the lowest slot no other card claims.
+    """
+    if not location & LOCATION_ONFIELD:
+        return list(range(len(zone)))
+    slots: list[int | None] = []
+    for entry in zone:
+        spec_location, sequence = parse_cardspec(entry.spec)
+        slots.append(sequence if spec_location == location else None)
+    free = (s for s in itertools.count() if s not in slots)
+    return [s if s is not None else next(free) for s in slots]
+
 
 # ---------------------------------------------------------------------------
 # PromptType → MSG_SELECT_* mapping
@@ -167,8 +195,8 @@ class MUDObservationBuilder:
             (LOCATION_BANISHED, gs.my_banished),
             (LOCATION_EXTRA, gs.my_extra),
         ]:
-            for i, entry in enumerate(zone):
-                rows.append(self._encode_entry(entry, loc, i, controller=0, is_public=True))
+            for seq, entry in zip(_sequences(zone, loc), zone, strict=True):
+                rows.append(self._encode_entry(entry, loc, seq, controller=0, is_public=True))
 
         # Opponent hand: only its size is known
         for i in range(gs.opp_hand_count):
@@ -191,10 +219,10 @@ class MUDObservationBuilder:
             (LOCATION_BANISHED, gs.opp_banished),
             (LOCATION_EXTRA, gs.opp_extra),
         ]:
-            for i, entry in enumerate(zone):
+            for seq, entry in zip(_sequences(zone, loc), zone, strict=True):
                 is_faceup = self._is_faceup(entry)
                 is_public = is_faceup and entry.code != 0
-                rows.append(self._encode_entry(entry, loc, i, controller=1, is_public=is_public))
+                rows.append(self._encode_entry(entry, loc, seq, controller=1, is_public=is_public))
 
         cards = np.zeros((MAX_CARDS, CARD_FEATURES), dtype=np.uint8)
         rows = rows[:MAX_CARDS]
@@ -211,8 +239,8 @@ class MUDObservationBuilder:
         is_public: bool,
     ) -> np.ndarray:
         position = POSITION_MAP.get(entry.position, 0)
-        if position == POS_FACEDOWN and location == LOCATION_EXTRA:
-            position = POS_FACEDOWN_DEFENSE
+        if location == LOCATION_EXTRA:
+            position = _EXTRA_POSITION.get(position, position)
 
         if not is_public or entry.code == 0:
             return encode_card(
